@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import CatMiniAvatar from '../../components/CatMiniAvatar'
-import { assistants } from '../../data'
+import { assistants } from '../../data/cats'
 
 const cats = assistants.slice(0, 5)
 

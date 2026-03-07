@@ -1,30 +1,5 @@
-import type { Assistant, CatColors, Skill } from '../types';
-
-export const pixelColors: CatColors = {
-  body: '#FAF3EB',
-  bodyDark: '#FAF3EB',
-  belly: '#FAF3EB',
-  earInner: '#4E342E',
-  eyes: '#4FC3F7',
-  nose: '#333',
-  blush: '#FFCCBC',
-  stroke: '#4E342E',
-  apron: '#B39DDB',
-  apronLight: '#EDE7F6',
-  apronLine: '#B39DDB',
-  desk: '#D1C4E9',
-  deskDark: '#9575CD',
-  deskLeg: '#B39DDB',
-  paw: '#4E342E',
-  tail: '#4E342E',
-  faceDark: '#4E342E',
-  month: '#333',
-  head: '',
-  bodyDarkBottom: '',
-  leg: '',
-  headTopLeft: '',
-  headTopRight: '',
-};
+import { xianluoColors } from '../themes';
+import type { Assistant, Skill } from '../types';
 
 export const pixelSkills: Skill[] = [
   { id: 'generate-image', name: 'AI 绘图', icon: '🖼️', description: '调用 Gemini 根据文字描述生成图片', input: 'text', output: 'image', provider: 'Gemini', mockResult: '生成 1024x1024 PNG 图片' },
@@ -55,6 +30,6 @@ export const pixel: Assistant = {
 创作风格：注重画面构图、色彩和谐和情感表达。为 prompt 添加艺术细节以提升生成质量。`,
   skills: pixelSkills,
   item: 'camera',
-  catColors: pixelColors,
+  catColors: xianluoColors,
   messages: pixelMessages,
 };

@@ -1,30 +1,5 @@
-import type { Assistant, CatColors, Skill } from '../types';
-
-export const xiaobaiColors: CatColors = {
-  body: '#FFF',
-  bodyDark: '',
-  belly: '#FFFFFF',
-  earInner: '#FFB5C5',
-  eyes: '#000',
-  nose: '#E8998D',
-  blush: '#FFB5C5',
-  stroke: '#5D4037',
-  apron: '#FFB74D',
-  apronLight: '#FFF3E0',
-  apronLine: '#FFB74D',
-  desk: '#F8BBD0',
-  deskDark: '#EC407A',
-  deskLeg: '#F48FB1',
-  paw: ['#333', '#FAFAFA', '#333', '#333'],
-  tail: '#333',
-  faceDark: '',
-  month: '',
-  head: '#FFF',
-  bodyDarkBottom: '#333',
-  leg: ['#FAFAFA', '#333', '#333', '#FAFAFA'],
-  headTopLeft: '#333',
-  headTopRight: '#333',
-};
+import { milkColors } from '../themes';
+import type { Assistant, Skill } from '../types';
 
 export const xiaobaiSkills: Skill[] = [
   { id: 'quality-check', name: '质量检测', icon: '🔎', description: '对输出内容进行质量评分和问题检测', input: 'json', output: 'json', provider: 'Rules Engine', mockResult: '输出 JSON 质量报告 (score: 92)' },
@@ -57,6 +32,6 @@ export const xiaobai: Assistant = {
 检测标准：输出结构化的 JSON 报告，包含评分、问题列表和改进建议。不放过任何细节。`,
   skills: xiaobaiSkills,
   item: 'clipboard',
-  catColors: xiaobaiColors,
+  catColors: milkColors,
   messages: xiaobaiMessages,
 };

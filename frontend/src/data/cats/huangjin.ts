@@ -1,30 +1,5 @@
-import type { Assistant, CatColors, Skill } from '../types';
-
-export const huangjinColors: CatColors = {
-  body: '#FAF3EB',
-  bodyDark: '#FAF3EB',
-  belly: '#FAF3EB',
-  earInner: '#F7AC5E',
-  eyes: '#A1E0FF',
-  nose: '#5D4037',
-  blush: '#FFCCBC',
-  stroke: '#5D4037',
-  apron: '#B39DDB',
-  apronLight: '#EDE7F6',
-  apronLine: '#B39DDB',
-  desk: '#B3E5FC',
-  deskDark: '#4FC3F7',
-  deskLeg: '#81D4FA',
-  paw: '#F7AC5E',
-  tail: '#F7AC5E',
-  faceDark: '#F7AC5E',
-  month: '#333',
-  head: '',
-  bodyDarkBottom: '',
-  leg: '',
-  headTopLeft: '',
-  headTopRight: '',
-};
+import { goldenxianluoColors } from '../themes';
+import type { Assistant,  Skill } from '../types';
 
 export const huangjinSkills: Skill[] = [
   { id: 'fix-bug', name: 'Bug 修复', icon: '🐛', description: '排查并修复网站前后端的 bug', input: 'text', output: 'text', provider: 'Code Analysis', mockResult: '已修复 3 个 bug，回归测试通过' },
@@ -55,6 +30,6 @@ export const huangjin: Assistant = {
 处理原则：代码质量优先，遵循最佳实践，保持代码可读性和可维护性。`,
   skills: huangjinSkills,
   item: 'camera',
-  catColors: huangjinColors,
+  catColors: goldenxianluoColors,
   messages: huangjinMessages,
 };

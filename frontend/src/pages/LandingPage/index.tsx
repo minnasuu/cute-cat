@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import CatLogo from '../../components/CatLogo';
+import Navbar from '../../components/Navbar';
 import { LandHeroCtas } from './LandHeroCtas';
 import { LandFeatureRoles } from './LandFeatureRoles';
 import { LandFeatureSkills } from './LandFeatureSkills';
@@ -47,26 +48,17 @@ const LandingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900">
       {/* Navbar */}
-      <header className={`fixed top-0 w-full z-50 transition-all duration-500 flex justify-between px-6 items-center ${scrollY > 20 ? 'py-3 bg-surface/80 backdrop-blur-xl' : 'py-5 bg-transparent'}`}>
-        <Link to="/" className="flex items-center gap-2 group cursor-pointer">
-            <CatLogo size={48} className="group-hover:rotate-12 transition-transform" />
-            <span className="text-xl font-bold tracking-tight">CuCaTopia</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-8">
-            {NAV_ITEMS.map(item => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                onClick={e => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' }) }}
-                className={`text-sm font-medium transition-colors ${activeSection === item.id ? item.activeClass : 'text-text-secondary hover:text-text-primary'}`}
-              >{item.label}</a>
-            ))}
-          </nav>
-          <div className="flex items-center gap-4">
-            <Link to="/login" className="text-sm font-semibold text-text-secondary hover:text-text-primary transition-colors">登录</Link>
-            <Link to="/register" className="px-5 py-2.5 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all">申请内测</Link>
-          </div>
-      </header>
+      <Navbar
+        variant="fixed"
+        scrolled={scrollY > 20}
+        logoSize={48}
+        navLinks={NAV_ITEMS.map(item => ({
+          ...item,
+          href: `#${item.id}`,
+          onClick: (e: React.MouseEvent) => { e.preventDefault(); document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' }); },
+        }))}
+        activeNavId={activeSection}
+      />
 
       {/* Hero */}
       <section className="relative pt-20 pb-20 md:pt-32 md:pb-40 overflow-hidden">

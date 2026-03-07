@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { assistants, workHistory as mockWorkHistory, type Workflow, type Skill } from '../data';
-import type { HistoryItem } from '../data';
+import { type Workflow, type Skill, HistoryItem } from '../data/types';
 import { getSkillHandler } from '../skills';
 import type { SkillResult } from '../skills/types';
 import CatSVG from './CatSVG';
@@ -23,6 +22,7 @@ import {
   type AIModelInfo,
   type WorkflowRunDB,
 } from '../utils/backendClient';
+import { assistants } from '../data/cats';
 
 const STEP_DURATION = 3000;
 
@@ -96,7 +96,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
   const [aiModels, setAiModels] = useState<AIModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>(getCurrentAIModel());
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
-  const [workHistory, setWorkHistory] = useState<HistoryItem[]>(mockWorkHistory);
+  const [workHistory, setWorkHistory] = useState<HistoryItem[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 从后端加载工作流，失败则使用 mock 数据

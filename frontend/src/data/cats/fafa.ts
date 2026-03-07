@@ -1,30 +1,5 @@
-import type { Assistant, CatColors, Skill } from '../types';
-
-export const fafaColors: CatColors = {
-  body: '#F5F5F5',
-  bodyDark: '#D5D5D5',
-  belly: '#FFFFFF',
-  earInner: '#FFB5C5',
-  eyes: '#542615',
-  nose: '#542615',
-  blush: '#FFB5C5',
-  stroke: '#333333',
-  apron: '#E8A0BF',
-  apronLight: '#FCE4EC',
-  apronLine: '#E8A0BF',
-  desk: '#E8C8D8',
-  deskDark: '#C4919E',
-  deskLeg: '#D4A8B5',
-  paw: '#FFFFFF',
-  tail: '#F5F5F5',
-  faceDark: '',
-  month: '',
-  head: '',
-  bodyDarkBottom: '',
-  leg: '',
-  headTopLeft: '',
-  headTopRight: '',
-};
+import { meiduanColors } from '../themes';
+import type { Assistant, Skill } from '../types';
 
 export const fafaSkills: Skill[] = [
   { id: 'recruit-cat', name: '招募新猫', icon: '🐱', description: '根据花椒的招募决策，招募一只新猫并定义其角色、技能和外观', input: 'json', output: 'json', provider: 'Gemini', mockResult: '新猫已招募 (角色/技能/外观已定义)' },
@@ -55,6 +30,6 @@ export const fafa: Assistant = {
 管理原则：人尽其才、合理搭配，确保团队能力均衡。输出使用结构化 JSON 格式。`,
   skills: fafaSkills,
   item: 'clipboard',
-  catColors: fafaColors,
+  catColors: meiduanColors,
   messages: fafaMessages,
 };

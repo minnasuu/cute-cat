@@ -1,4 +1,4 @@
-import { skillPool, skillGroups } from './landingData'
+import { skillGroups, skillPool } from "../../data/skills"
 
 export const LandFeatureSkills = () => {
   return (

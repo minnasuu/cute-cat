@@ -1,30 +1,5 @@
-import type { Assistant, CatColors, Skill } from '../types';
-
-export const niannianColors: CatColors = {
-  body: '#F7AC5E',
-  bodyDark: '#D3753E',
-  belly: '',
-  earInner: '#F28686',
-  eyes: '#542615',
-  nose: '#542615',
-  blush: '#F28686',
-  stroke: '#542615',
-  apron: '#BDBDBD',
-  apronLight: '#FEFFFE',
-  apronLine: '#BDBDBD',
-  desk: '#D7CCC8',
-  deskDark: '#A1887F',
-  deskLeg: '#BCAAA4',
-  paw: '',
-  tail: '#F7AC5E',
-  faceDark: '',
-  month: '',
-  head: '',
-  bodyDarkBottom: '',
-  leg: '',
-  headTopLeft: '',
-  headTopRight: '',
-};
+import { jubaiColors } from '../themes';
+import type { Assistant,  Skill } from '../types';
 
 export const niannianSkills: Skill[] = [
   { id: 'send-email', name: '发送邮件', icon: '📧', description: '发送 HTML 格式邮件给指定收件人', input: 'text', output: 'email', provider: 'SMTP/SendGrid', mockResult: '邮件发送成功 → 状态 200' },
@@ -53,6 +28,6 @@ export const niannian: Assistant = {
 沟通风格：礼貌友好，邮件标题简洁有力，正文层次分明。确保送达率和用户体验。`,
   skills: niannianSkills,
   item: 'mail',
-  catColors: niannianColors,
+  catColors: jubaiColors,
   messages: niannianMessages,
 };

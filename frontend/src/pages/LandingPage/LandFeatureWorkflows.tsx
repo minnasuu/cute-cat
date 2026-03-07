@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import CatSVG from '../../components/CatSVG'
-import { assistants, workflows } from '../../data'
-import type { Skill } from '../../data'
+import { assistants } from '../../data/cats'
+import { workflows } from '../../data/workflows'
+import { Skill } from '../../data/types'
 
 const catMap = Object.fromEntries(assistants.map(c => [c.id, c]))
 

@@ -1,5 +1,5 @@
 import type { Assistant, Skill } from '../types';
-import { huajiaoTheme } from '../themes';
+import { lihuajiabaiTheme } from '../themes';
 
 export const huajiaoSkills: Skill[] = [
   { id: 'generate-todo', name: '代办清单', icon: '📋', description: '分析网站内容，自动生成代办清单（发文章、增页面、调整猫猫等）', input: 'json', output: 'json', provider: 'Gemini', mockResult: '输出 JSON 代办清单 (8项待办)' },
@@ -34,6 +34,6 @@ export const huajiao: Assistant = {
 输出要求：保持简洁专业，使用结构化 JSON 格式输出任务和决策。`,
   skills: huajiaoSkills,
   item: 'clipboard',
-  catColors: huajiaoTheme,
+  catColors: lihuajiabaiTheme,
   messages: huajiaoMessages,
 };

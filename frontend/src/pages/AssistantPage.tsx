@@ -3,7 +3,8 @@ import CatSVG from '../components/CatSVG';
 import CatMiniAvatar from '../components/CatMiniAvatar';
 import WorkflowPanel from '../components/WorkflowPanel';
 import '../styles/AssistantPage.scss';
-import { assistants, type HistoryItem, type Skill } from '../data';
+import {  type HistoryItem, type Skill } from '../data/types';
+import { assistants } from '../data/cats';
 
 const formatTime = (iso: string) => {
   const d = new Date(iso);

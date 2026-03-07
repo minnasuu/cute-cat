@@ -1,57 +1,3 @@
-/**
- * Landing Page 展示用数据
- * 体现产品核心逻辑：外形模版 × 性格模版 × 技能池 = 自由组合
- */
-import type { CatColors } from '../../components/CatSVG'
-import { huajiaoTheme, lanmaoTheme, heimaotaxueTheme } from '../../data/themes'
-import { niannianColors } from '../../data/cats/niannian'
-import { xiaohuColors } from '../../data/cats/xiaohu'
-import { pixelColors } from '../../data/cats/pixel'
-import { huangjinColors } from '../../data/cats/huangjin'
-import { mimiColors } from '../../data/cats/mimi'
-import { xiaobaiColors } from '../../data/cats/xiaobai'
-import { fafaColors } from '../../data/cats/fafa'
-
-// ─── 外形模版 ───
-export interface AppearanceTemplate {
-  id: string
-  name: string
-  preview: string    // 简短描述
-  colors: CatColors
-}
-
-export const appearanceTemplates: AppearanceTemplate[] = [
-  { id: 'huajiao',   name: '狸花加白',  preview: '经典三花，沉稳大气',   colors: huajiaoTheme },
-  { id: 'lanmao',    name: '蓝猫',  preview: '优雅蓝灰，文艺气质',   colors: lanmaoTheme },
-  { id: 'heimao',    name: '踏雪黑猫',  preview: '酷感十足，神秘利落',   colors: heimaotaxueTheme },
-  { id: 'jubi',      name: '橘猫',  preview: '暖橘毛色，亲切温暖',   colors: niannianColors },
-  { id: 'sanhua',    name: '三花猫',  preview: '多彩拼接，活力满分',   colors: xiaohuColors },
-  { id: 'xianluomao',name: '暹罗猫',  preview: '深浅渐变，高贵优雅',   colors: pixelColors },
-  { id: 'jinsemao',  name: '金色暹罗猫',    preview: '暖金毛色，阳光开朗',   colors: huangjinColors },
-  { id: 'baimao',    name: '白猫',  preview: '通体纯白，干净温柔',   colors: mimiColors },
-  { id: 'naimao',    name: '奶牛猫',  preview: '黑白拼接，俏皮可爱',   colors: xiaobaiColors },
-  { id: 'yinse',     name: '美短',  preview: '低调银灰，知性沉稳',   colors: fafaColors },
-]
-
-// ─── 性格模版 ───
-export interface PersonalityTemplate {
-  id: string
-  name: string
-  emoji: string
-  traits: string[]         // 性格关键词
-  tone: string             // 说话风格
-}
-
-export const personalityTemplates: PersonalityTemplate[] = [
-  { id: 'leader',     name: '领导者',   emoji: '👑', traits: ['冷静理性', '条理清晰', '有决断力'], tone: '简洁专业、指令明确' },
-  { id: 'creative',   name: '创意家',   emoji: '🎨', traits: ['灵感迸发', '天马行空', '追求完美'], tone: '活泼生动、充满想象' },
-  { id: 'scholar',    name: '学者型',   emoji: '📚', traits: ['严谨求实', '逻辑缜密', '注重细节'], tone: '条理分明、引经据典' },
-  { id: 'warm',       name: '暖心派',   emoji: '💛', traits: ['温柔体贴', '善解人意', '亲和力强'], tone: '温暖亲切、鼓励为主' },
-  { id: 'hustler',    name: '实干家',   emoji: '⚡', traits: ['雷厉风行', '效率至上', '目标导向'], tone: '直截了当、言简意赅' },
-  { id: 'playful',    name: '活泼鬼',   emoji: '🎉', traits: ['幽默风趣', '乐观开朗', '感染力强'], tone: '俏皮可爱、表情丰富' },
-]
-
-// ─── 全局技能池 ───
 export interface SkillTemplate {
   id: string
   name: string
@@ -110,7 +56,10 @@ export const skillPool: SkillTemplate[] = [
   { id: 'team-review',       name: '团队盘点',   icon: '👥', category: 'manage', description: '盘点团队能力分布和缺口',                input: 'none', output: 'json', provider: 'Gemini' },
 ]
 
-// ─── 技能组（快速装配一组技能）───
+// ────────────────────────────────────────────────────────────
+// 技能组（快速装配一组技能）
+// ────────────────────────────────────────────────────────────
+
 export interface SkillGroup {
   id: string
   name: string
@@ -118,16 +67,18 @@ export interface SkillGroup {
   color: string
   description: string
   skillIds: string[]   // 引用 skillPool 中的 id
+  catId?: string       // 对应的官方猫猫 id
 }
 
 export const skillGroups: SkillGroup[] = [
   {
-    id: 'programmer',
-    name: '程序员',
-    icon: '💻',
-    color: '#90CAF9',
-    description: 'Bug 监测、网页爬虫、GitHub 代码编写等全栈开发能力',
-    skillIds: ['fix-bug', 'develop-feature', 'optimize-perf', 'crawl-news', 'generate-component', 'regression-test'],
+    id: 'manager',
+    name: '管理者',
+    icon: '👔',
+    color: '#8DB889',
+    description: '代办清单、任务分配、审批流程、工作流管理等全局管理能力',
+    skillIds: ['generate-todo', 'assign-task', 'review-approve', 'manage-workflow'],
+    catId: 'manager',
   },
   {
     id: 'writer',
@@ -135,72 +86,79 @@ export const skillGroups: SkillGroup[] = [
     icon: '✍️',
     color: '#FF6B6B',
     description: '文章撰写、内容润色、大纲规划、资讯整理等创作能力',
-    skillIds: ['generate-article', 'polish-text', 'generate-outline', 'news-to-article', 'meeting-notes'],
+    skillIds: ['generate-article', 'polish-text', 'generate-outline', 'news-to-article'],
+    catId: 'writer',
   },
   {
     id: 'analyst',
     name: '分析师',
     icon: '📊',
     color: '#96BAFF',
-    description: '数据采集、趋势分析、资讯摘要、图表可视化等数据能力',
-    skillIds: ['crawl-news', 'summarize-news', 'query-dashboard', 'trend-analysis', 'generate-chart'],
+    description: '资讯爬取、资讯摘要、数据查询、趋势分析等数据能力',
+    skillIds: ['crawl-news', 'summarize-news', 'query-dashboard', 'trend-analysis'],
+    catId: 'analytics',
+  },
+  {
+    id: 'messenger',
+    name: '信使',
+    icon: '📮',
+    color: '#F2A5B9',
+    description: '邮件发送、推送通知等消息沟通能力',
+    skillIds: ['send-email', 'send-notification'],
+    catId: 'email',
+  },
+  {
+    id: 'builder',
+    name: '工匠',
+    icon: '🧱',
+    color: '#FFB74D',
+    description: '组件生成、排版布局、页面搭建等前端构建能力',
+    skillIds: ['generate-component', 'layout-design'],
+    catId: 'crafts',
   },
   {
     id: 'designer',
-    name: '设计师',
+    name: '画师',
     icon: '🎨',
     color: '#B39DDB',
-    description: 'AI 绘图、组件生成、排版布局、样式生成等视觉能力',
-    skillIds: ['generate-image', 'generate-component', 'layout-design', 'generate-chart'],
+    description: 'AI 绘图、图表生成等视觉创作能力',
+    skillIds: ['generate-image', 'generate-chart'],
+    catId: 'image',
   },
   {
-    id: 'operator',
-    name: '运营官',
-    icon: '📣',
-    color: '#F2A5B9',
-    description: '邮件推送、通知管理、任务日志、质量检测等运营能力',
-    skillIds: ['send-email', 'send-notification', 'task-log', 'quality-check', 'summarize-news'],
+    id: 'programmer',
+    name: '程序员',
+    icon: '💻',
+    color: '#90CAF9',
+    description: 'Bug 修复、功能开发、性能优化等全栈开发能力',
+    skillIds: ['fix-bug', 'develop-feature', 'optimize-perf'],
+    catId: 'text',
   },
   {
-    id: 'manager',
-    name: '管理者',
-    icon: '👔',
-    color: '#8DB889',
-    description: '任务分配、审批流程、工作流管理、团队盘点等管理能力',
-    skillIds: ['generate-todo', 'assign-task', 'review-approve', 'manage-workflow', 'recruit-cat', 'team-review'],
-  },
-]
-
-// ─── 预设组合示例（展示用）───
-export interface PresetCombo {
-  name: string
-  appearance: string      // appearanceTemplate id
-  personality: string     // personalityTemplate id
-  skillGroupId: string    // skillGroup id（快速装配）
-  extraSkillIds?: string[] // 额外散装技能
-  description: string
-}
-
-export const presetCombos: PresetCombo[] = [
-  {
-    name: '花椒',
-    appearance: 'huajiao',
-    personality: 'leader',
-    skillGroupId: 'manager',
-    description: '经典的团队总管——三花外形 + 领导者性格 + 管理者技能组。',
+    id: 'recorder',
+    name: '记录员',
+    icon: '📒',
+    color: '#CE93D8',
+    description: '任务日志、会议纪要等信息记录整理能力',
+    skillIds: ['task-log', 'meeting-notes'],
+    catId: 'sing',
   },
   {
-    name: '阿蓝',
-    appearance: 'lanmao',
-    personality: 'creative',
-    skillGroupId: 'writer',
-    description: '文艺蓝灰猫 + 创意家性格 + 写手技能组，天生的创作搭配。',
+    id: 'qa',
+    name: '质检员',
+    icon: '🔎',
+    color: '#80CBC4',
+    description: '质量检测、回归测试等质量保障能力',
+    skillIds: ['quality-check', 'regression-test'],
+    catId: 'milk',
   },
   {
-    name: '雪',
-    appearance: 'heimao',
-    personality: 'scholar',
-    skillGroupId: 'analyst',
-    description: '冷酷黑猫 + 学者性格 + 分析师技能组，严谨的情报官。',
+    id: 'hr',
+    name: '人事官',
+    icon: '👥',
+    color: '#A5D6A7',
+    description: '招募新猫、团队盘点等人才管理能力',
+    skillIds: ['recruit-cat', 'team-review'],
+    catId: 'hr',
   },
 ]

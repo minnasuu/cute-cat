@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react"
 import CatSVG from "../../components/CatSVG"
-import { assistants } from "../../data"
+import { assistants } from "../../data/cats"
 
 const pickRandom = (msgs: string[]) => msgs[Math.floor(Math.random() * msgs.length)]
 

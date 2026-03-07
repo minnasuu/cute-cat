@@ -1,25 +1,18 @@
 import { useState, useCallback } from 'react'
 import CatMiniAvatar from './CatMiniAvatar'
-import { huajiaoTheme, lanmaoTheme, heimaotaxueTheme } from '../data/themes'
-import { niannianColors } from '../data/cats/niannian'
-import { xiaohuColors } from '../data/cats/xiaohu'
-import { pixelColors } from '../data/cats/pixel'
-import { huangjinColors } from '../data/cats/huangjin'
-import { mimiColors } from '../data/cats/mimi'
-import { xiaobaiColors } from '../data/cats/xiaobai'
-import { fafaColors } from '../data/cats/fafa'
+import { lihuajiabaiTheme, lanmaoTheme, heimaotaxueTheme, jubaiColors, sanhuaColors, xianluoColors, goldenxianluoColors, baimaoColors, milkColors, meiduanColors } from '../data/themes'
 
 const CAT_PALETTE = [
-  huajiaoTheme,
+  lihuajiabaiTheme,
   lanmaoTheme,
   heimaotaxueTheme,
-  niannianColors,
-  xiaohuColors,
-  pixelColors,
-  huangjinColors,
-  mimiColors,
-  xiaobaiColors,
-  fafaColors,
+  jubaiColors,
+  sanhuaColors,
+  xianluoColors,
+  goldenxianluoColors,
+  baimaoColors,
+  milkColors,
+  meiduanColors,
 ]
 
 interface CatLogoProps {

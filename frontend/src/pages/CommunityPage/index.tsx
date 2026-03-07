@@ -14,15 +14,11 @@ import {
   xiaobai, xiaobaiSkills,
   fafa, fafaSkills,
 } from '../../data/cats';
-import {
-  skillPool,
-  skillCategories,
-  skillGroups,
-  appearanceTemplates,
-  personalityTemplates,
-} from '../LandingPage/landingData';
 import type { Assistant, Skill } from '../../data/types';
 import { officialWorkflows } from './officialWorkflows';
+import { skillCategories, skillGroups, skillPool } from '../../data/skills';
+import { appearanceTemplates } from '../../data/themes';
+import { personalityTemplates } from '../../data/personality';
 
 /* ── All built-in cats ── */
 const allCats: Assistant[] = [huajiao, alan, xue, niannian, xiaohu, pixel, huangjin, mimi, xiaobai, fafa];

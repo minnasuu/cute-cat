@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import CatSVG from '../../components/CatSVG'
-import {
-  appearanceTemplates,
-  personalityTemplates,
-  presetCombos,
-  skillGroups,
-} from './landingData'
+import { appearanceTemplates } from '../../data/themes'
+import { presetCombos } from '../../data/cats'
+import { personalityTemplates } from '../../data/personality'
+import { skillGroups } from '../../data/skills'
 
 export const LandFeatureRoles = () => {
   const [activePreset, setActivePreset] = useState(0)

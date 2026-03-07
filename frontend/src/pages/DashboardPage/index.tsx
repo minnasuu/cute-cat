@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiClient } from '../../utils/apiClient';
 import CatMiniAvatar from '../../components/CatMiniAvatar';
 import CatLogo from '../../components/CatLogo';
+import Navbar from '../../components/Navbar';
 import UserProfileDropdown from './UserProfileDropdown';
 
 interface Team {
@@ -83,24 +84,18 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900">
-      {/* Navbar — same style as LandingPage */}
-      <header className="sticky top-0 z-50 bg-surface/80 backdrop-blur-xl border-b border-border">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 group cursor-pointer" onClick={() => navigate('/')}>
-            <CatLogo size={40} className="group-hover:rotate-12 transition-transform" />
-            <span className="text-xl font-bold tracking-tight">CuCaTopia</span>
-          </div>
-          {user && (
-            <UserProfileDropdown
-              user={user}
-              teamCount={teams.length}
-              totalCats={totalCats}
-              totalWorkflows={totalWorkflows}
-              onLogout={logout}
-            />
-          )}
-        </div>
-      </header>
+      {/* Navbar */}
+      <Navbar
+        rightSlot={user ? (
+          <UserProfileDropdown
+            user={user}
+            teamCount={teams.length}
+            totalCats={totalCats}
+            totalWorkflows={totalWorkflows}
+            onLogout={logout}
+          />
+        ) : undefined}
+      />
 
       <main className="max-w-6xl mx-auto px-6">
         {/* Hero welcome */}
@@ -220,9 +215,9 @@ const DashboardPage: React.FC = () => {
       {/* Footer — same as LandingPage */}
       <footer className="py-4 border-t border-border">
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
+          <Link to="/" className="flex items-center gap-2 cursor-pointer">
             <CatLogo size={36} />
-          </div>
+          </Link>
           <p className="text-text-tertiary text-xs font-medium">&copy; 2026 CuCaTopia.</p>
         </div>
       </footer>

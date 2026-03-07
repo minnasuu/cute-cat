@@ -1,30 +1,5 @@
+import { sanhuaColors } from '../themes';
 import type { Assistant, CatColors, Skill } from '../types';
-
-export const xiaohuColors: CatColors = {
-  body: '#FAFAFA',
-  bodyDark: '',
-  belly: '#FFFFFF',
-  earInner: '#FFB5C5',
-  eyes: '#542615',
-  nose: '#E8998D',
-  blush: '#FFB5C5',
-  stroke: '#5D4037',
-  apron: '#FFB74D',
-  apronLight: '#FFF3E0',
-  apronLine: '#FFB74D',
-  desk: '#FFE0B2',
-  deskDark: '#FFB74D',
-  deskLeg: '#FFCC80',
-  paw: ['#5C4A3A', '#FAFAFA', '#F7AC5E', '#FAFAFA'],
-  tail: '#5C4A3A',
-  faceDark: '',
-  month: '',
-  head: '#FAFAFA',
-  bodyDarkBottom: '#F7AC5E',
-  leg: ['#F7AC5E', '#FAFAFA', '#5C4A3A', '#F7AC5E'],
-  headTopLeft: '#F7AC5E',
-  headTopRight: '#5C4A3A',
-};
 
 export const xiaohuSkills: Skill[] = [
   { id: 'generate-component', name: '组件生成', icon: '🧩', description: '根据描述生成 React/HTML 创意组件代码', input: 'text', output: 'html', provider: 'Gemini', mockResult: '输出 HTML/JSX 组件代码' },
@@ -57,6 +32,6 @@ export const xiaohu: Assistant = {
 输出要求：代码整洁、语义化，遵循现代前端最佳实践。注重交互体验和视觉细节。`,
   skills: xiaohuSkills,
   item: 'palette',
-  catColors: xiaohuColors,
+  catColors: sanhuaColors,
   messages: xiaohuMessages,
 };

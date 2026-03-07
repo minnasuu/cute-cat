@@ -1,30 +1,5 @@
-import type { Assistant, CatColors, Skill } from '../types';
-
-export const mimiColors: CatColors = {
-  body: '#FFF',
-  bodyDark: '#FFF',
-  belly: '#FFF',
-  earInner: '#FFF',
-  eyes: '#5D4037',
-  nose: '#5D4037',
-  blush: '#FFCCBC',
-  stroke: '#5D4037',
-  apron: '#B39DDB',
-  apronLight: '#EDE7F6',
-  apronLine: '#B39DDB',
-  desk: '#FFF9C4',
-  deskDark: '#FDD835',
-  deskLeg: '#FFF176',
-  paw: '#FFF',
-  tail: '#FFF',
-  faceDark: '',
-  month: '#333',
-  head: '',
-  bodyDarkBottom: '',
-  leg: '',
-  headTopLeft: '',
-  headTopRight: '',
-};
+import { baimaoColors } from '../themes';
+import type { Assistant,  Skill } from '../types';
 
 export const mimiSkills: Skill[] = [
   { id: 'task-log', name: '任务日志', icon: '📒', description: '记录和整理每日/每周的任务执行日志', input: 'json', output: 'text', provider: 'Gemini', mockResult: '输出任务日志 (含状态/时间/负责人)' },
@@ -53,6 +28,6 @@ export const mimi: Assistant = {
 记录原则：信息完整准确、格式统一规范，重要信息高亮标注。及时将记录交给花椒以便后续任务分配。`,
   skills: mimiSkills,
   item: 'camera',
-  catColors: mimiColors,
+  catColors: baimaoColors,
   messages: mimiMessages,
 };
