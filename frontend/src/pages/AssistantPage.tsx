@@ -4,7 +4,6 @@ import CatMiniAvatar from '../components/CatMiniAvatar';
 import WorkflowPanel from '../components/WorkflowPanel';
 import '../styles/AssistantPage.scss';
 import { assistants, type HistoryItem, type Skill } from '../data';
-import { Icon } from '@suminhan/land-design';
 
 const formatTime = (iso: string) => {
   const d = new Date(iso);
@@ -15,7 +14,7 @@ const formatTime = (iso: string) => {
   return `${month}/${day} ${h}:${m}`;
 };
 
-const statusIcon = (s: string) => s === 'success' ? <Icon name='check-fill' color='var(--color-green-5)'/> : s === 'warning' ? <Icon name='info-fill' color='var(--color-orange-5)'/> : <Icon name='close-fill' color='var(--color-red-5)'/>;
+const statusIcon = (s: string) => s === 'success' ? '✅' : s === 'warning' ? '⚠️' : '❌';
 
 interface AssistantPageProps {
   editorMode?: boolean;

@@ -8,49 +8,135 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Workflow {
-  id                String   @id @default(uuid())
-  name              String
-  icon              String
-  description       String   @db.Text
-  steps             Json     // [{agentId, skillId, action, inputFrom?}]
-  startTime         String?
-  endTime           String?
-  scheduled         Boolean  @default(false)
-  scheduledEnabled  Boolean  @default(false)
-  cron              String?
-  persistent        Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+// ==================== V2.0 用户系统 ====================
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String
+  nickname      String
+  avatar        String?
+  plan          String   @default("free")  // free / pro / enterprise
+  aiQuota       Int      @default(100)
+  aiUsed        Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  teams         Team[]
+  aiCallLogs    AICallLog[]
 }
 
-model Assistant {
+model EmailVerification {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  type      String   // register / reset_password
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, code])
+}
+
+// ==================== V2.0 团队系统 ====================
+
+model Team {
+  id          String    @id @default(uuid())
+  name        String
+  description String?   @db.Text
+  icon        String?
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  cats        TeamCat[]
+  workflows   Workflow[]
+  workflowRuns WorkflowRun[]
+  aiCallLogs  AICallLog[]
+
+  @@index([ownerId])
+}
+
+// ==================== V2.0 猫猫系统 ====================
+
+model TeamCat {
+  id           String   @id @default(uuid())
+  teamId       String
+  team         Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  templateId   String?
+  name         String
+  role         String
+  description  String?  @db.Text
+  catColors    Json
+  systemPrompt String?  @db.Text
+  skills       Json
+  aiModel      String?
+  temperature  Float    @default(0.7)
+  maxTokens    Int      @default(2048)
+  accent       String   @default("#8DB889")
+  item         String   @default("clipboard")
+  messages     String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([teamId])
+}
+
+// ==================== 工作流系统（重构） ====================
+
+model Workflow {
   id                String   @id @default(uuid())
-  assistantId       String   @unique
+  teamId            String
+  team              Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
   name              String
-  role              String
+  icon              String   @default("📋")
   description       String   @db.Text
-  accent            String
-  systemPrompt      String   @db.Text
-  skills            Json
-  item              String
-  catColors         Json
-  messages          String[]
+  steps             Json
+  trigger           String   @default("manual") // manual / cron / webhook
+  cron              String?
+  enabled           Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  runs              WorkflowRun[]
+
+  @@index([teamId])
 }
 
 model WorkflowRun {
-  id                String   @id @default(uuid())
-  workflowId        String?
-  workflowName      String
-  agentId           String
-  skillId           String
-  stepIndex         Int      @default(0)
-  summary           String   @db.Text
-  result            String   @db.Text
-  status            String
-  executedAt        DateTime @default(now())
-  duration          Int?
-  createdAt         DateTime @default(now())
+  id            String    @id @default(uuid())
+  workflowId    String?
+  workflow      Workflow?  @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  teamId        String
+  team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  triggeredBy   String?
+  workflowName  String
+  status        String    @default("running") // running / success / failed / cancelled
+  steps         Json?
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+  totalDuration Int?
+  createdAt     DateTime  @default(now())
+
+  @@index([teamId])
+  @@index([workflowId])
+}
+
+model AICallLog {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId        String
+  team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  catId         String?
+  skillId       String?
+  model         String?
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  duration      Int?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([teamId])
 }

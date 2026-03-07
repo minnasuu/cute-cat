@@ -28,16 +28,19 @@ export interface CatColors {
 
 interface CatSVGProps {
   colors: CatColors;
+  size?: number | string;
   className?: string;
 }
 
-const CatSVG: React.FC<CatSVGProps> = ({ colors, className }) => {
+const CatSVG: React.FC<CatSVGProps> = ({ colors, size = 200, className }) => {
   const c = colors;
   const paw = (i: number) =>
     Array.isArray(c.paw) ? (c.paw[i] ?? c.paw[0]) : c.paw;
 
   return (
     <svg
+      width={size}
+      height={size}
       className={className}
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 200 200"
@@ -165,8 +168,8 @@ const CatSVG: React.FC<CatSVGProps> = ({ colors, className }) => {
       <path d="M142.15 132.218L157.11 120.028C158.43 118.938 160.85 118.938 161.88 120.028C163.1 121.448 163.21 124.168 161.63 125.438L148.73 136.428C146.79 138.128 144.22 138.808 140.28 138.808C138.71 138.808 139.75 135.598 142.15 132.218Z" fill={c.deskDark} stroke={c.stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M142.811 132.988L145.911 136.218" stroke={c.stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
       <defs xmlns="http://www.w3.org/2000/svg">
-<filter id="filter0_f_2229_6777" x="57" y="16" width="84" height="83" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<filter id="filter0_f_2229_6777" x="57" y="16" width="84" height="83" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+<feFlood floodOpacity="0" result="BackgroundImageFix"/>
 <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
 <feGaussianBlur stdDeviation="7.5" result="effect1_foregroundBlur_2229_6777"/>
 </filter>

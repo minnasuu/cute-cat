@@ -1,155 +1,171 @@
 const express = require('express');
-const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
+const { authMiddleware } = require('../middleware/auth');
+
+const router = express.Router();
 const prisma = new PrismaClient();
 
-// GET all workflows
-router.get('/', async (req, res) => {
-  console.log('API Request: GET /api/workflows - Start');
+router.use(authMiddleware);
+
+// Helper: verify team ownership
+async function verifyTeamOwner(teamId, userId) {
+  return prisma.team.findFirst({ where: { id: teamId, ownerId: userId } });
+}
+
+// ======================== 获取团队工作流列表 ========================
+router.get('/team/:teamId', async (req, res) => {
   try {
+    const team = await verifyTeamOwner(req.params.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '团队不存在' });
+
     const workflows = await prisma.workflow.findMany({
-      orderBy: { createdAt: 'desc' }
+      where: { teamId: req.params.teamId },
+      orderBy: { createdAt: 'desc' },
     });
-    console.log(`API Request: GET /api/workflows - Found ${workflows.length} workflows`);
     res.json(workflows);
-  } catch (error) {
-    console.error('API Error: Error fetching workflows:', error.message);
-    res.status(500).json({ error: 'Failed to fetch workflows', details: error.message });
+  } catch (err) {
+    res.status(500).json({ error: '获取工作流列表失败' });
   }
 });
 
-// GET workflow by ID
-router.get('/:id', async (req, res) => {
-  console.log(`API Request: GET /api/workflows/${req.params.id} - Start`);
+// ======================== 创建工作流 ========================
+router.post('/team/:teamId', async (req, res) => {
   try {
-    const workflow = await prisma.workflow.findUnique({
-      where: { id: req.params.id }
-    });
-    if (!workflow) {
-      console.log(`API Request: GET /api/workflows/${req.params.id} - Not Found`);
-      return res.status(404).json({ error: 'Workflow not found' });
-    }
-    console.log(`API Request: GET /api/workflows/${req.params.id} - Found`);
-    res.json(workflow);
-  } catch (error) {
-    console.error(`API Error: Error fetching workflow ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to fetch workflow' });
-  }
-});
+    const team = await verifyTeamOwner(req.params.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '团队不存在' });
 
-// POST create workflow
-router.post('/', async (req, res) => {
-  console.log('API Request: POST /api/workflows - Start');
-  try {
-    const {
-      name,
-      icon,
-      description,
-      steps,
-      color,
-      startTime,
-      endTime,
-      scheduled,
-      scheduledEnabled,
-      cron,
-      persistent
-    } = req.body;
+    const { name, icon, description, steps, trigger, cron } = req.body;
+    if (!name || !steps) return res.status(400).json({ error: '请填写工作流名称和步骤' });
 
     const workflow = await prisma.workflow.create({
       data: {
+        teamId: req.params.teamId,
         name,
-        icon,
-        description,
-        steps: steps || [],
-        color,
-        startTime: startTime || null,
-        endTime: endTime || null,
-        scheduled: scheduled || false,
-        scheduledEnabled: scheduledEnabled || false,
-        cron: cron || null,
-        persistent: persistent || false
-      }
+        icon: icon || '📋',
+        description: description || '',
+        steps,
+        trigger: trigger || 'manual',
+        cron,
+      },
     });
-    console.log(`API Request: POST /api/workflows - Created workflow ${workflow.id}`);
     res.json(workflow);
-  } catch (error) {
-    console.error('API Error: Error creating workflow:', error);
-    res.status(500).json({ error: 'Failed to create workflow', details: error.message });
+  } catch (err) {
+    console.error('[workflows] create error:', err);
+    res.status(500).json({ error: '创建工作流失败' });
   }
 });
 
-// PUT update workflow
-router.put('/:id', async (req, res) => {
-  console.log(`API Request: PUT /api/workflows/${req.params.id} - Start`);
+// ======================== 获取工作流详情 ========================
+router.get('/:id', async (req, res) => {
   try {
-    const {
-      name,
-      icon,
-      description,
-      steps,
-      color,
-      startTime,
-      endTime,
-      scheduled,
-      scheduledEnabled,
-      cron,
-      persistent
-    } = req.body;
+    const workflow = await prisma.workflow.findUnique({ where: { id: req.params.id } });
+    if (!workflow) return res.status(404).json({ error: '工作流不存在' });
+    const team = await verifyTeamOwner(workflow.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '无权访问' });
+    res.json(workflow);
+  } catch (err) {
+    res.status(500).json({ error: '获取工作流失败' });
+  }
+});
 
-    const existingWorkflow = await prisma.workflow.findUnique({
-      where: { id: req.params.id }
-    });
+// ======================== 更新工作流 ========================
+router.put('/:id', async (req, res) => {
+  try {
+    const workflow = await prisma.workflow.findUnique({ where: { id: req.params.id } });
+    if (!workflow) return res.status(404).json({ error: '工作流不存在' });
+    const team = await verifyTeamOwner(workflow.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '无权访问' });
 
-    if (!existingWorkflow) {
-      console.log(`API Request: PUT /api/workflows/${req.params.id} - Not Found`);
-      return res.status(404).json({ error: 'Workflow not found' });
-    }
-
-    const workflow = await prisma.workflow.update({
+    const { name, icon, description, steps, trigger, cron, enabled } = req.body;
+    const updated = await prisma.workflow.update({
       where: { id: req.params.id },
       data: {
-        name,
-        icon,
-        description,
-        steps: steps || [],
-        color,
-        startTime: startTime === undefined ? undefined : (startTime || null),
-        endTime: endTime === undefined ? undefined : (endTime || null),
-        scheduled: scheduled !== undefined ? scheduled : undefined,
-        scheduledEnabled: scheduledEnabled !== undefined ? scheduledEnabled : undefined,
-        cron: cron === undefined ? undefined : (cron || null),
-        persistent: persistent !== undefined ? persistent : undefined
-      }
+        ...(name && { name }),
+        ...(icon && { icon }),
+        ...(description !== undefined && { description }),
+        ...(steps && { steps }),
+        ...(trigger && { trigger }),
+        ...(cron !== undefined && { cron }),
+        ...(enabled !== undefined && { enabled }),
+      },
     });
-    console.log(`API Request: PUT /api/workflows/${req.params.id} - Updated`);
-    res.json(workflow);
-  } catch (error) {
-    console.error(`API Error: Error updating workflow ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to update workflow', details: error.message });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: '更新工作流失败' });
   }
 });
 
-// DELETE workflow
+// ======================== 删除工作流 ========================
 router.delete('/:id', async (req, res) => {
-  console.log(`API Request: DELETE /api/workflows/${req.params.id} - Start`);
   try {
-    const existingWorkflow = await prisma.workflow.findUnique({
-      where: { id: req.params.id }
-    });
+    const workflow = await prisma.workflow.findUnique({ where: { id: req.params.id } });
+    if (!workflow) return res.status(404).json({ error: '工作流不存在' });
+    const team = await verifyTeamOwner(workflow.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '无权访问' });
 
-    if (!existingWorkflow) {
-      console.log(`API Request: DELETE /api/workflows/${req.params.id} - Not Found`);
-      return res.status(404).json({ error: 'Workflow not found' });
-    }
+    await prisma.workflow.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: '删除工作流失败' });
+  }
+});
 
-    await prisma.workflow.delete({
-      where: { id: req.params.id }
+// ======================== 执行工作流（创建 Run 记录）========================
+router.post('/:id/run', async (req, res) => {
+  try {
+    const workflow = await prisma.workflow.findUnique({ where: { id: req.params.id } });
+    if (!workflow) return res.status(404).json({ error: '工作流不存在' });
+    const team = await verifyTeamOwner(workflow.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '无权访问' });
+
+    const run = await prisma.workflowRun.create({
+      data: {
+        workflowId: workflow.id,
+        teamId: workflow.teamId,
+        triggeredBy: req.userId,
+        workflowName: workflow.name,
+        status: 'running',
+      },
     });
-    console.log(`API Request: DELETE /api/workflows/${req.params.id} - Deleted`);
-    res.json({ message: 'Workflow deleted successfully', id: req.params.id });
-  } catch (error) {
-    console.error(`API Error: Error deleting workflow ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to delete workflow' });
+    res.json(run);
+  } catch (err) {
+    res.status(500).json({ error: '执行工作流失败' });
+  }
+});
+
+// ======================== 获取团队执行记录 ========================
+router.get('/team/:teamId/runs', async (req, res) => {
+  try {
+    const team = await verifyTeamOwner(req.params.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '团队不存在' });
+
+    const runs = await prisma.workflowRun.findMany({
+      where: { teamId: req.params.teamId },
+      orderBy: { startedAt: 'desc' },
+      take: 50,
+    });
+    res.json(runs);
+  } catch (err) {
+    res.status(500).json({ error: '获取执行记录失败' });
+  }
+});
+
+// ======================== 更新执行记录 ========================
+router.put('/runs/:runId', async (req, res) => {
+  try {
+    const { status, steps, completedAt, totalDuration } = req.body;
+    const updated = await prisma.workflowRun.update({
+      where: { id: req.params.runId },
+      data: {
+        ...(status && { status }),
+        ...(steps && { steps }),
+        ...(completedAt && { completedAt: new Date(completedAt) }),
+        ...(totalDuration !== undefined && { totalDuration }),
+      },
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: '更新执行记录失败' });
   }
 });
 

@@ -35,7 +35,7 @@ services:
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-gemini}
-      EDITOR_PASSWORD: ${EDITOR_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_USER: ${SMTP_USER:-}

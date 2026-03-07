@@ -8,7 +8,6 @@ import type { SkillResult } from '../skills/types';
 import CatSVG from './CatSVG';
 import CatMiniAvatar from './CatMiniAvatar';
 import '../styles/WorkflowPanel.scss';
-import { Icon } from '@suminhan/land-design';
 import {
   fetchWorkflows,
   createWorkflow,
@@ -72,7 +71,7 @@ const formatTime = (iso: string) => {
   return `${month}/${day} ${h}:${m}`;
 };
 
-const statusIcon = (s: string) => s === 'success' ? <Icon name='check-fill' color='var(--color-green-5)'/> : s === 'warning' ? <Icon name='info-fill' color='var(--color-orange-5)'/> : <Icon name='close-fill' color='var(--color-red-5)'/>;
+const statusIcon = (s: string) => s === 'success' ?'✅': s === 'warning' ? '⚠️' : '❌';
 
 interface WorkflowPanelProps {
   editorMode?: boolean;
@@ -532,7 +531,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                   <span className="model-provider">{m.provider}</span>
                   {m.id === selectedModel && (
                     <span className="model-check">
-                      <Icon name='check' size={14} color='var(--color-green-5)'/>
+                      ✅
                     </span>
                   )}
                   {!m.available && <span className="model-unavailable">未配置</span>}
@@ -627,7 +626,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           <div className="panel-header-actions">
             {editorMode && (
               <button className="add-workflow-btn" onClick={handleAddWorkflow} title="新增工作流">
-                <Icon name='add' strokeWidth={4} size={18}/>
+                ➕
               </button>
             )}
             <button className="close-btn" onClick={handleClose}>
@@ -806,9 +805,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                         {isCompleted && result && (
                           <div className={`node-result status-${resultStatus}`}>
                             <div className="node-result-header">
-                              {resultStatus === 'success' && <Icon name='check-fill' color='var(--color-green-5)' size={13}/>}
-                              {resultStatus === 'warning' && <Icon name='attention-fill' color='var(--color-orange-5)' size={13}/>}
-                              {resultStatus === 'error' && <Icon name='error-fill' color='var(--color-red-5)' size={13}/>}
+                              {resultStatus === 'success' && '✅'}
+                              {resultStatus === 'warning' && '⚠️'}
+                              {resultStatus === 'error' && '❌'}
                               <span className="node-result-status">
                                 {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
                               </span>
