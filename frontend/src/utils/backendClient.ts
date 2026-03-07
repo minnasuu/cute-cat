@@ -5,7 +5,7 @@ const getBackendUrl = (): string => {
   if (import.meta.env.PROD) {
     return '';
   }
-  return 'http://localhost:8001';
+  return 'http://localhost:8002';
 };
 
 // ==================== Auth ====================

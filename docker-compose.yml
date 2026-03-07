@@ -24,9 +24,9 @@ services:
       dockerfile: Dockerfile
     restart: always
     ports:
-      - "8001:8001"
+      - "8002:8002"
     environment:
-      PORT: 8001
+      PORT: 8002
       DATABASE_URL: postgresql://postgres:postgres@db:5432/cute_cat
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_BASE_URL: ${GEMINI_BASE_URL:-}
@@ -52,7 +52,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     ports:
-      - "8080:80"
+      - "4000:80"
     depends_on:
       - backend
 

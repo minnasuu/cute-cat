@@ -12,6 +12,6 @@ docker-compose up -d --build
 
 echo ""
 echo "✅ Cute Cat is running!"
-echo "   Frontend: http://localhost:8080"
-echo "   Backend:  http://localhost:8001"
+echo "   Frontend: http://localhost:4000"
+echo "   Backend:  http://localhost:8002"
 echo "   Database: localhost:5432"
