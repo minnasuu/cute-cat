@@ -11,6 +11,7 @@ import DashboardPage from './pages/DashboardPage';
 import TeamDetailPage from './pages/TeamDetailPage';
 import CatEditorPage from './pages/CatEditorPage';
 import WorkflowEditorPage from './pages/WorkflowEditorPage';
+import CommunityPage from './pages/CommunityPage';
 import { ToastProvider } from './components/Toast';
 import './styles/index.css';
 
@@ -54,6 +55,7 @@ const App: React.FC = () => {
             <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
             <Route path="/register" element={<GuestRoute><RegisterPage /></GuestRoute>} />
             <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordPage /></GuestRoute>} />
+            <Route path="/community" element={<CommunityPage />} />
 
             {/* Dashboard - requires login */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
