@@ -3,7 +3,7 @@ import type { CatColors } from '../components/CatSVG';
 
 // --- Skill 类型定义 ---
 export type SkillOutputType = 'text' | 'image' | 'audio' | 'json' | 'html' | 'email' | 'chart' | 'file';
-export type SkillInputType = 'text' | 'image' | 'audio' | 'json' | 'url' | 'file' | 'none';
+export type SkillInputType = 'text' | 'image' | 'audio' | 'json' | 'html' |'url' | 'file' | 'none';
 
 export interface Skill {
   id: string;
