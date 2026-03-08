@@ -49,6 +49,7 @@ const TeamDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'cats' | 'workflows' | 'history'>('cats');
   const [selectedCat, setSelectedCat] = useState<TeamCat | null>(null);
+  const [runningWorkflowId, setRunningWorkflowId] = useState<string | null>(null);
 
   const loadTeam = useCallback(async () => {
     if (!teamId) return;
@@ -82,6 +83,19 @@ const TeamDetailPage: React.FC = () => {
       loadTeam();
     } catch {
       // toast shown by apiClient
+    }
+  };
+
+  const handleRunWorkflow = async (wfId: string) => {
+    if (runningWorkflowId) return;
+    setRunningWorkflowId(wfId);
+    try {
+      await apiClient.post(`/api/workflows/${wfId}/run`, {});
+      loadTeam();
+    } catch {
+      // toast shown by apiClient
+    } finally {
+      setRunningWorkflowId(null);
     }
   };
 
@@ -237,12 +251,32 @@ const TeamDetailPage: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteWorkflow(wf.id, wf.name); }}
-                      className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-danger-500 transition-all p-1.5 rounded-lg hover:bg-danger-50 shrink-0"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {wf.trigger === 'manual' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRunWorkflow(wf.id); }}
+                          disabled={runningWorkflowId === wf.id}
+                          className={`opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg shrink-0 cursor-pointer ${
+                            runningWorkflowId === wf.id
+                              ? 'text-primary-400 bg-primary-50'
+                              : 'text-text-tertiary hover:text-primary-600 hover:bg-primary-50'
+                          }`}
+                          title="执行工作流"
+                        >
+                          {runningWorkflowId === wf.id ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                          )}
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteWorkflow(wf.id, wf.name); }}
+                        className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-danger-500 transition-all p-1.5 rounded-lg hover:bg-danger-50 shrink-0 cursor-pointer"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                      </button>
+                    </div>
                   </div>
                   {/* Step preview */}
                   <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-1">
