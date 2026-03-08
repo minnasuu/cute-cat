@@ -161,33 +161,46 @@ Engineer: fix-bug, develop-feature, optimize-perf, update-crafts
 5. suggestedCats 中的 role 必须是上面角色列表中的有效角色名
 6. suggestedSkills 中的 skillId 必须是上面技能 ID 参考中的有效 id`;
 
-  try {
-    const response = await callDifySkill('workflow-gen', prompt);
+  // 优先使用千问，失败后回退 gemini
+  const models = ['qwen', 'gemini'];
+  let lastError = '';
 
-    if (response.error) {
-      showToast(`AI 生成失败: ${response.error}`, 'warning');
-      return null;
+  for (const model of models) {
+    try {
+      console.log(`[ai-workflow-gen] trying model: ${model}`);
+      const response = await callDifySkill('workflow-gen', prompt, model);
+
+      if (response.error) {
+        console.warn(`[ai-workflow-gen] ${model} failed:`, response.error);
+        lastError = response.error;
+        continue; // 尝试下一个模型
+      }
+
+      const answer = response.answer || '';
+      const jsonMatch = answer.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.warn(`[ai-workflow-gen] ${model} returned non-JSON, trying next`);
+        lastError = 'AI 返回格式异常';
+        continue;
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      if (parsed.suggestionMode) {
+        showToast('当前团队能力不足，已为您生成补充建议', 'warning');
+      } else {
+        showToast(`AI 工作流生成成功 (${model})`, 'success');
+      }
+
+      return parsed as AiGenerateResult;
+    } catch (err: any) {
+      console.warn(`[ai-workflow-gen] ${model} error:`, err);
+      lastError = err.message || String(err);
+      continue; // 尝试下一个模型
     }
-
-    const answer = response.answer || '';
-    const jsonMatch = answer.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      showToast('AI 返回格式异常，请重试', 'warning');
-      return null;
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    if (parsed.suggestionMode) {
-      showToast('当前团队能力不足，已为您生成补充建议', 'warning');
-    } else {
-      showToast('AI 工作流生成成功', 'success');
-    }
-
-    return parsed as AiGenerateResult;
-  } catch (err: any) {
-    console.error('[ai-workflow-gen]', err);
-    showToast('AI 生成出错，请重试', 'warning');
-    return null;
   }
+
+  // 所有模型都失败
+  showToast(`AI 生成失败: ${lastError}`, 'warning');
+  return null;
 }

@@ -227,10 +227,15 @@ const SKILL_SYSTEM_PROMPTS = {
 ]
 
 只返回 JSON 数组，不要添加任何额外文字。`,
+
+  'workflow-gen': `你是一个工作流编排助手，专门根据用户需求和可用猫猫团队来生成工作流配置。
+你必须严格输出 JSON 格式，不要包含任何其他文字、不要用 markdown 代码块包裹。
+你生成的 agentId 和 skillId 在正常模式下必须来自用户提供的可用猫猫列表中的真实 id。
+如果团队能力不足，你需要切换到建议模式，提供补充建议。`,
 };
 
 // Qwen (通义千问) 调用 — 兼容 OpenAI Chat Completions 格式
-async function callQwen(systemPrompt, userText) {
+async function callQwen(systemPrompt, userText, maxTokens = 2048) {
   const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
 
@@ -249,7 +254,7 @@ async function callQwen(systemPrompt, userText) {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userText },
       ],
-      max_tokens: 2048,
+      max_tokens: maxTokens,
       temperature: 0.7,
     }),
   });
@@ -291,13 +296,17 @@ router.post('/skill', async (req, res) => {
     const systemPrompt = SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
     const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'gemini';
 
-    console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, text length=${text.length}`);
+    // 根据 taskId 动态调整 token 限制（workflow-gen 需要更多输出空间）
+    const TASK_MAX_TOKENS = { 'workflow-gen': 4096 };
+    const maxTokens = TASK_MAX_TOKENS[taskId] || 2048;
+
+    console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}`);
 
     let answer = '';
 
     if (selectedModel === 'qwen') {
       // --- Qwen ---
-      answer = await callQwen(systemPrompt, text);
+      answer = await callQwen(systemPrompt, text, maxTokens);
     } else {
       // --- Gemini (默认) ---
       const GoogleGenAI = await getGoogleGenAI();
@@ -316,7 +325,7 @@ router.post('/skill', async (req, res) => {
         contents: text,
         config: {
           systemInstruction: systemPrompt,
-          maxOutputTokens: 2048,
+          maxOutputTokens: maxTokens,
           temperature: 0.7,
         },
       });
