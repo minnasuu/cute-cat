@@ -95,6 +95,9 @@ model Workflow {
   steps             Json
   trigger           String   @default("manual") // manual / cron / webhook
   cron              String?
+  startTime         String?
+  endTime           String?
+  persistent        Boolean  @default(false)
   enabled           Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

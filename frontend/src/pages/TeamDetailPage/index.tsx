@@ -208,7 +208,11 @@ const TeamDetailPage: React.FC = () => {
           <section className="pb-16">
             <div className="space-y-4">
               {team.workflows.map(wf => (
-                <div key={wf.id} className="bg-surface rounded-[24px] border border-border p-6 hover:shadow-lg hover:border-border-strong transition-all group">
+                <div
+                  key={wf.id}
+                  className="bg-surface rounded-[24px] border border-border p-6 hover:shadow-lg hover:border-border-strong transition-all group cursor-pointer"
+                  onClick={() => navigate(`/teams/${teamId}/workflows/${wf.id}`)}
+                >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 rounded-2xl bg-surface-secondary border border-border flex items-center justify-center text-2xl shrink-0">
@@ -234,7 +238,7 @@ const TeamDetailPage: React.FC = () => {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleDeleteWorkflow(wf.id, wf.name)}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteWorkflow(wf.id, wf.name); }}
                       className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-danger-500 transition-all p-1.5 rounded-lg hover:bg-danger-50 shrink-0"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>

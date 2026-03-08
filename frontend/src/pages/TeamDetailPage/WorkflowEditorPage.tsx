@@ -5,6 +5,7 @@ import { showToast } from '../../components/Toast';
 import CatLogo from '../../components/CatLogo';
 import CatMiniAvatar from '../../components/CatMiniAvatar';
 import type { WorkflowStep, StepParam } from '../../data/types';
+import { skillPool } from '../../data/skills';
 import { aiGenerateWorkflow } from './handleAiGenerateWorkflow';
 import type { SuggestedCat, SuggestedSkill } from './handleAiGenerateWorkflow';
 
@@ -34,6 +35,8 @@ const WorkflowEditorPage: React.FC = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [configTab, setConfigTab] = useState<'basic' | 'steps'>('basic');
   const [expandedStepParams, setExpandedStepParams] = useState<Set<number>>(new Set());
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [suggestionMode, setSuggestionMode] = useState(false);
   const [suggestedCats, setSuggestedCats] = useState<SuggestedCat[]>([]);
   const [suggestedSkills, setSuggestedSkills] = useState<SuggestedSkill[]>([]);
@@ -53,10 +56,11 @@ const WorkflowEditorPage: React.FC = () => {
         setIcon(wf.icon || '📋');
         setDescription(wf.description);
         setSteps(wf.steps || []);
-        setTrigger(wf.scheduled ? 'cron' : 'manual');
+        const isCron = wf.trigger === 'cron' || !!wf.scheduled;
+        setTrigger(isCron ? 'cron' : 'manual');
         setCron(wf.cron || '');
-        setScheduled(!!wf.scheduled);
-        setScheduledEnabled(!!wf.scheduledEnabled);
+        setScheduled(isCron);
+        setScheduledEnabled(wf.enabled !== undefined ? !!wf.enabled : !!wf.scheduledEnabled);
         setStartTime(wf.startTime || '');
         setEndTime(wf.endTime || '');
         setPersistent(!!wf.persistent);
@@ -72,7 +76,22 @@ const WorkflowEditorPage: React.FC = () => {
     setSteps(prev => prev.map((s, i) => {
       if (i !== index) return s;
       const updated = { ...s, [field]: value };
-      if (field === 'agentId') updated.skillId = '';
+      if (field === 'agentId') {
+        updated.skillId = '';
+        updated.params = [];
+      }
+      if (field === 'skillId' && value) {
+        const cat = cats.find(c => c.id === s.agentId);
+        const skill = cat?.skills?.find((sk: any) => sk.id === value);
+        // 优先从猫猫技能取 paramDefs，fallback 到 skillPool
+        const paramDefs = skill?.paramDefs || skillPool.find(sp => sp.id === value)?.paramDefs;
+        if (paramDefs?.length) {
+          updated.params = paramDefs.map((p: any) => ({ ...p }));
+          setExpandedStepParams(prev => new Set([...prev, index]));
+        } else if (!updated.params?.length) {
+          updated.params = [];
+        }
+      }
       return updated;
     }));
   };
@@ -107,6 +126,52 @@ const WorkflowEditorPage: React.FC = () => {
       next.has(index) ? next.delete(index) : next.add(index);
       return next;
     });
+  };
+
+  const handleDragStart = (index: number) => {
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === index) return;
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (index: number) => {
+    if (dragIndex === null || dragIndex === index) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    setSteps(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(index, 0, moved);
+      return next;
+    });
+    // 同步更新展开状态
+    setExpandedStepParams(prev => {
+      const arr = Array.from(prev);
+      const next = new Set<number>();
+      for (const old of arr) {
+        if (old === dragIndex) {
+          next.add(index);
+        } else if (dragIndex < index) {
+          next.add(old >= dragIndex && old <= index ? old - 1 : old);
+        } else {
+          next.add(old <= dragIndex && old >= index ? old + 1 : old);
+        }
+      }
+      return next;
+    });
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
+    setDragOverIndex(null);
   };
 
   const handleSave = async () => {
@@ -527,8 +592,26 @@ const WorkflowEditorPage: React.FC = () => {
                         const hasParams = (step.params?.length || 0) > 0;
                         const isParamsExpanded = expandedStepParams.has(index);
                         return (
-                          <div key={index} className={`rounded-2xl border p-4 ${!step.agentId && suggestionMode ? 'border-amber-300 bg-amber-50/30' : 'border-border bg-surface-secondary/40'}`}>
+                          <div
+                            key={index}
+                            draggable
+                            onDragStart={() => handleDragStart(index)}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDrop={() => handleDrop(index)}
+                            onDragEnd={handleDragEnd}
+                            className={`rounded-2xl border p-4 transition-all ${
+                              dragIndex === index ? 'opacity-40 scale-[0.98]' : ''
+                            } ${
+                              dragOverIndex === index && dragIndex !== index ? 'ring-2 ring-accent-400 border-accent-400' : ''
+                            } ${!step.agentId && suggestionMode ? 'border-amber-300 bg-amber-50/30' : 'border-border bg-surface-secondary/40'}`}
+                          >
                             <div className="flex items-center gap-2 mb-3">
+                              <span
+                                className="cursor-grab active:cursor-grabbing text-text-tertiary hover:text-text-secondary shrink-0 touch-none"
+                                title="拖拽排序"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+                              </span>
                               <span className={`w-6 h-6 text-text-inverse text-xs font-bold rounded-full flex items-center justify-center shrink-0 ${!step.agentId && suggestionMode ? 'bg-amber-400' : 'bg-accent-500'}`}>{index + 1}</span>
                               {!step.agentId && suggestionMode && (
                                 <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-700 text-[9px] font-bold">需补充猫猫</span>

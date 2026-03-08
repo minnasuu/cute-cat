@@ -101,13 +101,13 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ user, teamCou
             {/* Cats per team */}
             <QuotaRow
               label="猫猫 / 团队"
-              used={null}
+              used={totalCats}
               max={limits.maxCatsPerTeam}
             />
             {/* Workflows per team */}
             <QuotaRow
               label="工作流 / 团队"
-              used={null}
+              used={totalWorkflows}
               max={limits.maxWorkflowsPerTeam}
             />
             {/* AI Calls */}

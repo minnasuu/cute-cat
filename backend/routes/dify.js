@@ -1,8 +1,55 @@
 const express = require('express');
+const { PrismaClient } = require('@prisma/client');
+const { authMiddleware } = require('../middleware/auth');
 const router = express.Router();
+const prisma = new PrismaClient();
+
+/**
+ * 可选认证中间件 — 有 token 就解析 userId，没有也放行
+ */
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
+  try {
+    const { verifyToken } = require('../middleware/auth');
+    const decoded = verifyToken(authHeader.split(' ')[1]);
+    req.userId = decoded.userId;
+  } catch { /* ignore invalid token */ }
+  next();
+}
+
+/**
+ * AI 调用后记录用量：aiUsed +1 & 写 AICallLog
+ * 静默执行，不影响主流程
+ */
+async function recordAiUsage(userId, { taskId, model, teamId, catId } = {}) {
+  if (!userId) return null;
+  try {
+    const [user] = await Promise.all([
+      prisma.user.update({
+        where: { id: userId },
+        data: { aiUsed: { increment: 1 } },
+        select: { aiUsed: true, aiQuota: true },
+      }),
+      prisma.aICallLog.create({
+        data: {
+          userId,
+          teamId: teamId || 'unknown',
+          catId: catId || null,
+          skillId: taskId || null,
+          model: model || null,
+        },
+      }).catch(() => {}),
+    ]);
+    return user;
+  } catch (err) {
+    console.error('[recordAiUsage] error:', err.message);
+    return null;
+  }
+}
 
 // Dify Workflow 代理端点 - 生成目标数据
-router.post('/generate-goal', async (req, res) => {
+router.post('/generate-goal', optionalAuth, async (req, res) => {
   try {
     const { goal } = req.body;
 
@@ -112,6 +159,9 @@ router.post('/generate-goal', async (req, res) => {
       });
     }
 
+    // 记录 AI 用量
+    const usage = await recordAiUsage(req.userId, { taskId: 'generate-goal', model: 'dify' });
+
     // 返回处理后的数据
     res.json({
       inputData: {
@@ -137,7 +187,8 @@ router.post('/generate-goal', async (req, res) => {
           is_system: false,
           timeSpent: item.timeSpent || 0
         }))
-      }
+      },
+      ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
     });
 
   } catch (error) {
@@ -317,12 +368,20 @@ router.get('/models', (_req, res) => {
   res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'gemini' });
 });
 
-router.post('/skill', async (req, res) => {
+router.post('/skill', optionalAuth, async (req, res) => {
   try {
-    const { taskId, text, model } = req.body;
+    const { taskId, text, model, teamId, catId } = req.body;
 
     if (!taskId || !text) {
       return res.status(400).json({ error: 'taskId and text are required' });
+    }
+
+    // 配额检查（仅已登录用户）
+    if (req.userId) {
+      const u = await prisma.user.findUnique({ where: { id: req.userId }, select: { aiUsed: true, aiQuota: true } });
+      if (u && u.aiUsed >= u.aiQuota) {
+        return res.status(429).json({ error: 'AI 额度已用完，请联系管理员或升级套餐', aiUsed: u.aiUsed, aiQuota: u.aiQuota });
+      }
     }
 
     const systemPrompt = SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
@@ -367,10 +426,14 @@ router.post('/skill', async (req, res) => {
 
     console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, answer length=${answer.length}`);
 
+    // 记录 AI 用量
+    const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
+
     res.json({
       answer,
       model: selectedModel,
       conversationId: `${selectedModel}-${taskId}-${Date.now()}`,
+      ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
     });
   } catch (error) {
     console.error('[ai/skill] Error:', error);

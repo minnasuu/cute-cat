@@ -139,7 +139,7 @@ const CatEditorPage: React.FC = () => {
     if (!name.trim()) { showToast('请输入猫猫名称', 'warning'); return; }
     setSaving(true);
     try {
-      const skills = skillPool.filter(s => selectedSkills.includes(s.id)).map(s => ({ id: s.id, name: s.name, icon: s.icon, description: s.description, input: s.input, output: s.output }));
+      const skills = skillPool.filter(s => selectedSkills.includes(s.id)).map(s => ({ id: s.id, name: s.name, icon: s.icon, description: s.description, input: s.input, output: s.output, ...(s.paramDefs?.length ? { paramDefs: s.paramDefs } : {}) }));
       const finalColors = { ...catColors, tail: tailEnabled ? catColors.tail : '' };
       const data = { name, role, description, catColors: finalColors, systemPrompt, skills, accent, item: 'clipboard', messages };
       if (isEditing) {

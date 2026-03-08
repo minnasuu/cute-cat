@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient } from '../utils/apiClient';
+import { setOnAiUsageUpdate } from '../utils/backendClient';
 
 export interface User {
   id: string;
@@ -19,6 +20,8 @@ interface AuthContextType {
   register: (email: string, password: string, nickname: string, code: string, betaCode?: string) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
+  /** 更新 AI 用量（由 AI 调用响应触发） */
+  updateAiUsage: (aiUsed: number, aiQuota?: number) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -73,8 +76,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(prev => prev ? { ...prev, ...data } : null);
   }, []);
 
+  const updateAiUsage = useCallback((aiUsed: number, aiQuota?: number) => {
+    setUser(prev => prev ? { ...prev, aiUsed, ...(aiQuota !== undefined ? { aiQuota } : {}) } : null);
+  }, []);
+
+  // 注册全局回调：AI 调用后自动同步用量到 context
+  useEffect(() => {
+    setOnAiUsageUpdate(updateAiUsage);
+    return () => setOnAiUsageUpdate(null);
+  }, [updateAiUsage]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, updateAiUsage }}>
       {children}
     </AuthContext.Provider>
   );

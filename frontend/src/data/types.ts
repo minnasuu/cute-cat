@@ -57,6 +57,8 @@ export interface Skill {
   primitiveId?: PrimitiveId;
   /** 传给原型的预设配置（如 system prompt、API endpoint 等） */
   primitiveConfig?: Record<string, unknown>;
+  /** 该技能需要用户配置的参数定义（如邮箱地址、API Key 等） */
+  paramDefs?: StepParam[];
   provider?: string;
   mockResult?: string;
   handler?: SkillHandler;

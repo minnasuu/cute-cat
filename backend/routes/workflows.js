@@ -34,9 +34,10 @@ router.post('/team/:teamId', async (req, res) => {
     const team = await verifyTeamOwner(req.params.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '团队不存在' });
 
-    const { name, icon, description, steps, trigger, cron } = req.body;
+    const { name, icon, description, steps, trigger, cron, scheduled, startTime, endTime, persistent, enabled } = req.body;
     if (!name || !steps) return res.status(400).json({ error: '请填写工作流名称和步骤' });
 
+    const resolvedTrigger = trigger || (scheduled ? 'cron' : 'manual');
     const workflow = await prisma.workflow.create({
       data: {
         teamId: req.params.teamId,
@@ -44,8 +45,12 @@ router.post('/team/:teamId', async (req, res) => {
         icon: icon || '📋',
         description: description || '',
         steps,
-        trigger: trigger || 'manual',
-        cron,
+        trigger: resolvedTrigger,
+        cron: cron || null,
+        startTime: startTime || null,
+        endTime: endTime || null,
+        persistent: !!persistent,
+        enabled: enabled !== undefined ? enabled : true,
       },
     });
     res.json(workflow);
@@ -76,7 +81,8 @@ router.put('/:id', async (req, res) => {
     const team = await verifyTeamOwner(workflow.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '无权访问' });
 
-    const { name, icon, description, steps, trigger, cron, enabled } = req.body;
+    const { name, icon, description, steps, trigger, cron, scheduled, scheduledEnabled, startTime, endTime, persistent, enabled } = req.body;
+    const resolvedTrigger = trigger || (scheduled ? 'cron' : 'manual');
     const updated = await prisma.workflow.update({
       where: { id: req.params.id },
       data: {
@@ -84,9 +90,14 @@ router.put('/:id', async (req, res) => {
         ...(icon && { icon }),
         ...(description !== undefined && { description }),
         ...(steps && { steps }),
-        ...(trigger && { trigger }),
-        ...(cron !== undefined && { cron }),
-        ...(enabled !== undefined && { enabled }),
+        trigger: resolvedTrigger,
+        ...(cron !== undefined && { cron: cron || null }),
+        ...(startTime !== undefined && { startTime: startTime || null }),
+        ...(endTime !== undefined && { endTime: endTime || null }),
+        ...(persistent !== undefined && { persistent: !!persistent }),
+        ...(enabled !== undefined || scheduledEnabled !== undefined
+          ? { enabled: enabled !== undefined ? enabled : !!scheduledEnabled }
+          : {}),
       },
     });
     res.json(updated);

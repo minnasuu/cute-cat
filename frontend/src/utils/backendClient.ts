@@ -235,12 +235,18 @@ export interface DifySkillResponse {
   answer: string;
   conversationId?: string;
   error?: string;
+  aiUsed?: number;
+  aiQuota?: number;
 }
 
 let _currentAIModel: string = 'gemini';
 
 export const setCurrentAIModel = (model: string) => { _currentAIModel = model; };
 export const getCurrentAIModel = () => _currentAIModel;
+
+/** 全局回调：AI 调用后自动更新用量到 AuthContext */
+let _onAiUsageUpdate: ((aiUsed: number, aiQuota?: number) => void) | null = null;
+export const setOnAiUsageUpdate = (cb: ((aiUsed: number, aiQuota?: number) => void) | null) => { _onAiUsageUpdate = cb; };
 
 export interface AIModelInfo {
   id: string;
@@ -272,9 +278,13 @@ export const callDifySkill = async (taskId: string, text: string, model?: string
   const selectedModel = model || _currentAIModel;
 
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('accessToken');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ taskId, text, model: selectedModel }),
     });
 
@@ -288,7 +298,11 @@ export const callDifySkill = async (taskId: string, text: string, model?: string
 
     const data = await response.json();
     if (!response.ok) {
-      return { answer: '', error: data.error || `HTTP ${response.status}` };
+      return { answer: '', error: data.error || `HTTP ${response.status}`, aiUsed: data.aiUsed, aiQuota: data.aiQuota };
+    }
+    // 自动更新 AI 用量
+    if (data.aiUsed !== undefined && _onAiUsageUpdate) {
+      _onAiUsageUpdate(data.aiUsed, data.aiQuota);
     }
     return data;
   } catch (error) {
