@@ -1,6 +1,6 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
 
-const API = 'https://cucatopia.com';
+const API = 'https://suminhan.cn';
 
 /** 🛠️ 新增 Craft — 管理员私有
  *  接收 JSON 数组字符串，批量创建 Craft 组件
