@@ -35,10 +35,15 @@ const createCraft: SkillHandler = {
         // 数组元素可能是 JSON 字符串
         items = parsed.map((el: unknown) => typeof el === 'string' ? JSON.parse(el) : el);
       } else if (parsed && typeof parsed === 'object') {
-        // 以数字索引为 key 的对象，如 { "0": {...}, "9": {...} }
-        items = Object.values(parsed).map((el: unknown) =>
-          typeof el === 'string' ? JSON.parse(el) : el
-        );
+        // 单个 craft 对象，如 { "id": "...", "name": "...", "htmlCode": "..." }
+        if ('name' in parsed || 'htmlCode' in parsed || 'id' in parsed) {
+          items = [parsed];
+        } else {
+          // 以数字索引为 key 的对象，如 { "0": {...}, "9": {...} }
+          items = Object.values(parsed).map((el: unknown) =>
+            typeof el === 'string' ? JSON.parse(el) : el
+          );
+        }
       } else {
         items = [parsed];
       }
