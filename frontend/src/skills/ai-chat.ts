@@ -51,7 +51,7 @@ const aiChat: SkillHandler = {
     };
 
     const MAX_RETRIES = 2;
-    const TIMEOUT_MS = 30_000;
+    const TIMEOUT_MS = 50_000;
 
     let lastResult!: SkillResult;
 
