@@ -121,6 +121,28 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// ======================== 后端执行工作流（定时/手动触发，全程后端执行）========================
+router.post('/:id/execute', async (req, res) => {
+  try {
+    const workflow = await prisma.workflow.findUnique({ where: { id: req.params.id } });
+    if (!workflow) return res.status(404).json({ error: '工作流不存在' });
+    const team = await verifyTeamOwner(workflow.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '无权访问' });
+
+    const { executeWorkflow } = require('../workflow-executor');
+
+    // 异步执行，立即返回
+    res.json({ message: '工作流已开始执行', workflowId: workflow.id });
+
+    executeWorkflow(workflow, req.userId).catch(err => {
+      console.error(`[workflows] execute error for ${workflow.id}:`, err.message);
+    });
+  } catch (err) {
+    console.error('[workflows] execute error:', err);
+    res.status(500).json({ error: '执行工作流失败' });
+  }
+});
+
 // ======================== 执行工作流（创建 Run 记录）========================
 router.post('/:id/run', async (req, res) => {
   try {

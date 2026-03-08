@@ -33,4 +33,8 @@ if (process.env.NODE_ENV === 'production') {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🐱 Cute Cat V2.0 backend running on port ${PORT}`);
+
+  // 启动定时工作流调度器
+  const { startScheduler } = require('./scheduler');
+  startScheduler();
 });

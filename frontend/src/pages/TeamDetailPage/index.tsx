@@ -19,79 +19,6 @@ const STEP_DURATION = 3000;
 
 const workingDialogs: string[] = ['准备中...', '努力工作中~ 🐱', '马上就好!'];
 
-/* ─── 自然语言 cron 解析 → 判断「现在是否该执行」 ─── */
-/**
- * 解析中文自然语言 cron 规则，返回检查函数。
- * 支持格式示例：
- *   "每天 09:00"  "每天 9:00"
- *   "每小时"  "每30分钟"  "每2小时"
- *   "每周一 10:00"  "每周五 18:00"
- *   "每月1号 08:00"
- *   "工作日 09:30"
- */
-function parseCronRule(cron: string): { intervalMs: number; shouldRun: (now: Date) => boolean } | null {
-  if (!cron || !cron.trim()) return null;
-  const s = cron.trim();
-
-  // 每 N 分钟
-  const minMatch = s.match(/每\s*(\d+)\s*分钟/);
-  if (minMatch) {
-    const mins = parseInt(minMatch[1], 10);
-    return { intervalMs: mins * 60_000, shouldRun: (now) => now.getMinutes() % mins === 0 && now.getSeconds() < 30 };
-  }
-
-  // 每 N 小时
-  const hourMatch = s.match(/每\s*(\d+)\s*小时/);
-  if (hourMatch) {
-    const hrs = parseInt(hourMatch[1], 10);
-    return { intervalMs: hrs * 3600_000, shouldRun: (now) => now.getHours() % hrs === 0 && now.getMinutes() === 0 && now.getSeconds() < 30 };
-  }
-
-  // 每小时
-  if (/每小时/.test(s)) {
-    return { intervalMs: 3600_000, shouldRun: (now) => now.getMinutes() === 0 && now.getSeconds() < 30 };
-  }
-
-  // 提取时间 HH:MM
-  const timeMatch = s.match(/(\d{1,2}):(\d{2})/);
-  const hour = timeMatch ? parseInt(timeMatch[1], 10) : -1;
-  const minute = timeMatch ? parseInt(timeMatch[2], 10) : 0;
-
-  const timeOk = (now: Date) => now.getHours() === hour && now.getMinutes() === minute && now.getSeconds() < 30;
-
-  // 每天
-  if (/每天|每日/.test(s) && hour >= 0) {
-    return { intervalMs: 30_000, shouldRun: timeOk };
-  }
-
-  // 工作日
-  if (/工作日/.test(s) && hour >= 0) {
-    return { intervalMs: 30_000, shouldRun: (now) => { const d = now.getDay(); return d >= 1 && d <= 5 && timeOk(now); } };
-  }
-
-  // 每周X
-  const weekMap: Record<string, number> = { '日': 0, '天': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
-  const weekMatch = s.match(/每?周([一二三四五六日天])/);
-  if (weekMatch && hour >= 0) {
-    const dayOfWeek = weekMap[weekMatch[1]] ?? -1;
-    return { intervalMs: 30_000, shouldRun: (now) => now.getDay() === dayOfWeek && timeOk(now) };
-  }
-
-  // 每月N号
-  const monthMatch = s.match(/每月\s*(\d{1,2})\s*[号日]/);
-  if (monthMatch && hour >= 0) {
-    const dayOfMonth = parseInt(monthMatch[1], 10);
-    return { intervalMs: 30_000, shouldRun: (now) => now.getDate() === dayOfMonth && timeOk(now) };
-  }
-
-  // 仅有时间，默认每天
-  if (hour >= 0) {
-    return { intervalMs: 30_000, shouldRun: timeOk };
-  }
-
-  return null;
-}
-
 interface TeamCat {
   id: string;
   name: string;
@@ -159,8 +86,6 @@ const TeamDetailPage: React.FC = () => {
   const [stepResults, setStepResults] = useState<Map<number, SkillResult>>(new Map());
   const stepResultsRef = useRef<Map<number, SkillResult>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const schedulerRunningRef = useRef<Set<string>>(new Set()); // 正在自动执行的工作流 ID
-  const teamWorkflowsRef = useRef<TeamWorkflow[]>([]); // 调度器用的 workflows 快照
   const currentRunIdRef = useRef<string | null>(null); // 当前手动执行的 run 记录 ID
   const runStartTimeRef = useRef<number>(0);
   const [viewingRun, setViewingRun] = useState<WorkflowRunRecord | null>(null); // 查看历史执行详情
@@ -266,132 +191,14 @@ const TeamDetailPage: React.FC = () => {
   useEffect(() => { loadTeam(); }, [loadTeam]);
   useEffect(() => { loadWorkflowRuns(); }, [loadWorkflowRuns]);
 
-  /* ─── 定时工作流调度器 ─── */
-  // 保持 workflows ref 与 team 同步
-  useEffect(() => {
-    teamWorkflowsRef.current = team?.workflows ?? [];
-  }, [team]);
-
-  // 调度器只在 teamId 变化时启动一次，通过 ref 读取最新 workflows
+  // 定期轮询执行记录（后端调度器执行的定时工作流结果会自动刷新）
   useEffect(() => {
     if (!teamId) return;
-
-    const autoExecuteWorkflow = async (wf: TeamWorkflow) => {
-      if (schedulerRunningRef.current.has(wf.id)) return; // 防止重复
-      schedulerRunningRef.current.add(wf.id);
-      console.log(`[scheduler] 自动执行工作流: ${wf.name}`);
-      showToast(`定时工作流「${wf.name}」开始自动执行`, 'success');
-
-      const startTime = Date.now();
-      let runId: string | null = null;
-      const stepsData: any[] = [];
-
-      try {
-        // 创建后端 run 记录
-        const run = await apiClient.post(`/api/workflows/${wf.id}/run`, {}).catch(() => null);
-        runId = run?.id || null;
-
-        // 逐步执行
-        let prevResults: Record<string, unknown> = {};
-        let hasFailed = false;
-        for (let i = 0; i < wf.steps.length; i++) {
-          const step = wf.steps[i];
-          const handler = getSkillHandler(step.skillId);
-          // 合并上游结果
-          const merged: Record<string, unknown> = { ...prevResults };
-          if (step.action) merged._action = step.action;
-          if (step.params?.length) {
-            const pv: Record<string, unknown> = {};
-            for (const p of step.params) {
-              if (p.value !== undefined) pv[p.key] = p.value;
-              else if (p.defaultValue !== undefined) pv[p.key] = p.defaultValue;
-            }
-            if (Object.keys(pv).length > 0) merged._params = pv;
-          }
-
-          const input = Object.keys(merged).length > 0 ? merged : undefined;
-
-          // 带超时保护的 handler 执行（60 秒超时）
-          let result: SkillResult;
-          try {
-            const executePromise = handler
-              ? handler.execute({ agentId: step.agentId, input, timestamp: new Date().toISOString() })
-              : Promise.resolve<SkillResult>({ success: true, data: null, summary: step.action || '完成', status: 'success' });
-            const timeoutPromise = new Promise<SkillResult>((_, reject) =>
-              setTimeout(() => reject(new Error('执行超时')), 60_000)
-            );
-            result = await Promise.race([executePromise, timeoutPromise]);
-          } catch (stepErr: any) {
-            result = { success: false, data: null, summary: stepErr?.message || '步骤执行异常', status: 'error' };
-          }
-
-          stepsData.push({
-            index: i, skillId: step.skillId, action: step.action,
-            success: result.success, status: result.status, summary: result.summary,
-          });
-
-          if (result.data && typeof result.data === 'object') {
-            prevResults = { ...prevResults, ...(result.data as Record<string, unknown>) };
-          }
-
-          if (!result.success) {
-            hasFailed = true;
-            console.warn(`[scheduler] ${wf.name} 步骤 ${i + 1} 失败:`, result.summary);
-            showToast(`定时工作流「${wf.name}」步骤 ${i + 1} 失败`, 'warning');
-            break;
-          }
-        }
-
-        // 更新 run 记录
-        if (runId) {
-          apiClient.put(`/api/workflows/runs/${runId}`, {
-            status: hasFailed ? 'failed' : 'success',
-            steps: stepsData,
-            completedAt: new Date().toISOString(),
-            totalDuration: Math.round((Date.now() - startTime) / 1000),
-          }).catch(() => {});
-        }
-
-        console.log(`[scheduler] 工作流 ${wf.name} 执行完成`);
-        loadWorkflowRuns();
-      } catch (err) {
-        console.error(`[scheduler] ${wf.name} 执行异常:`, err);
-        if (runId) {
-          apiClient.put(`/api/workflows/runs/${runId}`, {
-            status: 'failed', steps: stepsData,
-            completedAt: new Date().toISOString(),
-            totalDuration: Math.round((Date.now() - startTime) / 1000),
-          }).catch(() => {});
-        }
-      } finally {
-        schedulerRunningRef.current.delete(wf.id);
-      }
-    };
-
-    // 每 15 秒检查一次，通过 ref 读取最新的 workflows 和 cron 规则
-    const timer = setInterval(() => {
-      const workflows = teamWorkflowsRef.current;
-      const cronWorkflows = workflows.filter(
-        wf => (wf.trigger === 'cron' || (wf as any).scheduled) && wf.enabled && wf.cron
-      );
-      if (cronWorkflows.length === 0) return;
-
-      const now = new Date();
-      for (const wf of cronWorkflows) {
-        const rule = parseCronRule(wf.cron || '');
-        if (rule && rule.shouldRun(now)) {
-          autoExecuteWorkflow(wf);
-        }
-      }
-    }, 15_000);
-
-    console.log(`[scheduler] 已启动，每 15s 检查定时工作流`);
-
-    return () => {
-      clearInterval(timer);
-      console.log('[scheduler] 已停止');
-    };
-  }, [teamId]); // eslint-disable-line react-hooks/exhaustive-deps
+    const pollTimer = setInterval(() => {
+      loadWorkflowRuns();
+    }, 30_000); // 每 30 秒刷新一次
+    return () => clearInterval(pollTimer);
+  }, [teamId, loadWorkflowRuns]);
 
   const handleDeleteCat = async (catId: string, catName: string) => {
     if (!confirm(`确定要移除「${catName}」吗？`)) return;
