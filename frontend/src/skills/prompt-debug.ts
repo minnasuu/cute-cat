@@ -29,11 +29,19 @@ const createCraft: SkillHandler = {
     let items: Record<string, unknown>[];
     try {
       let parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) parsed = [parsed];
-      // 处理双重序列化：数组元素可能是 JSON 字符串而非对象
-      items = parsed.map((el: unknown) =>
-        typeof el === 'string' ? JSON.parse(el) : el
-      );
+      // 处理双重序列化的字符串
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      if (Array.isArray(parsed)) {
+        // 数组元素可能是 JSON 字符串
+        items = parsed.map((el: unknown) => typeof el === 'string' ? JSON.parse(el) : el);
+      } else if (parsed && typeof parsed === 'object') {
+        // 以数字索引为 key 的对象，如 { "0": {...}, "9": {...} }
+        items = Object.values(parsed).map((el: unknown) =>
+          typeof el === 'string' ? JSON.parse(el) : el
+        );
+      } else {
+        items = [parsed];
+      }
     } catch {
       return { success: false, data: null, summary: 'JSON 解析失败，请检查格式', status: 'error' };
     }
