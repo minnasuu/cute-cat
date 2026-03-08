@@ -1,6 +1,6 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
 
-const API = 'https://cucatopia.com';
+const API = 'https://suminhan.cn';
 
 /** ✍️ 新增文章 — 管理员私有
  *  接收 JSON 对象字符串，创建文章
