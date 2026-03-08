@@ -32,8 +32,18 @@ interface CatSVGProps {
   className?: string;
 }
 
+const FALLBACK_COLORS: CatColors = {
+  body: '#F7AC5E', bodyDark: '#D3753E', belly: '#FFFFFF', earInner: '#F4B8B8',
+  eyes: '#4A90D9', nose: '#E8998D', blush: '#F4B8B8', stroke: '#3E2E1E',
+  apron: '#81C784', apronLight: '#A5D6A7', apronLine: '#66BB6A',
+  desk: '#8D6E63', deskDark: '#6D4C41', deskLeg: '#5D4037',
+  paw: '#FDDCB5', tail: '', faceDark: '#F5C98A', month: '',
+  head: '', bodyDarkBottom: '', leg: '#F7AC5E',
+  headTopLeft: '', headTopRight: '',
+};
+
 const CatSVG: React.FC<CatSVGProps> = ({ colors, size = 200, className }) => {
-  const c = colors;
+  const c = colors ?? FALLBACK_COLORS;
   const paw = (i: number) =>
     Array.isArray(c.paw) ? (c.paw[i] ?? c.paw[0]) : c.paw;
 

@@ -89,7 +89,13 @@ const CatEditorPage: React.FC = () => {
   const [name, setName] = useState('');
   const [role, setRole] = useState('Custom');
   const [description, setDescription] = useState('');
-  const [catColors, setCatColors] = useState<CatColors>(DEFAULT_COLORS);
+  const [catColors, _setCatColors] = useState<CatColors>(DEFAULT_COLORS);
+  /** 确保 catColors 永远不为 null（后端/模板可能返回 null） */
+  const setCatColors: typeof _setCatColors = (v) =>
+    _setCatColors(prev => {
+      const next = typeof v === 'function' ? (v as (p: CatColors) => CatColors)(prev) : v;
+      return next ?? DEFAULT_COLORS;
+    });
   const [systemPrompt, setSystemPrompt] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [accent, setAccent] = useState('#8DB889');
