@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiClient } from '../../utils/apiClient';
+import { showToast } from '../../components/Toast';
 import { getSkillHandler } from '../../skills';
 import type { SkillResult } from '../../skills/types';
 import CatSVG, { CatColors } from '../../components/CatSVG';
@@ -17,6 +18,79 @@ import { injectAdminSkillsToCats } from '../../data/skills';
 const STEP_DURATION = 3000;
 
 const workingDialogs: string[] = ['准备中...', '努力工作中~ 🐱', '马上就好!'];
+
+/* ─── 自然语言 cron 解析 → 判断「现在是否该执行」 ─── */
+/**
+ * 解析中文自然语言 cron 规则，返回检查函数。
+ * 支持格式示例：
+ *   "每天 09:00"  "每天 9:00"
+ *   "每小时"  "每30分钟"  "每2小时"
+ *   "每周一 10:00"  "每周五 18:00"
+ *   "每月1号 08:00"
+ *   "工作日 09:30"
+ */
+function parseCronRule(cron: string): { intervalMs: number; shouldRun: (now: Date) => boolean } | null {
+  if (!cron || !cron.trim()) return null;
+  const s = cron.trim();
+
+  // 每 N 分钟
+  const minMatch = s.match(/每\s*(\d+)\s*分钟/);
+  if (minMatch) {
+    const mins = parseInt(minMatch[1], 10);
+    return { intervalMs: mins * 60_000, shouldRun: (now) => now.getMinutes() % mins === 0 && now.getSeconds() < 30 };
+  }
+
+  // 每 N 小时
+  const hourMatch = s.match(/每\s*(\d+)\s*小时/);
+  if (hourMatch) {
+    const hrs = parseInt(hourMatch[1], 10);
+    return { intervalMs: hrs * 3600_000, shouldRun: (now) => now.getHours() % hrs === 0 && now.getMinutes() === 0 && now.getSeconds() < 30 };
+  }
+
+  // 每小时
+  if (/每小时/.test(s)) {
+    return { intervalMs: 3600_000, shouldRun: (now) => now.getMinutes() === 0 && now.getSeconds() < 30 };
+  }
+
+  // 提取时间 HH:MM
+  const timeMatch = s.match(/(\d{1,2}):(\d{2})/);
+  const hour = timeMatch ? parseInt(timeMatch[1], 10) : -1;
+  const minute = timeMatch ? parseInt(timeMatch[2], 10) : 0;
+
+  const timeOk = (now: Date) => now.getHours() === hour && now.getMinutes() === minute && now.getSeconds() < 30;
+
+  // 每天
+  if (/每天|每日/.test(s) && hour >= 0) {
+    return { intervalMs: 30_000, shouldRun: timeOk };
+  }
+
+  // 工作日
+  if (/工作日/.test(s) && hour >= 0) {
+    return { intervalMs: 30_000, shouldRun: (now) => { const d = now.getDay(); return d >= 1 && d <= 5 && timeOk(now); } };
+  }
+
+  // 每周X
+  const weekMap: Record<string, number> = { '日': 0, '天': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
+  const weekMatch = s.match(/每?周([一二三四五六日天])/);
+  if (weekMatch && hour >= 0) {
+    const dayOfWeek = weekMap[weekMatch[1]] ?? -1;
+    return { intervalMs: 30_000, shouldRun: (now) => now.getDay() === dayOfWeek && timeOk(now) };
+  }
+
+  // 每月N号
+  const monthMatch = s.match(/每月\s*(\d{1,2})\s*[号日]/);
+  if (monthMatch && hour >= 0) {
+    const dayOfMonth = parseInt(monthMatch[1], 10);
+    return { intervalMs: 30_000, shouldRun: (now) => now.getDate() === dayOfMonth && timeOk(now) };
+  }
+
+  // 仅有时间，默认每天
+  if (hour >= 0) {
+    return { intervalMs: 30_000, shouldRun: timeOk };
+  }
+
+  return null;
+}
 
 interface TeamCat {
   id: string;
@@ -69,6 +143,7 @@ const TeamDetailPage: React.FC = () => {
   const [stepResults, setStepResults] = useState<Map<number, SkillResult>>(new Map());
   const stepResultsRef = useRef<Map<number, SkillResult>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulerRunningRef = useRef<Set<string>>(new Set()); // 正在自动执行的工作流 ID
 
   const loadTeam = useCallback(async () => {
     if (!teamId) return;
@@ -86,6 +161,89 @@ const TeamDetailPage: React.FC = () => {
   }, [teamId, navigate, isAdmin]);
 
   useEffect(() => { loadTeam(); }, [loadTeam]);
+
+  /* ─── 定时工作流调度器 ─── */
+  useEffect(() => {
+    if (!team) return;
+
+    const cronWorkflows = team.workflows.filter(
+      wf => (wf.trigger === 'cron' || (wf as any).scheduled) && wf.enabled && wf.cron
+    );
+    if (cronWorkflows.length === 0) return;
+
+    // 解析每个 cron 工作流的规则
+    const rules = cronWorkflows.map(wf => ({ wf, rule: parseCronRule(wf.cron || '') })).filter(r => r.rule);
+    if (rules.length === 0) return;
+
+    // 取最小检查间隔
+    const checkInterval = Math.min(...rules.map(r => r.rule!.intervalMs), 30_000);
+
+    const autoExecuteWorkflow = async (wf: TeamWorkflow) => {
+      if (schedulerRunningRef.current.has(wf.id)) return; // 防止重复
+      schedulerRunningRef.current.add(wf.id);
+      console.log(`[scheduler] 自动执行工作流: ${wf.name}`);
+      showToast(`定时工作流「${wf.name}」开始自动执行`, 'success');
+
+      try {
+        // 创建后端 run 记录
+        await apiClient.post(`/api/workflows/${wf.id}/run`, {}).catch(() => {});
+
+        // 逐步执行
+        let prevResults: Record<string, unknown> = {};
+        for (let i = 0; i < wf.steps.length; i++) {
+          const step = wf.steps[i];
+          const handler = getSkillHandler(step.skillId);
+          // 合并上游结果
+          const merged: Record<string, unknown> = { ...prevResults };
+          if (step.action) merged._action = step.action;
+          if (step.params?.length) {
+            const pv: Record<string, unknown> = {};
+            for (const p of step.params) {
+              if (p.value !== undefined) pv[p.key] = p.value;
+              else if (p.defaultValue !== undefined) pv[p.key] = p.defaultValue;
+            }
+            if (Object.keys(pv).length > 0) merged._params = pv;
+          }
+
+          const input = Object.keys(merged).length > 0 ? merged : undefined;
+          const result = handler
+            ? await handler.execute({ agentId: step.agentId, input, timestamp: new Date().toISOString() })
+            : { success: true, data: null, summary: step.action || '完成', status: 'success' as const };
+
+          if (result.data && typeof result.data === 'object') {
+            prevResults = { ...prevResults, ...(result.data as Record<string, unknown>) };
+          }
+
+          if (!result.success) {
+            console.warn(`[scheduler] ${wf.name} 步骤 ${i + 1} 失败:`, result.summary);
+            showToast(`定时工作流「${wf.name}」步骤 ${i + 1} 失败`, 'warning');
+            break;
+          }
+        }
+        console.log(`[scheduler] 工作流 ${wf.name} 执行完成`);
+      } catch (err) {
+        console.error(`[scheduler] ${wf.name} 执行异常:`, err);
+      } finally {
+        schedulerRunningRef.current.delete(wf.id);
+      }
+    };
+
+    const timer = setInterval(() => {
+      const now = new Date();
+      for (const { wf, rule } of rules) {
+        if (rule!.shouldRun(now)) {
+          autoExecuteWorkflow(wf);
+        }
+      }
+    }, checkInterval);
+
+    console.log(`[scheduler] 已启动，监控 ${rules.length} 个定时工作流，检查间隔 ${checkInterval / 1000}s`);
+
+    return () => {
+      clearInterval(timer);
+      console.log('[scheduler] 已停止');
+    };
+  }, [team]);
 
   const handleDeleteCat = async (catId: string, catName: string) => {
     if (!confirm(`确定要移除「${catName}」吗？`)) return;
@@ -384,15 +542,13 @@ const TeamDetailPage: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {wf.trigger === 'manual' && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleRunWorkflow(wf.id); }}
-                          className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg shrink-0 cursor-pointer text-text-tertiary hover:text-primary-600 hover:bg-primary-50"
-                          title="执行工作流"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRunWorkflow(wf.id); }}
+                        className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg shrink-0 cursor-pointer text-text-tertiary hover:text-primary-600 hover:bg-primary-50"
+                        title="执行工作流"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDeleteWorkflow(wf.id, wf.name); }}
                         className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-danger-500 transition-all p-1.5 rounded-lg hover:bg-danger-50 shrink-0 cursor-pointer"

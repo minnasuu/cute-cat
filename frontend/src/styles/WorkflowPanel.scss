@@ -555,7 +555,7 @@
   align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 20px 40px;
+  padding: 40px;
 
   &::-webkit-scrollbar {
     height: 6px;
@@ -671,7 +671,7 @@
   // 真实执行结果区域
   .node-result {
     width: 130px;
-    height: 400px;
+    max-height: 320px;
     margin-top: 4px;
     padding: 6px 10px;
     border-radius: 10px;
