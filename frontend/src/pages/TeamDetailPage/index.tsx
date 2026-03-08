@@ -175,21 +175,54 @@ const TeamDetailPage: React.FC = () => {
     setIsRunning(false);
     setRunningStepIndex(-1);
     setCurrentDialog('');
-    // 还原所有步骤为已完成 + 结果
-    const steps = Array.isArray(run.steps) ? run.steps : [];
-    const completed = steps.map((_: any, i: number) => i);
-    setCompletedSteps(completed);
-    const resultsMap = new Map<number, SkillResult>();
-    steps.forEach((step: any, idx: number) => {
-      resultsMap.set(idx, {
-        success: step.success ?? true,
-        data: null,
-        summary: step.summary || '',
-        status: step.status || (step.success ? 'success' : 'error'),
+
+    const runSteps = Array.isArray(run.steps) ? run.steps : [];
+
+    if (runSteps.length > 0) {
+      // 有步骤数据 → 用 run.steps 中的 index 映射到 wf.steps
+      const completed = runSteps.map((s: any) => s.index ?? 0);
+      setCompletedSteps(completed);
+      const resultsMap = new Map<number, SkillResult>();
+      runSteps.forEach((step: any) => {
+        const idx = step.index ?? 0;
+        resultsMap.set(idx, {
+          success: step.success ?? true,
+          data: null,
+          summary: step.summary || '',
+          status: step.status || (step.success ? 'success' : 'error'),
+        });
       });
-    });
-    setStepResults(resultsMap);
-    stepResultsRef.current = resultsMap;
+      setStepResults(resultsMap);
+      stepResultsRef.current = resultsMap;
+    } else {
+      // 没有步骤数据（可能执行中或异常退出）
+      // 根据 run.status 决定展示方式
+      if (run.status === 'running') {
+        // 仍在执行中：所有步骤标记为 pending
+        setCompletedSteps([]);
+      } else {
+        // failed / cancelled / success 但没有 steps 数据：将所有步骤标记为完成，用 run.status 推断结果
+        const completed = wf.steps.map((_: any, i: number) => i);
+        setCompletedSteps(completed);
+        const resultsMap = new Map<number, SkillResult>();
+        const isFailed = run.status === 'failed';
+        wf.steps.forEach((_: any, i: number) => {
+          resultsMap.set(i, {
+            success: !isFailed,
+            data: null,
+            summary: isFailed ? '执行失败（无详细记录）' : '执行完成（无详细记录）',
+            status: isFailed ? 'error' : 'success',
+          });
+        });
+        setStepResults(resultsMap);
+        stepResultsRef.current = resultsMap;
+      }
+      const emptyMap = new Map<number, SkillResult>();
+      if (run.status === 'running') {
+        setStepResults(emptyMap);
+        stepResultsRef.current = emptyMap;
+      }
+    }
   };
 
   /** 关闭历史详情查看 */
@@ -277,9 +310,20 @@ const TeamDetailPage: React.FC = () => {
           }
 
           const input = Object.keys(merged).length > 0 ? merged : undefined;
-          const result = handler
-            ? await handler.execute({ agentId: step.agentId, input, timestamp: new Date().toISOString() })
-            : { success: true, data: null, summary: step.action || '完成', status: 'success' as const };
+
+          // 带超时保护的 handler 执行（60 秒超时）
+          let result: SkillResult;
+          try {
+            const executePromise = handler
+              ? handler.execute({ agentId: step.agentId, input, timestamp: new Date().toISOString() })
+              : Promise.resolve<SkillResult>({ success: true, data: null, summary: step.action || '完成', status: 'success' });
+            const timeoutPromise = new Promise<SkillResult>((_, reject) =>
+              setTimeout(() => reject(new Error('执行超时')), 60_000)
+            );
+            result = await Promise.race([executePromise, timeoutPromise]);
+          } catch (stepErr: any) {
+            result = { success: false, data: null, summary: stepErr?.message || '步骤执行异常', status: 'error' };
+          }
 
           stepsData.push({
             index: i, skillId: step.skillId, action: step.action,
