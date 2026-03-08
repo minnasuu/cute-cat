@@ -7,6 +7,32 @@ const nodemailer = require('nodemailer');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// ======================== 简易内存速率限制 ========================
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 分钟窗口
+const RATE_LIMIT_MAX_LOGIN = 10;           // 登录：15 分钟内最多 10 次
+const RATE_LIMIT_MAX_CODE = 5;             // 验证码：15 分钟内最多 5 次
+
+function checkRateLimit(key, maxAttempts) {
+  const now = Date.now();
+  const record = rateLimitMap.get(key);
+  if (!record || now - record.windowStart > RATE_LIMIT_WINDOW) {
+    rateLimitMap.set(key, { windowStart: now, count: 1 });
+    return true;
+  }
+  record.count++;
+  if (record.count > maxAttempts) return false;
+  return true;
+}
+
+// 定期清理过期记录（每 30 分钟）
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of rateLimitMap) {
+    if (now - record.windowStart > RATE_LIMIT_WINDOW) rateLimitMap.delete(key);
+  }
+}, 30 * 60 * 1000);
+
 // SMTP transporter (reuse email config)
 let transporter = null;
 function getTransporter() {
@@ -32,6 +58,14 @@ router.post('/send-code', async (req, res) => {
   try {
     const { email, type = 'register' } = req.body;
     if (!email) return res.status(400).json({ error: '请输入邮箱' });
+
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    if (!checkRateLimit(`code:${ip}`, RATE_LIMIT_MAX_CODE)) {
+      return res.status(429).json({ error: '验证码发送过于频繁，请 15 分钟后再试' });
+    }
+    if (!checkRateLimit(`code:${email}`, RATE_LIMIT_MAX_CODE)) {
+      return res.status(429).json({ error: '验证码发送过于频繁，请 15 分钟后再试' });
+    }
 
     if (type === 'register') {
       const existing = await prisma.user.findUnique({ where: { email } });
@@ -141,10 +175,24 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: '请输入邮箱和密码' });
 
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    if (!checkRateLimit(`login:${ip}`, RATE_LIMIT_MAX_LOGIN)) {
+      return res.status(429).json({ error: '登录尝试过于频繁，请 15 分钟后再试' });
+    }
+    if (!checkRateLimit(`login:${email}`, RATE_LIMIT_MAX_LOGIN)) {
+      return res.status(429).json({ error: '登录尝试过于频繁，请 15 分钟后再试' });
+    }
+
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ error: '邮箱或密码错误' });
 
-    const valid = await bcrypt.compare(password, user.password);
+    let valid = false;
+    try {
+      valid = await bcrypt.compare(password, user.password);
+    } catch (bcryptErr) {
+      console.error('[auth] bcrypt.compare failed:', bcryptErr.message, '| email:', email, '| hash length:', user.password?.length);
+      return res.status(500).json({ error: '密码验证异常，请联系管理员' });
+    }
     if (!valid) return res.status(401).json({ error: '邮箱或密码错误' });
 
     const tokens = generateTokens(user.id);
@@ -155,7 +203,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('[auth] login error:', err);
-    res.status(500).json({ error: '登录失败' });
+    res.status(500).json({ error: '登录失败，请稍后重试' });
   }
 });
 
@@ -190,6 +238,10 @@ router.post('/refresh-token', async (req, res) => {
 
     const decoded = verifyToken(refreshToken);
     if (decoded.type !== 'refresh') return res.status(401).json({ error: '无效的 refreshToken' });
+
+    // 校验用户是否仍然存在
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
 
     const tokens = generateTokens(decoded.userId);
     res.json({ success: true, ...tokens });

@@ -47,8 +47,8 @@ const RegisterPage: React.FC = () => {
     try {
       await register(email, password, nickname, code, betaCode.trim());
       navigate('/dashboard');
-    } catch (err: any) {
-      showToast(err.message || '注册失败');
+    } catch {
+      // apiClient already shows toast with specific error message
     } finally {
       setLoading(false);
     }
