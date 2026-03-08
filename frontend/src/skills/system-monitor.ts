@@ -1,6 +1,6 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
 
-const API = 'https://suminhan.cn';
+const API = 'https://cucatopia.com';
 
 /** 📖 查看文章 — 管理员私有
  *  查看所有文章列表或按 ID 查看单篇文章详情
