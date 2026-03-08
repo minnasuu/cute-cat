@@ -12,7 +12,8 @@ import {
   fafa, fafaSkills,
 } from '../../data/cats';
 import type { Assistant, Skill } from '../../data/types';
-import { skillCategories, skillGroups, skillPool } from '../../data/skills';
+import { skillCategories, getVisibleSkillPool, getVisibleSkillGroups } from '../../data/skills';
+import { useAuth } from '../../contexts/AuthContext';
 import { appearanceTemplates } from '../../data/themes';
 import { personalityTemplates } from '../../data/personality';
 import { workflows } from '../../data/workflows';
@@ -40,6 +41,9 @@ type Tab = 'cats' | 'skills' | 'roles'| 'workflows' | 'appearances' | 'personali
 
 const CommunityPage = () => {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const skillPool = getVisibleSkillPool(isAdmin);
+  const skillGroups = getVisibleSkillGroups(isAdmin);
   const [tab, setTab] = useState<Tab>('cats');
   const [selectedCat, setSelectedCat] = useState<Assistant | null>(null);
   const [skillFilter, setSkillFilter] = useState<string>('all');

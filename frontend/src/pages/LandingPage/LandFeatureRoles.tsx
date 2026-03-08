@@ -3,9 +3,10 @@ import CatSVG from '../../components/CatSVG'
 import { appearanceTemplates } from '../../data/themes'
 import { presetCombos } from '../../data/cats'
 import { personalityTemplates } from '../../data/personality'
-import { skillGroups } from '../../data/skills'
+import { getVisibleSkillGroups } from '../../data/skills'
 
 export const LandFeatureRoles = () => {
+  const skillGroups = getVisibleSkillGroups(false)
   const [activePreset, setActivePreset] = useState(0)
   const combo = presetCombos[activePreset]
   const appearance = appearanceTemplates.find(a => a.id === combo.appearance)!

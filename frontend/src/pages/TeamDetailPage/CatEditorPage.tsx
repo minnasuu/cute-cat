@@ -7,7 +7,8 @@ import type { CatColors } from '../../components/CatSVG';
 import CatLogo from '../../components/CatLogo';
 import { appearanceTemplates } from '../../data/themes';
 import { personalityTemplates } from '../../data/personality';
-import { skillPool, skillCategories, skillGroups } from '../../data/skills';
+import { skillCategories, getVisibleSkillPool, getVisibleSkillGroups, type SkillGroup } from '../../data/skills';
+import { useAuth } from '../../contexts/AuthContext';
 
 /** ROLE_OPTIONS value -> skillGroups id */
 const ROLE_SKILL_MAP: Record<string, string> = {
@@ -20,16 +21,16 @@ const ROLE_SKILL_MAP: Record<string, string> = {
   'Engineer': 'engineer',
 };
 
-/** 根据 skillGroup id 获取对应的 skillIds */
-function getGroupSkillIds(groupId: string): string[] {
-  return skillGroups.find(g => g.id === groupId)?.skillIds ?? [];
+/** 根据 skillGroup id 获取对应的 skillIds（需传入当前可见的 skillGroups） */
+function getGroupSkillIds(groups: SkillGroup[], groupId: string): string[] {
+  return groups.find(g => g.id === groupId)?.skillIds ?? [];
 }
 
 /** 判断当前选中的技能是否完全匹配某个角色的技能组 */
-function matchesRoleSkills(selected: string[], roleName: string): boolean {
+function matchesRoleSkills(groups: SkillGroup[], selected: string[], roleName: string): boolean {
   const groupId = ROLE_SKILL_MAP[roleName];
   if (!groupId) return false;
-  const expected = getGroupSkillIds(groupId);
+  const expected = getGroupSkillIds(groups, groupId);
   if (expected.length !== selected.length) return false;
   return expected.every(id => selected.includes(id));
 }
@@ -79,6 +80,9 @@ const ROLE_OPTIONS = ['Project Manager', 'Content Editor', 'Data Analyst', 'Visu
 const CatEditorPage: React.FC = () => {
   const { teamId, catId } = useParams<{ teamId: string; catId: string }>();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const skillPool = getVisibleSkillPool(isAdmin);
+  const skillGroups = getVisibleSkillGroups(isAdmin);
   const isEditing = catId && catId !== 'new';
 
   const [mode, setMode] = useState<'template' | 'custom'>(isEditing ? 'custom' : 'template');
@@ -166,14 +170,14 @@ const CatEditorPage: React.FC = () => {
     setRole(newRole);
     const groupId = ROLE_SKILL_MAP[newRole];
     if (groupId) {
-      setSelectedSkills(getGroupSkillIds(groupId));
+      setSelectedSkills(getGroupSkillIds(skillGroups, groupId));
     }
   };
 
   const toggleSkill = (skillId: string) => {
     setSelectedSkills(prev => {
       const next = prev.includes(skillId) ? prev.filter(id => id !== skillId) : [...prev, skillId];
-      if (role !== 'Custom' && !matchesRoleSkills(next, role)) {
+      if (role !== 'Custom' && !matchesRoleSkills(skillGroups, next, role)) {
         setRole('Custom');
       }
       return next;

@@ -5,7 +5,8 @@ import { showToast } from '../../components/Toast';
 import CatLogo from '../../components/CatLogo';
 import CatMiniAvatar from '../../components/CatMiniAvatar';
 import type { WorkflowStep, StepParam } from '../../data/types';
-import { skillPool } from '../../data/skills';
+import { getVisibleSkillPool } from '../../data/skills';
+import { useAuth } from '../../contexts/AuthContext';
 import { aiGenerateWorkflow } from './handleAiGenerateWorkflow';
 import type { SuggestedCat, SuggestedSkill } from './handleAiGenerateWorkflow';
 
@@ -16,6 +17,8 @@ interface TeamCat {
 const WorkflowEditorPage: React.FC = () => {
   const { teamId, workflowId } = useParams<{ teamId: string; workflowId: string }>();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const skillPool = getVisibleSkillPool(isAdmin);
   const isEditing = workflowId && workflowId !== 'new';
 
   const [cats, setCats] = useState<TeamCat[]>([]);

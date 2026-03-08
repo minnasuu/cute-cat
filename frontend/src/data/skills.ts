@@ -41,6 +41,8 @@ export interface SkillTemplate {
   provider?: string
   /** 该技能需要用户配置的参数定义（如收件邮箱、API 地址等） */
   paramDefs?: StepParam[]
+  /** 是否仅管理员可见 */
+  adminOnly?: boolean
 }
 
 export type SkillCategory = 'content' | 'data' | 'visual' | 'comm' | 'dev' | 'manage'
@@ -193,7 +195,57 @@ export const skillPool: SkillTemplate[] = [
       { key: 'catName', label: '猫猫名字', type: 'text', placeholder: '给新猫猫起个名字' },
     ],
   },
+
+  // ── 管理员私有技能（adminOnly）──
+  { id: 'view-articles',      name: '查看文章',   icon: '📖', category: 'data',   description: '查看所有文章列表或单篇文章详情',           input: 'text', output: 'json', primitiveId: 'api-call',          provider: 'REST API', adminOnly: true,
+    paramDefs: [
+      { key: 'articleId', label: '文章 ID（留空查看全部）', type: 'text', placeholder: '输入文章 ID 查看详情，留空查看列表' },
+    ],
+  },
+  { id: 'create-article',     name: '新增文章',   icon: '✍️', category: 'data',   description: '发布新文章（支持 Markdown 正文）',          input: 'json', output: 'json', primitiveId: 'api-call',          provider: 'REST API', adminOnly: true,
+    paramDefs: [
+      { key: 'title', label: '标题', type: 'text', required: true, placeholder: '文章标题' },
+      { key: 'summary', label: '摘要', type: 'text', placeholder: '文章摘要' },
+      { key: 'content', label: '正文（Markdown）', type: 'textarea', required: true, placeholder: '# 正文内容' },
+      { key: 'publishDate', label: '发布日期', type: 'text', placeholder: 'YYYY-MM-DD', defaultValue: new Date().toISOString().slice(0, 10) },
+      { key: 'tags', label: '标签', type: 'tags', placeholder: '输入标签后回车' },
+      { key: 'readTime', label: '阅读时长（分钟）', type: 'number', defaultValue: 5 },
+      { key: 'type', label: '类型', type: 'select', options: [{ label: 'Engineering', value: 'Engineering' }, { label: 'Design', value: 'Design' }, { label: 'Product', value: 'Product' }, { label: 'Tutorial', value: 'Tutorial' }], defaultValue: 'Engineering' },
+    ],
+  },
+  { id: 'view-crafts',        name: '查看 Crafts', icon: '🎨', category: 'data',  description: '查看所有 Crafts 列表或单个 Craft 详情',    input: 'text', output: 'json', primitiveId: 'api-call',          provider: 'REST API', adminOnly: true,
+    paramDefs: [
+      { key: 'craftId', label: 'Craft ID（留空查看全部）', type: 'text', placeholder: '输入 Craft ID 查看详情，留空查看列表' },
+    ],
+  },
+  { id: 'create-craft',       name: '新增 Craft', icon: '🛠️', category: 'data',  description: '创建新的 Craft 组件',                      input: 'json', output: 'json', primitiveId: 'api-call',          provider: 'REST API', adminOnly: true,
+    paramDefs: [
+      { key: 'name', label: '名称', type: 'text', required: true, placeholder: 'Craft 名称' },
+      { key: 'description', label: '描述', type: 'text', placeholder: 'Craft 描述' },
+      { key: 'category', label: '分类', type: 'select', options: [{ label: 'Component', value: 'component' }, { label: 'Effect', value: 'effect' }, { label: 'Control', value: 'control' }, { label: 'Demo', value: 'demo' }, { label: 'Experiment', value: 'experiment' }], required: true, defaultValue: 'component' },
+      { key: 'technologies', label: '技术栈', type: 'tags', placeholder: '输入技术标签后回车' },
+      { key: 'htmlCode', label: 'HTML 代码', type: 'textarea', required: true, placeholder: '<div>HTML代码</div>' },
+    ],
+  },
 ]
+
+/** 管理员私有技能 ID 列表 */
+const ADMIN_SKILL_IDS = skillPool.filter(s => s.adminOnly).map(s => s.id)
+
+/** 根据管理员身份过滤可见技能池 */
+export function getVisibleSkillPool(isAdmin: boolean): SkillTemplate[] {
+  return isAdmin ? skillPool : skillPool.filter(s => !s.adminOnly)
+}
+
+/** 根据管理员身份获取技能组（管理员的 default 组自动包含私有技能） */
+export function getVisibleSkillGroups(isAdmin: boolean): SkillGroup[] {
+  if (!isAdmin) return skillGroups
+  return skillGroups.map(g =>
+    g.id === 'default'
+      ? { ...g, skillIds: [...g.skillIds, ...ADMIN_SKILL_IDS] }
+      : g
+  )
+}
 
 // ────────────────────────────────────────────────────────────
 // 技能组（快速装配一组技能）

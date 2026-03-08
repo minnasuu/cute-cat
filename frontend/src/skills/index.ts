@@ -56,6 +56,12 @@ import recruitCat from './recruit-cat';
 import teamReview from './team-review';
 import catTraining from './cat-training';
 
+// --- 管理员私有 ---
+import viewArticles from './system-monitor';
+import createArticle from './user-manage';
+import viewCrafts from './data-export';
+import createCraft from './prompt-debug';
+
 // --- CAT (default) ---
 import aiChat from './ai-chat';
 
@@ -71,6 +77,7 @@ const handlers: SkillHandler[] = [
   taskLog, meetingNotes,
   qualityCheck, contentReview, regressionTest,
   recruitCat, teamReview, catTraining,
+  viewArticles, createArticle, viewCrafts, createCraft,
   aiChat,
 ];
 

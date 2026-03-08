@@ -1,6 +1,8 @@
-import { skillGroups, skillPool } from "../../data/skills"
+import { getVisibleSkillPool, getVisibleSkillGroups } from "../../data/skills"
 
 export const LandFeatureSkills = () => {
+  const visibleSkills = getVisibleSkillPool(false)
+  const skillGroups = getVisibleSkillGroups(false)
   return (
     <section id="skills" className="py-24 md:py-32 bg-surface-secondary/40">
       <div className="max-w-6xl mx-auto px-6">
@@ -8,7 +10,7 @@ export const LandFeatureSkills = () => {
         <div className="mb-16 text-center">
           <p className="text-sm font-bold text-accent-500 uppercase tracking-widest mb-4">技能系统</p>
           <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6">
-            {skillPool.length}+ 内置技能，按需装配
+            {visibleSkills.length}+ 内置技能，按需装配
           </h2>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
             技能不与猫猫绑定——任何角色都能装配任何技能。
@@ -19,7 +21,7 @@ export const LandFeatureSkills = () => {
         {/* Skill Groups Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-10">
           {skillGroups.map(group => {
-            const groupSkills = skillPool.filter(s => group.skillIds.includes(s.id))
+            const groupSkills = visibleSkills.filter(s => group.skillIds.includes(s.id))
             return (
               <div
                 key={group.id}

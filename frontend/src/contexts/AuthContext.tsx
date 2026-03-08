@@ -13,9 +13,14 @@ export interface User {
   aiUsed?: number;
 }
 
+/** 管理员邮箱白名单 */
+const ADMIN_EMAILS = ['minhansu508@gmail.com'];
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  /** 当前用户是否为管理员 */
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, nickname: string, code: string, betaCode?: string) => Promise<void>;
   logout: () => void;
@@ -35,6 +40,7 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const isAdmin = ADMIN_EMAILS.includes(user?.email ?? '');
 
   // On mount, check for saved token and fetch user
   useEffect(() => {
@@ -93,7 +99,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, updateAiUsage }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, login, register, logout, updateUser, updateAiUsage }}>
       {children}
     </AuthContext.Provider>
   );
