@@ -25,7 +25,11 @@ class ApiClient {
       throw new Error('网络连接失败');
     }
 
-    if (response.status === 401) {
+    // Auth endpoints (login/register etc.) should not trigger token refresh or redirect,
+    // let their 401 fall through to the generic !response.ok handler below.
+    const isAuthEndpoint = url.startsWith('/api/auth/');
+
+    if (response.status === 401 && !isAuthEndpoint) {
       // Try refresh token
       const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken) {
