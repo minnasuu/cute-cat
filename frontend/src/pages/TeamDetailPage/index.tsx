@@ -1,12 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiClient } from '../../utils/apiClient';
+import { getSkillHandler } from '../../skills';
+import type { SkillResult } from '../../skills/types';
 import CatSVG, { CatColors } from '../../components/CatSVG';
 import CatMiniAvatar from '../../components/CatMiniAvatar';
 import CatLogo from '../../components/CatLogo';
 import Navbar from '../../components/Navbar';
 import UserProfileDropdown from '../DashboardPage/UserProfileDropdown';
+import '../../styles/WorkflowPanel.scss';
+
+const STEP_DURATION = 3000;
+
+const workingDialogs: string[] = ['准备中...', '努力工作中~ 🐱', '马上就好!'];
 
 interface TeamCat {
   id: string;
@@ -49,7 +58,16 @@ const TeamDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'cats' | 'workflows' | 'history'>('cats');
   const [selectedCat, setSelectedCat] = useState<TeamCat | null>(null);
-  const [runningWorkflowId, setRunningWorkflowId] = useState<string | null>(null);
+
+  // 执行弹窗状态
+  const [executingWorkflow, setExecutingWorkflow] = useState<TeamWorkflow | null>(null);
+  const [runningStepIndex, setRunningStepIndex] = useState(-1);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [currentDialog, setCurrentDialog] = useState('');
+  const [stepResults, setStepResults] = useState<Map<number, SkillResult>>(new Map());
+  const stepResultsRef = useRef<Map<number, SkillResult>>(new Map());
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadTeam = useCallback(async () => {
     if (!teamId) return;
@@ -86,18 +104,99 @@ const TeamDetailPage: React.FC = () => {
     }
   };
 
-  const handleRunWorkflow = async (wfId: string) => {
-    if (runningWorkflowId) return;
-    setRunningWorkflowId(wfId);
-    try {
-      await apiClient.post(`/api/workflows/${wfId}/run`, {});
-      loadTeam();
-    } catch {
-      // toast shown by apiClient
-    } finally {
-      setRunningWorkflowId(null);
-    }
+  const handleRunWorkflow = (wfId: string) => {
+    const wf = team?.workflows.find(w => w.id === wfId);
+    if (!wf) return;
+    setExecutingWorkflow(wf);
+    setRunningStepIndex(0);
+    setCompletedSteps([]);
+    setIsRunning(true);
+    setCurrentDialog('');
+    const emptyMap = new Map<number, SkillResult>();
+    setStepResults(emptyMap);
+    stepResultsRef.current = emptyMap;
+    // 同时在后端创建 run 记录
+    apiClient.post(`/api/workflows/${wfId}/run`, {}).catch(() => {});
   };
+
+  const handleCloseExecution = () => {
+    setExecutingWorkflow(null);
+    setRunningStepIndex(-1);
+    setCompletedSteps([]);
+    setIsRunning(false);
+    setCurrentDialog('');
+    const emptyMap = new Map<number, SkillResult>();
+    setStepResults(emptyMap);
+    stepResultsRef.current = emptyMap;
+    loadTeam();
+  };
+
+  // 执行步骤逻辑
+  useEffect(() => {
+    if (!isRunning || !executingWorkflow || runningStepIndex < 0) return;
+    if (runningStepIndex >= executingWorkflow.steps.length) {
+      setIsRunning(false);
+      setRunningStepIndex(-1);
+      setCurrentDialog('');
+      return;
+    }
+
+    const step = executingWorkflow.steps[runningStepIndex];
+    const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
+    const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+    const dialogs = workingDialogs;
+    setCurrentDialog(dialogs[0]);
+
+    const handler = getSkillHandler(step.skillId);
+    let skillInput: unknown = undefined;
+    if (runningStepIndex > 0) {
+      const merged: Record<string, unknown> = {};
+      for (let i = 0; i < runningStepIndex; i++) {
+        const prev = stepResultsRef.current.get(i)?.data;
+        if (prev && typeof prev === 'object') Object.assign(merged, prev);
+      }
+      skillInput = Object.keys(merged).length > 0 ? merged : undefined;
+    }
+
+    const executePromise = handler
+      ? handler.execute({ agentId: step.agentId, input: skillInput, timestamp: new Date().toISOString() })
+      : Promise.resolve<SkillResult>({
+          success: true, data: null,
+          summary: skill?.mockResult ?? step.action ?? '执行完成',
+          status: 'success',
+        });
+
+    const midTimer = setTimeout(() => setCurrentDialog(dialogs[1]), STEP_DURATION * 0.4);
+
+    timerRef.current = setTimeout(() => {
+      executePromise.then((result) => {
+        setStepResults((prev) => {
+          const next = new Map(prev);
+          next.set(runningStepIndex, result);
+          stepResultsRef.current = next;
+          return next;
+        });
+        setCurrentDialog(result.summary || dialogs[2]);
+        setTimeout(() => {
+          setCompletedSteps(prev => [...prev, runningStepIndex]);
+          setRunningStepIndex(prev => prev + 1);
+        }, 500);
+      }).catch(() => {
+        setCurrentDialog('出错了...');
+        setTimeout(() => {
+          setCompletedSteps(prev => [...prev, runningStepIndex]);
+          setRunningStepIndex(prev => prev + 1);
+        }, 500);
+      });
+    }, STEP_DURATION);
+
+    return () => {
+      clearTimeout(midTimer);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [isRunning, runningStepIndex, executingWorkflow, team]);
+
+  const allDone = executingWorkflow && !isRunning && completedSteps.length === executingWorkflow.steps.length;
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">加载中...</div>;
   if (!team) return null;
@@ -255,19 +354,10 @@ const TeamDetailPage: React.FC = () => {
                       {wf.trigger === 'manual' && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleRunWorkflow(wf.id); }}
-                          disabled={runningWorkflowId === wf.id}
-                          className={`opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg shrink-0 cursor-pointer ${
-                            runningWorkflowId === wf.id
-                              ? 'text-primary-400 bg-primary-50'
-                              : 'text-text-tertiary hover:text-primary-600 hover:bg-primary-50'
-                          }`}
+                          className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg shrink-0 cursor-pointer text-text-tertiary hover:text-primary-600 hover:bg-primary-50"
                           title="执行工作流"
                         >
-                          {runningWorkflowId === wf.id ? (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
-                          ) : (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                          )}
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                         </button>
                       )}
                       <button
@@ -376,6 +466,151 @@ const TeamDetailPage: React.FC = () => {
               >
                 编辑猫猫
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 工作流执行弹窗 */}
+      {executingWorkflow && (
+        <div className={`workflow-overlay ${executingWorkflow ? 'visible' : ''}`}>
+          <div className="overlay-backdrop" onClick={handleCloseExecution} />
+          <div className="execution-stage">
+            <div className="stage-header">
+              <div className="stage-title">
+                <span className="stage-name">{executingWorkflow.icon} {executingWorkflow.name}</span>
+              </div>
+              <button className="stage-close" onClick={handleCloseExecution}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="stage-body">
+              <div className="pipeline">
+                {executingWorkflow.steps.map((step: any, i: number) => {
+                  const cat = team.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
+                  const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+                  const isCompleted = completedSteps.includes(i);
+                  const isCurrent = runningStepIndex === i;
+                  const isPending = !isCompleted && !isCurrent;
+                  const statusClass = isCompleted ? 'done' : isCurrent ? 'active' : 'waiting';
+                  const result = stepResults.get(i);
+                  const resultStatus = result?.status ?? 'success';
+
+                  return (
+                    <React.Fragment key={i}>
+                      <div className={`pipeline-node ${statusClass}`}>
+                        {isCurrent && (
+                          <div className="cat-bubble show">
+                            <span className="bubble-text">{currentDialog}</span>
+                          </div>
+                        )}
+
+                        <div className={`cat-avatar ${isCurrent ? 'working' : ''}`}>
+                          {cat && <CatSVG colors={cat.catColors} className="pipeline-cat" />}
+                        </div>
+
+                        <div className="node-info">
+                          <span className="node-name" style={{ color: cat?.accent }}>
+                            {cat?.name ?? step.agentId}
+                          </span>
+                          {skill && (
+                            <span className="node-skill">
+                              {skill.icon} {skill.name}
+                            </span>
+                          )}
+                          {!skill && step.action && (
+                            <span className="node-skill">
+                              {step.action}
+                            </span>
+                          )}
+                        </div>
+
+                        {isCurrent && (
+                          <div className="node-progress">
+                            <div className="node-progress-bar" style={{ animationDuration: `${STEP_DURATION}ms` }} />
+                          </div>
+                        )}
+
+                        {isCompleted && result && (
+                          <div className={`node-result status-${resultStatus}`}>
+                            <div className="node-result-header">
+                              {resultStatus === 'success' && '✅'}
+                              {resultStatus === 'warning' && '⚠️'}
+                              {resultStatus === 'error' && '❌'}
+                              <span className="node-result-status">
+                                {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
+                              </span>
+                            </div>
+                            {result.summary && (
+                              <div className="node-result-summary markdown-body">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {result.summary}
+                                </ReactMarkdown>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {!isCompleted && skill && (
+                          <div className="node-io">
+                            <span className="io-tag io-in">{skill.input}</span>
+                            <span className="io-arrow">→</span>
+                            <span className="io-tag io-out">{skill.output}</span>
+                          </div>
+                        )}
+
+                        {isPending && <div className="node-dim" />}
+                      </div>
+
+                      {i < executingWorkflow.steps.length - 1 && (
+                        <div className={`pipeline-arrow ${isCompleted ? 'done' : ''}`}>
+                          <div className="arrow-line" />
+                          <div className="arrow-head">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </div>
+                          {isCompleted && (
+                            <div className="arrow-data-tag">
+                              <span className="data-type">
+                                {skill?.output ?? ''}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="stage-footer">
+              {isRunning && (
+                <div className="exec-status">
+                  <div className="exec-dots">
+                    <span /><span /><span />
+                  </div>
+                  <span className="exec-label">
+                    步骤 {Math.min(runningStepIndex + 1, executingWorkflow.steps.length)} / {executingWorkflow.steps.length} 执行中...
+                  </span>
+                </div>
+              )}
+              {allDone && (
+                <div className="exec-done">
+                  <span className="done-icon">🎉</span>
+                  <span className="done-text">全部完成！</span>
+                  <button className="replay-btn" onClick={() => handleRunWorkflow(executingWorkflow.id)}>
+                    再来一次
+                  </button>
+                  <button className="replay-btn" onClick={handleCloseExecution} style={{ marginLeft: 8 }}>
+                    关闭
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
