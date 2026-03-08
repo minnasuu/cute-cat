@@ -12,6 +12,7 @@ const aiChat: SkillHandler = {
 
     const result = await executePrimitive('text-to-text', ctx, {
       difySkillId: 'ai-chat',
+      model: 'qwen',
       systemPrompt: '你是一只友善的猫猫助手 CAT，请根据用户输入完成对应的文本任务（总结、分析、翻译、改写等）。用简洁清晰的中文回答。',
     });
 

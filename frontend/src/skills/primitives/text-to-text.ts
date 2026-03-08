@@ -16,6 +16,7 @@ const textToText: PrimitiveHandler = {
       systemPrompt = '',
       difySkillId = '',
       outputFormat = 'text',
+      model = '',
     } = ctx.config as Record<string, string>;
 
     // 拼装输入文本
@@ -46,7 +47,7 @@ const textToText: PrimitiveHandler = {
     try {
       // 优先走 Dify，若未配置 difySkillId 则返回 mock
       if (difySkillId) {
-        const resp = await callDifySkill(difySkillId, prompt);
+        const resp = await callDifySkill(difySkillId, prompt, model || undefined);
         if (resp.error) {
           return { success: false, data: { error: resp.error }, summary: `LLM 调用失败: ${resp.error}`, status: 'error' };
         }
