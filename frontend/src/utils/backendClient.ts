@@ -278,6 +278,14 @@ export const callDifySkill = async (taskId: string, text: string, model?: string
       body: JSON.stringify({ taskId, text, model: selectedModel }),
     });
 
+    // 先检查 content-type，避免 504 等返回 HTML 时 json() 解析失败
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const errText = await response.text().catch(() => '');
+      console.error(`[callDifySkill] Non-JSON response (${response.status}):`, errText.slice(0, 200));
+      return { answer: '', error: `HTTP ${response.status} (${response.statusText || 'timeout'})` };
+    }
+
     const data = await response.json();
     if (!response.ok) {
       return { answer: '', error: data.error || `HTTP ${response.status}` };

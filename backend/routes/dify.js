@@ -228,10 +228,34 @@ const SKILL_SYSTEM_PROMPTS = {
 
 只返回 JSON 数组，不要添加任何额外文字。`,
 
-  'workflow-gen': `你是一个工作流编排助手，专门根据用户需求和可用猫猫团队来生成工作流配置。
-你必须严格输出 JSON 格式，不要包含任何其他文字、不要用 markdown 代码块包裹。
-你生成的 agentId 和 skillId 在正常模式下必须来自用户提供的可用猫猫列表中的真实 id。
-如果团队能力不足，你需要切换到建议模式，提供补充建议。`,
+  'workflow-gen': `你是一个工作流编排助手，根据用户需求和可用猫猫团队生成工作流配置。严格输出 JSON，不要任何其他文字。
+
+## 能力评估
+先判断团队猫猫和技能是否覆盖需求。
+- 完全覆盖 → "suggestionMode": false
+- 不足 → "suggestionMode": true，填写 suggestedCats/suggestedSkills/suggestionSummary，不能覆盖的步骤 agentId 留空
+
+## JSON 格式
+{"suggestionMode":false,"suggestionSummary":"","suggestedCats":[{"role":"角色名","reason":"原因","suggestedSkills":["技能id"]}],"suggestedSkills":[{"agentId":"猫猫id","agentName":"名字","skillId":"技能id","skillName":"技能名","reason":"原因"}],"name":"工作流名称","icon":"emoji","description":"描述","scheduled":false,"cron":"","startTime":"","endTime":"","persistent":false,"steps":[{"agentId":"猫猫id或空","skillId":"技能id或空","action":"行为描述","inputFrom":"上一步agentId","params":[{"key":"k","label":"标签","type":"text|textarea|number|select|tags|toggle|url","placeholder":"提示","required":true,"description":"说明"}]}]}
+
+## 可用技能ID
+内容创作: generate-article, polish-text, generate-outline, news-to-article, meeting-notes
+数据分析: crawl-news, summarize-news, query-dashboard, trend-analysis, site-analyze
+视觉设计: generate-image, generate-chart, generate-component, layout-design, image-enhance, css-generate, update-crafts
+沟通运营: send-email, send-notification, task-log
+开发运维: fix-bug, develop-feature, optimize-perf, quality-check, content-review, regression-test
+项目管理: generate-todo, assign-task, review-approve, manage-workflow, run-workflow, recruit-cat
+
+## 角色对应
+Project Manager: generate-todo, assign-task, review-approve, manage-workflow, run-workflow, recruit-cat
+Content Editor: generate-article, polish-text, generate-outline, news-to-article, meeting-notes
+Data Analyst: crawl-news, summarize-news, query-dashboard, trend-analysis, site-analyze
+Visual Designer: generate-image, generate-chart, generate-component, layout-design, image-enhance, css-generate
+QA Reviewer: quality-check, content-review, regression-test
+Operations Assistant: send-email, send-notification, task-log
+Engineer: fix-bug, develop-feature, optimize-perf, update-crafts
+
+规则：agentId/skillId 正常模式下必须来自用户提供的真实 id；params 不需要则空数组；定时任务设 scheduled=true 填 cron/startTime/endTime；inputFrom 填上一步 agentId，第一步不需要。`,
 };
 
 // Qwen (通义千问) 调用 — 兼容 OpenAI Chat Completions 格式
@@ -242,30 +266,38 @@ async function callQwen(systemPrompt, userText, maxTokens = 2048) {
   const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
   const model = process.env.QWEN_MODEL || 'qwen-plus';
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userText },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.7,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90000); // 90s 超时
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Qwen API ${response.status}: ${errText}`);
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userText },
+        ],
+        max_tokens: maxTokens,
+        temperature: 0.7,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Qwen API ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || '';
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
 }
 
 // 可用模型列表
