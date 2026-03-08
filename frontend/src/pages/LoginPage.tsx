@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import CatLogo from '../components/CatLogo';
-import { showToast } from '../components/Toast';
 
 const LoginPage: React.FC = () => {
   const { login } = useAuth();
@@ -17,8 +16,8 @@ const LoginPage: React.FC = () => {
     try {
       await login(email, password);
       navigate('/dashboard');
-    } catch (err: any) {
-      showToast(err.message || '登录失败');
+    } catch {
+      // apiClient already shows toast with specific error message
     } finally {
       setLoading(false);
     }
@@ -68,7 +67,7 @@ const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-text-inverse font-medium rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50"
+              className="w-full py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-text-inverse font-medium rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               {loading ? '登录中...' : '登录'}
             </button>

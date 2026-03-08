@@ -29,7 +29,7 @@ const allCatSkills: Record<string, Skill[]> = {
 };
 
 /* ── Tab types ── */
-type Tab = 'cats' | 'skills' | 'workflows' | 'appearances' | 'personalities';
+type Tab = 'cats' | 'skills' | 'roles'| 'workflows' | 'appearances' | 'personalities';
 
 const CommunityPage = () => {
   const navigate = useNavigate();
@@ -41,6 +41,7 @@ const CommunityPage = () => {
   const tabs: { id: Tab; label: string; icon: string; count: number }[] = [
     { id: 'cats', label: '官方猫猫', icon: '🐱', count: allCats.length },
     { id: 'skills', label: '技能池', icon: '⚡', count: skillPool.length },
+    { id: 'roles', label: '角色', icon: '🎭', count: skillGroups.length },
     { id: 'workflows', label: '官方工作流', icon: '🔄', count: officialWorkflows.length },
     { id: 'appearances', label: '外形模版', icon: '🎨', count: appearanceTemplates.length },
     { id: 'personalities', label: '性格模版', icon: '💬', count: personalityTemplates.length },
@@ -134,8 +135,8 @@ const CommunityPage = () => {
                 }`}
               >
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="w-16 h-16 rounded-2xl bg-surface-secondary border border-border flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <CatSVG colors={cat.catColors} size={48} />
+                  <div className="w-16 h-16 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <CatSVG colors={cat.catColors} size={60} />
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-lg font-black text-text-primary">{cat.name}</h3>
@@ -216,6 +217,49 @@ const CommunityPage = () => {
           </div>
         )}
 
+        {/* ═══ Roles Tab (Skill Groups) ═══ */}
+        {tab === 'roles' && (
+          <div>
+            <p className="text-text-secondary font-medium mb-8 max-w-2xl">
+              预设角色模版，每个角色都装配了一组相关技能，让你的猫猫快速上岗
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {skillGroups.map(group => (
+                <div
+                  key={group.id}
+                  className="rounded-[24px] border border-border bg-surface p-6 hover:border-border-strong hover:shadow-lg transition-all"
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <div
+                      className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0 text-white"
+                      style={{ background: group.color }}
+                    >
+                      {group.icon}
+                    </div>
+                    <h4 className="text-lg font-black text-text-primary">{group.name}</h4>
+                  </div>
+                  <p className="text-sm text-text-secondary font-medium leading-relaxed mb-4">
+                    {group.description}
+                  </p>
+                  <div>
+                    <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-2">装配技能</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.skillIds.map(sid => {
+                        const skill = skillPool.find(s => s.id === sid);
+                        return skill ? (
+                          <span key={sid} className="px-2.5 py-1.5 rounded-full bg-surface-secondary border border-border text-[11px] font-bold text-text-secondary">
+                            {skill.icon} {skill.name}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ═══ Skills Tab ═══ */}
         {tab === 'skills' && (
           <div>
@@ -292,43 +336,6 @@ const CommunityPage = () => {
                   </div>
                 );
               })}
-            </div>
-
-            {/* Skill Groups */}
-            <div className="mt-12">
-              <p className="text-sm font-bold text-primary-500 uppercase tracking-widest mb-2">SKILL GROUPS</p>
-              <h3 className="text-2xl font-black tracking-tight mb-6">预设技能组</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {skillGroups.map(group => (
-                  <div
-                    key={group.id}
-                    className="rounded-[20px] border border-border bg-surface p-5 hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 text-white"
-                        style={{ background: group.color }}
-                      >
-                        {group.icon}
-                      </div>
-                      <h4 className="text-sm font-bold text-text-primary">{group.name}</h4>
-                    </div>
-                    <p className="text-xs text-text-secondary font-medium leading-relaxed mb-3">
-                      {group.description}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {group.skillIds.map(sid => {
-                        const skill = skillPool.find(s => s.id === sid);
-                        return skill ? (
-                          <span key={sid} className="px-2 py-1 rounded-full bg-surface-secondary border border-border text-[10px] font-bold text-text-secondary">
-                            {skill.icon} {skill.name}
-                          </span>
-                        ) : null;
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         )}
@@ -457,14 +464,14 @@ const CommunityPage = () => {
 
         {/* ═══ Appearances Tab ═══ */}
         {tab === 'appearances' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5">
+          <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-5 gap-5">
             {appearanceTemplates.map(app => (
               <div
                 key={app.id}
                 className="rounded-[24px] border border-border bg-surface p-5 text-center hover:border-border-strong hover:shadow-lg transition-all group"
               >
                 <div className="flex justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <CatSVG colors={app.colors} size={80} />
+                  <CatSVG colors={app.colors} size={120} />
                 </div>
                 <h4 className="text-sm font-black text-text-primary mb-1">{app.name}</h4>
                 <p className="text-xs text-text-secondary font-medium">{app.preview}</p>
@@ -473,7 +480,7 @@ const CommunityPage = () => {
                   {[app.colors.body, app.colors.apron, app.colors.eyes, app.colors.earInner].filter(Boolean).map((c, i) => (
                     <div
                       key={i}
-                      className="w-4 h-4 rounded-full border border-white shadow-sm"
+                      className="w-4 h-4 rounded-full border border-white"
                       style={{ background: c }}
                       title={c}
                     />

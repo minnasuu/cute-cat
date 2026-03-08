@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react'
 import CatMiniAvatar from './CatMiniAvatar'
-import { lihuajiabaiTheme, lanmaoTheme, heimaotaxueTheme, jubaiColors, sanhuaColors, xianluoColors, goldenxianluoColors, baimaoColors, milkColors, meiduanColors } from '../data/themes'
+import { lihuajiabaiTheme, lanmaoTheme, heimaotaxueTheme, jumaoColors, sanhuaColors, xianluoColors, goldenxianluoColors, baimaoColors, milkColors, meiduanColors } from '../data/themes'
 
 const CAT_PALETTE = [
   lihuajiabaiTheme,
   lanmaoTheme,
   heimaotaxueTheme,
-  jubaiColors,
+  jumaoColors,
   sanhuaColors,
   xianluoColors,
   goldenxianluoColors,

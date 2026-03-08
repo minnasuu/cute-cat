@@ -104,9 +104,31 @@ export const heimaotaxueTheme: CatColors = {
   headTopRight: '',
 };
 
-// ────────────────────────────────────────────────────────────
-// 新增品种配色主题
-// ────────────────────────────────────────────────────────────
+export const xuanmaoTheme: CatColors = {
+  body: '#111',
+  bodyDark: '',
+  belly: '#111',
+  earInner: '#333',
+  eyes: '#D4944C',
+  nose: '#DDD',
+  blush: '#FFCCBC',
+  stroke: '#1A1A1A',
+  desk: '#C8D8E8',
+  apron: '#FFB74D',
+  apronLight: '#FFF3E0',
+  apronLine: '#FFB74D',
+  deskDark: '#8BA4BD',
+  deskLeg: '#A6BCCF',
+  paw: '',
+  tail: '#111',
+  faceDark: '',
+  month: '#999',
+  head: '',
+  bodyDarkBottom: '',
+  leg: '',
+  headTopLeft: '',
+  headTopRight: '',
+};
 
 export const boshimaoTheme: CatColors = {
   body: '#E8DCD0', bodyDark: '#C8B8A8', belly: '#F5EDE4', earInner: '#F0B8B8',
@@ -205,7 +227,7 @@ export const baimaoColors: CatColors = {
   headTopRight: '',
 };
 
-export const jubaiColors: CatColors = {
+export const jumaoColors: CatColors = {
   body: '#F7AC5E',
   bodyDark: '#D3753E',
   belly: '',
@@ -222,6 +244,32 @@ export const jubaiColors: CatColors = {
   deskLeg: '#BCAAA4',
   paw: '',
   tail: '#F7AC5E',
+  faceDark: '',
+  month: '',
+  head: '',
+  bodyDarkBottom: '',
+  leg: '',
+  headTopLeft: '',
+  headTopRight: '',
+};
+
+export const jumaojiabaiTheme: CatColors = {
+  body: '#ffb070',
+  bodyDark: '#D3753E',
+  belly: '#ffedd5',
+  earInner: '#F28686',
+  eyes: '#542615',
+  nose: '#542615',
+  blush: '#F28686',
+  stroke: '#542615',
+  apron: '#BDBDBD',
+  apronLight: '#FEFFFE',
+  apronLine: '#BDBDBD',
+  desk: '#D7CCC8',
+  deskDark: '#A1887F',
+  deskLeg: '#BCAAA4',
+  paw: '#ffedd5',
+  tail: '#ffb070',
   faceDark: '',
   month: '',
   head: '',
@@ -320,10 +368,12 @@ export const appearanceTemplates: AppearanceTemplate[] = [
   { id: 'lihuajiabai',   name: '狸花加白',  preview: '经典三花，沉稳大气',   colors: lihuajiabaiTheme },
   { id: 'lanmao',    name: '蓝猫',  preview: '优雅蓝灰，文艺气质',   colors: lanmaoTheme },
   { id: 'heimao',    name: '踏雪黑猫',  preview: '酷感十足，神秘利落',   colors: heimaotaxueTheme },
-  { id: 'jubi',      name: '橘猫',  preview: '暖橘毛色，亲切温暖',   colors: jubaiColors },
+  { id: 'jubi',      name: '橘猫',  preview: '暖橘毛色，亲切温暖',   colors: jumaoColors },
+  { id: 'jubai',      name: '橘色加白猫',  preview: '暖橘毛色，亲切温暖',   colors: jumaojiabaiTheme },
   { id: 'sanhua',    name: '三花猫',  preview: '多彩拼接，活力满分',   colors: sanhuaColors },
   { id: 'xianluomao',name: '暹罗猫',  preview: '深浅渐变，高贵优雅',   colors: xianluoColors },
   { id: 'jinsemao',  name: '金色暹罗猫',    preview: '暖金毛色，阳光开朗',   colors: goldenxianluoColors },
+  { id: 'xuanmao',    name: '黑猫',  preview: '全身黑色，神秘利落',   colors: xuanmaoTheme },
   { id: 'baimao',    name: '白猫',  preview: '通体纯白，干净温柔',   colors: baimaoColors },
   { id: 'naimao',    name: '奶牛猫',  preview: '黑白拼接，俏皮可爱',   colors: milkColors },
   { id: 'yinse',     name: '美短',  preview: '低调银灰，知性沉稳',   colors: meiduanColors },

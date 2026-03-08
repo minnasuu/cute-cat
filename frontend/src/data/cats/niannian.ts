@@ -1,4 +1,4 @@
-import { jubaiColors } from '../themes';
+import { jumaoColors } from '../themes';
 import type { Assistant,  Skill } from '../types';
 
 export const niannianSkills: Skill[] = [
@@ -28,6 +28,6 @@ export const niannian: Assistant = {
 沟通风格：礼貌友好，邮件标题简洁有力，正文层次分明。确保送达率和用户体验。`,
   skills: niannianSkills,
   item: 'mail',
-  catColors: jubaiColors,
+  catColors: jumaoColors,
   messages: niannianMessages,
 };
