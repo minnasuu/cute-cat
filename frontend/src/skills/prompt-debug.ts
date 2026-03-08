@@ -28,8 +28,12 @@ const createCraft: SkillHandler = {
 
     let items: Record<string, unknown>[];
     try {
-      const parsed = JSON.parse(raw);
-      items = Array.isArray(parsed) ? parsed : [parsed];
+      let parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) parsed = [parsed];
+      // 处理双重序列化：数组元素可能是 JSON 字符串而非对象
+      items = parsed.map((el: unknown) =>
+        typeof el === 'string' ? JSON.parse(el) : el
+      );
     } catch {
       return { success: false, data: null, summary: 'JSON 解析失败，请检查格式', status: 'error' };
     }
