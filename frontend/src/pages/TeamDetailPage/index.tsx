@@ -148,12 +148,29 @@ const TeamDetailPage: React.FC = () => {
     setCurrentDialog(dialogs[0]);
 
     const handler = getSkillHandler(step.skillId);
+    // 构建 skillInput：合并上游步骤输出 + 当前步骤的 action（任务指令）+ params 配置
     let skillInput: unknown = undefined;
-    if (runningStepIndex > 0) {
+    {
       const merged: Record<string, unknown> = {};
-      for (let i = 0; i < runningStepIndex; i++) {
-        const prev = stepResultsRef.current.get(i)?.data;
-        if (prev && typeof prev === 'object') Object.assign(merged, prev);
+      // 合并前序步骤的输出数据
+      if (runningStepIndex > 0) {
+        for (let i = 0; i < runningStepIndex; i++) {
+          const prev = stepResultsRef.current.get(i)?.data;
+          if (prev && typeof prev === 'object') Object.assign(merged, prev);
+        }
+      }
+      // 将步骤的 action 作为任务指令注入，让 AI 技能知道本步骤该做什么
+      if (step.action) {
+        merged._action = step.action;
+      }
+      // 将步骤的用户参数配置也注入
+      if (step.params && step.params.length > 0) {
+        const paramValues: Record<string, unknown> = {};
+        for (const p of step.params) {
+          if (p.value !== undefined) paramValues[p.key] = p.value;
+          else if (p.defaultValue !== undefined) paramValues[p.key] = p.defaultValue;
+        }
+        if (Object.keys(paramValues).length > 0) merged._params = paramValues;
       }
       skillInput = Object.keys(merged).length > 0 ? merged : undefined;
     }
