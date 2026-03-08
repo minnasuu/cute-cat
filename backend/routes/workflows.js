@@ -129,6 +129,12 @@ router.post('/:id/run', async (req, res) => {
     const team = await verifyTeamOwner(workflow.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '无权访问' });
 
+    // 每个团队最多保存 30 条日志，达到上限时先清空再插入
+    const runCount = await prisma.workflowRun.count({ where: { teamId: workflow.teamId } });
+    if (runCount >= 30) {
+      await prisma.workflowRun.deleteMany({ where: { teamId: workflow.teamId } });
+    }
+
     const run = await prisma.workflowRun.create({
       data: {
         workflowId: workflow.id,
@@ -153,7 +159,7 @@ router.get('/team/:teamId/runs', async (req, res) => {
     const runs = await prisma.workflowRun.findMany({
       where: { teamId: req.params.teamId },
       orderBy: { startedAt: 'desc' },
-      take: 50,
+      take: 30,
     });
     res.json(runs);
   } catch (err) {

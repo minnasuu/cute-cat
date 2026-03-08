@@ -113,6 +113,21 @@ interface TeamWorkflow {
   trigger: string;
   cron?: string;
   enabled: boolean;
+  persistent?: boolean;
+}
+
+interface WorkflowRunRecord {
+  id: string;
+  workflowId: string | null;
+  teamId: string;
+  triggeredBy: string | null;
+  workflowName: string;
+  status: 'running' | 'success' | 'failed' | 'cancelled';
+  steps: any[] | null;
+  startedAt: string;
+  completedAt: string | null;
+  totalDuration: number | null;
+  createdAt: string;
 }
 
 interface Team {
@@ -133,6 +148,7 @@ const TeamDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'cats' | 'workflows' | 'history'>('cats');
   const [selectedCat, setSelectedCat] = useState<TeamCat | null>(null);
+  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunRecord[]>([]);
 
   // 执行弹窗状态
   const [executingWorkflow, setExecutingWorkflow] = useState<TeamWorkflow | null>(null);
@@ -144,6 +160,50 @@ const TeamDetailPage: React.FC = () => {
   const stepResultsRef = useRef<Map<number, SkillResult>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const schedulerRunningRef = useRef<Set<string>>(new Set()); // 正在自动执行的工作流 ID
+  const teamWorkflowsRef = useRef<TeamWorkflow[]>([]); // 调度器用的 workflows 快照
+  const currentRunIdRef = useRef<string | null>(null); // 当前手动执行的 run 记录 ID
+  const runStartTimeRef = useRef<number>(0);
+  const [viewingRun, setViewingRun] = useState<WorkflowRunRecord | null>(null); // 查看历史执行详情
+
+  /** 点击历史记录，用 workflowPanel 展示执行详情 */
+  const handleViewRunDetail = (run: WorkflowRunRecord) => {
+    const wf = team?.workflows.find(w => w.id === run.workflowId);
+    if (!wf) return;
+    // 用 run 数据还原弹窗状态（只读模式）
+    setViewingRun(run);
+    setExecutingWorkflow(wf);
+    setIsRunning(false);
+    setRunningStepIndex(-1);
+    setCurrentDialog('');
+    // 还原所有步骤为已完成 + 结果
+    const steps = Array.isArray(run.steps) ? run.steps : [];
+    const completed = steps.map((_: any, i: number) => i);
+    setCompletedSteps(completed);
+    const resultsMap = new Map<number, SkillResult>();
+    steps.forEach((step: any, idx: number) => {
+      resultsMap.set(idx, {
+        success: step.success ?? true,
+        data: null,
+        summary: step.summary || '',
+        status: step.status || (step.success ? 'success' : 'error'),
+      });
+    });
+    setStepResults(resultsMap);
+    stepResultsRef.current = resultsMap;
+  };
+
+  /** 关闭历史详情查看 */
+  const handleCloseRunDetail = () => {
+    setViewingRun(null);
+    setExecutingWorkflow(null);
+    setRunningStepIndex(-1);
+    setCompletedSteps([]);
+    setIsRunning(false);
+    setCurrentDialog('');
+    const emptyMap = new Map<number, SkillResult>();
+    setStepResults(emptyMap);
+    stepResultsRef.current = emptyMap;
+  };
 
   const loadTeam = useCallback(async () => {
     if (!teamId) return;
@@ -160,23 +220,28 @@ const TeamDetailPage: React.FC = () => {
     }
   }, [teamId, navigate, isAdmin]);
 
+  const loadWorkflowRuns = useCallback(async () => {
+    if (!teamId) return;
+    try {
+      const runs = await apiClient.get(`/api/workflows/team/${teamId}/runs`);
+      setWorkflowRuns(Array.isArray(runs) ? runs : []);
+    } catch (err) {
+      console.error('[loadWorkflowRuns]', err);
+    }
+  }, [teamId]);
+
   useEffect(() => { loadTeam(); }, [loadTeam]);
+  useEffect(() => { loadWorkflowRuns(); }, [loadWorkflowRuns]);
 
   /* ─── 定时工作流调度器 ─── */
+  // 保持 workflows ref 与 team 同步
   useEffect(() => {
-    if (!team) return;
+    teamWorkflowsRef.current = team?.workflows ?? [];
+  }, [team]);
 
-    const cronWorkflows = team.workflows.filter(
-      wf => (wf.trigger === 'cron' || (wf as any).scheduled) && wf.enabled && wf.cron
-    );
-    if (cronWorkflows.length === 0) return;
-
-    // 解析每个 cron 工作流的规则
-    const rules = cronWorkflows.map(wf => ({ wf, rule: parseCronRule(wf.cron || '') })).filter(r => r.rule);
-    if (rules.length === 0) return;
-
-    // 取最小检查间隔
-    const checkInterval = Math.min(...rules.map(r => r.rule!.intervalMs), 30_000);
+  // 调度器只在 teamId 变化时启动一次，通过 ref 读取最新 workflows
+  useEffect(() => {
+    if (!teamId) return;
 
     const autoExecuteWorkflow = async (wf: TeamWorkflow) => {
       if (schedulerRunningRef.current.has(wf.id)) return; // 防止重复
@@ -184,12 +249,18 @@ const TeamDetailPage: React.FC = () => {
       console.log(`[scheduler] 自动执行工作流: ${wf.name}`);
       showToast(`定时工作流「${wf.name}」开始自动执行`, 'success');
 
+      const startTime = Date.now();
+      let runId: string | null = null;
+      const stepsData: any[] = [];
+
       try {
         // 创建后端 run 记录
-        await apiClient.post(`/api/workflows/${wf.id}/run`, {}).catch(() => {});
+        const run = await apiClient.post(`/api/workflows/${wf.id}/run`, {}).catch(() => null);
+        runId = run?.id || null;
 
         // 逐步执行
         let prevResults: Record<string, unknown> = {};
+        let hasFailed = false;
         for (let i = 0; i < wf.steps.length; i++) {
           const step = wf.steps[i];
           const handler = getSkillHandler(step.skillId);
@@ -210,40 +281,73 @@ const TeamDetailPage: React.FC = () => {
             ? await handler.execute({ agentId: step.agentId, input, timestamp: new Date().toISOString() })
             : { success: true, data: null, summary: step.action || '完成', status: 'success' as const };
 
+          stepsData.push({
+            index: i, skillId: step.skillId, action: step.action,
+            success: result.success, status: result.status, summary: result.summary,
+          });
+
           if (result.data && typeof result.data === 'object') {
             prevResults = { ...prevResults, ...(result.data as Record<string, unknown>) };
           }
 
           if (!result.success) {
+            hasFailed = true;
             console.warn(`[scheduler] ${wf.name} 步骤 ${i + 1} 失败:`, result.summary);
             showToast(`定时工作流「${wf.name}」步骤 ${i + 1} 失败`, 'warning');
             break;
           }
         }
+
+        // 更新 run 记录
+        if (runId) {
+          apiClient.put(`/api/workflows/runs/${runId}`, {
+            status: hasFailed ? 'failed' : 'success',
+            steps: stepsData,
+            completedAt: new Date().toISOString(),
+            totalDuration: Math.round((Date.now() - startTime) / 1000),
+          }).catch(() => {});
+        }
+
         console.log(`[scheduler] 工作流 ${wf.name} 执行完成`);
+        loadWorkflowRuns();
       } catch (err) {
         console.error(`[scheduler] ${wf.name} 执行异常:`, err);
+        if (runId) {
+          apiClient.put(`/api/workflows/runs/${runId}`, {
+            status: 'failed', steps: stepsData,
+            completedAt: new Date().toISOString(),
+            totalDuration: Math.round((Date.now() - startTime) / 1000),
+          }).catch(() => {});
+        }
       } finally {
         schedulerRunningRef.current.delete(wf.id);
       }
     };
 
+    // 每 15 秒检查一次，通过 ref 读取最新的 workflows 和 cron 规则
     const timer = setInterval(() => {
+      const workflows = teamWorkflowsRef.current;
+      const cronWorkflows = workflows.filter(
+        wf => (wf.trigger === 'cron' || (wf as any).scheduled) && wf.enabled && wf.cron
+      );
+      if (cronWorkflows.length === 0) return;
+
       const now = new Date();
-      for (const { wf, rule } of rules) {
-        if (rule!.shouldRun(now)) {
+      for (const wf of cronWorkflows) {
+        const rule = parseCronRule(wf.cron || '');
+        if (rule && rule.shouldRun(now)) {
           autoExecuteWorkflow(wf);
         }
       }
-    }, checkInterval);
+    }, 15_000);
 
-    console.log(`[scheduler] 已启动，监控 ${rules.length} 个定时工作流，检查间隔 ${checkInterval / 1000}s`);
+    console.log(`[scheduler] 已启动，每 15s 检查定时工作流`);
 
     return () => {
       clearInterval(timer);
       console.log('[scheduler] 已停止');
     };
-  }, [team]);
+  }, [teamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDeleteCat = async (catId: string, catName: string) => {
     if (!confirm(`确定要移除「${catName}」吗？`)) return;
@@ -265,7 +369,7 @@ const TeamDetailPage: React.FC = () => {
     }
   };
 
-  const handleRunWorkflow = (wfId: string) => {
+  const handleRunWorkflow = async (wfId: string) => {
     const wf = team?.workflows.find(w => w.id === wfId);
     if (!wf) return;
     setExecutingWorkflow(wf);
@@ -276,11 +380,27 @@ const TeamDetailPage: React.FC = () => {
     const emptyMap = new Map<number, SkillResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
-    // 同时在后端创建 run 记录
-    apiClient.post(`/api/workflows/${wfId}/run`, {}).catch(() => {});
+    runStartTimeRef.current = Date.now();
+    // 在后端创建 run 记录并保存 ID
+    try {
+      const run = await apiClient.post(`/api/workflows/${wfId}/run`, {});
+      currentRunIdRef.current = run?.id || null;
+    } catch {
+      currentRunIdRef.current = null;
+    }
   };
 
   const handleCloseExecution = () => {
+    // 如果 run 记录还未更新（用户中途关闭），标记为 cancelled
+    if (currentRunIdRef.current) {
+      const allCompleted = executingWorkflow && completedSteps.length === executingWorkflow.steps.length;
+      if (!allCompleted) {
+        updateRunRecord('cancelled');
+      }
+    }
+
+    currentRunIdRef.current = null;
+    setViewingRun(null);
     setExecutingWorkflow(null);
     setRunningStepIndex(-1);
     setCompletedSteps([]);
@@ -290,6 +410,29 @@ const TeamDetailPage: React.FC = () => {
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
     loadTeam();
+    loadWorkflowRuns();
+  };
+
+  /** 更新后端 run 记录状态 */
+  const updateRunRecord = (status: 'success' | 'failed' | 'cancelled') => {
+    const runId = currentRunIdRef.current;
+    if (!runId || !executingWorkflow) return;
+    const allResults = Array.from(stepResultsRef.current.entries()).sort((a, b) => a[0] - b[0]);
+    const totalDuration = Math.round((Date.now() - runStartTimeRef.current) / 1000);
+    const stepsData = allResults.map(([idx, r]) => ({
+      index: idx,
+      skillId: executingWorkflow.steps[idx]?.skillId,
+      action: executingWorkflow.steps[idx]?.action,
+      success: r.success,
+      status: r.status,
+      summary: r.summary,
+    }));
+    apiClient.put(`/api/workflows/runs/${runId}`, {
+      status, steps: stepsData,
+      completedAt: new Date().toISOString(),
+      totalDuration,
+    }).then(() => loadWorkflowRuns()).catch(() => {});
+    currentRunIdRef.current = null;
   };
 
   // 执行步骤逻辑
@@ -359,6 +502,8 @@ const TeamDetailPage: React.FC = () => {
         setTimeout(() => {
           setCompletedSteps(prev => [...prev, runningStepIndex]);
           if (failed) {
+            // 步骤失败 → 更新 run 记录为 failed
+            updateRunRecord('failed');
             setIsRunning(false);
             setRunningStepIndex(-1);
           } else {
@@ -375,6 +520,7 @@ const TeamDetailPage: React.FC = () => {
         setCurrentDialog('出错了...');
         setTimeout(() => {
           setCompletedSteps(prev => [...prev, runningStepIndex]);
+          updateRunRecord('failed');
           setIsRunning(false);
           setRunningStepIndex(-1);
         }, 500);
@@ -388,6 +534,14 @@ const TeamDetailPage: React.FC = () => {
   }, [isRunning, runningStepIndex, executingWorkflow, team]);
 
   const allDone = executingWorkflow && !isRunning && completedSteps.length === executingWorkflow.steps.length;
+
+  // 工作流全部步骤完成后，自动更新后端 run 记录
+  useEffect(() => {
+    if (!allDone || !currentRunIdRef.current) return;
+    const allResults = Array.from(stepResultsRef.current.entries());
+    const hasFailed = allResults.some(([, r]) => r.status === 'error' || !r.success);
+    updateRunRecord(hasFailed ? 'failed' : 'success');
+  }, [allDone]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">加载中...</div>;
   if (!team) return null;
@@ -591,14 +745,107 @@ const TeamDetailPage: React.FC = () => {
         )}
 
         {/* === History Tab === */}
-        {activeTab === 'history' && (
-          <section className="pb-16">
-            <div className="text-center py-20 rounded-[32px] border border-border bg-surface-secondary/50">
-              <h3 className="text-xl font-black text-text-primary mb-2">暂无工作日志</h3>
-              <p className="text-text-secondary font-medium max-w-sm mx-auto">执行工作流后，记录会出现在这里</p>
-            </div>
-          </section>
-        )}
+        {activeTab === 'history' && (() => {
+          // 只显示持久化工作流的执行记录
+          const persistentWfIds = new Set(team.workflows.filter(wf => wf.persistent).map(wf => wf.id));
+          const filteredRuns = workflowRuns.filter(r => r.workflowId && persistentWfIds.has(r.workflowId));
+
+          // 按日期分组
+          const grouped: Record<string, WorkflowRunRecord[]> = {};
+          for (const run of filteredRuns) {
+            const dateKey = new Date(run.startedAt).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+            (grouped[dateKey] ||= []).push(run);
+          }
+          const dateKeys = Object.keys(grouped);
+
+          return (
+            <section className="pb-16">
+              {filteredRuns.length === 0 ? (
+                <div className="text-center py-20 rounded-[32px] border border-border bg-surface-secondary/50">
+                  <h3 className="text-xl font-black text-text-primary mb-2">暂无工作日志</h3>
+                  <p className="text-text-secondary font-medium max-w-sm mx-auto">持久化工作流执行后，记录会出现在这里</p>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  {dateKeys.map(dateKey => (
+                    <div key={dateKey}>
+                      <h3 className="text-sm font-bold text-text-tertiary uppercase tracking-widest mb-4">{dateKey}</h3>
+                      <div className="space-y-3">
+                        {grouped[dateKey].map(run => {
+                          const wf = team.workflows.find(w => w.id === run.workflowId);
+                          const statusConfig: Record<string, { icon: string; color: string; bg: string; label: string }> = {
+                            success: { icon: '✅', color: 'text-green-600', bg: 'bg-green-50 border-green-200', label: '成功' },
+                            failed: { icon: '❌', color: 'text-red-600', bg: 'bg-red-50 border-red-200', label: '失败' },
+                            running: { icon: '⏳', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', label: '执行中' },
+                            cancelled: { icon: '⏹', color: 'text-gray-500', bg: 'bg-gray-50 border-gray-200', label: '已取消' },
+                          };
+                          const sc = statusConfig[run.status] || statusConfig.running;
+                          const startTime = new Date(run.startedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                          const steps = Array.isArray(run.steps) ? run.steps : [];
+
+                          return (
+                            <div key={run.id} className="bg-surface rounded-[20px] border border-border p-5 hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleViewRunDetail(run)}>
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-2xl">{wf?.icon || '📋'}</span>
+                                  <div>
+                                    <h4 className="font-bold text-text-primary">{run.workflowName}</h4>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <span className="text-xs text-text-tertiary font-medium">{startTime}</span>
+                                      {run.totalDuration != null && (
+                                        <span className="text-xs text-text-tertiary font-medium">· 耗时 {run.totalDuration}s</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${sc.bg} ${sc.color}`}>
+                                  {sc.icon} {sc.label}
+                                </span>
+                              </div>
+
+                              {/* 步骤详情 */}
+                              {steps.length > 0 && (
+                                <div className="mt-3 space-y-1.5">
+                                  {steps.map((step: any, idx: number) => {
+                                    const stepCat = wf?.steps[step.index]?.agentId
+                                      ? team.cats.find(c => c.id === wf.steps[step.index].agentId || c.templateId === wf.steps[step.index].agentId)
+                                      : null;
+                                    return (
+                                      <div key={idx} className="flex items-start gap-2 pl-2 py-1.5 rounded-lg bg-surface-secondary/60">
+                                        <span className="text-xs mt-0.5 shrink-0">
+                                          {step.success ? '✅' : '❌'}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-1.5">
+                                            {stepCat && (
+                                              <div className="w-4 h-4 rounded-full overflow-hidden border border-border bg-surface flex items-center justify-center shrink-0">
+                                                <CatMiniAvatar colors={stepCat.catColors} size={14} />
+                                              </div>
+                                            )}
+                                            <span className="text-xs font-bold text-text-secondary">
+                                              {step.action || step.skillId}
+                                            </span>
+                                          </div>
+                                          {step.summary && (
+                                            <p className="text-xs text-text-tertiary mt-0.5 line-clamp-2">{step.summary}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })()}
       </main>
 
       {/* Footer */}
@@ -660,16 +907,32 @@ const TeamDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* 工作流执行弹窗 */}
-      {executingWorkflow && (
+      {/* 工作流执行弹窗（实时执行 / 查看历史） */}
+      {executingWorkflow && (() => {
+        const isViewingHistory = !!viewingRun;
+        const closeHandler = isViewingHistory ? handleCloseRunDetail : handleCloseExecution;
+        const statusConfig: Record<string, { icon: string; label: string; color: string }> = {
+          success: { icon: '✅', label: '执行成功', color: 'text-green-600' },
+          failed: { icon: '❌', label: '执行失败', color: 'text-red-600' },
+          cancelled: { icon: '⏹', label: '已取消', color: 'text-gray-500' },
+          running: { icon: '⏳', label: '执行中', color: 'text-blue-600' },
+        };
+        const runStatus = isViewingHistory ? (statusConfig[viewingRun!.status] || statusConfig.running) : null;
+
+        return (
         <div className={`workflow-overlay ${executingWorkflow ? 'visible' : ''}`}>
-          <div className="overlay-backdrop" onClick={handleCloseExecution} />
+          <div className="overlay-backdrop" onClick={closeHandler} />
           <div className="execution-stage">
             <div className="stage-header">
               <div className="stage-title">
                 <span className="stage-name">{executingWorkflow.icon} {executingWorkflow.name}</span>
+                {isViewingHistory && (
+                  <span className={`ml-3 text-xs font-bold ${runStatus!.color}`}>
+                    {runStatus!.icon} {runStatus!.label}
+                  </span>
+                )}
               </div>
-              <button className="stage-close" onClick={handleCloseExecution}>
+              <button className="stage-close" onClick={closeHandler}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
@@ -778,29 +1041,44 @@ const TeamDetailPage: React.FC = () => {
             </div>
 
             <div className="stage-footer">
-              {isRunning && (
-                <div className="exec-status">
-                  <div className="exec-dots">
-                    <span /><span /><span />
-                  </div>
-                  <span className="exec-label">
-                    步骤 {Math.min(runningStepIndex + 1, executingWorkflow.steps.length)} / {executingWorkflow.steps.length} 执行中...
-                  </span>
-                </div>
-              )}
-              {allDone && (
+              {isViewingHistory ? (
                 <div className="exec-done">
-                  <span className="done-icon">🎉</span>
-                  <span className="done-text">全部完成！</span>
-                  <button className="replay-btn" onClick={() => handleRunWorkflow(executingWorkflow.id)}>
-                    再来一次
+                  <span className="done-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    {new Date(viewingRun!.startedAt).toLocaleString('zh-CN')}
+                    {viewingRun!.totalDuration != null && ` · 耗时 ${viewingRun!.totalDuration}s`}
+                  </span>
+                  <button className="replay-btn" onClick={closeHandler}>
+                    关闭
                   </button>
                 </div>
+              ) : (
+                <>
+                  {isRunning && (
+                    <div className="exec-status">
+                      <div className="exec-dots">
+                        <span /><span /><span />
+                      </div>
+                      <span className="exec-label">
+                        步骤 {Math.min(runningStepIndex + 1, executingWorkflow.steps.length)} / {executingWorkflow.steps.length} 执行中...
+                      </span>
+                    </div>
+                  )}
+                  {allDone && (
+                    <div className="exec-done">
+                      <span className="done-icon">🎉</span>
+                      <span className="done-text">全部完成！</span>
+                      <button className="replay-btn" onClick={() => handleRunWorkflow(executingWorkflow.id)}>
+                        再来一次
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
