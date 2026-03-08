@@ -29,8 +29,8 @@ const viewCrafts: SkillHandler = {
       const data = await res.json();
 
       const summary = craftId
-        ? `已获取 Craft 详情: ${(data as any).name || craftId}`
-        : `共获取 ${Array.isArray(data) ? data.length : 0} 个 Crafts`;
+        ? `Craft 详情:\n${JSON.stringify(data, null, 2)}`
+        : `共 ${Array.isArray(data) ? data.length : 0} 个 Crafts:\n${JSON.stringify(data, null, 2)}`;
 
       return { success: true, data, summary, status: 'success' };
     } catch (err: any) {
