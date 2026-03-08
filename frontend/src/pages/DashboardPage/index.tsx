@@ -97,7 +97,7 @@ const DashboardPage: React.FC = () => {
         ) : undefined}
       />
 
-      <main className="max-w-6xl mx-auto px-6">
+      <main className="max-w-6xl mx-auto px-6" style={{minHeight: 'calc(100vh - 133px)'}}>
         {/* Hero welcome */}
         <section className="relative py-12 md:py-16">
           <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
