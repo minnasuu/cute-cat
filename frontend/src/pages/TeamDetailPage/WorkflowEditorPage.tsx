@@ -5,7 +5,7 @@ import { showToast } from '../../components/Toast';
 import CatLogo from '../../components/CatLogo';
 import CatMiniAvatar from '../../components/CatMiniAvatar';
 import type { WorkflowStep, StepParam } from '../../data/types';
-import { getVisibleSkillPool } from '../../data/skills';
+import { getVisibleSkillPool, injectAdminSkillsToCats } from '../../data/skills';
 import { useAuth } from '../../contexts/AuthContext';
 import { aiGenerateWorkflow } from './handleAiGenerateWorkflow';
 import type { SuggestedCat, SuggestedSkill } from './handleAiGenerateWorkflow';
@@ -52,7 +52,7 @@ const WorkflowEditorPage: React.FC = () => {
   ];
 
   useEffect(() => {
-    apiClient.get(`/api/cats/team/${teamId}`).then(setCats).catch(console.error);
+    apiClient.get(`/api/cats/team/${teamId}`).then((data: TeamCat[]) => setCats(injectAdminSkillsToCats(data, isAdmin))).catch(console.error);
     if (isEditing) {
       apiClient.get(`/api/workflows/${workflowId}`).then(wf => {
         setName(wf.name);
@@ -69,7 +69,7 @@ const WorkflowEditorPage: React.FC = () => {
         setPersistent(!!wf.persistent);
       }).catch(() => navigate(`/teams/${teamId}`));
     }
-  }, [teamId, workflowId, isEditing, navigate]);
+  }, [teamId, workflowId, isEditing, navigate, isAdmin]);
 
   const addStep = () => setSteps(prev => [...prev, { agentId: '', skillId: '', action: '' }]);
 

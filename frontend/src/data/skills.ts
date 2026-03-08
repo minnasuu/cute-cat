@@ -232,9 +232,30 @@ export const skillPool: SkillTemplate[] = [
 /** 管理员私有技能 ID 列表 */
 const ADMIN_SKILL_IDS = skillPool.filter(s => s.adminOnly).map(s => s.id)
 
+/** 管理员私有技能完整对象（用于注入到猫猫 skills 数组） */
+const ADMIN_SKILL_OBJECTS = skillPool
+  .filter(s => s.adminOnly)
+  .map(s => ({ id: s.id, name: s.name, icon: s.icon, description: s.description, input: s.input, output: s.output, ...(s.paramDefs?.length ? { paramDefs: s.paramDefs } : {}) }))
+
 /** 根据管理员身份过滤可见技能池 */
 export function getVisibleSkillPool(isAdmin: boolean): SkillTemplate[] {
   return isAdmin ? skillPool : skillPool.filter(s => !s.adminOnly)
+}
+
+/**
+ * 为管理员的 Default 猫动态注入管理员私有技能
+ * 猫猫 skills 存储在数据库中，Default 猫可能只有 ai-chat，
+ * 此函数在前端读取后补充管理员技能，避免需要重新保存猫猫。
+ */
+export function injectAdminSkillsToCats<T extends { role: string; skills: any[] }>(cats: T[], isAdmin: boolean): T[] {
+  if (!isAdmin) return cats
+  return cats.map(cat => {
+    if (cat.role !== 'Default') return cat
+    const existingIds = new Set(cat.skills.map((s: any) => s.id))
+    const missing = ADMIN_SKILL_OBJECTS.filter(s => !existingIds.has(s.id))
+    if (missing.length === 0) return cat
+    return { ...cat, skills: [...cat.skills, ...missing] }
+  })
 }
 
 /** 根据管理员身份获取技能组（管理员的 default 组自动包含私有技能） */

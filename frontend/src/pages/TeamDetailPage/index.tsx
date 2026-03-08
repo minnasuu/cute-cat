@@ -12,6 +12,7 @@ import CatLogo from '../../components/CatLogo';
 import Navbar from '../../components/Navbar';
 import UserProfileDropdown from '../DashboardPage/UserProfileDropdown';
 import '../../styles/WorkflowPanel.scss';
+import { injectAdminSkillsToCats } from '../../data/skills';
 
 const STEP_DURATION = 3000;
 
@@ -53,7 +54,7 @@ interface Team {
 const TeamDetailPage: React.FC = () => {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'cats' | 'workflows' | 'history'>('cats');
@@ -73,6 +74,8 @@ const TeamDetailPage: React.FC = () => {
     if (!teamId) return;
     try {
       const data = await apiClient.get(`/api/teams/${teamId}`);
+      // 管理员的 Default 猫动态注入管理员私有技能
+      if (data.cats) data.cats = injectAdminSkillsToCats(data.cats, isAdmin);
       setTeam(data);
     } catch (err) {
       console.error(err);
@@ -80,7 +83,7 @@ const TeamDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [teamId, navigate]);
+  }, [teamId, navigate, isAdmin]);
 
   useEffect(() => { loadTeam(); }, [loadTeam]);
 
