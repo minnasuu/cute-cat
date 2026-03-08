@@ -303,7 +303,8 @@ export const callDifySkill = async (taskId: string, text: string, model?: string
 
     const data = await response.json();
     if (!response.ok) {
-      return { answer: '', error: data.error || `HTTP ${response.status}`, aiUsed: data.aiUsed, aiQuota: data.aiQuota };
+      const errMsg = data.message ? `${data.error}: ${data.message}` : (data.error || `HTTP ${response.status}`);
+      return { answer: '', error: errMsg, aiUsed: data.aiUsed, aiQuota: data.aiQuota };
     }
     // 自动更新 AI 用量
     if (data.aiUsed !== undefined && _onAiUsageUpdate) {

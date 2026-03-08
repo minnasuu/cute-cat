@@ -279,6 +279,8 @@ const SKILL_SYSTEM_PROMPTS = {
 
 只返回 JSON 数组，不要添加任何额外文字。`,
 
+  'ai-chat': `你是一只友善的猫猫助手 CAT，团队的万能基础成员。请根据用户输入完成对应的文本任务（总结、分析、翻译、改写、问答等）。用简洁清晰的中文回答。`,
+
   'workflow-gen': `你是一个工作流编排助手，根据用户需求和可用猫猫团队生成工作流配置。严格输出 JSON，不要任何其他文字。
 
 ## 能力评估
@@ -437,9 +439,18 @@ router.post('/skill', optionalAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('[ai/skill] Error:', error);
+    // 返回更具体的错误信息帮助定位
+    let errDetail = error.message || String(error);
+    if (errDetail.includes('API_KEY') || errDetail.includes('apiKey')) {
+      errDetail = 'AI API Key 未配置或无效，请检查 .env 中的 GEMINI_API_KEY 或 QWEN_API_KEY';
+    } else if (errDetail.includes('ECONNREFUSED') || errDetail.includes('ENOTFOUND') || errDetail.includes('fetch failed')) {
+      errDetail = 'AI 服务连接失败，请检查网络或 API 地址配置';
+    } else if (errDetail.includes('aborted') || errDetail.includes('timeout')) {
+      errDetail = 'AI 服务响应超时，请稍后重试';
+    }
     res.status(500).json({
       error: 'AI API error',
-      message: error.message,
+      message: errDetail,
     });
   }
 });

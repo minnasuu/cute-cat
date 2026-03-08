@@ -294,7 +294,7 @@ const WorkflowEditorPage: React.FC = () => {
         <section className="flex-1 h-px pb-4">
           <div className="flex gap-8 md:flex-row flex-col h-full">
             {/* Left: Preview */}
-            <div className="flex-2 flex flex-col items-center">
+            <div className="flex-2 flex flex-col items-center overflow-y-auto">
               <div className="bg-surface rounded-[28px] border border-border p-8 w-full flex flex-col items-center">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl mb-4 bg-accent-50 border border-accent-100">
                   {icon}
@@ -377,7 +377,7 @@ const WorkflowEditorPage: React.FC = () => {
 
               {/* Suggestion Mode Panel */}
               {suggestionMode && (
-                <div className="w-full mt-4 rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/60 overflow-hidden">
+                <div className="w-full mt-4 rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/60 shrink-0">
                   <div className="flex items-center justify-between px-4 pt-4 pb-2">
                     <div className="flex items-center gap-2">
                       <span className="w-6 h-6 rounded-full bg-amber-400 text-white text-xs font-bold flex items-center justify-center">!</span>
