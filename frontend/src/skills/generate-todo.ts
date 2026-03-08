@@ -1,7 +1,9 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
 import { callDifySkill } from '../utils/backendClient';
 
-/** 📋 生成代办清单 — 花椒 */
+/** 📋 生成代办清单 — 花椒
+ *  基于原型: structured-output (通过 Dify 调用)
+ */
 const generateTodo: SkillHandler = {
   id: 'generate-todo',
   async execute(ctx: SkillContext): Promise<SkillResult> {

@@ -79,7 +79,7 @@ function getAgentForCategory(category: string): { agentId: string; skillId: stri
     case '文章':
       return { agentId: 'writer', skillId: 'generate-article' };
     case 'Crafts':
-      return { agentId: 'crafts', skillId: 'generate-component' };
+      return { agentId: 'engineer', skillId: 'update-crafts' };
     case '功能扩展':
       return { agentId: 'manager', skillId: 'manage-workflow' };
     default:
@@ -94,7 +94,9 @@ const CATEGORY_ICONS: Record<string, string> = {
   '其他': '📌',
 };
 
-/** 📌 任务分配 — 花椒（AI 辅助拆解） */
+/** 📌 任务分配 — 花椒（AI 辅助拆解）
+ *  基于原型: structured-output + workflow-engine (复合调用)
+ */
 const assignTask: SkillHandler = {
   id: 'assign-task',
   async execute(ctx: SkillContext): Promise<SkillResult> {
@@ -146,7 +148,6 @@ const assignTask: SkillHandler = {
 
         const workflow: CreateWorkflowRequest = {
           name: todo.title,
-          icon,
           description: `[${todo.category}] ${todo.description}`,
           steps: [
             {

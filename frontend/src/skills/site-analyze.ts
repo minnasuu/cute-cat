@@ -34,7 +34,9 @@ function buildDifyInput(articleTitles: string[], craftNames: string[]): string {
   return `现有文章：${articlesPart}。现有crafts：${craftsPart}`;
 }
 
-/** 🔬 网站诊断 — 小白 */
+/** 🔬 网站诊断 — 小白
+ *  基于原型: text-to-text + db-query (复合调用)
+ */
 const siteAnalyze: SkillHandler = {
   id: 'site-analyze',
   async execute(ctx: SkillContext): Promise<SkillResult> {

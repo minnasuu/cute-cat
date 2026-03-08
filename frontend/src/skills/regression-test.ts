@@ -1,17 +1,20 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
+import { executePrimitive } from './primitives';
 
-/** 🧪 回归测试 — 小白 */
+/** 🧪 回归测试 — 小白
+ *  基于原型: browser-action
+ */
 const regressionTest: SkillHandler = {
   id: 'regression-test',
   async execute(ctx: SkillContext): Promise<SkillResult> {
     console.log(`[regression-test] agent=${ctx.agentId} @${ctx.timestamp}`);
-    // TODO: 接入 Puppeteer 自动化测试
-    return {
-      success: true,
-      data: { passed: 0, failed: 0, total: 0 },
-      summary: '对页面组件执行自动化回归测试',
-      status: 'success',
-    };
+
+    const result = await executePrimitive('browser-action', ctx, {
+      actionType: 'test',
+      targetUrl: '',
+    });
+
+    return { success: result.success, data: result.data, summary: result.summary, status: result.status };
   },
 };
 

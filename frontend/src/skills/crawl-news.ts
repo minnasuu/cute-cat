@@ -1,17 +1,21 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
+import { executePrimitive } from './primitives';
 
-/** 🕸️ 资讯爬取 — 雪 */
+/** 🕸️ 资讯爬取 — 雪
+ *  基于原型: api-call
+ */
 const crawlNews: SkillHandler = {
   id: 'crawl-news',
   async execute(ctx: SkillContext): Promise<SkillResult> {
     console.log(`[crawl-news] agent=${ctx.agentId} @${ctx.timestamp}`);
-    // TODO: 接入 Crawler / RSS 服务
-    return {
-      success: true,
-      data: { articles: [] },
-      summary: '爬取指定网站/RSS，获取最新资讯 → 输出 JSON 资讯列表',
-      status: 'success',
-    };
+
+    const result = await executePrimitive('api-call', ctx, {
+      url: '',
+      method: 'GET',
+      headers: '{}',
+    });
+
+    return { success: result.success, data: result.data, summary: result.summary, status: result.status };
   },
 };
 

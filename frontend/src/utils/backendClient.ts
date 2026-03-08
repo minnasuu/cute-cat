@@ -42,11 +42,14 @@ export const verifyEditorPassword = async (password: string): Promise<VerifyPass
 
 // ==================== Workflows API ====================
 
+import type { StepParam } from '../data/types';
+
 export interface WorkflowStep {
   agentId: string;
   skillId: string;
   action: string;
   inputFrom?: string;
+  params?: StepParam[];
 }
 
 export interface WorkflowDB {
@@ -67,7 +70,6 @@ export interface WorkflowDB {
 
 export interface CreateWorkflowRequest {
   name: string;
-  icon: string;
   description: string;
   steps: WorkflowStep[];
   startTime?: string;

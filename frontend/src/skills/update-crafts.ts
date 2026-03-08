@@ -1,17 +1,20 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
+import { executePrimitive } from './primitives';
 
-/** 🔄 Crafts 更新 — 小虎 */
+/** 🔄 Crafts 更新 — 小虎
+ *  基于原型: html-render
+ */
 const updateCrafts: SkillHandler = {
   id: 'update-crafts',
   async execute(ctx: SkillContext): Promise<SkillResult> {
     console.log(`[update-crafts] agent=${ctx.agentId} @${ctx.timestamp}`);
-    // TODO: 接入 Gemini Crafts 生成
-    return {
-      success: true,
-      data: { component: '' },
-      summary: '自动为 Crafts 页面新增交互 demo 和动画效果',
-      status: 'success',
-    };
+
+    const result = await executePrimitive('html-render', ctx, {
+      templateId: 'crafts',
+      outputType: 'html',
+    });
+
+    return { success: result.success, data: result.data, summary: result.summary, status: result.status };
   },
 };
 

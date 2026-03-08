@@ -1,17 +1,20 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
+import { executePrimitive } from './primitives';
 
-/** 🐱 招募新猫 — 蓝蓝 (HR) */
+/** 🐱 招募新猫 — 发发 (HR)
+ *  基于原型: structured-output
+ */
 const recruitCat: SkillHandler = {
   id: 'recruit-cat',
   async execute(ctx: SkillContext): Promise<SkillResult> {
     console.log(`[recruit-cat] agent=${ctx.agentId} @${ctx.timestamp}`);
-    // TODO: 接入 Gemini 生成新猫定义（角色/技能/外观）
-    return {
-      success: true,
-      data: { catId: '', role: '', skills: [] },
-      summary: '新猫已招募，角色和技能已定义',
-      status: 'success',
-    };
+
+    const result = await executePrimitive('structured-output', ctx, {
+      systemPrompt: '你是一位猫猫 HR。请根据以下需求，生成一只新猫的完整定义，包含 catId、role、name、skills、personality 等字段。',
+      difySkillId: '',
+    });
+
+    return { success: result.success, data: result.data, summary: result.summary, status: result.status };
   },
 };
 

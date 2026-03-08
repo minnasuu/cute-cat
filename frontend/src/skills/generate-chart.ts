@@ -1,17 +1,20 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
+import { executePrimitive } from './primitives';
 
-/** 📊 图表生成 — Pixel */
+/** 📊 图表生成 — Pixel
+ *  基于原型: chart-render
+ */
 const generateChart: SkillHandler = {
   id: 'generate-chart',
   async execute(ctx: SkillContext): Promise<SkillResult> {
     console.log(`[generate-chart] agent=${ctx.agentId} @${ctx.timestamp}`);
-    // TODO: 接入 Chart.js 图表生成
-    return {
-      success: true,
-      data: { chartUrl: '' },
-      summary: '根据 JSON 数据生成可视化图表',
-      status: 'success',
-    };
+
+    const result = await executePrimitive('chart-render', ctx, {
+      chartType: 'bar',
+      library: 'chartjs',
+    });
+
+    return { success: result.success, data: result.data, summary: result.summary, status: result.status };
   },
 };
 

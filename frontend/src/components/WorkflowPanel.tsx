@@ -42,16 +42,13 @@ interface ExecutionLog {
 
 /** 每只猫执行时的拟人化台词 */
 const workingDialogs: Record<string, string[]> = {
-  analytics: ['让我查查数据...', '正在分析中~ 📊', '数据看起来不错!'],
-  email: ['邮件编辑中...', '正在发送~ 📧', '送达成功!'],
-  writer: ['构思灵感中...', '奋笔疾书~ ✍️', '文章出炉!'],
-  crafts: ['排版设计中...', '组件拼装~ 🧩', '页面搭好了!'],
-  image: ['调色构图中...', '生成画面~ 🎨', '大作完成!'],
   manager: ['统筹规划中...', '调度安排~ 📋', '一切就绪!'],
-  text: ['图片处理中...', '像素运算~ 🔲', '处理完毕!'],
-  sing: ['记录整理中...', '纪要生成~ 📝', '记录完毕!'],
-  milk: ['仔细检查中...', '质量测试~ 🔎', '检测通过!'],
-  hr: ['翻阅简历中...', '面试评估~ 👥', '招募完成!'],
+  writer: ['构思灵感中...', '奋笔疾书~ ✍️', '文章出炉!'],
+  analyst: ['让我查查数据...', '正在分析中~ 📊', '数据看起来不错!'],
+  designer: ['调色构图中...', '生成画面~ 🎨', '大作完成!'],
+  reviewer: ['仔细检查中...', '质量测试~ 🔎', '检测通过!'],
+  ops: ['邮件编辑中...', '正在发送~ 📧', '送达成功!'],
+  engineer: ['代码审查中...', '构建编译~ 💻', '部署完毕!'],
 };
 
 const getAgent = (agentId: string) => assistants.find((a) => a.id === agentId);
@@ -220,7 +217,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     setEditingWorkflow({
       id: '',
       name: '',
-      icon: '📋',
       description: '',
       steps: [],
       persistent: false,
@@ -249,7 +245,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     const isNew = !wf.id;
     const req: CreateWorkflowRequest = {
       name: wf.name,
-      icon: wf.icon,
       description: wf.description,
       steps: wf.steps,
       startTime: wf.startTime,
@@ -646,7 +641,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                 onClick={() => editorMode && handleRunWorkflow(wf)}
               >
                 <div className="wf-card-header">
-                  <span className="wf-icon">{wf.icon}</span>
                   <span className="wf-name">{wf.name}</span>
                   <div className="wf-tags">
                     {wf.persistent && <span className="wf-tag wf-tag-persistent">常驻</span>}
@@ -730,7 +724,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
             {/* 顶部标题栏 */}
             <div className="stage-header">
               <div className="stage-title">
-                {activeWorkflow.icon&&<span className="stage-icon">{activeWorkflow.icon}</span>}
                 <span className="stage-name">{activeWorkflow.name}</span>
                 <span className="stage-model-badge">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

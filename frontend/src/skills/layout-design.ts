@@ -1,17 +1,20 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
+import { executePrimitive } from './primitives';
 
-/** 📐 排版布局 — 小虎 */
+/** 📐 排版布局 — 小虎
+ *  基于原型: html-render
+ */
 const layoutDesign: SkillHandler = {
   id: 'layout-design',
   async execute(ctx: SkillContext): Promise<SkillResult> {
     console.log(`[layout-design] agent=${ctx.agentId} @${ctx.timestamp}`);
-    // TODO: 接入 Template Engine 排版
-    return {
-      success: true,
-      data: { html: '' },
-      summary: '将文章+图片组合排版为精美页面',
-      status: 'success',
-    };
+
+    const result = await executePrimitive('html-render', ctx, {
+      templateId: 'layout',
+      outputType: 'html',
+    });
+
+    return { success: result.success, data: result.data, summary: result.summary, status: result.status };
   },
 };
 

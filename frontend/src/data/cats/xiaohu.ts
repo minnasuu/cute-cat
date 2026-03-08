@@ -1,35 +1,39 @@
 import { sanhuaColors } from '../themes';
-import type { Assistant, CatColors, Skill } from '../types';
+import type { Assistant, Skill } from '../types';
 
 export const xiaohuSkills: Skill[] = [
-  { id: 'generate-component', name: '组件生成', icon: '🧩', description: '根据描述生成 React/HTML 创意组件代码', input: 'text', output: 'html', provider: 'Gemini', mockResult: '输出 HTML/JSX 组件代码' },
-  { id: 'update-crafts', name: 'Crafts 更新', icon: '🔄', description: '自动为 Crafts 页面新增交互 demo 和动画效果', input: 'text', output: 'html', provider: 'Gemini', mockResult: '输出新 Craft 组件 (含动画)' },
-  { id: 'layout-design', name: '排版布局', icon: '📐', description: '将文章+图片组合排版为精美页面', input: 'json', output: 'html', provider: 'Template Engine', mockResult: '输出响应式 HTML 页面' },
+  { id: 'generate-image', name: 'AI 绘图', icon: '🖼️', description: '根据文字描述生成高质量图片', input: 'text', output: 'image', provider: 'Gemini', mockResult: '生成 1024x1024 PNG 图片' },
+  { id: 'generate-chart', name: '图表生成', icon: '📊', description: '将 JSON 数据转化为可视化图表', input: 'json', output: 'image', provider: 'Chart.js', mockResult: '生成折线图/柱状图 PNG' },
+  { id: 'generate-component', name: '组件生成', icon: '🧩', description: '生成 React/HTML 创意组件代码', input: 'text', output: 'html', provider: 'Gemini', mockResult: '输出 HTML/JSX 组件代码' },
+  { id: 'layout-design', name: '排版布局', icon: '📐', description: '将内容组合排版为精美页面', input: 'json', output: 'html', provider: 'Template Engine', mockResult: '输出响应式 HTML 页面' },
+  { id: 'image-enhance', name: '图片增强', icon: '🔆', description: '对图片进行超分辨率放大和降噪', input: 'image', output: 'image', provider: 'Real-ESRGAN', mockResult: '输出 4x 超分辨率图片' },
   { id: 'css-generate', name: '样式生成', icon: '🎨', description: '为组件生成匹配的 CSS/动画代码', input: 'html', output: 'file', provider: 'Gemini', mockResult: '输出 SCSS 样式文件' },
 ];
 
 export const xiaohuMessages = [
-  '大家都在努力工作呢',
-  '灵感迸发中...',
-  '创意无限',
-  '设计感满满',
-  '俺生成的 crafts 满意吗？',
+  '审美在线',
+  '设计灵感来了！',
+  '高清大图生成中!',
+  '这张图太美了! ✨',
+  '创意无限🎨',
 ];
 
 export const xiaohu: Assistant = {
-  id: 'crafts',
+  id: 'designer',
   name: '小虎',
-  role: 'Builder',
-  description: '持续更新 Crafts 创意页面，生成前端组件和交互 demo。',
-  accent: '#FFB74D',
-  systemPrompt: `你是「小虎」，一只活力十足的三花猫猫建造师。你是团队的创意工匠，专注于前端组件和视觉呈现。
-性格：创意十足、动手能力强、追求完美细节，对美有独到的品味。
+  role: 'Visual Designer',
+  description: '视觉设计师。AI 绘图、图表可视化、组件设计、排版布局、样式生成，让一切视觉呈现都出彩。',
+  accent: '#B39DDB',
+  systemPrompt: `你是「小虎」，一只富有艺术天赋的暹罗猫猫视觉设计师。你负责所有视觉内容的创作和前端呈现。
+性格：浪漫唯美、审美独到、对构图和色彩极其敏感，有点完美主义。
 能力范围：
+- AI 绘图：根据文字描述调用生成模型创作高质量图片
+- 图表生成：将 JSON 数据转化为直观的可视化图表
 - 组件生成：根据需求描述生成 React/HTML 创意组件代码
-- Crafts 更新：为 Crafts 创意页面持续产出交互 demo 和动画效果
 - 排版布局：将文章和图片组合排版为响应式精美页面
+- 图片增强：对图片进行超分辨率放大和降噪处理
 - 样式生成：为组件匹配 CSS/SCSS 样式和动画代码
-输出要求：代码整洁、语义化，遵循现代前端最佳实践。注重交互体验和视觉细节。`,
+创作风格：注重画面构图、色彩和谐和情感表达。代码整洁，遵循现代前端最佳实践。`,
   skills: xiaohuSkills,
   item: 'palette',
   catColors: sanhuaColors,

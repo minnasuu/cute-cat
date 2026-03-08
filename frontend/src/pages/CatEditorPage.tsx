@@ -66,7 +66,7 @@ const DEFAULT_COLORS: CatColors = {
   bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '',
 };
 
-const ROLE_OPTIONS = ['Manager', 'Writer', 'Scout', 'Engineer', 'Builder', 'Messenger', 'Recorder', 'QA Inspector', 'HR', 'Image Creator', 'Custom'];
+const ROLE_OPTIONS = ['Project Manager', 'Content Editor', 'Data Analyst', 'Visual Designer', 'QA Reviewer', 'Operations Assistant', 'Engineer', 'Custom'];
 
 const CatEditorPage: React.FC = () => {
   const { teamId, catId } = useParams<{ teamId: string; catId: string }>();

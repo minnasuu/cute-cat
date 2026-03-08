@@ -28,7 +28,9 @@ interface WeeklyStats {
   summary: string;
 }
 
-/** 📒 任务日志 — 咪咪 */
+/** 📒 任务日志 — 咪咪
+ *  基于原型: db-query (数据库统计查询)
+ */
 const taskLog: SkillHandler = {
   id: 'task-log',
   async execute(ctx: SkillContext): Promise<SkillResult> {

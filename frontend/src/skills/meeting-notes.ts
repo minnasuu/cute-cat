@@ -5,14 +5,11 @@ import { callDifySkill } from '../utils/backendClient';
 const AGENT_NAMES: Record<string, string> = {
   manager: '花椒',
   writer: '阿蓝',
-  analytics: '雪',
-  email: '年年',
-  crafts: '小虎',
-  image: 'Pixel',
-  text: '黄金',
-  sing: '咪咪',
-  milk: '小白',
-  hr: '发发',
+  analyst: '雪',
+  designer: 'Pixel',
+  reviewer: '小白',
+  ops: '年年',
+  engineer: '黄金',
 };
 
 /** 从上游 input 中提取所有出现过的 agentId */
@@ -46,11 +43,11 @@ function buildMeetingInput(input: unknown, attendeeNames: string[], date: string
   // 会议元信息
   parts.push(`【会议信息】`);
   parts.push(`日期：${date}`);
-  parts.push(`主持人：咪咪`);
+  parts.push(`主持人：阿蓝`);
   if (attendeeNames.length > 0) {
-    parts.push(`参会人：咪咪、${attendeeNames.join('、')}`);
+    parts.push(`参会人：阿蓝、${attendeeNames.join('、')}`);
   } else {
-    parts.push(`参会人：咪咪`);
+    parts.push(`参会人：阿蓝`);
   }
 
   if (!input) return parts.join('\n');
@@ -105,7 +102,9 @@ function buildMeetingInput(input: unknown, attendeeNames: string[], date: string
   return parts.join('\n');
 }
 
-/** 📝 会议纪要 — 咪咪 */
+/** 📝 会议纪要 — 咪咪
+ *  基于原型: text-to-text (通过 Dify 调用)
+ */
 const meetingNotes: SkillHandler = {
   id: 'meeting-notes',
   async execute(ctx: SkillContext): Promise<SkillResult> {
@@ -120,7 +119,7 @@ const meetingNotes: SkillHandler = {
       const attendeeIds = extractAttendees(ctx.input);
       // 咪咪是主持人，不重复列入
       const attendeeNames = attendeeIds
-        .filter((id) => id !== 'sing')
+        .filter((id) => id !== ctx.agentId)
         .map((id) => AGENT_NAMES[id] || id);
 
       const meetingContent = buildMeetingInput(ctx.input, attendeeNames, dateStr);

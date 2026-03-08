@@ -18,16 +18,13 @@ const getSkill = (agentId: string, skillId: string): Skill | undefined => {
 }
 
 const workingDialogs: Record<string, string[]> = {
-  analytics: ['让我查查数据...', '正在分析中~', '数据看起来不错!'],
-  email: ['邮件编辑中...', '正在发送~', '送达成功!'],
-  writer: ['构思灵感中...', '奋笔疾书~', '文章出炉!'],
-  crafts: ['排版设计中...', '组件拼装~', '页面搭好了!'],
-  image: ['调色构图中...', '生成画面~', '大作完成!'],
   manager: ['统筹规划中...', '调度安排~', '一切就绪!'],
-  text: ['图片处理中...', '像素运算~', '处理完毕!'],
-  sing: ['记录整理中...', '纪要生成~', '记录完毕!'],
-  milk: ['仔细检查中...', '质量测试~', '检测通过!'],
-  hr: ['翻阅简历中...', '面试评估~', '招募完成!'],
+  writer: ['构思灵感中...', '奋笔疾书~', '文章出炉!'],
+  analyst: ['让我查查数据...', '正在分析中~', '数据看起来不错!'],
+  designer: ['调色构图中...', '生成画面~', '大作完成!'],
+  reviewer: ['仔细检查中...', '质量测试~', '检测通过!'],
+  ops: ['邮件编辑中...', '正在发送~', '送达成功!'],
+  engineer: ['代码审查中...', '构建编译~', '部署完毕!'],
 }
 
 type StepStatus = 'waiting' | 'active' | 'done'
@@ -115,7 +112,7 @@ export const LandFeatureWorkflows = () => {
               <div className="w-3 h-3 rounded-full bg-green-400/60" />
             </div>
             <div className="flex-1 text-center">
-              <span className="text-xs font-bold text-text-tertiary">{DEMO_WORKFLOW.icon} {DEMO_WORKFLOW.name}</span>
+              <span className="text-xs font-bold text-text-tertiary">{DEMO_WORKFLOW.name}</span>
               <span className="text-[10px] text-text-tertiary ml-2">· {DEMO_WORKFLOW.description}</span>
             </div>
             <div className="w-12" />

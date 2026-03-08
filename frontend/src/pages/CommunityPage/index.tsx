@@ -8,24 +8,31 @@ import {
   xue, xueSkills,
   niannian, niannianSkills,
   xiaohu, xiaohuSkills,
-  pixel, pixelSkills,
   huangjin, huangjinSkills,
-  mimi, mimiSkills,
-  xiaobai, xiaobaiSkills,
   fafa, fafaSkills,
 } from '../../data/cats';
 import type { Assistant, Skill } from '../../data/types';
-import { officialWorkflows } from './officialWorkflows';
 import { skillCategories, skillGroups, skillPool } from '../../data/skills';
 import { appearanceTemplates } from '../../data/themes';
 import { personalityTemplates } from '../../data/personality';
+import { workflows } from '../../data/workflows';
 
 /* ── All built-in cats ── */
-const allCats: Assistant[] = [huajiao, alan, xue, niannian, xiaohu, pixel, huangjin, mimi, xiaobai, fafa];
+const allCats: Assistant[] = [huajiao, alan, xue, xiaohu, fafa, niannian, huangjin];
 const allCatSkills: Record<string, Skill[]> = {
-  manager: huajiaoSkills, writer: alanSkills, analytics: xueSkills,
-  email: niannianSkills, crafts: xiaohuSkills, image: pixelSkills,
-  text: huangjinSkills, sing: mimiSkills, milk: xiaobaiSkills, hr: fafaSkills,
+  manager: huajiaoSkills, writer: alanSkills, analyst: xueSkills,
+  designer: xiaohuSkills, reviewer: fafaSkills, ops: niannianSkills,
+  engineer: huangjinSkills,
+};
+
+/* ── agentId → 猫猫名映射 ── */
+const agentNameMap: Record<string, string> = Object.fromEntries(allCats.map(c => [c.id, c.name]));
+
+/* ── 工作流主题色 ── */
+const workflowColors: Record<string, string> = {
+  'daily-news': '#96BAFF',
+  'content-publish': '#FF6B6B',
+  'data-report': '#B39DDB',
 };
 
 /* ── Tab types ── */
@@ -41,9 +48,9 @@ const CommunityPage = () => {
   const tabs: { id: Tab; label: string; icon: string; count: number }[] = [
     { id: 'cats', label: '官方猫猫', icon: '🐱', count: allCats.length },
     { id: 'skills', label: '技能池', icon: '⚡', count: skillPool.length },
-    { id: 'roles', label: '角色', icon: '🎭', count: skillGroups.length },
-    { id: 'workflows', label: '官方工作流', icon: '🔄', count: officialWorkflows.length },
-    { id: 'appearances', label: '外形模版', icon: '🎨', count: appearanceTemplates.length },
+    // { id: 'roles', label: '角色', icon: '🎭', count: skillGroups.length },
+    { id: 'workflows', label: '官方工作流', icon: '🔄', count: workflows.length },
+    { id: 'appearances', label: '外形模版', icon: '🐾', count: appearanceTemplates.length },
     { id: 'personalities', label: '性格模版', icon: '💬', count: personalityTemplates.length },
   ];
 
@@ -344,11 +351,14 @@ const CommunityPage = () => {
         {tab === 'workflows' && (
           <div>
             <p className="text-text-secondary font-medium mb-8 max-w-2xl">
-              基于知名方法论搭建的官方工作流模版，开箱即用。每个工作流串联多只猫猫协作完成复杂任务。
+              官方预设的自动化工作流，串联多只猫猫协作完成复杂任务，开箱即用。
             </p>
             <div className="space-y-5">
-              {officialWorkflows.map(wf => {
+              {workflows.map(wf => {
                 const isExpanded = expandedWf === wf.id;
+                const color = workflowColors[wf.id] ?? '#8DB889';
+                const involvedCats = [...new Set(wf.steps.map(s => s.agentId))].map(id => allCats.find(c => c.id === id)).filter(Boolean) as Assistant[];
+
                 return (
                   <div
                     key={wf.id}
@@ -363,33 +373,41 @@ const CommunityPage = () => {
                     >
                       <div className="flex items-start gap-4">
                         <div
-                          className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
-                          style={{ background: `${wf.color}18` }}
+                          className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 text-white"
+                          style={{ background: color }}
                         >
-                          {wf.icon}
+                          {wf.id === 'daily-news' ? '📰' : wf.id === 'content-publish' ? '✍️' : '📊'}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2.5 flex-wrap mb-1">
-                            <h3 className="text-lg font-black text-text-primary">{wf.name}</h3>
-                            <span
-                              className="px-2.5 py-0.5 rounded-full text-[10px] font-bold text-white"
-                              style={{ background: wf.color }}
-                            >
-                              {wf.methodology}
-                            </span>
-                          </div>
+                          <h4 className="text-base font-black text-text-primary mb-1">{wf.name}</h4>
                           <p className="text-sm text-text-secondary font-medium leading-relaxed line-clamp-2">
                             {wf.description}
                           </p>
-                          <div className="flex flex-wrap gap-1.5 mt-3">
-                            {wf.tags.map(tag => (
-                              <span key={tag} className="px-2.5 py-0.5 rounded-full bg-surface-secondary border border-border text-[10px] font-bold text-text-tertiary">
-                                {tag}
-                              </span>
-                            ))}
-                            <span className="px-2.5 py-0.5 rounded-full bg-surface-secondary border border-border text-[10px] font-bold text-text-tertiary">
+                          {/* Meta badges */}
+                          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-surface-secondary border border-border text-text-tertiary">
                               {wf.steps.length} 步骤
                             </span>
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-surface-secondary border border-border text-text-tertiary">
+                              {involvedCats.length} 只猫协作
+                            </span>
+                            {wf.scheduled && (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold text-white" style={{ background: color }}>
+                                ⏰ {wf.cron}
+                              </span>
+                            )}
+                            {/* Participating cat avatars */}
+                            <div className="flex -space-x-1.5 ml-1">
+                              {involvedCats.map(cat => (
+                                <div
+                                  key={cat.id}
+                                  className="w-6 h-6 rounded-full overflow-hidden border-2 border-surface bg-surface-secondary flex items-center justify-center"
+                                  title={cat.name}
+                                >
+                                  <CatSVG colors={cat.catColors} size={18} />
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                         <svg
@@ -404,29 +422,24 @@ const CommunityPage = () => {
                     {/* Expanded content */}
                     {isExpanded && (
                       <div className="px-6 pb-6 pt-0">
-                        {/* Scenario */}
-                        <div className="mb-6 px-4 py-3 rounded-xl bg-surface-secondary/60 border border-border">
-                          <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-1">适用场景</p>
-                          <p className="text-sm text-text-secondary font-medium">{wf.scenario}</p>
-                        </div>
-
                         {/* Steps flow */}
                         <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-4">工作流步骤</p>
                         <div className="space-y-0">
                           {wf.steps.map((step, i) => {
                             const cat = allCats.find(c => c.id === step.agentId);
+                            const skill = skillPool.find(s => s.id === step.skillId);
                             return (
                               <div key={i} className="flex gap-4">
                                 {/* Timeline line */}
                                 <div className="flex flex-col items-center">
                                   <div
                                     className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0"
-                                    style={{ background: wf.color }}
+                                    style={{ background: color }}
                                   >
                                     {i + 1}
                                   </div>
                                   {i < wf.steps.length - 1 && (
-                                    <div className="w-0.5 flex-1 min-h-[20px]" style={{ background: `${wf.color}30` }} />
+                                    <div className="w-0.5 flex-1 min-h-[20px]" style={{ background: `${color}30` }} />
                                   )}
                                 </div>
                                 {/* Step content */}
@@ -438,15 +451,34 @@ const CommunityPage = () => {
                                           <div className="w-6 h-6 rounded-full overflow-hidden border border-border bg-surface flex items-center justify-center">
                                             <CatSVG colors={cat.catColors} size={18} />
                                           </div>
-                                          <span className="text-xs font-bold" style={{ color: cat.accent }}>{step.agentName}</span>
+                                          <span className="text-xs font-bold" style={{ color: cat.accent }}>{agentNameMap[step.agentId] ?? step.agentId}</span>
                                         </div>
                                       )}
-                                      <span className="text-text-tertiary text-xs">·</span>
-                                      <span className="px-2 py-0.5 rounded bg-surface-tertiary text-[10px] font-bold text-text-tertiary">
-                                        {step.skillName}
-                                      </span>
+                                      {skill && (
+                                        <>
+                                          <span className="text-text-tertiary text-xs">·</span>
+                                          <span className="text-[11px] font-bold text-text-secondary">
+                                            {skill.icon} {skill.name}
+                                          </span>
+                                        </>
+                                      )}
+                                      {step.inputFrom && (
+                                        <span className="text-[9px] font-bold uppercase bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded ml-auto">
+                                          ← {agentNameMap[step.inputFrom] ?? step.inputFrom}
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-sm text-text-primary font-medium">{step.action}</p>
+                                    {/* Step params preview */}
+                                    {step.params && step.params.length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5 mt-2">
+                                        {step.params.map(p => (
+                                          <span key={p.key} className="px-2 py-0.5 rounded text-[9px] font-bold bg-surface-tertiary text-text-tertiary border border-border">
+                                            {p.label}{p.required ? ' *' : ''}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>

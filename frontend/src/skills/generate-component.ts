@@ -1,17 +1,20 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
+import { executePrimitive } from './primitives';
 
-/** 🧩 组件生成 — 小虎 */
+/** 🧩 组件生成 — 小虎
+ *  基于原型: html-render
+ */
 const generateComponent: SkillHandler = {
   id: 'generate-component',
   async execute(ctx: SkillContext): Promise<SkillResult> {
     console.log(`[generate-component] agent=${ctx.agentId} @${ctx.timestamp}`);
-    // TODO: 接入 Gemini 组件代码生成
-    return {
-      success: true,
-      data: { html: '' },
-      summary: '根据描述生成 React/HTML 创意组件代码',
-      status: 'success',
-    };
+
+    const result = await executePrimitive('html-render', ctx, {
+      templateId: 'component',
+      outputType: 'html',
+    });
+
+    return { success: result.success, data: result.data, summary: result.summary, status: result.status };
   },
 };
 
