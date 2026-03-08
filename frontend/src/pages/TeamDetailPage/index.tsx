@@ -177,15 +177,28 @@ const TeamDetailPage: React.FC = () => {
           return next;
         });
         setCurrentDialog(result.summary || dialogs[2]);
+        const failed = result.status === 'error' || result.success === false;
         setTimeout(() => {
           setCompletedSteps(prev => [...prev, runningStepIndex]);
-          setRunningStepIndex(prev => prev + 1);
+          if (failed) {
+            setIsRunning(false);
+            setRunningStepIndex(-1);
+          } else {
+            setRunningStepIndex(prev => prev + 1);
+          }
         }, 500);
       }).catch(() => {
+        setStepResults((prev) => {
+          const next = new Map(prev);
+          next.set(runningStepIndex, { success: false, data: null, summary: '执行出错', status: 'error' });
+          stepResultsRef.current = next;
+          return next;
+        });
         setCurrentDialog('出错了...');
         setTimeout(() => {
           setCompletedSteps(prev => [...prev, runningStepIndex]);
-          setRunningStepIndex(prev => prev + 1);
+          setIsRunning(false);
+          setRunningStepIndex(-1);
         }, 500);
       });
     }, STEP_DURATION);
