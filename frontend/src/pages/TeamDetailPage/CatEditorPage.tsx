@@ -113,8 +113,9 @@ const CatEditorPage: React.FC = () => {
         setName(cat.name);
         setRole(cat.role);
         setDescription(cat.description || '');
-        setCatColors(cat.catColors);
-        setTailEnabled(!!cat.catColors.tail);
+        const colors = cat.catColors || DEFAULT_COLORS;
+        setCatColors(colors);
+        setTailEnabled(!!colors.tail);
         setSystemPrompt(cat.systemPrompt || '');
         setSelectedSkills((cat.skills || []).map((s: any) => s.id));
         setAccent(cat.accent || '#8DB889');

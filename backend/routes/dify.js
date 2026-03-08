@@ -279,6 +279,13 @@ const SKILL_SYSTEM_PROMPTS = {
 
 只返回 JSON 数组，不要添加任何额外文字。`,
 
+  'summarize-news': `你是一位数据分析师。请对以下爬取的资讯内容进行智能摘要和分类。
+规则：
+1. 按领域分组（如 AI/前端/设计/行业动态等）
+2. 每条资讯用一句话概括核心要点
+3. 最后给出整体趋势判断（2-3句话）
+4. 用中文回复，简洁专业，适当使用 emoji`,
+
   'ai-chat': `你是一只友善的猫猫助手 CAT，团队的万能基础成员。请根据用户输入完成对应的文本任务（总结、分析、翻译、改写、问答等）。用简洁清晰的中文回答。`,
 
   'workflow-gen': `你是一个工作流编排助手，根据用户需求和可用猫猫团队生成工作流配置。严格输出 JSON，不要任何其他文字。
@@ -454,5 +461,133 @@ router.post('/skill', optionalAuth, async (req, res) => {
     });
   }
 });
+
+// =====================================================================
+// POST /api/dify/crawl — RSS / URL 爬取代理
+// 前端 crawl-news 技能通过此接口获取外部内容，避免 CORS 问题
+// =====================================================================
+router.post('/crawl', async (req, res) => {
+  const { sources = [], keyword = '', maxItems = 20 } = req.body;
+
+  if (!Array.isArray(sources) || sources.length === 0) {
+    return res.status(400).json({ error: '请提供至少一个 RSS / URL 源' });
+  }
+
+  const limit = Math.min(Number(maxItems) || 20, 100);
+  const keywords = keyword
+    ? keyword.split(/[,，、\s]+/).filter(Boolean).map(k => k.toLowerCase())
+    : [];
+
+  const allItems = [];
+
+  for (const src of sources.slice(0, 10)) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+
+      const resp = await fetch(src, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'CuteCat-Crawler/1.0',
+          'Accept': 'application/rss+xml, application/xml, application/atom+xml, text/xml, text/html, */*',
+        },
+      });
+      clearTimeout(timer);
+
+      if (!resp.ok) {
+        allItems.push({ source: src, error: `HTTP ${resp.status}` });
+        continue;
+      }
+
+      const contentType = resp.headers.get('content-type') || '';
+      const body = await resp.text();
+
+      if (contentType.includes('xml') || contentType.includes('rss') || body.trimStart().startsWith('<?xml') || body.trimStart().startsWith('<rss') || body.trimStart().startsWith('<feed')) {
+        // RSS / Atom 解析
+        const items = parseRSSItems(body, src, limit);
+        allItems.push(...items);
+      } else if (contentType.includes('json')) {
+        // JSON API 直接返回
+        try {
+          const json = JSON.parse(body);
+          const arr = Array.isArray(json) ? json : (json.items || json.data || json.results || json.articles || [json]);
+          for (const item of arr.slice(0, limit)) {
+            allItems.push({
+              title: item.title || item.name || '(无标题)',
+              summary: item.summary || item.description || item.content || '',
+              link: item.link || item.url || src,
+              pubDate: item.pubDate || item.published || item.date || '',
+              source: src,
+            });
+          }
+        } catch {
+          allItems.push({ source: src, error: 'JSON 解析失败' });
+        }
+      } else {
+        // 普通 HTML — 提取 title 和 meta description
+        const titleMatch = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const descMatch = body.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)
+          || body.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i);
+        allItems.push({
+          title: titleMatch ? titleMatch[1].trim() : '(无标题)',
+          summary: descMatch ? descMatch[1].trim() : body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500),
+          link: src,
+          pubDate: '',
+          source: src,
+        });
+      }
+    } catch (err) {
+      const msg = err.name === 'AbortError' ? '请求超时 (15s)' : (err.message || String(err));
+      allItems.push({ source: src, error: msg });
+    }
+  }
+
+  // 关键词过滤
+  let filtered = allItems;
+  if (keywords.length > 0) {
+    filtered = allItems.filter(item => {
+      if (item.error) return true; // 保留错误项
+      const text = `${item.title || ''} ${item.summary || ''}`.toLowerCase();
+      return keywords.some(k => text.includes(k));
+    });
+  }
+
+  res.json({
+    items: filtered.slice(0, limit),
+    total: filtered.length,
+    sourcesCount: sources.length,
+    keyword: keyword || null,
+  });
+});
+
+/** 简易 RSS/Atom XML 解析（无需额外依赖） */
+function parseRSSItems(xml, source, limit) {
+  const items = [];
+  // RSS 2.0 <item>
+  const rssItems = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) || [];
+  // Atom <entry>
+  const atomEntries = xml.match(/<entry[\s>][\s\S]*?<\/entry>/gi) || [];
+  const entries = rssItems.length > 0 ? rssItems : atomEntries;
+
+  for (const entry of entries.slice(0, limit)) {
+    const getTag = (tag) => {
+      const m = entry.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+      return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
+    };
+    const getLinkHref = () => {
+      const m = entry.match(/<link[^>]+href=["']([^"']*)["']/i);
+      return m ? m[1] : getTag('link');
+    };
+
+    items.push({
+      title: getTag('title') || '(无标题)',
+      summary: getTag('description') || getTag('summary') || getTag('content') || '',
+      link: getLinkHref() || getTag('link') || '',
+      pubDate: getTag('pubDate') || getTag('published') || getTag('updated') || '',
+      source,
+    });
+  }
+  return items;
+}
 
 module.exports = router;

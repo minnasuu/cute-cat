@@ -636,9 +636,6 @@ const TeamDetailPage: React.FC = () => {
                   <button className="replay-btn" onClick={() => handleRunWorkflow(executingWorkflow.id)}>
                     再来一次
                   </button>
-                  <button className="replay-btn" onClick={handleCloseExecution} style={{ marginLeft: 8 }}>
-                    关闭
-                  </button>
                 </div>
               )}
             </div>
