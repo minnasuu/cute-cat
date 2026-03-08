@@ -4,6 +4,7 @@ const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const { createDefaultCat } = require('./cats');
 
 // All routes require auth
 router.use(authMiddleware);
@@ -50,6 +51,10 @@ router.post('/', async (req, res) => {
     const team = await prisma.team.create({
       data: { name, description, icon, ownerId: req.userId },
     });
+
+    // 自动为新团队添加一只默认 CAT 猫猫
+    await createDefaultCat(team.id);
+
     res.json(team);
   } catch (err) {
     console.error('[teams] create error:', err);

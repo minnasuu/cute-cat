@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient } from '../utils/apiClient';
-import { setOnAiUsageUpdate } from '../utils/backendClient';
+import { setOnAiUsageUpdate, setGetCurrentUserEmail } from '../utils/backendClient';
 
 export interface User {
   id: string;
@@ -85,6 +85,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setOnAiUsageUpdate(updateAiUsage);
     return () => setOnAiUsageUpdate(null);
   }, [updateAiUsage]);
+
+  // 注册全局获取当前用户邮箱
+  useEffect(() => {
+    setGetCurrentUserEmail(() => user?.email ?? null);
+    return () => setGetCurrentUserEmail(null);
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, updateAiUsage }}>

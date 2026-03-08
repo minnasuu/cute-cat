@@ -55,6 +55,9 @@ export const skillCategories: { id: SkillCategory; name: string; icon: string; c
 ]
 
 export const skillPool: SkillTemplate[] = [
+  // ── 通用（默认猫猫 CAT 专属，基于 text-to-text 原型）──
+  { id: 'ai-chat', name: 'AI 对话', icon: '💬', category: 'content', description: '通用 AI 文生文，可处理总结、分析、翻译、改写等文本任务', input: 'text', output: 'text', primitiveId: 'text-to-text', provider: 'Dify' },
+
   // ── 内容创作（基于 text-to-text / structured-output 原型）──
   { id: 'generate-article',  name: '文章生成',   icon: '📝', category: 'content', description: '根据主题和素材生成完整文章',           input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Gemini',
     paramDefs: [
@@ -207,6 +210,15 @@ export interface SkillGroup {
 }
 
 export const skillGroups: SkillGroup[] = [
+  {
+    id: 'default',
+    name: '默认助手',
+    icon: '💬',
+    color: '#A0A0A0',
+    description: '通用 AI 文生文能力，可处理总结、分析、翻译、改写等任务',
+    skillIds: ['ai-chat'],
+    catId: 'default',
+  },
   {
     id: 'pm',
     name: '项目经理',

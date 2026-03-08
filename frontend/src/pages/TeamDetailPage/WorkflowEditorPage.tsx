@@ -228,10 +228,24 @@ const WorkflowEditorPage: React.FC = () => {
       if (result.persistent !== undefined) setPersistent(result.persistent);
 
       if (result.suggestionMode) {
+        // 查找团队中的默认猫猫 CAT（role === 'Default'）
+        const defaultCat = cats.find(c => c.role === 'Default');
+        if (defaultCat && Array.isArray(result.steps)) {
+          // 将空 agentId 的步骤自动分配给 CAT，技能设为 ai-chat
+          const patchedSteps = result.steps.map(s => {
+            if (!s.agentId) {
+              return { ...s, agentId: defaultCat.id, skillId: 'ai-chat' };
+            }
+            return s;
+          });
+          setSteps(patchedSteps);
+          setSuggestionSummary(result.suggestionSummary || '部分步骤已自动由默认猫猫 CAT 承接，建议添加专业猫猫以获得更好效果');
+        } else {
+          setSuggestionSummary(result.suggestionSummary || '当前团队缺少完成该工作流所需的猫猫或技能');
+        }
         setSuggestionMode(true);
         setSuggestedCats(result.suggestedCats || []);
         setSuggestedSkills(result.suggestedSkills || []);
-        setSuggestionSummary(result.suggestionSummary || '当前团队缺少完成该工作流所需的猫猫或技能');
       }
     } finally {
       setAiLoading(false);

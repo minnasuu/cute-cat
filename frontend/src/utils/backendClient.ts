@@ -248,6 +248,11 @@ export const getCurrentAIModel = () => _currentAIModel;
 let _onAiUsageUpdate: ((aiUsed: number, aiQuota?: number) => void) | null = null;
 export const setOnAiUsageUpdate = (cb: ((aiUsed: number, aiQuota?: number) => void) | null) => { _onAiUsageUpdate = cb; };
 
+/** 全局获取当前登录用户邮箱 */
+let _getCurrentUserEmail: (() => string | null) | null = null;
+export const setGetCurrentUserEmail = (fn: (() => string | null) | null) => { _getCurrentUserEmail = fn; };
+export const getCurrentUserEmail = (): string | null => _getCurrentUserEmail ? _getCurrentUserEmail() : null;
+
 export interface AIModelInfo {
   id: string;
   name: string;

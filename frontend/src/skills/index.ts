@@ -56,6 +56,9 @@ import recruitCat from './recruit-cat';
 import teamReview from './team-review';
 import catTraining from './cat-training';
 
+// --- CAT (default) ---
+import aiChat from './ai-chat';
+
 /** skillId → SkillHandler 映射表 */
 const handlers: SkillHandler[] = [
   crawlNews, summarizeNews, queryDashboard, trendAnalysis,
@@ -68,6 +71,7 @@ const handlers: SkillHandler[] = [
   taskLog, meetingNotes,
   qualityCheck, contentReview, regressionTest,
   recruitCat, teamReview, catTraining,
+  aiChat,
 ];
 
 export const skillRegistry = new Map<string, SkillHandler>(

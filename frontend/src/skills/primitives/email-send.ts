@@ -1,8 +1,8 @@
 import type { PrimitiveHandler, PrimitiveContext, PrimitiveResult } from './types';
-import { sendEmail } from '../../utils/backendClient';
+import { sendEmail, getCurrentUserEmail } from '../../utils/backendClient';
 import { marked } from 'marked';
 
-const DEFAULT_TO = 'minhansu508@gmail.com';
+const FALLBACK_TO = '';
 
 function mdToHtml(md: string): string {
   return marked.parse(md, { async: false }) as string;
@@ -49,7 +49,7 @@ const emailSend: PrimitiveHandler = {
     } = ctx.config as Record<string, string>;
 
     const input = ctx.input as Record<string, unknown> | string | undefined;
-    let to = DEFAULT_TO;
+    let to = getCurrentUserEmail() || FALLBACK_TO;
     let subject = defaultSubject;
     let html = '';
     let text = '';

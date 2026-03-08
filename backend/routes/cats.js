@@ -311,6 +311,78 @@ const CAT_TEMPLATES = [
     catColors: { body: '#F5F5F5', bodyDark: '#D5D5D5', belly: '#FFFFFF', earInner: '#FFB5C5', eyes: '#542615', nose: '#542615', blush: '#FFB5C5', stroke: '#333333', apron: '#E8A0BF', apronLight: '#FCE4EC', apronLine: '#E8A0BF', desk: '#E8C8D8', deskDark: '#C4919E', deskLeg: '#D4A8B5', paw: '#FFFFFF', tail: '#F5F5F5', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
     messages: ['猫猫们，今天状态如何?', '新猫面试中...', '新猫要什么花色呢？', '培训计划制定好了', '需要招新猫猫吗? 🐱'],
   },
+  {
+    id: 'default',
+    name: 'CAT',
+    role: 'Default',
+    description: '官方默认猫猫。万能小助手，可执行通用 AI 文生文任务，是团队的基础成员。',
+    accent: '#A0A0A0',
+    systemPrompt: '你是「CAT」，一只随和友善的猫猫助手。你是团队的万能基础成员，可以处理各种通用的文本任务，包括总结、分析、翻译、改写等。性格：随和、乐于助人、认真负责。',
+    skills: [
+      { id: 'ai-chat', name: 'AI 对话', icon: '💬', description: '通用 AI 文生文，接收文本并返回 AI 处理结果', input: 'text', output: 'text' },
+    ],
+    item: 'clipboard',
+    catColors: null, // null 表示随机
+    messages: ['喵~ 准备好了!', '交给我吧!', '正在思考中...', '搞定啦! ✨', '需要帮忙吗?'],
+  },
 ];
 
+/** 从 appearanceTemplates 等效配色列表中随机选一个 */
+const RANDOM_COLOR_POOL = [
+  { body: '#B0A08A', bodyDark: '#5C4A3A', belly: '#FFFFFF', earInner: '#F4B8B8', eyes: '#B2D989', nose: '#E8998D', blush: '#F4B8B8', stroke: '#3E2E1E', apron: '#A5D6A7', apronLight: '#E8F5E9', apronLine: '#A5D6A7', desk: '#C8DEC4', deskDark: '#8DB889', deskLeg: '#A6CCA2', paw: '#FFFFFF', tail: '#B0A08A', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
+  { body: '#8E9AAF', bodyDark: '#6B7A8D', belly: '#B8C4D4', earInner: '#C4A6A6', eyes: '#D4944C', nose: '#B87D75', blush: '#C9A6A6', stroke: '#4A5568', apron: '#5B8DB8', apronLight: '#D0DFE9', apronLine: '#5B8DB8', desk: '#E8D5B8', deskDark: '#C4A87A', deskLeg: '#D4BF9A', paw: '#B8C4D4', tail: '#6B7A8D', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
+  { body: '#3D3D3D', bodyDark: '#2A2A2A', belly: '#3D3D3D', earInner: '#E8909A', eyes: '#000', nose: '#542615', blush: '#F28686', stroke: '#1A1A1A', apron: '#7EB8DA', apronLight: '#D6EAF5', apronLine: '#7EB8DA', desk: '#C8D8E8', deskDark: '#8BA4BD', deskLeg: '#A6BCCF', paw: '#fff', tail: '#3D3D3D', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
+  { body: '#F7AC5E', bodyDark: '#D3753E', belly: '', earInner: '#F28686', eyes: '#542615', nose: '#542615', blush: '#F28686', stroke: '#542615', apron: '#BDBDBD', apronLight: '#FEFFFE', apronLine: '#BDBDBD', desk: '#D7CCC8', deskDark: '#A1887F', deskLeg: '#BCAAA4', paw: '', tail: '#F7AC5E', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
+  { body: '#FAF3EB', bodyDark: '#FAF3EB', belly: '#FAF3EB', earInner: '#4E342E', eyes: '#4FC3F7', nose: '#333', blush: '#FFCCBC', stroke: '#4E342E', apron: '#B39DDB', apronLight: '#EDE7F6', apronLine: '#B39DDB', desk: '#D1C4E9', deskDark: '#9575CD', deskLeg: '#B39DDB', paw: '#4E342E', tail: '#4E342E', faceDark: '#4E342E', month: '#333', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
+  { body: '#FFF', bodyDark: '#FFF', belly: '#FFF', earInner: '#FFF', eyes: '#5D4037', nose: '#5D4037', blush: '#FFCCBC', stroke: '#5D4037', apron: '#B39DDB', apronLight: '#EDE7F6', apronLine: '#B39DDB', desk: '#FFF9C4', deskDark: '#FDD835', deskLeg: '#FFF176', paw: '#FFF', tail: '#FFF', faceDark: '', month: '#333', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
+  { body: '#F5F5F5', bodyDark: '#D5D5D5', belly: '#FFFFFF', earInner: '#FFB5C5', eyes: '#542615', nose: '#542615', blush: '#FFB5C5', stroke: '#333333', apron: '#E8A0BF', apronLight: '#FCE4EC', apronLine: '#E8A0BF', desk: '#E8C8D8', deskDark: '#C4919E', deskLeg: '#D4A8B5', paw: '#FFFFFF', tail: '#F5F5F5', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
+];
+
+function getRandomColors() {
+  return RANDOM_COLOR_POOL[Math.floor(Math.random() * RANDOM_COLOR_POOL.length)];
+}
+
+const PERSONALITY_POOL = [
+  '好奇心旺盛，喜欢探索新事物',
+  '安静沉稳，做事细致入微',
+  '活泼开朗，总是充满活力',
+  '温柔体贴，善于倾听',
+  '机灵聪慧，反应敏捷',
+  '认真负责，一丝不苟',
+  '乐观积极，总能看到好的一面',
+];
+
+function getRandomPersonality() {
+  return PERSONALITY_POOL[Math.floor(Math.random() * PERSONALITY_POOL.length)];
+}
+
+/** 自动为新团队创建一只默认 CAT 猫猫 */
+async function createDefaultCat(teamId) {
+  const template = CAT_TEMPLATES.find(t => t.id === 'default');
+  if (!template) return null;
+  const colors = getRandomColors();
+  const personality = getRandomPersonality();
+  try {
+    return await prisma.teamCat.create({
+      data: {
+        teamId,
+        templateId: 'default',
+        name: template.name,
+        role: template.role,
+        description: template.description,
+        catColors: colors,
+        systemPrompt: template.systemPrompt + `\n性格特点：${personality}`,
+        skills: template.skills,
+        accent: template.accent,
+        item: template.item,
+        messages: template.messages,
+      },
+    });
+  } catch (err) {
+    console.error('[cats] create default CAT error:', err);
+    return null;
+  }
+}
+
 module.exports = router;
+module.exports.createDefaultCat = createDefaultCat;
