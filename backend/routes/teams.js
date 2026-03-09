@@ -76,6 +76,7 @@ router.get('/:id', async (req, res) => {
     if (!team) return res.status(404).json({ error: '团队不存在' });
     res.json(team);
   } catch (err) {
+    console.error('[teams] detail error:', err);
     res.status(500).json({ error: '获取团队详情失败' });
   }
 });
@@ -93,6 +94,7 @@ router.put('/:id', async (req, res) => {
     });
     res.json(updated);
   } catch (err) {
+    console.error('[teams] update error:', err);
     res.status(500).json({ error: '更新团队失败' });
   }
 });
@@ -106,6 +108,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.team.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (err) {
+    console.error('[teams] delete error:', err);
     res.status(500).json({ error: '删除团队失败' });
   }
 });

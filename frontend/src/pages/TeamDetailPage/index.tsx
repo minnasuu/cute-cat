@@ -4,7 +4,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiClient } from '../../utils/apiClient';
-import { showToast } from '../../components/Toast';
 import { getSkillHandler } from '../../skills';
 import type { SkillResult } from '../../skills/types';
 import CatSVG, { CatColors } from '../../components/CatSVG';

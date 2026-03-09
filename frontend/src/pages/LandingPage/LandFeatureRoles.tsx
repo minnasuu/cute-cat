@@ -76,11 +76,11 @@ export const LandFeatureRoles = () => {
               <div className="text-center">
                 <h3 className="text-xl font-black mb-2">{combo.name}</h3>
                 <div className="flex items-center justify-center gap-2 flex-wrap mb-4">
-                  <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: appearance.colors.apron }}>
-                    {appearance.name}
+                  <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: appearance?.colors.apron }}>
+                    {appearance?.name}
                   </span>
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-surface-tertiary border border-border">
-                    {personality.emoji} {personality.name}
+                    {personality?.emoji} {personality?.name}
                   </span>
                   <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: group.color }}>
                     {group.icon} {group.name}
