@@ -239,7 +239,7 @@ export interface DifySkillResponse {
   aiQuota?: number;
 }
 
-let _currentAIModel: string = 'gemini';
+let _currentAIModel: string = 'qwen';
 
 export const setCurrentAIModel = (model: string) => { _currentAIModel = model; };
 export const getCurrentAIModel = () => _currentAIModel;
@@ -272,7 +272,7 @@ export const fetchAIModels = async (): Promise<{ models: AIModelInfo[]; default:
         { id: 'gemini', name: 'Gemini', provider: 'Google', available: true },
         { id: 'qwen', name: 'Qwen', provider: 'Alibaba', available: true },
       ],
-      default: 'gemini',
+      default: 'qwen',
     };
   }
 };

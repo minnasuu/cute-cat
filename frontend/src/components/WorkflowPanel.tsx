@@ -154,7 +154,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
   useEffect(() => {
     fetchAIModels().then(({ models, default: defaultModel }) => {
       setAiModels(models);
-      if (!getCurrentAIModel() || getCurrentAIModel() === 'gemini') {
+      if (!getCurrentAIModel() || getCurrentAIModel() === 'qwen') {
         setSelectedModel(defaultModel);
         setCurrentAIModel(defaultModel);
       }

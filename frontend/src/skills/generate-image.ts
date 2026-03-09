@@ -12,7 +12,7 @@ const generateImage: SkillHandler = {
     const result = await executePrimitive('text-to-image', ctx, {
       style: 'default',
       size: '1024x1024',
-      model: 'gemini',
+      model: 'qwen',
     });
 
     return { success: result.success, data: result.data, summary: result.summary, status: result.status };

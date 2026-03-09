@@ -72,7 +72,7 @@ async function callGemini(systemPrompt, userText, maxTokens = 2048) {
 
 // ─── 通用 AI 调用 ───
 async function callAI(systemPrompt, userText, model, maxTokens = 2048) {
-  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'gemini';
+  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
   if (selectedModel === 'qwen') return callQwen(systemPrompt, userText, maxTokens);
   return callGemini(systemPrompt, userText, maxTokens);
 }

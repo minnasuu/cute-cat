@@ -2,11 +2,11 @@ import type { Assistant, Skill } from '../types';
 import { lanmaoTheme } from '../themes';
 
 export const alanSkills: Skill[] = [
-  { id: 'generate-article', name: '文章生成', icon: '📝', description: '根据主题和素材生成完整文章', input: 'text', output: 'text', provider: 'Gemini', mockResult: '生成 1200 字文章 (Markdown)' },
-  { id: 'polish-text', name: '内容润色', icon: '✨', description: '优化文本表达，调整语气和风格', input: 'text', output: 'text', provider: 'Gemini', mockResult: '润色后文本 (可读性+30%)' },
-  { id: 'generate-outline', name: '大纲生成', icon: '📑', description: '根据主题快速生成结构化大纲', input: 'text', output: 'json', provider: 'Gemini', mockResult: '返回 JSON 大纲 (3级标题结构)' },
-  { id: 'news-to-article', name: '资讯整理', icon: '📰', description: '将零散资讯整理为可发布内容', input: 'json', output: 'text', provider: 'Gemini', mockResult: '输出 800 字资讯整理文' },
-  { id: 'meeting-notes', name: '会议纪要', icon: '📋', description: '根据会议内容生成结构化纪要', input: 'text', output: 'text', provider: 'Gemini', mockResult: '输出会议纪要 (议题/结论/待办)' },
+  { id: 'generate-article', name: '文章生成', icon: '📝', description: '根据主题和素材生成完整文章', input: 'text', output: 'text', provider: 'Qwen', mockResult: '生成 1200 字文章 (Markdown)' },
+  { id: 'polish-text', name: '内容润色', icon: '✨', description: '优化文本表达，调整语气和风格', input: 'text', output: 'text', provider: 'Qwen', mockResult: '润色后文本 (可读性+30%)' },
+  { id: 'generate-outline', name: '大纲生成', icon: '📑', description: '根据主题快速生成结构化大纲', input: 'text', output: 'json', provider: 'Qwen', mockResult: '返回 JSON 大纲 (3级标题结构)' },
+  { id: 'news-to-article', name: '资讯整理', icon: '📰', description: '将零散资讯整理为可发布内容', input: 'json', output: 'text', provider: 'Qwen', mockResult: '输出 800 字资讯整理文' },
+  { id: 'meeting-notes', name: '会议纪要', icon: '📋', description: '根据会议内容生成结构化纪要', input: 'text', output: 'text', provider: 'Qwen', mockResult: '输出会议纪要 (议题/结论/待办)' },
 ];
 
 export const alanMessages = [

@@ -62,20 +62,20 @@ export const skillPool: SkillTemplate[] = [
   { id: 'ai-chat', name: 'AI 对话', icon: '💬', category: 'content', description: '通用 AI 文生文，可处理总结、分析、翻译、改写等文本任务', input: 'text', output: 'text', primitiveId: 'text-to-text', provider: 'Dify' },
 
   // ── 内容创作（基于 text-to-text / structured-output 原型）──
-  { id: 'generate-article',  name: '文章生成',   icon: '📝', category: 'content', description: '根据主题和素材生成完整文章',           input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Gemini',
+  { id: 'generate-article',  name: '文章生成',   icon: '📝', category: 'content', description: '根据主题和素材生成完整文章',           input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen',
     paramDefs: [
       { key: 'topic', label: '文章主题', type: 'text', placeholder: '输入文章主题或关键词', required: true },
       { key: 'style', label: '写作风格', type: 'select', options: [{ label: '专业严谨', value: 'formal' }, { label: '轻松活泼', value: 'casual' }, { label: '技术教程', value: 'tutorial' }] },
       { key: 'wordCount', label: '目标字数', type: 'number', defaultValue: 1500, placeholder: '如 1500' },
     ],
   },
-  { id: 'polish-text',       name: '内容润色',   icon: '✨', category: 'content', description: '优化文本表达、调整语气和风格',          input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Gemini',
+  { id: 'polish-text',       name: '内容润色',   icon: '✨', category: 'content', description: '优化文本表达、调整语气和风格',          input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen',
     paramDefs: [
       { key: 'tone', label: '目标语气', type: 'select', options: [{ label: '正式', value: 'formal' }, { label: '友好', value: 'friendly' }, { label: '幽默', value: 'humorous' }] },
     ],
   },
-  { id: 'generate-outline',  name: '大纲生成',   icon: '📑', category: 'content', description: '快速生成结构化内容大纲',               input: 'text', output: 'json',  primitiveId: 'structured-output', provider: 'Gemini' },
-  { id: 'news-to-article',   name: '资讯整理',   icon: '📰', category: 'content', description: '将零散资讯整理为可发布内容',            input: 'json', output: 'text',  primitiveId: 'text-to-text',      provider: 'Gemini' },
+  { id: 'generate-outline',  name: '大纲生成',   icon: '📑', category: 'content', description: '快速生成结构化内容大纲',               input: 'text', output: 'json',  primitiveId: 'structured-output', provider: 'Qwen' },
+  { id: 'news-to-article',   name: '资讯整理',   icon: '📰', category: 'content', description: '将零散资讯整理为可发布内容',            input: 'json', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen' },
   { id: 'meeting-notes',     name: '会议纪要',   icon: '📋', category: 'content', description: '生成结构化会议纪要',                  input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Dify',
     paramDefs: [
       { key: 'participants', label: '参会人员', type: 'tags', placeholder: '输入姓名后回车' },
@@ -91,14 +91,14 @@ export const skillPool: SkillTemplate[] = [
       { key: 'maxItems', label: '最大条数', type: 'number', defaultValue: 20 },
     ],
   },
-  { id: 'summarize-news',    name: '资讯摘要',   icon: '📰', category: 'data', description: '对爬取内容进行智能摘要和分类',             input: 'json', output: 'text',  primitiveId: 'text-to-text',      provider: 'Gemini' },
+  { id: 'summarize-news',    name: '资讯摘要',   icon: '📰', category: 'data', description: '对爬取内容进行智能摘要和分类',             input: 'json', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen' },
   { id: 'query-dashboard',   name: '数据查询',   icon: '🔍', category: 'data', description: '查询数据库获取结构化数据',                input: 'text', output: 'json',  primitiveId: 'db-query',          provider: 'PostgreSQL',
     paramDefs: [
       { key: 'query', label: '查询语句', type: 'textarea', placeholder: '输入 SQL 或自然语言查询', required: true },
       { key: 'dbName', label: '数据库名称', type: 'text', placeholder: '如 analytics' },
     ],
   },
-  { id: 'trend-analysis',    name: '趋势分析',   icon: '📈', category: 'data', description: '对时序数据进行趋势分析和异常检测',          input: 'json', output: 'json',  primitiveId: 'structured-output', provider: 'Gemini' },
+  { id: 'trend-analysis',    name: '趋势分析',   icon: '📈', category: 'data', description: '对时序数据进行趋势分析和异常检测',          input: 'json', output: 'json',  primitiveId: 'structured-output', provider: 'Qwen' },
   { id: 'site-analyze',      name: '网站诊断',   icon: '🔬', category: 'data', description: '分析网站内容分布和质量，给出优化建议',       input: 'none', output: 'json',  primitiveId: 'text-to-text',      provider: 'Dify',
     paramDefs: [
       { key: 'siteUrl', label: '网站地址', type: 'url', placeholder: 'https://example.com', required: true },
@@ -106,7 +106,7 @@ export const skillPool: SkillTemplate[] = [
   },
 
   // ── 视觉设计（基于 text-to-image / chart-render / html-render 原型）──
-  { id: 'generate-image',    name: 'AI 绘图',   icon: '🖼️', category: 'visual', description: '根据文字描述生成高质量图片',             input: 'text',  output: 'image', primitiveId: 'text-to-image',     provider: 'Gemini',
+  { id: 'generate-image',    name: 'AI 绘图',   icon: '🖼️', category: 'visual', description: '根据文字描述生成高质量图片',             input: 'text',  output: 'image', primitiveId: 'text-to-image',     provider: 'Qwen',
     paramDefs: [
       { key: 'prompt', label: '图片描述', type: 'textarea', placeholder: '描述你想生成的图片内容', required: true },
       { key: 'aspectRatio', label: '宽高比', type: 'select', options: [{ label: '1:1', value: '1:1' }, { label: '16:9', value: '16:9' }, { label: '9:16', value: '9:16' }, { label: '4:3', value: '4:3' }], defaultValue: '1:1' },
@@ -117,7 +117,7 @@ export const skillPool: SkillTemplate[] = [
       { key: 'chartType', label: '图表类型', type: 'select', options: [{ label: '折线图', value: 'line' }, { label: '柱状图', value: 'bar' }, { label: '饼图', value: 'pie' }, { label: '雷达图', value: 'radar' }], required: true },
     ],
   },
-  { id: 'generate-component',name: '组件生成',   icon: '🧩', category: 'visual', description: '生成 React/HTML 创意组件代码',           input: 'text',  output: 'html',  primitiveId: 'html-render',       provider: 'Gemini',
+  { id: 'generate-component',name: '组件生成',   icon: '🧩', category: 'visual', description: '生成 React/HTML 创意组件代码',           input: 'text',  output: 'html',  primitiveId: 'html-render',       provider: 'Qwen',
     paramDefs: [
       { key: 'framework', label: '框架', type: 'select', options: [{ label: 'React', value: 'react' }, { label: 'HTML', value: 'html' }, { label: 'Vue', value: 'vue' }], defaultValue: 'react' },
     ],
@@ -128,8 +128,8 @@ export const skillPool: SkillTemplate[] = [
       { key: 'scale', label: '放大倍数', type: 'select', options: [{ label: '2x', value: '2' }, { label: '4x', value: '4' }], defaultValue: '2' },
     ],
   },
-  { id: 'css-generate',      name: '样式生成',   icon: '🎨', category: 'visual', description: '为组件生成匹配的 CSS/动画代码',          input: 'text',  output: 'text',  primitiveId: 'text-to-text',      provider: 'Gemini' },
-  { id: 'update-crafts',     name: 'Crafts 更新', icon: '🔄', category: 'visual', description: '为 Crafts 页面新增交互 demo',       input: 'json', output: 'html', primitiveId: 'html-render',       provider: 'Gemini',
+  { id: 'css-generate',      name: '样式生成',   icon: '🎨', category: 'visual', description: '为组件生成匹配的 CSS/动画代码',          input: 'text',  output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen' },
+  { id: 'update-crafts',     name: 'Crafts 更新', icon: '🔄', category: 'visual', description: '为 Crafts 页面新增交互 demo',       input: 'json', output: 'html', primitiveId: 'html-render',       provider: 'Qwen',
     paramDefs: [
       { key: 'craftName', label: 'Craft 名称', type: 'text', placeholder: '新 demo 的名称', required: true },
       { key: 'craftDesc', label: '效果描述', type: 'textarea', placeholder: '描述想要的交互效果' },
@@ -190,7 +190,7 @@ export const skillPool: SkillTemplate[] = [
   },
   { id: 'manage-workflow',   name: '工作流管理', icon: '🔧', category: 'manage', description: '新增、修改或删除协作工作流',              input: 'json', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow' },
   { id: 'run-workflow',      name: '执行工作流', icon: '▶️', category: 'manage', description: '触发指定工作流开始执行',                input: 'json', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow' },
-  { id: 'recruit-cat',       name: '招募新猫',   icon: '🐱', category: 'manage', description: '招募新猫并定义角色与技能',               input: 'json', output: 'json', primitiveId: 'structured-output', provider: 'Gemini',
+  { id: 'recruit-cat',       name: '招募新猫',   icon: '🐱', category: 'manage', description: '招募新猫并定义角色与技能',               input: 'json', output: 'json', primitiveId: 'structured-output', provider: 'Qwen',
     paramDefs: [
       { key: 'role', label: '期望角色', type: 'select', options: [{ label: 'Content Editor', value: 'Content Editor' }, { label: 'Data Analyst', value: 'Data Analyst' }, { label: 'Visual Designer', value: 'Visual Designer' }, { label: 'Engineer', value: 'Engineer' }, { label: 'QA Reviewer', value: 'QA Reviewer' }, { label: 'Operations Assistant', value: 'Operations Assistant' }], required: true },
       { key: 'catName', label: '猫猫名字', type: 'text', placeholder: '给新猫猫起个名字' },

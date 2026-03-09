@@ -16,7 +16,7 @@ const textToImage: PrimitiveHandler = {
     const {
       style = 'default',
       size = '1024x1024',
-      model = 'gemini',
+      model = 'qwen',
       difySkillId = 'text-to-image',
       aspectRatio = '1:1',
     } = ctx.config as Record<string, string>;

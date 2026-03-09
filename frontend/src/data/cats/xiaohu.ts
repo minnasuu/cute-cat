@@ -2,12 +2,12 @@ import { sanhuaColors } from '../themes';
 import type { Assistant, Skill } from '../types';
 
 export const xiaohuSkills: Skill[] = [
-  { id: 'generate-image', name: 'AI 绘图', icon: '🖼️', description: '根据文字描述生成高质量图片', input: 'text', output: 'image', provider: 'Gemini', mockResult: '生成 1024x1024 PNG 图片' },
+  { id: 'generate-image', name: 'AI 绘图', icon: '🖼️', description: '根据文字描述生成高质量图片', input: 'text', output: 'image', provider: 'Qwen', mockResult: '生成 1024x1024 PNG 图片' },
   { id: 'generate-chart', name: '图表生成', icon: '📊', description: '将 JSON 数据转化为可视化图表', input: 'json', output: 'image', provider: 'Chart.js', mockResult: '生成折线图/柱状图 PNG' },
-  { id: 'generate-component', name: '组件生成', icon: '🧩', description: '生成 React/HTML 创意组件代码', input: 'text', output: 'html', provider: 'Gemini', mockResult: '输出 HTML/JSX 组件代码' },
+  { id: 'generate-component', name: '组件生成', icon: '🧩', description: '生成 React/HTML 创意组件代码', input: 'text', output: 'html', provider: 'Qwen', mockResult: '输出 HTML/JSX 组件代码' },
   { id: 'layout-design', name: '排版布局', icon: '📐', description: '将内容组合排版为精美页面', input: 'json', output: 'html', provider: 'Template Engine', mockResult: '输出响应式 HTML 页面' },
   { id: 'image-enhance', name: '图片增强', icon: '🔆', description: '对图片进行超分辨率放大和降噪', input: 'image', output: 'image', provider: 'Real-ESRGAN', mockResult: '输出 4x 超分辨率图片' },
-  { id: 'css-generate', name: '样式生成', icon: '🎨', description: '为组件生成匹配的 CSS/动画代码', input: 'html', output: 'file', provider: 'Gemini', mockResult: '输出 SCSS 样式文件' },
+  { id: 'css-generate', name: '样式生成', icon: '🎨', description: '为组件生成匹配的 CSS/动画代码', input: 'html', output: 'file', provider: 'Qwen', mockResult: '输出 SCSS 样式文件' },
 ];
 
 export const xiaohuMessages = [
