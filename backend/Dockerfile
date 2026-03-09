@@ -1,5 +1,9 @@
 FROM node:18-alpine
 
+# Install PostgreSQL client tools (psql, pg_isready)
+# Required by entrypoint.sh to check/create database before migrations
+RUN apk add --no-cache postgresql-client
+
 WORKDIR /app
 
 COPY package*.json ./

@@ -34,7 +34,7 @@ services:
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
-      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-gemini}
+      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-qwen}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
       BETA_CODES: ${BETA_CODES:-}
       SMTP_HOST: ${SMTP_HOST:-}
