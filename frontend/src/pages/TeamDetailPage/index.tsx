@@ -900,6 +900,11 @@ const TeamDetailPage: React.FC = () => {
                             <div className="node-progress-bar" style={{ animationDuration: `${STEP_DURATION}ms` }} />
                           </div>
                         )}
+                         {stepDurationSec && (
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                                  ⏱ {stepDurationSec}s
+                                </span>
+                              )}
 
                         {isCompleted && result && (
                           <div className={`node-result status-${resultStatus}`}>
@@ -910,11 +915,6 @@ const TeamDetailPage: React.FC = () => {
                               <span className="node-result-status">
                                 {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
                               </span>
-                              {stepDurationSec && (
-                                <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
-                                  ⏱ {stepDurationSec}s
-                                </span>
-                              )}
                             </div>
                             {result.summary && (
                               <div className="node-result-summary markdown-body">
