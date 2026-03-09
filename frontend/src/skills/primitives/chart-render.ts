@@ -33,8 +33,10 @@ const chartRender: PrimitiveHandler = {
 
     try {
       // 动态导入 Chart.js（运行时可选，未安装时 catch 兜底）
-      // @ts-ignore — chart.js 为可选依赖，类型声明不一定存在
-      const { Chart, registerables } = await import('chart.js');
+      // 使用变量拼接模块名，使 Rollup 无法静态分析，避免构建时报错
+      const chartModule = 'chart' + '.js';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { Chart, registerables } = await (Function('m', 'return import(m)')(chartModule) as Promise<any>);
       Chart.register(...registerables);
 
       // 创建离屏 canvas
