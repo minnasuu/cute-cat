@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🐱 Starting Cute Cat..."
+echo "🐱 Starting CuCaTopia..."
 
 # Load .env if exists
 if [ -f .env ]; then
@@ -11,7 +11,7 @@ fi
 docker-compose up -d --build
 
 echo ""
-echo "✅ Cute Cat is running!"
+echo "✅ CuCaTopia is running!"
 echo "   Frontend: http://localhost:4000"
 echo "   Backend:  http://localhost:8002"
 echo "   Database: localhost:5432"

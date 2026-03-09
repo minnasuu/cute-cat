@@ -1,4 +1,4 @@
 #!/bin/bash
-echo "🐱 Stopping Cute Cat..."
+echo "🐱 Stopping CuCaTopia..."
 docker-compose down
-echo "✅ Cute Cat stopped."
+echo "✅ CuCaTopia stopped."

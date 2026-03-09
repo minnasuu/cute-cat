@@ -150,6 +150,7 @@ router.post('/register', async (req, res) => {
     const user = await prisma.user.create({
       data: { email, password: hashedPassword, nickname },
     });
+    console.log('[auth] register: user created |', user.id, '|', email, '| hash length:', hashedPassword.length);
 
     // Mark code as used
     await prisma.emailVerification.update({
@@ -160,7 +161,7 @@ router.post('/register', async (req, res) => {
     const tokens = generateTokens(user.id);
     res.json({
       success: true,
-      user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, plan: user.plan },
+      user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, plan: user.plan, aiQuota: user.aiQuota, aiUsed: user.aiUsed },
       ...tokens,
     });
   } catch (err) {
@@ -184,21 +185,27 @@ router.post('/login', async (req, res) => {
     }
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(401).json({ error: '邮箱或密码错误' });
+    if (!user) {
+      console.warn('[auth] login: user not found |', email);
+      return res.status(401).json({ error: '邮箱或密码错误' });
+    }
 
     let valid = false;
     try {
       valid = await bcrypt.compare(password, user.password);
     } catch (bcryptErr) {
-      console.error('[auth] bcrypt.compare failed:', bcryptErr.message, '| email:', email, '| hash length:', user.password?.length);
+      console.error('[auth] bcrypt.compare failed:', bcryptErr.message, '| email:', email, '| hash length:', user.password?.length, '| hash prefix:', user.password?.substring(0, 7));
       return res.status(500).json({ error: '密码验证异常，请联系管理员' });
     }
-    if (!valid) return res.status(401).json({ error: '邮箱或密码错误' });
+    if (!valid) {
+      console.warn('[auth] login: password mismatch | email:', email, '| hash length:', user.password?.length);
+      return res.status(401).json({ error: '邮箱或密码错误' });
+    }
 
     const tokens = generateTokens(user.id);
     res.json({
       success: true,
-      user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, plan: user.plan },
+      user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, plan: user.plan, aiQuota: user.aiQuota, aiUsed: user.aiUsed },
       ...tokens,
     });
   } catch (err) {

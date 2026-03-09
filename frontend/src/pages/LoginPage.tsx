@@ -2,16 +2,22 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import CatLogo from '../components/CatLogo';
+import { showToast } from '../components/Toast';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!EMAIL_REGEX.test(email)) { showToast('请输入有效的邮箱地址', 'warning'); return; }
+    if (!password) { showToast('请输入密码', 'warning'); return; }
     setLoading(true);
     try {
       await login(email, password);
@@ -31,7 +37,7 @@ const LoginPage: React.FC = () => {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-surface shadow-lg mb-4">
             <CatLogo size={48} />
           </div>
-          <h1 className="text-3xl font-bold text-text-primary">Cute Cat</h1>
+          <h1 className="text-3xl font-bold text-text-primary">CuCaTopia</h1>
           <p className="text-text-secondary mt-1">AI 猫猫工作流协作平台</p>
         </div>
 
@@ -54,14 +60,23 @@ const LoginPage: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-1">密码</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="输入密码"
-                required
-                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="输入密码"
+                  required
+                  className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors text-sm select-none"
+                >
+                  {showPassword ? '隐藏' : '显示'}
+                </button>
+              </div>
             </div>
 
             <button

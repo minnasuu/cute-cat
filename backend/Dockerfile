@@ -9,6 +9,9 @@ COPY . .
 
 RUN npx prisma generate
 
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8002
 
-CMD ["sh", "-c", "npx prisma db push && node index.js"]
+CMD ["/app/entrypoint.sh"]
