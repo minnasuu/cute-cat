@@ -87,6 +87,12 @@ const TeamDetailPage: React.FC = () => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentRunIdRef = useRef<string | null>(null); // 当前手动执行的 run 记录 ID
   const runStartTimeRef = useRef<number>(0);
+  // 每步耗时: { start: 开始时间戳ms, duration: 耗时ms(完成后填入) }
+  const [stepTimings, setStepTimings] = useState<Map<number, { start: number; duration?: number }>>(new Map());
+  const stepTimingsRef = useRef<Map<number, { start: number; duration?: number }>>(new Map());
+  // footer 实时总耗时（秒）
+  const [totalElapsed, setTotalElapsed] = useState(0);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [viewingRun, setViewingRun] = useState<WorkflowRunRecord | null>(null); // 查看历史执行详情
 
   /** 点击历史记录，用 workflowPanel 展示执行详情 */
@@ -107,6 +113,7 @@ const TeamDetailPage: React.FC = () => {
       const completed = runSteps.map((s: any) => s.index ?? 0);
       setCompletedSteps(completed);
       const resultsMap = new Map<number, SkillResult>();
+      const timingsMap = new Map<number, { start: number; duration?: number }>();
       runSteps.forEach((step: any) => {
         const idx = step.index ?? 0;
         resultsMap.set(idx, {
@@ -115,9 +122,14 @@ const TeamDetailPage: React.FC = () => {
           summary: step.summary || '',
           status: step.status || (step.success ? 'success' : 'error'),
         });
+        if (step.duration != null) {
+          timingsMap.set(idx, { start: 0, duration: step.duration });
+        }
       });
       setStepResults(resultsMap);
       stepResultsRef.current = resultsMap;
+      setStepTimings(timingsMap);
+      stepTimingsRef.current = timingsMap;
     } else {
       // 没有步骤数据（可能执行中或异常退出）
       // 根据 run.status 决定展示方式
@@ -160,6 +172,10 @@ const TeamDetailPage: React.FC = () => {
     const emptyMap = new Map<number, SkillResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
+    const emptyTimings = new Map<number, { start: number; duration?: number }>();
+    setStepTimings(emptyTimings);
+    stepTimingsRef.current = emptyTimings;
+    setTotalElapsed(0);
   };
 
   const loadTeam = useCallback(async () => {
@@ -230,7 +246,17 @@ const TeamDetailPage: React.FC = () => {
     const emptyMap = new Map<number, SkillResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
+    const emptyTimings = new Map<number, { start: number; duration?: number }>();
+    setStepTimings(emptyTimings);
+    stepTimingsRef.current = emptyTimings;
     runStartTimeRef.current = Date.now();
+    setTotalElapsed(0);
+    // 启动实时总耗时定时器
+    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+    const startTs = Date.now();
+    elapsedTimerRef.current = setInterval(() => {
+      setTotalElapsed(Math.round((Date.now() - startTs) / 1000));
+    }, 1000);
     // 在后端创建 run 记录并保存 ID
     try {
       const run = await apiClient.post(`/api/workflows/${wfId}/run`, {});
@@ -259,6 +285,11 @@ const TeamDetailPage: React.FC = () => {
     const emptyMap = new Map<number, SkillResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
+    const emptyTimings = new Map<number, { start: number; duration?: number }>();
+    setStepTimings(emptyTimings);
+    stepTimingsRef.current = emptyTimings;
+    setTotalElapsed(0);
+    if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
     loadTeam();
     loadWorkflowRuns();
   };
@@ -276,6 +307,7 @@ const TeamDetailPage: React.FC = () => {
       success: r.success,
       status: r.status,
       summary: r.summary,
+      duration: stepTimingsRef.current.get(idx)?.duration ?? null,
     }));
     apiClient.put(`/api/workflows/runs/${runId}`, {
       status, steps: stepsData,
@@ -294,6 +326,15 @@ const TeamDetailPage: React.FC = () => {
       setCurrentDialog('');
       return;
     }
+
+    // 记录当前步骤开始时间
+    const stepStartTime = Date.now();
+    setStepTimings(prev => {
+      const next = new Map(prev);
+      next.set(runningStepIndex, { start: stepStartTime });
+      stepTimingsRef.current = next;
+      return next;
+    });
 
     const step = executingWorkflow.steps[runningStepIndex];
     const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
@@ -341,6 +382,15 @@ const TeamDetailPage: React.FC = () => {
 
     timerRef.current = setTimeout(() => {
       executePromise.then((result) => {
+        // 记录步骤耗时
+        const stepDuration = Date.now() - stepStartTime;
+        setStepTimings(prev => {
+          const next = new Map(prev);
+          next.set(runningStepIndex, { start: stepStartTime, duration: stepDuration });
+          stepTimingsRef.current = next;
+          return next;
+        });
+
         setStepResults((prev) => {
           const next = new Map(prev);
           next.set(runningStepIndex, result);
@@ -361,6 +411,15 @@ const TeamDetailPage: React.FC = () => {
           }
         }, 500);
       }).catch(() => {
+        // 记录步骤耗时（失败场景）
+        const stepDuration = Date.now() - stepStartTime;
+        setStepTimings(prev => {
+          const next = new Map(prev);
+          next.set(runningStepIndex, { start: stepStartTime, duration: stepDuration });
+          stepTimingsRef.current = next;
+          return next;
+        });
+
         setStepResults((prev) => {
           const next = new Map(prev);
           next.set(runningStepIndex, { success: false, data: null, summary: '执行出错', status: 'error' });
@@ -385,9 +444,13 @@ const TeamDetailPage: React.FC = () => {
 
   const allDone = executingWorkflow && !isRunning && completedSteps.length === executingWorkflow.steps.length;
 
-  // 工作流全部步骤完成后，自动更新后端 run 记录
+  // 工作流全部步骤完成后，自动更新后端 run 记录 & 停止计时
   useEffect(() => {
-    if (!allDone || !currentRunIdRef.current) return;
+    if (!allDone) return;
+    // 停止实时计时器
+    if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
+    setTotalElapsed(Math.round((Date.now() - runStartTimeRef.current) / 1000));
+    if (!currentRunIdRef.current) return;
     const allResults = Array.from(stepResultsRef.current.entries());
     const hasFailed = allResults.some(([, r]) => r.status === 'error' || !r.success);
     updateRunRecord(hasFailed ? 'failed' : 'success');
@@ -800,6 +863,8 @@ const TeamDetailPage: React.FC = () => {
                   const statusClass = isCompleted ? 'done' : isCurrent ? 'active' : 'waiting';
                   const result = stepResults.get(i);
                   const resultStatus = result?.status ?? 'success';
+                  const timing = stepTimings.get(i);
+                  const stepDurationSec = timing?.duration != null ? (timing.duration / 1000).toFixed(1) : null;
 
                   return (
                     <React.Fragment key={i}>
@@ -845,6 +910,11 @@ const TeamDetailPage: React.FC = () => {
                               <span className="node-result-status">
                                 {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
                               </span>
+                              {stepDurationSec && (
+                                <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                                  ⏱ {stepDurationSec}s
+                                </span>
+                              )}
                             </div>
                             {result.summary && (
                               <div className="node-result-summary markdown-body">
@@ -911,12 +981,20 @@ const TeamDetailPage: React.FC = () => {
                       <span className="exec-label">
                         步骤 {Math.min(runningStepIndex + 1, executingWorkflow.steps.length)} / {executingWorkflow.steps.length} 执行中...
                       </span>
+                      {totalElapsed > 0 && (
+                        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                          ⏱ {totalElapsed}s
+                        </span>
+                      )}
                     </div>
                   )}
                   {allDone && (
                     <div className="exec-done">
                       <span className="done-icon">🎉</span>
                       <span className="done-text">全部完成！</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                        耗时 {totalElapsed}s
+                      </span>
                       <button className="replay-btn" onClick={() => handleRunWorkflow(executingWorkflow.id)}>
                         再来一次
                       </button>

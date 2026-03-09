@@ -30,7 +30,7 @@ const viewCrafts: SkillHandler = {
 
       const summary = craftId
         ? `Craft 详情:\n${JSON.stringify(data, null, 2)}`
-        : `共 ${Array.isArray(data) ? data.length : 0} 个 Crafts:\n${JSON.stringify(data, null, 2)}`;
+        : `共 ${Array.isArray(data) ? data.length : 0} 个 Crafts:\n${JSON.stringify(data?.map((x:any) => Object.assign(x, {htmlCode:'(实现该效果的html代码)'})), null, 2)}`;
 
       return { success: true, data, summary, status: 'success' };
     } catch (err: any) {
