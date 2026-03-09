@@ -10,7 +10,7 @@ const sendEmailSkill: SkillHandler = {
     console.log(`[send-email] agent=${ctx.agentId} @${ctx.timestamp}`);
 
     const result = await executePrimitive('email-send', ctx, {
-      defaultSubject: '【猫猫周会】🐱 Minna 猫猫邮件',
+      defaultSubject: ' CuCaTopia 猫猫邮件',
       template: 'cat',
     });
 

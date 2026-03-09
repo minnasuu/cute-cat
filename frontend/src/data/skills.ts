@@ -58,7 +58,7 @@ export const skillCategories: { id: SkillCategory; name: string; icon: string; c
 ]
 
 export const skillPool: SkillTemplate[] = [
-  // ── 通用（默认猫猫 CAT 专属，拥有所有原型技能）──
+  // ── 通用（默认猫猫 CAT 专属基础技能，CAT 同时装备所有其他原型技能）──
   { id: 'ai-chat', name: 'AI 对话', icon: '💬', category: 'content', description: '通用 AI 文生文，可处理总结、分析、翻译、改写等文本任务', input: 'text', output: 'text', primitiveId: 'text-to-text', provider: 'Dify' },
 
   // ── 内容创作（基于 text-to-text / structured-output 原型）──
@@ -235,8 +235,8 @@ export function getVisibleSkillPool(isAdmin: boolean): SkillTemplate[] {
 
 /**
  * 为管理员的 Default 猫动态注入管理员私有技能
- * 猫猫 skills 存储在数据库中，Default 猫可能只有 ai-chat，
- * 此函数在前端读取后补充管理员技能，避免需要重新保存猫猫。
+ * Default 猫已装备所有原型技能，此函数额外补充管理员专属技能（如文章管理、Craft 管理等）。
+ * 猫猫 skills 存储在数据库中，此函数在前端读取后补充，避免需要重新保存猫猫。
  */
 export function injectAdminSkillsToCats<T extends { role: string; skills: any[] }>(cats: T[], isAdmin: boolean): T[] {
   if (!isAdmin) return cats
@@ -279,8 +279,32 @@ export const skillGroups: SkillGroup[] = [
     name: '默认助手',
     icon: '💬',
     color: '#A0A0A0',
-    description: '通用 AI 文生文能力，可处理总结、分析、翻译、改写等任务',
-    skillIds: ['ai-chat'],
+    description: '全能猫猫，装备所有原型技能，可处理 AI 对话、绘图、数据分析、邮件、图表、组件生成等全部任务',
+    skillIds: [
+      'ai-chat',
+      // text-to-text 系列
+      'generate-article', 'polish-text', 'news-to-article', 'meeting-notes', 'summarize-news', 'css-generate',
+      'fix-bug', 'develop-feature', 'optimize-perf', 'site-analyze',
+      // text-to-image
+      'generate-image',
+      // structured-output
+      'generate-outline', 'trend-analysis', 'quality-check', 'content-review',
+      'generate-todo', 'assign-task', 'recruit-cat',
+      // api-call
+      'crawl-news', 'image-enhance',
+      // db-query
+      'query-dashboard', 'task-log',
+      // email-send
+      'send-email', 'send-notification',
+      // html-render
+      'generate-component', 'layout-design', 'update-crafts',
+      // chart-render
+      'generate-chart',
+      // browser-action
+      'regression-test',
+      // workflow-engine
+      'review-approve', 'manage-workflow', 'run-workflow',
+    ],
     catId: 'default',
   },
   {

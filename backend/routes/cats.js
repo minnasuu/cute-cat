@@ -315,15 +315,57 @@ const CAT_TEMPLATES = [
     id: 'default',
     name: 'CAT',
     role: 'Default',
-    description: '官方默认猫猫。万能小助手，可执行通用 AI 文生文任务，是团队的基础成员。',
+    description: '官方默认猫猫。全能小助手，装备所有原型技能，可执行 AI 对话、绘图、数据分析、邮件、图表、组件生成等全部任务。',
     accent: '#A0A0A0',
-    systemPrompt: '你是「CAT」，一只随和友善的猫猫助手。你是团队的万能基础成员，可以处理各种通用的文本任务，包括总结、分析、翻译、改写等。性格：随和、乐于助人、认真负责。',
+    systemPrompt: '你是「CAT」，一只随和友善的猫猫助手。你是团队的全能基础成员，装备了所有原型技能，包括 AI 文生文、文生图、结构化输出、API 调用、数据库查询、邮件发送、Web 推送、HTML 渲染、图表渲染、浏览器操作、文件读写、工作流引擎、JS 执行等。性格：随和、乐于助人、认真负责、无所不能。',
     skills: [
+      // 基于 text-to-text 原型
       { id: 'ai-chat', name: 'AI 对话', icon: '💬', description: '通用 AI 文生文，接收文本并返回 AI 处理结果', input: 'text', output: 'text' },
+      { id: 'generate-article', name: '文章生成', icon: '📝', description: '根据主题和素材生成完整文章', input: 'text', output: 'text' },
+      { id: 'polish-text', name: '内容润色', icon: '✨', description: '优化文本表达、调整语气和风格', input: 'text', output: 'text' },
+      { id: 'news-to-article', name: '资讯整理', icon: '📰', description: '将零散资讯整理为可发布内容', input: 'json', output: 'text' },
+      { id: 'meeting-notes', name: '会议纪要', icon: '📋', description: '生成结构化会议纪要', input: 'text', output: 'text' },
+      { id: 'summarize-news', name: '资讯摘要', icon: '📰', description: '对爬取内容进行智能摘要和分类', input: 'json', output: 'text' },
+      { id: 'css-generate', name: '样式生成', icon: '🎨', description: '为组件生成匹配的 CSS/动画代码', input: 'text', output: 'text' },
+      { id: 'fix-bug', name: 'Bug 修复', icon: '🐛', description: '排查并修复前后端 bug', input: 'text', output: 'text' },
+      { id: 'develop-feature', name: '功能开发', icon: '🛠️', description: '根据需求开发新功能模块', input: 'text', output: 'text' },
+      { id: 'optimize-perf', name: '性能优化', icon: '⚡', description: '分析并优化性能瓶颈', input: 'text', output: 'text' },
+      { id: 'site-analyze', name: '网站诊断', icon: '🔬', description: '分析网站内容分布和质量', input: 'none', output: 'json' },
+      // 基于 text-to-image 原型
+      { id: 'generate-image', name: 'AI 绘图', icon: '🖼️', description: '根据文字描述生成高质量图片', input: 'text', output: 'image' },
+      // 基于 structured-output 原型
+      { id: 'generate-outline', name: '大纲生成', icon: '📑', description: '快速生成结构化内容大纲', input: 'text', output: 'json' },
+      { id: 'trend-analysis', name: '趋势分析', icon: '📈', description: '对时序数据进行趋势分析和异常检测', input: 'json', output: 'json' },
+      { id: 'quality-check', name: '质量检测', icon: '🔎', description: '对输出内容进行质量评分', input: 'json', output: 'json' },
+      { id: 'content-review', name: '内容审核', icon: '🛡️', description: '检查内容是否合规、无敏感信息', input: 'text', output: 'json' },
+      { id: 'generate-todo', name: '代办清单', icon: '📋', description: '分析需求自动生成代办清单', input: 'json', output: 'json' },
+      { id: 'assign-task', name: '任务分配', icon: '📌', description: '将任务拆解并分配给指定猫猫', input: 'text', output: 'json' },
+      { id: 'recruit-cat', name: '招募新猫', icon: '🐱', description: '招募新猫并定义角色与技能', input: 'json', output: 'json' },
+      // 基于 api-call 原型
+      { id: 'crawl-news', name: '资讯爬取', icon: '🕸️', description: '定时爬取指定网站/RSS 最新资讯', input: 'url', output: 'json' },
+      { id: 'image-enhance', name: '图片增强', icon: '🔆', description: '对图片进行超分辨率放大和降噪', input: 'image', output: 'image' },
+      // 基于 db-query 原型
+      { id: 'query-dashboard', name: '数据查询', icon: '🔍', description: '查询数据库获取结构化数据', input: 'text', output: 'json' },
+      { id: 'task-log', name: '任务日志', icon: '📒', description: '记录和整理任务执行日志', input: 'json', output: 'text' },
+      // 基于 email-send 原型
+      { id: 'send-email', name: '发送邮件', icon: '📧', description: '发送 HTML 格式邮件', input: 'text', output: 'email' },
+      { id: 'send-notification', name: '推送通知', icon: '🔔', description: '向订阅者批量推送通知', input: 'text', output: 'json' },
+      // 基于 html-render 原型
+      { id: 'generate-component', name: '组件生成', icon: '🧩', description: '生成 React/HTML 创意组件代码', input: 'text', output: 'html' },
+      { id: 'layout-design', name: '排版布局', icon: '📐', description: '将内容组合排版为精美页面', input: 'json', output: 'html' },
+      { id: 'update-crafts', name: 'Crafts 更新', icon: '🔄', description: '为 Crafts 页面新增交互 demo', input: 'json', output: 'html' },
+      // 基于 chart-render 原型
+      { id: 'generate-chart', name: '图表生成', icon: '📊', description: '将数据转化为可视化图表', input: 'json', output: 'image' },
+      // 基于 browser-action 原型
+      { id: 'regression-test', name: '回归测试', icon: '🧪', description: '自动化回归测试', input: 'url', output: 'json' },
+      // 基于 workflow-engine 原型
+      { id: 'review-approve', name: '审批流程', icon: '✅', description: '审核工作成果决定是否发布', input: 'json', output: 'json' },
+      { id: 'manage-workflow', name: '工作流管理', icon: '🔧', description: '新增、修改或删除协作工作流', input: 'json', output: 'json' },
+      { id: 'run-workflow', name: '执行工作流', icon: '▶️', description: '触发指定工作流开始执行', input: 'json', output: 'json' },
     ],
     item: 'clipboard',
     catColors: null, // null 表示随机
-    messages: ['喵~ 准备好了!', '交给我吧!', '正在思考中...', '搞定啦! ✨', '需要帮忙吗?'],
+    messages: ['喵~ 准备好了!', '交给我吧!', '正在思考中...', '搞定啦! ✨', '需要帮忙吗?', '全能猫猫上线! 🚀'],
   },
 ];
 
