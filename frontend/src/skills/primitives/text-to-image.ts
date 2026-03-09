@@ -1,10 +1,12 @@
 import type { PrimitiveHandler, PrimitiveContext, PrimitiveResult } from './types';
+import { callDifySkill } from '../../utils/backendClient';
 
 /**
  * 文生图原型 (text-to-image)
  *
- * 底层能力：接收文本描述 + 风格配置，调用图片生成模型返回图片 URL。
- * 上层技能示例：AI 绘图、图片增强等。
+ * 底层能力：接收文本描述 + 风格配置，调用 AI 模型生成图片。
+ * 策略：通过 Dify skill 调用后端 Gemini/其他模型生成图片 URL。
+ * 上层技能示例：AI 绘图等。
  */
 const textToImage: PrimitiveHandler = {
   id: 'text-to-image',
@@ -15,6 +17,8 @@ const textToImage: PrimitiveHandler = {
       style = 'default',
       size = '1024x1024',
       model = 'gemini',
+      difySkillId = 'text-to-image',
+      aspectRatio = '1:1',
     } = ctx.config as Record<string, string>;
 
     let prompt = '';
@@ -29,12 +33,37 @@ const textToImage: PrimitiveHandler = {
       return { success: false, data: null, summary: '无图片描述输入', status: 'warning' };
     }
 
+    // 将风格和尺寸信息附加到 prompt
+    const fullPrompt = [
+      prompt,
+      style !== 'default' ? `风格: ${style}` : '',
+      `宽高比: ${aspectRatio}`,
+      `尺寸: ${size}`,
+    ].filter(Boolean).join('\n');
+
     try {
-      // TODO: 接入 Gemini / DALL·E / Stable Diffusion
+      const resp = await callDifySkill(difySkillId, fullPrompt, model);
+      if (resp.error) {
+        return { success: false, data: { error: resp.error }, summary: `图片生成失败: ${resp.error}`, status: 'error' };
+      }
+
+      // 尝试从返回内容中提取图片 URL
+      const urlMatch = resp.answer.match(/https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|gif|webp|svg)[^\s"'<>]*/i)
+        || resp.answer.match(/https?:\/\/[^\s"'<>]+/);
+      const imageUrl = urlMatch ? urlMatch[0] : '';
+
       return {
         success: true,
-        data: { imageUrl: '', prompt, style, size, model, _mock: true },
-        summary: `[mock] text-to-image 原型已调用，风格: ${style}, 尺寸: ${size}`,
+        data: {
+          imageUrl,
+          text: resp.answer,
+          prompt,
+          style,
+          size,
+          model,
+          conversationId: resp.conversationId,
+        },
+        summary: imageUrl ? `图片已生成: ${imageUrl}` : resp.answer,
         status: 'success',
       };
     } catch (err) {

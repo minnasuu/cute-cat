@@ -5,18 +5,19 @@ import type { PrimitiveId, SkillPrimitive, StepParam } from './types'
 // ────────────────────────────────────────────────────────────
 
 export const skillPrimitives: SkillPrimitive[] = [
-  { id: 'text-to-text',      name: 'AI 文生文',   description: '文本输入 → LLM 处理 → 文本输出',           input: 'text', output: 'text',  provider: 'Gemini / Dify' },
-  { id: 'text-to-image',     name: 'AI 文生图',   description: '文本描述 → 图片生成模型 → 图片',            input: 'text', output: 'image', provider: 'Gemini' },
-  { id: 'structured-output', name: '结构化输出',   description: '文本输入 → LLM 结构化输出 → JSON',          input: 'text', output: 'json',  provider: 'Gemini / Dify' },
-  { id: 'api-call',          name: '外部 API',    description: '调用外部 REST API / RSS / Webhook',        input: 'url',  output: 'json',  provider: 'HTTP Client' },
-  { id: 'db-query',          name: '数据库查询',   description: '查询 PostgreSQL 返回结构化数据',            input: 'text', output: 'json',  provider: 'PostgreSQL' },
-  { id: 'email-send',        name: '邮件发送',    description: '通过 SMTP 发送 HTML 邮件',                 input: 'text', output: 'email', provider: 'SMTP' },
-  { id: 'web-push',          name: '推送通知',    description: '通过 Web Push API 发送浏览器通知',          input: 'text', output: 'json',  provider: 'Web Push' },
-  { id: 'html-render',       name: 'HTML 渲染',   description: '将数据注入模板，输出 HTML 片段',            input: 'json', output: 'html',  provider: 'Template Engine' },
-  { id: 'chart-render',      name: '图表渲染',    description: '将 JSON 数据渲染为可视化图表',              input: 'json', output: 'image', provider: 'Chart.js' },
-  { id: 'browser-action',    name: '浏览器操作',   description: '通过 Puppeteer 执行浏览器自动化',           input: 'url',  output: 'json',  provider: 'Puppeteer' },
-  { id: 'file-io',           name: '文件读写',    description: '读写服务端文件系统',                       input: 'text', output: 'file',  provider: 'Node.js FS' },
-  { id: 'workflow-engine',   name: '工作流引擎',   description: '触发、管理、查询工作流',                    input: 'json', output: 'json',  provider: 'Workflow Engine' },
+  { id: 'text-to-text',      name: 'AI 文生文',    description: '文本输入 → LLM 处理 → 文本输出',            input: 'text',  output: 'text',  provider: 'Qwen' },
+  { id: 'text-to-image',     name: 'AI 文生图',    description: '文本描述 → 图片生成模型 → 图片',             input: 'text',  output: 'image', provider: 'Qwen' },
+  { id: 'structured-output', name: '结构化输出',   description: '文本输入 → LLM 处理 → JSON 结构化数据',      input: 'text',  output: 'json',  provider: 'Qwen' },
+  { id: 'api-call',          name: 'API 调用',     description: 'HTTP 请求外部 API 并返回结果',              input: 'json',  output: 'json',  provider: 'HTTP' },
+  { id: 'db-query',          name: '数据库查询',   description: '执行 SQL 查询并返回结果集',                  input: 'text',  output: 'json',  provider: 'PostgreSQL' },
+  { id: 'email-send',        name: '邮件发送',     description: '通过 SMTP 发送 HTML 邮件',                  input: 'text',  output: 'email', provider: 'SMTP' },
+  { id: 'web-push',          name: 'Web 推送',     description: '向浏览器订阅端点发送推送通知',                input: 'json',  output: 'json',  provider: 'Web Push' },
+  { id: 'html-render',       name: 'HTML 渲染',    description: '生成 HTML/React 组件并渲染预览',             input: 'text',  output: 'html',  provider: 'Renderer' },
+  { id: 'chart-render',      name: '图表渲染',     description: 'JSON 数据 → Chart.js 可视化图表',            input: 'json',  output: 'image', provider: 'Chart.js' },
+  { id: 'browser-action',    name: '浏览器操作',   description: 'Puppeteer 自动化浏览器交互与截图',            input: 'url',   output: 'json',  provider: 'Puppeteer' },
+  { id: 'file-io',           name: '文件读写',     description: '读取或写入本地文件系统',                     input: 'text',  output: 'file',  provider: 'Node' },
+  { id: 'workflow-engine',   name: '工作流引擎',   description: '编排并执行多步骤协作工作流',                  input: 'json',  output: 'json',  provider: 'Workflow' },
+  { id: 'js-execute',        name: 'JS 执行',      description: '执行 JavaScript 代码',                     input: 'text',  output: 'text',  provider: 'Node' },
 ]
 
 /** 根据原型 ID 获取原型定义 */
@@ -57,7 +58,7 @@ export const skillCategories: { id: SkillCategory; name: string; icon: string; c
 ]
 
 export const skillPool: SkillTemplate[] = [
-  // ── 通用（默认猫猫 CAT 专属，基于 text-to-text 原型）──
+  // ── 通用（默认猫猫 CAT 专属，拥有所有原型技能）──
   { id: 'ai-chat', name: 'AI 对话', icon: '💬', category: 'content', description: '通用 AI 文生文，可处理总结、分析、翻译、改写等文本任务', input: 'text', output: 'text', primitiveId: 'text-to-text', provider: 'Dify' },
 
   // ── 内容创作（基于 text-to-text / structured-output 原型）──

@@ -20,6 +20,7 @@ import chartRender from './chart-render';
 import browserAction from './browser-action';
 import fileIo from './file-io';
 import workflowEngine from './workflow-engine';
+import jsExecute from './js-execute';
 
 const primitiveHandlers: PrimitiveHandler[] = [
   textToText,
@@ -34,6 +35,7 @@ const primitiveHandlers: PrimitiveHandler[] = [
   browserAction,
   fileIo,
   workflowEngine,
+  jsExecute,
 ];
 
 const registry = new Map<PrimitiveId, PrimitiveHandler>(

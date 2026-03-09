@@ -10,18 +10,19 @@ import type { CatColors } from '../components/CatSVG';
  * 所有用户可见的技能（Skill）都基于某个原型实现
  */
 export type PrimitiveId =
-  | 'text-to-text'      // AI 文生文：文本 → 文本
-  | 'text-to-image'     // AI 文生图：文本 → 图片
-  | 'structured-output' // AI 结构化输出：文本 → JSON
-  | 'api-call'          // 外部 API 调用（REST/RSS/Webhook）
-  | 'db-query'          // 数据库查询
-  | 'email-send'        // 邮件发送 (SMTP)
-  | 'web-push'          // Web 推送通知
-  | 'html-render'       // HTML 模板渲染
-  | 'chart-render'      // 图表渲染（Chart.js 等）
-  | 'browser-action'    // 浏览器自动化（Puppeteer）
-  | 'file-io'           // 文件读写
-  | 'workflow-engine';  // 工作流引擎操作（触发/管理）
+  | 'text-to-text'        // AI 文生文：文本 → 文本
+  | 'text-to-image'       // AI 文生图：文本 → 图片
+  | 'structured-output'   // 结构化输出：文本 → JSON
+  | 'api-call'            // API 调用：HTTP 请求外部服务
+  | 'db-query'            // 数据库查询：SQL → 结果集
+  | 'email-send'          // 邮件发送 (SMTP)
+  | 'web-push'            // Web 推送通知
+  | 'html-render'         // HTML 渲染：生成并渲染页面/组件
+  | 'chart-render'        // 图表渲染：数据 → 可视化图表
+  | 'browser-action'      // 浏览器操作：Puppeteer 自动化
+  | 'file-io'             // 文件读写：本地文件系统操作
+  | 'workflow-engine'     // 工作流引擎：编排多步协作流程
+  | 'js-execute'          // JS 执行
 
 /** 技能原型定义 */
 export interface SkillPrimitive {
