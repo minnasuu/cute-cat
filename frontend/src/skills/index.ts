@@ -57,10 +57,10 @@ import teamReview from './team-review';
 import catTraining from './cat-training';
 
 // --- 管理员私有 ---
-import viewArticles from './system-monitor';
-import createArticle from './user-manage';
-import viewCrafts from './data-export';
-import createCraft from './prompt-debug';
+import viewArticles from './admins/view-articles';
+import createArticle from './admins/create-article';
+import viewCrafts from './admins/view-crafts';
+import createCraft from './admins/create-craft';
 
 // --- CAT (default) ---
 import aiChat from './ai-chat';

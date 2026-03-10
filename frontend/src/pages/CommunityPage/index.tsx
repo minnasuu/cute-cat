@@ -259,7 +259,7 @@ const CommunityPage = () => {
                         const skill = skillPool.find(s => s.id === sid);
                         return skill ? (
                           <span key={sid} className="px-2.5 py-1.5 rounded-full bg-surface-secondary border border-border text-[11px] font-bold text-text-secondary">
-                            {skill.icon} {skill.name}
+                            {skill.name}
                           </span>
                         ) : null;
                       })}
@@ -299,7 +299,7 @@ const CommunityPage = () => {
                     }`}
                     style={skillFilter === cat.id ? { background: cat.color } : undefined}
                   >
-                    {cat.icon} {cat.name} ({count})
+                    {cat.name} ({count})
                   </button>
                 );
               })}
@@ -315,9 +315,6 @@ const CommunityPage = () => {
                     className={`rounded-[20px] border border-border bg-surface p-5 transition-all ${skill.disabled?'opacity-50':'hover:border-border-strong hover:shadow-md'}`}
                   >
                     <div className="flex items-start gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ background: `${cat?.color}18` }}>
-                        {skill.icon}
-                      </div>
                       <div className="min-w-0">
                         <h4 className="text-sm font-bold text-text-primary">{skill.name}</h4>
                         <span
@@ -462,7 +459,7 @@ const CommunityPage = () => {
                                         <>
                                           <span className="text-text-tertiary text-xs">·</span>
                                           <span className="text-[11px] font-bold text-text-secondary">
-                                            {skill.icon} {skill.name}
+                                            {skill.name}
                                           </span>
                                         </>
                                       )}

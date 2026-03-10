@@ -84,7 +84,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const getSkillInfo = (cat: TeamCat | undefined, skillId: string) => {
     if (!cat || !skillId) return { name: '', icon: '' };
     const skill = cat.skills?.find((s: any) => s.id === skillId);
-    return { name: skill?.name || '', icon: skill?.icon || '' };
+    return { name: skill?.name || ''};
   };
 
   // 背景点阵跟随视口变换，产生无限画布效果

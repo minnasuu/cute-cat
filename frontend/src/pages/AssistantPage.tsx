@@ -149,7 +149,6 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
                   {(selectedAssistant.skills as Skill[]).map((skill) => (
                     <div key={skill.id} className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
                       <div className="skill-detail-head">
-                        <span className="sd-icon">{skill.icon}</span>
                         <span className="sd-name">{skill.name}</span>
                         <div className="sd-io">
                           <span className="sd-io-tag sd-in">{skill.input}</span>

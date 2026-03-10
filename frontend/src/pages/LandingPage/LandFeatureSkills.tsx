@@ -48,7 +48,7 @@ export const LandFeatureSkills = () => {
                       key={skill.id}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-secondary border border-border text-[11px] font-bold"
                     >
-                      {skill.icon} {skill.name}
+                      {skill.name}
                     </span>
                   ))}
                   {groupSkills.length > 4 && (

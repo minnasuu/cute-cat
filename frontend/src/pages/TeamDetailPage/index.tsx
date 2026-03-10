@@ -617,7 +617,7 @@ const TeamDetailPage: React.FC = () => {
                   <p className="text-xs font-bold text-center mt-1" style={{ color: cat.accent }}>{cat.role}</p>
                   <div className="flex flex-wrap gap-1.5 justify-center mt-3">
                     {cat.skills.slice(0, 3).map((skill: any) => (
-                      <span key={skill.id} className="text-[10px] font-bold bg-surface-secondary text-text-secondary px-2 py-0.5 rounded-full border border-border">{skill.icon} {skill.name}</span>
+                      <span key={skill.id} className="text-[10px] font-bold bg-surface-secondary text-text-secondary px-2 py-0.5 rounded-full border border-border">{skill.name}</span>
                     ))}
                     {cat.skills.length > 3 && <span className="text-[10px] font-bold text-text-tertiary">+{cat.skills.length - 3}</span>}
                   </div>

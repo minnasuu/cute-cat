@@ -271,7 +271,7 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
                 disabled={!step.agentId}
               >
                 <option value="">选择技能...</option>
-                {catSkills.map((s: any) => <option key={s.id} value={s.id}>{s.icon} {s.name}</option>)}
+                {catSkills.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           </div>

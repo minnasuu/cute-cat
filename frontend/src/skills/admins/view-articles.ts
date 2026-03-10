@@ -1,5 +1,5 @@
-import type { SkillHandler, SkillContext, SkillResult } from './types';
-import { executePrimitive } from './primitives';
+import type { SkillHandler, SkillContext, SkillResult } from '../types';
+import { executePrimitive } from '../primitives';
 
 /** 📖 查看文章 — 管理员私有
  *  基于原型: api-call

@@ -150,7 +150,7 @@ const CatEditorPage: React.FC = () => {
     if (!name.trim()) { showToast('请输入猫猫名称', 'warning'); return; }
     setSaving(true);
     try {
-      const skills = skillPool.filter(s => selectedSkills.includes(s.id)).map(s => ({ id: s.id, name: s.name, icon: s.icon, description: s.description, input: s.input, output: s.output, ...(s.paramDefs?.length ? { paramDefs: s.paramDefs } : {}) }));
+      const skills = skillPool.filter(s => selectedSkills.includes(s.id)).map(s => ({ id: s.id, name: s.name, description: s.description, input: s.input, output: s.output, ...(s.paramDefs?.length ? { paramDefs: s.paramDefs } : {}) }));
       const finalColors = { ...catColors, tail: tailEnabled ? catColors.tail : '' };
       const data = { name, role, description, catColors: finalColors, systemPrompt, skills, accent, item: 'clipboard', messages };
       if (isEditing) {
@@ -569,7 +569,7 @@ const CatEditorPage: React.FC = () => {
                               }`}
                               style={skillFilter === cat.id ? { background: cat.color } : undefined}
                             >
-                              {cat.icon} {cat.name} ({count})
+                          {cat.name} ({count})
                             </button>
                           );
                         })}
@@ -594,9 +594,6 @@ const CatEditorPage: React.FC = () => {
                               }`}
                             >
                               <div className="flex items-center gap-2 mb-1.5">
-                                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0" style={{ background: `${cat?.color}18` }}>
-                                  {skill.icon}
-                                </div>
                                 <div className="min-w-0">
                                   <span className={`font-bold text-xs block ${isSelected ? 'text-primary-700' : 'text-text-primary'}`}>{skill.name}</span>
                                   <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold text-white" style={{ background: cat?.color }}>{cat?.name}</span>

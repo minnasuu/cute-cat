@@ -168,7 +168,7 @@ export const LandFeatureWorkflows = () => {
                         <span className="text-xs font-extrabold" style={{ color: cat?.accent }}>{cat?.name ?? step.agentId}</span>
                         {skill && (
                           <span className="text-[10px] font-semibold text-text-tertiary bg-surface-secondary px-2 py-0.5 rounded-md">
-                            {skill.icon} {skill.name}
+                            {skill.name}
                           </span>
                         )}
                       </div>
