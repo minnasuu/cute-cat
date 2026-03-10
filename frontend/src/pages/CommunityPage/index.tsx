@@ -312,7 +312,7 @@ const CommunityPage = () => {
                 return (
                   <div
                     key={skill.id}
-                    className="rounded-[20px] border border-border bg-surface p-5 hover:border-border-strong hover:shadow-md transition-all"
+                    className={`rounded-[20px] border border-border bg-surface p-5 transition-all ${skill.disabled?'opacity-50':'hover:border-border-strong hover:shadow-md'}`}
                   >
                     <div className="flex items-start gap-3 mb-3">
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ background: `${cat?.color}18` }}>

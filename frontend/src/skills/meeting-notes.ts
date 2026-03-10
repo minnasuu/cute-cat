@@ -1,5 +1,5 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
-import { callDifySkill } from '../utils/backendClient';
+import { executePrimitive } from './primitives';
 
 /** agentId → 猫猫名映射 */
 const AGENT_NAMES: Record<string, string> = {
@@ -103,73 +103,68 @@ function buildMeetingInput(input: unknown, attendeeNames: string[], date: string
 }
 
 /** 📝 会议纪要 — 咪咪
- *  基于原型: text-to-text (通过 Dify 调用)
+ *  基于原型: text-to-text
+ *  汇总上游所有步骤的输出，调用 LLM 生成结构化会议纪要。
  */
 const meetingNotes: SkillHandler = {
   id: 'meeting-notes',
   async execute(ctx: SkillContext): Promise<SkillResult> {
     console.log(`[meeting-notes] agent=${ctx.agentId} @${ctx.timestamp}`);
 
-    try {
-      // 获取执行日期
-      const now = new Date(ctx.timestamp);
-      const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+    // 获取执行日期
+    const now = new Date(ctx.timestamp);
+    const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
 
-      // 提取参会猫猫
-      const attendeeIds = extractAttendees(ctx.input);
-      // 咪咪是主持人，不重复列入
-      const attendeeNames = attendeeIds
-        .filter((id) => id !== ctx.agentId)
-        .map((id) => AGENT_NAMES[id] || id);
+    // 提取参会猫猫
+    const attendeeIds = extractAttendees(ctx.input);
+    // 咪咪是主持人，不重复列入
+    const attendeeNames = attendeeIds
+      .filter((id) => id !== ctx.agentId)
+      .map((id) => AGENT_NAMES[id] || id);
 
-      const meetingContent = buildMeetingInput(ctx.input, attendeeNames, dateStr);
+    const meetingContent = buildMeetingInput(ctx.input, attendeeNames, dateStr);
 
-      // 检查是否有实质性内容（不仅仅是会议元信息）
-      const hasContent = meetingContent.includes('【产出统计】') ||
-        meetingContent.includes('【网站诊断】') ||
-        meetingContent.includes('【下周代办】') ||
-        meetingContent.includes('【任务分配】') ||
-        meetingContent.includes('【会议纪要】');
+    // 检查是否有实质性内容（不仅仅是会议元信息）
+    const hasContent = meetingContent.includes('【产出统计】') ||
+      meetingContent.includes('【网站诊断】') ||
+      meetingContent.includes('【下周代办】') ||
+      meetingContent.includes('【任务分配】') ||
+      meetingContent.includes('【会议纪要】');
 
-      if (!hasContent) {
-        return {
-          success: true,
-          data: { notes: '' },
-          summary: '没有收到上游周会内容，跳过纪要生成',
-          status: 'warning',
-        };
-      }
+    if (!hasContent) {
+      return {
+        success: true,
+        data: { notes: '' },
+        summary: '没有收到上游周会内容，跳过纪要生成',
+        status: 'warning',
+      };
+    }
 
-      const text = `请根据以下周会内容生成会议纪要（标题请由你总结，不要用泛称）：\n\n${meetingContent}`;
+    const text = `请根据以下周会内容生成会议纪要（标题请由你总结，不要用泛称）：\n\n${meetingContent}`;
+    const enrichedCtx: SkillContext = { ...ctx, input: text };
 
-      const response = await callDifySkill('meeting-notes', text);
+    const result = await executePrimitive('text-to-text', enrichedCtx, {
+      systemPrompt: '你是一只名叫阿蓝的猫猫编辑，擅长撰写清晰的会议纪要。请根据周会内容生成结构化的会议纪要，包含时间、参会人、议题、决议和待办事项等。',
+      difySkillId: 'meeting-notes',
+      model: 'qwen',
+      outputFormat: 'markdown',
+    });
 
-      if (response.error) {
-        return {
-          success: false,
-          data: { error: response.error },
-          summary: `会议纪要生成失败: ${response.error}`,
-          status: 'error',
-        };
-      }
-
+    // 适配返回格式
+    if (result.success && result.data) {
+      const data = result.data as Record<string, unknown>;
       return {
         success: true,
         data: {
-          notes: response.answer,
-          conversationId: response.conversationId,
+          notes: data.text || result.summary,
+          conversationId: data.conversationId,
         },
-        summary: response.answer,
-        status: 'success',
-      };
-    } catch (err) {
-      return {
-        success: false,
-        data: { error: String(err) },
-        summary: `会议纪要生成异常: ${String(err)}`,
-        status: 'error',
+        summary: result.summary,
+        status: result.status,
       };
     }
+
+    return { success: result.success, data: result.data, summary: result.summary, status: result.status };
   },
 };
 

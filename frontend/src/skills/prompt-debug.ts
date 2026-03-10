@@ -1,9 +1,9 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
-
-const API = 'https://suminhan.cn';
+import { executePrimitive } from './primitives';
 
 /** 🛠️ 新增 Craft — 管理员私有
- *  接收 JSON 数组字符串，批量创建 Craft 组件
+ *  基于原型: api-call
+ *  接收 JSON 数组字符串，通过 api-call 原型批量创建 Craft 组件。
  *  格式: [{ name, description, category, technologies, htmlCode, configSchema }, ...]
  */
 const createCraft: SkillHandler = {
@@ -35,11 +35,11 @@ const createCraft: SkillHandler = {
         // 数组元素可能是 JSON 字符串
         items = parsed.map((el: unknown) => typeof el === 'string' ? JSON.parse(el) : el);
       } else if (parsed && typeof parsed === 'object') {
-        // 单个 craft 对象，如 { "id": "...", "name": "...", "htmlCode": "..." }
+        // 单个 craft 对象
         if ('name' in parsed || 'htmlCode' in parsed || 'id' in parsed) {
           items = [parsed];
         } else {
-          // 以数字索引为 key 的对象，如 { "0": {...}, "9": {...} }
+          // 以数字索引为 key 的对象
           items = Object.values(parsed).map((el: unknown) =>
             typeof el === 'string' ? JSON.parse(el) : el
           );
@@ -65,14 +65,20 @@ const createCraft: SkillHandler = {
         errors.push(`跳过: name 或 htmlCode 缺失`);
         continue;
       }
+
+      const itemCtx: typeof ctx = { ...ctx, input: item };
+
       try {
-        const res = await fetch(`${API}/api/crafts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item),
+        const result = await executePrimitive('api-call', itemCtx, {
+          proxyEndpoint: '/api/crafts',
+          proxyBody: item,
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        results.push(await res.json());
+
+        if (result.success) {
+          results.push(result.data);
+        } else {
+          errors.push(`「${name}」失败: ${result.summary}`);
+        }
       } catch (err: any) {
         errors.push(`「${name}」失败: ${err.message}`);
       }

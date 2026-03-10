@@ -1,9 +1,9 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
-
-const API = 'https://suminhan.cn';
+import { executePrimitive } from './primitives';
 
 /** 🎨 查看 Crafts — 管理员私有
- *  查看所有 Crafts 列表或按 ID 查看单个 Craft 详情
+ *  基于原型: api-call
+ *  查看所有 Crafts 列表或按 ID 查看单个 Craft 详情。
  */
 const viewCrafts: SkillHandler = {
   id: 'view-crafts',
@@ -20,27 +20,30 @@ const viewCrafts: SkillHandler = {
       craftId = String(params.craftId || '').trim();
     }
 
-    try {
-      const url = craftId
-        ? `${API}/api/crafts/${craftId}`
-        : `${API}/api/crafts`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+    const endpoint = craftId
+      ? `/api/crafts/${craftId}`
+      : '/api/crafts';
 
-      const summary = craftId
-        ? `Craft 详情:\n${JSON.stringify(data, null, 2)}`
-        : `共 ${Array.isArray(data) ? data.length : 0} 个 Crafts:\n${JSON.stringify(data?.map((x:any) => Object.assign(x, {htmlCode:'(实现该效果的html代码)'})), null, 2)}`;
+    const result = await executePrimitive('api-call', ctx, {
+      proxyEndpoint: endpoint,
+      proxyBody: {},
+    });
 
-      return { success: true, data, summary, status: 'success' };
-    } catch (err: any) {
+    if (!result.success) {
       return {
         success: false,
         data: null,
-        summary: `查看 Crafts 失败: ${err.message}`,
+        summary: `查看 Crafts 失败: ${result.summary}`,
         status: 'error',
       };
     }
+
+    const data = result.data;
+    const summary = craftId
+      ? `Craft 详情:\n${JSON.stringify(data, null, 2)}`
+      : `共 ${Array.isArray(data) ? data.length : 0} 个 Crafts:\n${JSON.stringify((data as any[])?.map((x: any) => Object.assign(x, { htmlCode: '(实现该效果的html代码)' })), null, 2)}`;
+
+    return { success: true, data, summary, status: 'success' };
   },
 };
 

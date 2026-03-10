@@ -44,6 +44,10 @@ export interface SkillTemplate {
   paramDefs?: StepParam[]
   /** 是否仅管理员可见 */
   adminOnly?: boolean
+  /** 是否禁用（当前无法基于 primitives 实现） */
+  disabled?: boolean
+  /** 禁用原因说明 */
+  disabledReason?: string
 }
 
 export type SkillCategory = 'content' | 'data' | 'visual' | 'comm' | 'dev' | 'manage'
@@ -136,6 +140,7 @@ export const skillPool: SkillTemplate[] = [
   },
   { id: 'layout-design',     name: '排版布局',   icon: '📐', category: 'visual', description: '将内容组合排版为精美页面',               input: 'json',  output: 'html',  primitiveId: 'html-render',       provider: 'Template' },
   { id: 'image-enhance',     name: '图片增强',   icon: '🔆', category: 'visual', description: '对图片进行超分辨率放大和降噪',            input: 'image', output: 'image', primitiveId: 'api-call',          provider: 'Real-ESRGAN',
+    disabled: true, disabledReason: '需要 Real-ESRGAN 超分辨率 API 服务，当前未配置服务端点',
     paramDefs: [
       { key: 'scale', label: '放大倍数', type: 'select', options: [{ label: '2x', value: '2' }, { label: '4x', value: '4' }], defaultValue: '2' },
     ],
@@ -166,18 +171,21 @@ export const skillPool: SkillTemplate[] = [
 
   // ── 开发运维（基于 text-to-text / structured-output / browser-action 原型）──
   { id: 'fix-bug',           name: 'Bug 修复',  icon: '🐛', category: 'dev', description: '排查并修复前后端 bug',                    input: 'text', output: 'text', primitiveId: 'text-to-text',      provider: 'Code Analysis',
+    disabled: true, disabledReason: '需要完整代码仓库访问与分析能力，单一 text-to-text 原型无法实现真正的 Bug 修复',
     paramDefs: [
       { key: 'repo', label: '仓库地址', type: 'url', placeholder: 'https://github.com/...' },
       { key: 'bugDesc', label: 'Bug 描述', type: 'textarea', placeholder: '详细描述 bug 现象和复现步骤', required: true },
     ],
   },
   { id: 'develop-feature',   name: '功能开发',   icon: '🛠️', category: 'dev', description: '根据需求开发新功能模块',                   input: 'text', output: 'text', primitiveId: 'text-to-text',      provider: 'Full Stack',
+    disabled: true, disabledReason: '需要完整全栈开发环境与多文件编排能力，单一原型无法实现端到端功能开发',
     paramDefs: [
       { key: 'requirement', label: '需求描述', type: 'textarea', placeholder: '详细描述功能需求', required: true },
       { key: 'techStack', label: '技术栈', type: 'tags', placeholder: '如 React, Node.js' },
     ],
   },
   { id: 'optimize-perf',     name: '性能优化',   icon: '⚡', category: 'dev', description: '分析并优化性能瓶颈',                      input: 'text', output: 'text', primitiveId: 'text-to-text',      provider: 'Lighthouse',
+    disabled: true, disabledReason: '需要 Lighthouse 性能分析服务集成，当前后端未部署该能力',
     paramDefs: [
       { key: 'targetUrl', label: '目标页面', type: 'url', placeholder: 'https://...', required: true },
     ],

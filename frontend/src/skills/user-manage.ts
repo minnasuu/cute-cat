@@ -1,9 +1,9 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
-
-const API = 'https://suminhan.cn';
+import { executePrimitive } from './primitives';
 
 /** ✍️ 新增文章 — 管理员私有
- *  接收 JSON 对象字符串，创建文章
+ *  基于原型: api-call
+ *  接收 JSON 对象字符串，通过 api-call 原型创建文章。
  *  格式: { title, summary, content, publishDate, tags, readTime, type }
  */
 const createArticle: SkillHandler = {
@@ -39,29 +39,28 @@ const createArticle: SkillHandler = {
       return { success: false, data: null, summary: '标题(title)和正文(content)为必填项', status: 'error' };
     }
 
-    try {
-      const res = await fetch(`${API}/api/articles`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(article),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+    const articleCtx: typeof ctx = { ...ctx, input: article };
 
-      return {
-        success: true,
-        data,
-        summary: `文章「${title}」发布成功`,
-        status: 'success',
-      };
-    } catch (err: any) {
+    const result = await executePrimitive('api-call', articleCtx, {
+      proxyEndpoint: '/api/articles',
+      proxyBody: article,
+    });
+
+    if (!result.success) {
       return {
         success: false,
         data: null,
-        summary: `新增文章失败: ${err.message}`,
+        summary: `新增文章失败: ${result.summary}`,
         status: 'error',
       };
     }
+
+    return {
+      success: true,
+      data: result.data,
+      summary: `文章「${title}」发布成功`,
+      status: 'success',
+    };
   },
 };
 

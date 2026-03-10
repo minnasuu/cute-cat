@@ -1,25 +1,5 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
-import { fetchArticles, fetchCrafts, callDifySkill } from '../utils/backendClient';
-
-/** 收集现有文章标题列表 */
-async function collectArticleTitles(): Promise<string[]> {
-  try {
-    const articles = await fetchArticles();
-    return articles.map((a: any) => a.title).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-/** 收集现有 Crafts 名称列表 */
-async function collectCraftNames(): Promise<string[]> {
-  try {
-    const crafts = await fetchCrafts();
-    return crafts.map((c: any) => c.name).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
+import { executePrimitive } from './primitives';
 
 /** 拼接 Dify 输入字符串（纯文本，不含 JSON 包装） */
 function buildDifyInput(articleTitles: string[], craftNames: string[]): string {
@@ -35,7 +15,8 @@ function buildDifyInput(articleTitles: string[], craftNames: string[]): string {
 }
 
 /** 🔬 网站诊断 — 小白
- *  基于原型: text-to-text + db-query (复合调用)
+ *  基于原型: api-call (数据采集) + text-to-text (AI 分析)
+ *  先通过 api-call 原型采集文章和 Crafts 列表，再调用 text-to-text 原型进行诊断分析。
  */
 const siteAnalyze: SkillHandler = {
   id: 'site-analyze',
@@ -43,38 +24,62 @@ const siteAnalyze: SkillHandler = {
     console.log(`[site-analyze] agent=${ctx.agentId} @${ctx.timestamp}`);
 
     try {
-      // 1. 并行采集文章标题和 Crafts 名称
-      const [articleTitles, craftNames] = await Promise.all([
-        collectArticleTitles(),
-        collectCraftNames(),
+      // 1. 通过 api-call 原型并行采集文章和 Crafts 数据
+      const [articlesResult, craftsResult] = await Promise.all([
+        executePrimitive('api-call', ctx, {
+          proxyEndpoint: '/api/articles',
+          proxyBody: {},
+        }).catch(() => ({ success: false, data: null, summary: '', status: 'error' as const })),
+        executePrimitive('api-call', ctx, {
+          proxyEndpoint: '/api/crafts',
+          proxyBody: {},
+        }).catch(() => ({ success: false, data: null, summary: '', status: 'error' as const })),
       ]);
 
-      // 2. 拼接 Dify 输入
+      // 提取标题/名称列表
+      const articlesData = articlesResult.success && Array.isArray(articlesResult.data)
+        ? articlesResult.data
+        : [];
+      const craftsData = craftsResult.success && Array.isArray(craftsResult.data)
+        ? craftsResult.data
+        : [];
+
+      const articleTitles = articlesData.map((a: any) => a.title).filter(Boolean);
+      const craftNames = craftsData.map((c: any) => c.name).filter(Boolean);
+
+      // 2. 拼接诊断输入
       const difyInput = buildDifyInput(articleTitles, craftNames);
-      console.log('[site-analyze] Dify input:', difyInput);
 
-      // 3. 调用 Dify 对话式 API
-      const response = await callDifySkill('site-analyze', difyInput);
+      // 3. 通过 text-to-text 原型调用 AI 诊断
+      const enrichedCtx: SkillContext = { ...ctx, input: difyInput };
 
-      if (response.error) {
+      const analysisResult = await executePrimitive('text-to-text', enrichedCtx, {
+        systemPrompt: '你是一位网站内容诊断专家。请分析以下个站的内容分布、质量和覆盖范围，指出不足之处并给出优化建议。',
+        difySkillId: 'site-analyze',
+        model: 'qwen',
+        outputFormat: 'text',
+      });
+
+      if (!analysisResult.success) {
         return {
           success: false,
-          data: { error: response.error },
-          summary: `网站诊断失败: ${response.error}`,
+          data: { error: analysisResult.summary },
+          summary: `网站诊断失败: ${analysisResult.summary}`,
           status: 'error',
         };
       }
 
-      // 4. 返回诊断结果
+      const analysisData = analysisResult.data as Record<string, unknown> | null;
+
       return {
         success: true,
         data: {
           currentArticles: articleTitles,
           currentCrafts: craftNames,
-          analysis: response.answer,
-          conversationId: response.conversationId,
+          analysis: analysisData?.text || analysisResult.summary,
+          conversationId: analysisData?.conversationId,
         },
-        summary: response.answer,
+        summary: analysisResult.summary,
         status: 'success',
       };
     } catch (err) {

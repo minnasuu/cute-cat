@@ -1,6 +1,5 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
-import { createWorkflow, callDifySkill } from '../utils/backendClient';
-import type { CreateWorkflowRequest } from '../utils/backendClient';
+import { executePrimitive } from './primitives';
 
 interface TodoItem {
   category: string;
@@ -9,21 +8,38 @@ interface TodoItem {
 }
 
 /** 从 AI 返回的 JSON 中解析任务列表，限制 0-5 个 */
-function parseAITodos(answer: string): TodoItem[] {
+function parseAITodos(data: unknown): TodoItem[] {
   try {
-    // 去掉可能的 markdown 代码块包裹
-    let json = answer.trim();
-    const codeBlockMatch = json.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (codeBlockMatch) {
-      json = codeBlockMatch[1].trim();
+    let items: unknown[];
+
+    if (typeof data === 'string') {
+      // 去掉可能的 markdown 代码块包裹
+      let json = data.trim();
+      const codeBlockMatch = json.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+      if (codeBlockMatch) {
+        json = codeBlockMatch[1].trim();
+      }
+      items = JSON.parse(json);
+    } else if (Array.isArray(data)) {
+      items = data;
+    } else if (data && typeof data === 'object' && 'result' in (data as Record<string, unknown>)) {
+      const result = (data as Record<string, unknown>).result;
+      if (Array.isArray(result)) {
+        items = result;
+      } else if (typeof result === 'string') {
+        items = JSON.parse(result);
+      } else {
+        return [];
+      }
+    } else {
+      return [];
     }
 
-    const parsed = JSON.parse(json);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(items)) return [];
 
     // 过滤有效条目并限制 5 个
     const validCategories = ['文章', 'Crafts', '功能扩展'];
-    return parsed
+    return items
       .filter(
         (item: any) =>
           item &&
@@ -39,7 +55,7 @@ function parseAITodos(answer: string): TodoItem[] {
         description: (item.description || item.title).trim(),
       }));
   } catch {
-    console.warn('[assign-task] Failed to parse AI response as JSON, trying fallback');
+    console.warn('[assign-task] Failed to parse AI response as JSON');
     return [];
   }
 }
@@ -95,7 +111,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 /** 📌 任务分配 — 花椒（AI 辅助拆解）
- *  基于原型: structured-output + workflow-engine (复合调用)
+ *  基于原型: structured-output (AI 拆解) + workflow-engine (创建工作流)
  */
 const assignTask: SkillHandler = {
   id: 'assign-task',
@@ -115,19 +131,25 @@ const assignTask: SkillHandler = {
         };
       }
 
-      // 调用 AI 提取任务
-      const response = await callDifySkill('assign-task', promptText);
+      // 1. 通过 structured-output 原型调用 AI 提取任务
+      const aiCtx: typeof ctx = { ...ctx, input: promptText };
+      const aiResult = await executePrimitive('structured-output', aiCtx, {
+        systemPrompt: '你是一位项目经理猫猫。请分析以下内容，拆解出可执行的任务列表。每个任务必须包含 category（文章/Crafts/功能扩展）、title、description 字段。输出纯 JSON 数组，不要包含其他文字。最多 5 项。',
+        difySkillId: 'assign-task',
+        schema: '[{ "category": "文章|Crafts|功能扩展", "title": "string", "description": "string" }]',
+      });
 
-      if (response.error) {
+      if (!aiResult.success) {
         return {
           success: false,
-          data: { error: response.error },
-          summary: `AI 任务拆解失败: ${response.error}`,
+          data: { error: aiResult.summary },
+          summary: `AI 任务拆解失败: ${aiResult.summary}`,
           status: 'error',
         };
       }
 
-      const todos = parseAITodos(response.answer);
+      const aiData = aiResult.data as Record<string, unknown>;
+      const todos = parseAITodos(aiData.result ?? aiResult.summary);
 
       if (todos.length === 0) {
         return {
@@ -138,15 +160,14 @@ const assignTask: SkillHandler = {
         };
       }
 
-      // 为每个任务创建一个 workflow
+      // 2. 通过 workflow-engine 原型为每个任务创建工作流
       const created: { name: string; id: string; category: string }[] = [];
       const failed: { name: string; error: string }[] = [];
 
       for (const todo of todos) {
         const { agentId, skillId } = getAgentForCategory(todo.category);
-        const icon = CATEGORY_ICONS[todo.category] || '📌';
 
-        const workflow: CreateWorkflowRequest = {
+        const workflowInput = {
           name: todo.title,
           description: `[${todo.category}] ${todo.description}`,
           steps: [
@@ -161,9 +182,20 @@ const assignTask: SkillHandler = {
           persistent: false,
         };
 
+        const wfCtx: typeof ctx = { ...ctx, input: workflowInput };
+
         try {
-          const result = await createWorkflow(workflow);
-          created.push({ name: todo.title, id: result.id, category: todo.category });
+          const wfResult = await executePrimitive('workflow-engine', wfCtx, {
+            action: 'create',
+            teamId: 'default',
+          });
+
+          if (wfResult.success && wfResult.data) {
+            const data = wfResult.data as Record<string, unknown>;
+            created.push({ name: todo.title, id: (data.id as string) || '', category: todo.category });
+          } else {
+            failed.push({ name: todo.title, error: wfResult.summary });
+          }
         } catch (err) {
           failed.push({ name: todo.title, error: String(err) });
         }
@@ -193,7 +225,7 @@ const assignTask: SkillHandler = {
 
       return {
         success: failed.length === 0,
-        data: { created, failed, conversationId: response.conversationId },
+        data: { created, failed, conversationId: aiData.conversationId },
         summary: parts.join('\n'),
         status: failed.length === 0 ? 'success' : 'warning',
       };

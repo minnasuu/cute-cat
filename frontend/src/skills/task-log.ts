@@ -1,5 +1,5 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
-import { fetchArticles, fetchCrafts, fetchWorkflows } from '../utils/backendClient';
+import { executePrimitive } from './primitives';
 
 /** 获取本周一 00:00:00 的时间戳 */
 function getWeekStart(): Date {
@@ -29,7 +29,8 @@ interface WeeklyStats {
 }
 
 /** 📒 任务日志 — 咪咪
- *  基于原型: db-query (数据库统计查询)
+ *  基于原型: api-call (数据采集)
+ *  通过 api-call 原型并行查询文章、Crafts、工作流数据，生成统计报告。
  */
 const taskLog: SkillHandler = {
   id: 'task-log',
@@ -40,12 +41,31 @@ const taskLog: SkillHandler = {
     const now = new Date();
 
     try {
-      // 并行查询文章、Crafts、工作流
-      const [articles, crafts, workflows] = await Promise.all([
-        fetchArticles().catch(() => []),
-        fetchCrafts().catch(() => []),
-        fetchWorkflows().catch(() => []),
+      // 通过 api-call 原型并行查询文章、Crafts、工作流
+      const [articlesResult, craftsResult, workflowsResult] = await Promise.all([
+        executePrimitive('api-call', ctx, {
+          proxyEndpoint: '/api/articles',
+          proxyBody: {},
+        }).catch(() => ({ success: false, data: null, summary: '', status: 'error' as const })),
+        executePrimitive('api-call', ctx, {
+          proxyEndpoint: '/api/crafts',
+          proxyBody: {},
+        }).catch(() => ({ success: false, data: null, summary: '', status: 'error' as const })),
+        executePrimitive('api-call', ctx, {
+          proxyEndpoint: '/api/workflows',
+          proxyBody: {},
+        }).catch(() => ({ success: false, data: null, summary: '', status: 'error' as const })),
       ]);
+
+      const articles = articlesResult.success && Array.isArray(articlesResult.data)
+        ? articlesResult.data
+        : [];
+      const crafts = craftsResult.success && Array.isArray(craftsResult.data)
+        ? craftsResult.data
+        : [];
+      const workflows = workflowsResult.success && Array.isArray(workflowsResult.data)
+        ? workflowsResult.data
+        : [];
 
       // 筛选本周新增的文章（按 publishDate 或 createdAt）
       const weekArticles = articles.filter(
