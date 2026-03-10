@@ -49,7 +49,7 @@ const EdgePopover: React.FC<EdgePopoverProps> = ({
       <button
         onClick={() => { onUpdateInputFrom(stepIndex, undefined); onClose(); }}
         className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-          !step.inputFrom ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
+          !step.inputFrom ? 'bg-primary-50 text-primary-600' : 'text-gray-700 hover:bg-gray-50'
         }`}
       >
         ↩ 上一步（默认）
@@ -62,11 +62,11 @@ const EdgePopover: React.FC<EdgePopoverProps> = ({
             key={si}
             onClick={() => { onUpdateInputFrom(stepIndex, s.agentId || undefined); onClose(); }}
             className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-              isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
+              isActive ? 'bg-primary-50 text-primary-600' : 'text-gray-700 hover:bg-gray-50'
             }`}
           >
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-full bg-blue-500 text-white text-[8px] font-bold flex items-center justify-center">{si + 1}</span>
+              <span className="w-4 h-4 rounded-full bg-primary-500 text-white text-[8px] font-bold flex items-center justify-center">{si + 1}</span>
               {cat?.name || s.agentId || '未配置'}
             </span>
           </button>

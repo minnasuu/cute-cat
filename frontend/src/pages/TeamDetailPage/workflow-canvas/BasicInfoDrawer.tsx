@@ -73,7 +73,7 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
               type="text"
               value={icon}
               onChange={(e) => onChangeIcon(e.target.value)}
-              className="w-16 px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-center text-xl outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-16 px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-center text-xl outline-none focus:ring-2 focus:ring-primary-400"
             />
           </div>
           <div>
@@ -83,7 +83,7 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
               value={name}
               onChange={(e) => onChangeName(e.target.value)}
               placeholder="工作流名称"
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all outline-none text-sm font-medium"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium"
             />
           </div>
           <div>
@@ -93,7 +93,7 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
               onChange={(e) => onChangeDescription(e.target.value)}
               placeholder="这个工作流做什么..."
               rows={3}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all outline-none text-sm font-medium resize-none"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium resize-none"
             />
           </div>
 
@@ -105,7 +105,7 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
                 onClick={() => { onChangeTrigger('manual'); onSetScheduled(false); }}
                 className={`flex-1 px-3 py-2.5 rounded-xl border text-sm font-bold transition-all cursor-pointer ${
                   trigger === 'manual'
-                    ? 'border-blue-400 bg-blue-50 text-blue-700 shadow-sm'
+                    ? 'border-primary-400 bg-primary-50 text-primary-700 shadow-sm'
                     : 'border-gray-200 hover:border-gray-300 text-gray-500'
                 }`}
               >
@@ -115,7 +115,7 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
                 onClick={() => { onChangeTrigger('cron'); onSetScheduled(true); }}
                 className={`flex-1 px-3 py-2.5 rounded-xl border text-sm font-bold transition-all cursor-pointer ${
                   trigger === 'cron'
-                    ? 'border-blue-400 bg-blue-50 text-blue-700 shadow-sm'
+                    ? 'border-primary-400 bg-primary-50 text-primary-700 shadow-sm'
                     : 'border-gray-200 hover:border-gray-300 text-gray-500'
                 }`}
               >
@@ -133,17 +133,17 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
                   value={cron}
                   onChange={(e) => onChangeCron(e.target.value)}
                   placeholder="例如：每周五 18:00"
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all outline-none text-sm font-medium"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium"
                 />
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">开始时间</label>
-                  <input type="time" value={startTime} onChange={(e) => onChangeStartTime(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-400 outline-none text-sm font-medium" />
+                  <input type="time" value={startTime} onChange={(e) => onChangeStartTime(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 outline-none text-sm font-medium" />
                 </div>
                 <div className="flex-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">结束时间</label>
-                  <input type="time" value={endTime} onChange={(e) => onChangeEndTime(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-400 outline-none text-sm font-medium" />
+                  <input type="time" value={endTime} onChange={(e) => onChangeEndTime(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 outline-none text-sm font-medium" />
                 </div>
               </div>
               <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50/50">
@@ -153,7 +153,7 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
                 </div>
                 <button
                   onClick={() => onChangeScheduledEnabled(!scheduledEnabled)}
-                  className={`w-10 h-5.5 rounded-full transition-all cursor-pointer relative ${scheduledEnabled ? 'bg-blue-500' : 'bg-gray-200'}`}
+                  className={`w-10 h-5.5 rounded-full transition-all cursor-pointer relative ${scheduledEnabled ? 'bg-primary-500' : 'bg-gray-200'}`}
                 >
                   <span className={`absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-all ${scheduledEnabled ? 'left-[18px]' : 'left-0.5'}`} />
                 </button>
@@ -168,7 +168,7 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
             </div>
             <button
               onClick={() => onChangePersistent(!persistent)}
-              className={`w-10 h-5.5 rounded-full transition-all cursor-pointer relative ${persistent ? 'bg-blue-500' : 'bg-gray-200'}`}
+              className={`w-10 h-5.5 rounded-full transition-all cursor-pointer relative ${persistent ? 'bg-primary-500' : 'bg-gray-200'}`}
             >
               <span className={`absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-all ${persistent ? 'left-[18px]' : 'left-0.5'}`} />
             </button>

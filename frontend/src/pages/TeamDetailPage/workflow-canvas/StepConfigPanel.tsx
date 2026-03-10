@@ -63,7 +63,7 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
-          <div className="w-8 h-8 rounded-full bg-blue-500 text-white text-sm font-black flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-black flex items-center justify-center">
             {stepIndex + 1}
           </div>
           {selectedCat ? (
@@ -125,7 +125,7 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
               value={step.action}
               onChange={(e) => onUpdateStep(stepIndex, 'action', e.target.value)}
               placeholder="描述这步要做什么..."
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all outline-none text-sm font-medium"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium"
             />
           </div>
 
@@ -136,20 +136,20 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
               {(step.params || []).map((param, pi) => (
                 <div key={pi} className="rounded-xl border border-gray-100 bg-gray-50/50 p-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-blue-600">P{pi + 1}</span>
+                    <span className="text-[10px] font-bold text-primary-600">P{pi + 1}</span>
                     <input
                       type="text"
                       value={param.key}
                       onChange={(e) => onUpdateParam(stepIndex, pi, 'key', e.target.value)}
                       placeholder="key"
-                      className="flex-1 px-2 py-1 rounded-lg border border-gray-200 bg-white text-[10px] font-medium outline-none focus:ring-1 focus:ring-blue-300"
+                      className="flex-1 px-2 py-1 rounded-lg border border-gray-200 bg-white text-[10px] font-medium outline-none focus:ring-1 focus:ring-primary-300"
                     />
                     <input
                       type="text"
                       value={param.label}
                       onChange={(e) => onUpdateParam(stepIndex, pi, 'label', e.target.value)}
                       placeholder="显示标签"
-                      className="flex-1 px-2 py-1 rounded-lg border border-gray-200 bg-white text-[10px] font-medium outline-none focus:ring-1 focus:ring-blue-300"
+                      className="flex-1 px-2 py-1 rounded-lg border border-gray-200 bg-white text-[10px] font-medium outline-none focus:ring-1 focus:ring-primary-300"
                     />
                     <button
                       onClick={() => onRemoveParam(stepIndex, pi)}
@@ -179,14 +179,14 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
                       value={param.placeholder || ''}
                       onChange={(e) => onUpdateParam(stepIndex, pi, 'placeholder', e.target.value)}
                       placeholder="占位提示文本"
-                      className="flex-1 px-2 py-1 rounded-lg border border-gray-200 bg-white text-[10px] font-medium outline-none focus:ring-1 focus:ring-blue-300"
+                      className="flex-1 px-2 py-1 rounded-lg border border-gray-200 bg-white text-[10px] font-medium outline-none focus:ring-1 focus:ring-primary-300"
                     />
                     <label className="flex items-center gap-1 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={!!param.required}
                         onChange={(e) => onUpdateParam(stepIndex, pi, 'required', e.target.checked)}
-                        className="w-3 h-3 rounded cursor-pointer accent-blue-500"
+                        className="w-3 h-3 rounded cursor-pointer accent-primary-500"
                       />
                       <span className="text-[10px] font-bold text-gray-400">必填</span>
                     </label>
@@ -197,14 +197,14 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
                       value={param.description || ''}
                       onChange={(e) => onUpdateParam(stepIndex, pi, 'description', e.target.value)}
                       placeholder="补充说明"
-                      className="w-full px-2 py-1 rounded-lg border border-gray-200 bg-white text-[10px] font-medium outline-none focus:ring-1 focus:ring-blue-300"
+                      className="w-full px-2 py-1 rounded-lg border border-gray-200 bg-white text-[10px] font-medium outline-none focus:ring-1 focus:ring-primary-300"
                     />
                   )}
                 </div>
               ))}
               <button
                 onClick={() => onAddParam(stepIndex)}
-                className="w-full py-2 border border-dashed border-gray-300 rounded-xl text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all text-[10px] font-bold cursor-pointer"
+                className="w-full py-2 border border-dashed border-gray-300 rounded-xl text-gray-400 hover:border-primary-400 hover:text-primary-500 transition-all text-[10px] font-bold cursor-pointer"
               >
                 + 添加参数
               </button>

@@ -102,7 +102,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         {/* 开始节点 */}
         {startPos && (
           <div
-            className="absolute flex items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-200/50 cursor-default"
+            className="absolute flex items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-200/50 cursor-default"
             style={{
               left: startPos.x,
               top: startPos.y,
@@ -146,7 +146,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         {/* 添加步骤节点 */}
         {addPos && (
           <div
-            className="absolute border-2 border-dashed border-gray-300 rounded-[20px] flex items-center justify-center gap-2 text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all cursor-pointer select-none"
+            className="absolute border-2 border-dashed border-gray-300 rounded-[20px] flex items-center justify-center gap-2 text-gray-400 hover:border-primary-400 hover:text-primary-500 hover:bg-primary-50/50 transition-all cursor-pointer select-none"
             style={{
               left: addPos.x,
               top: addPos.y,

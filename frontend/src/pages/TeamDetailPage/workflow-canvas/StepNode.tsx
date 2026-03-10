@@ -67,7 +67,7 @@ const StepNode: React.FC<StepNodeProps> = ({
   }, [index, onSelect]);
 
   const borderClass = isSelected
-    ? 'border-blue-400 ring-2 ring-blue-200 scale-[1.02]'
+    ? 'border-primary-400 ring-2 ring-primary-200 scale-[1.02]'
     : 'border-gray-200 hover:border-gray-300';
 
   return (
@@ -99,7 +99,7 @@ const StepNode: React.FC<StepNodeProps> = ({
 
       <div className="p-3 flex items-center gap-3">
         {/* Step number badge */}
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0 bg-blue-500">
+        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0 bg-primary-500">
           {index + 1}
         </div>
 
@@ -130,7 +130,7 @@ const StepNode: React.FC<StepNodeProps> = ({
 
         {/* Param count badge */}
         {paramCount > 0 && (
-          <span className="px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-600 text-[8px] font-bold shrink-0">
+          <span className="px-1.5 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-600 text-[8px] font-bold shrink-0">
             {paramCount}P
           </span>
         )}

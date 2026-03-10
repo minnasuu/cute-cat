@@ -41,11 +41,11 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({
       {/* Dialog */}
       <div className="relative w-full max-w-md mx-4 bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden animate-in">
         {/* Gradient top accent */}
-        <div className="h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-green-400" />
+        <div className="h-1 bg-gradient-to-r from-primary-500 via-primary-400 to-primary-300" />
 
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-200/50">
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
               </svg>
@@ -72,12 +72,12 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
               placeholder="例如：每天自动爬取行业资讯并生成日报..."
-              className="flex-1 px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none text-sm font-medium transition-all"
+              className="flex-1 px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none text-sm font-medium transition-all"
             />
             <button
               onClick={handleSubmit}
               disabled={loading || !prompt.trim()}
-              className="px-5 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-bold rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-200/50 whitespace-nowrap cursor-pointer disabled:cursor-not-allowed"
+              className="px-5 py-3 bg-primary-500 text-white text-sm font-bold rounded-xl hover:bg-primary-600 transition-all disabled:opacity-50 shadow-lg shadow-primary-200/50 whitespace-nowrap cursor-pointer disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="flex items-center gap-2">

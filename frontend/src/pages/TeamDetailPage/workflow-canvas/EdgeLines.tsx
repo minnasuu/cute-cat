@@ -114,7 +114,7 @@ const EdgeLines: React.FC<EdgeLinesProps> = ({
             <path
               d={path}
               fill="none"
-              stroke={isActive ? '#3b82f6' : '#93c5fd'}
+              stroke={isActive ? '#22c55e' : '#86efac'}
               strokeWidth={isActive ? 2.5 : 2}
               strokeLinecap="round"
               markerEnd={`url(#${isActive ? ARROW_MARKER_ACTIVE_ID : ARROW_MARKER_ID})`}
