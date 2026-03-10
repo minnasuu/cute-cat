@@ -179,7 +179,7 @@ const SKILL_PROMPTS = {
 };
 
 // ─── 单步执行：根据 skillId 分发到对应的后端能力 ───
-async function executeStep(step, prevResults, userEmail) {
+async function executeStep(step, prevResults, userEmail, catSystemPrompt) {
   const { skillId, action, agentId, params } = step;
 
   // 合并上游结果 + 当前步骤参数
@@ -223,7 +223,11 @@ async function executeStep(step, prevResults, userEmail) {
     }
 
     // ─── AI 类技能（大部分技能走这里）───
-    const systemPrompt = SKILL_PROMPTS[skillId] || '你是一位专业的 AI 助手，请用中文回复。';
+    // 优先注入猫猫的性格 prompt，再叠加技能专用 prompt
+    const skillPrompt = SKILL_PROMPTS[skillId] || '你是一位专业的 AI 助手，请用中文回复。';
+    const systemPrompt = catSystemPrompt
+      ? `${catSystemPrompt}\n\n${skillPrompt}`
+      : skillPrompt;
     let taskPrompt = action ? `当前任务：${action}\n请围绕以上任务要求完成工作。` : '';
     let inputText = '';
 
@@ -298,10 +302,17 @@ async function executeWorkflow(workflow, triggeredBy) {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
 
+    // 查询猫猫的性格 systemPrompt（用于 AI 类技能注入）
+    let catSystemPrompt = '';
+    if (step.agentId) {
+      const cat = await prisma.teamCat.findUnique({ where: { id: step.agentId }, select: { systemPrompt: true } }).catch(() => null);
+      if (cat?.systemPrompt) catSystemPrompt = cat.systemPrompt;
+    }
+
     // 带超时保护（60 秒）
     let result;
     try {
-      const executePromise = executeStep(step, prevResults, userEmail);
+      const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (60s)')), 60000));
       result = await Promise.race([executePromise, timeoutPromise]);
     } catch (err) {

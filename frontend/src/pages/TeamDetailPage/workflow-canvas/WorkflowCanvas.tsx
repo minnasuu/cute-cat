@@ -102,7 +102,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         {/* 开始节点 */}
         {startPos && (
           <div
-            className="absolute flex items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-200/50 cursor-default"
+            className="absolute flex items-center justify-center rounded-full border-2 border-primary-400 bg-primary-100 cursor-default"
             style={{
               left: startPos.x,
               top: startPos.y,

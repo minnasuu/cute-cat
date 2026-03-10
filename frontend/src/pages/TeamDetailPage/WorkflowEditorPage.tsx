@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { apiClient } from '../../utils/apiClient';
 import { showToast } from '../../components/Toast';
 import CatLogo from '../../components/CatLogo';
-import type { WorkflowStep, StepParam } from '../../data/types';
+import type { WorkflowStep } from '../../data/types';
 import { getVisibleSkillPool, injectAdminSkillsToCats } from '../../data/skills';
 import { useAuth } from '../../contexts/AuthContext';
 import { aiGenerateWorkflow } from './handleAiGenerateWorkflow';
@@ -19,7 +19,7 @@ import { autoLayout, type NodePositions } from './workflow-canvas/canvas-utils';
 import { useCanvasViewport } from './workflow-canvas/useCanvasViewport';
 
 interface TeamCat {
-  id: string; name: string; role: string; catColors: any; skills: any[]; accent: string;
+  id: string; name: string; role: string; catColors: any; skills: any[]; accent: string; systemPrompt?: string;
 }
 
 const WorkflowEditorPage: React.FC = () => {
@@ -118,30 +118,6 @@ const WorkflowEditorPage: React.FC = () => {
       return updated;
     }));
   }, [cats, skillPool]);
-
-  const addStepParam = useCallback((stepIndex: number) => {
-    setSteps(prev => prev.map((s, i) => {
-      if (i !== stepIndex) return s;
-      const newParam: StepParam = { key: '', label: '', type: 'text' };
-      return { ...s, params: [...(s.params || []), newParam] };
-    }));
-  }, []);
-
-  const updateStepParam = useCallback((stepIndex: number, paramIndex: number, field: keyof StepParam, value: any) => {
-    setSteps(prev => prev.map((s, i) => {
-      if (i !== stepIndex) return s;
-      const params = [...(s.params || [])];
-      params[paramIndex] = { ...params[paramIndex], [field]: value };
-      return { ...s, params };
-    }));
-  }, []);
-
-  const removeStepParam = useCallback((stepIndex: number, paramIndex: number) => {
-    setSteps(prev => prev.map((s, i) => {
-      if (i !== stepIndex) return s;
-      return { ...s, params: (s.params || []).filter((_, pi) => pi !== paramIndex) };
-    }));
-  }, []);
 
   // ── 保存（保留原有逻辑） ──
   const handleSave = async () => {
@@ -359,9 +335,6 @@ const WorkflowEditorPage: React.FC = () => {
           cats={cats}
           onClose={() => setSelectedStepIndex(null)}
           onUpdateStep={updateStep}
-          onAddParam={addStepParam}
-          onUpdateParam={updateStepParam}
-          onRemoveParam={removeStepParam}
         />
       )}
 
@@ -398,7 +371,7 @@ const WorkflowEditorPage: React.FC = () => {
 
       {/* ── Footer ── */}
       <footer className="py-2.5 border-t border-gray-100 bg-white">
-        <div className="max-w-6xl mx-auto px-5 flex items-center justify-between">
+        <div className="mx-auto px-5 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 cursor-pointer">
             <CatLogo size={28} />
           </Link>
