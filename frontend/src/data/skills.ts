@@ -58,8 +58,20 @@ export const skillCategories: { id: SkillCategory; name: string; icon: string; c
 ]
 
 export const skillPool: SkillTemplate[] = [
-  // ── 通用（默认猫猫 CAT 专属基础技能，CAT 同时装备所有其他原型技能）──
-  { id: 'ai-chat', name: 'AI 对话', icon: '💬', category: 'content', description: '通用 AI 文生文，可处理总结、分析、翻译、改写等文本任务', input: 'text', output: 'text', primitiveId: 'text-to-text', provider: 'Dify' },
+  // ── 原型技能（默认猫猫 CAT 专属，id 直接使用 primitiveId，与 primitives handler 对齐）──
+  { id: 'ai-chat',            name: 'AI 对话',     icon: '💬', category: 'content', description: '通用 AI 文生文，可处理总结、分析、翻译、改写等文本任务',    input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Dify' },
+  { id: 'text-to-image',      name: 'AI 文生图',   icon: '🖼️', category: 'visual',  description: '文本描述 → 图片生成模型 → 图片',                      input: 'text', output: 'image', primitiveId: 'text-to-image',     provider: 'Qwen' },
+  { id: 'structured-output',  name: '结构化输出',   icon: '📦', category: 'data',    description: '文本输入 → LLM 处理 → JSON 结构化数据',               input: 'text', output: 'json',  primitiveId: 'structured-output', provider: 'Qwen' },
+  { id: 'api-call',           name: 'API 调用',    icon: '🌐', category: 'dev',     description: 'HTTP 请求外部 API 并返回结果',                        input: 'json', output: 'json',  primitiveId: 'api-call',          provider: 'HTTP' },
+  { id: 'db-query',           name: '数据库查询',   icon: '🗄️', category: 'data',    description: '执行 SQL 查询并返回结果集',                           input: 'text', output: 'json',  primitiveId: 'db-query',          provider: 'PostgreSQL' },
+  { id: 'email-send',         name: '邮件发送',    icon: '📧', category: 'comm',    description: '通过 SMTP 发送 HTML 邮件',                            input: 'text', output: 'email', primitiveId: 'email-send',        provider: 'SMTP' },
+  { id: 'web-push',           name: 'Web 推送',    icon: '🔔', category: 'comm',    description: '向浏览器订阅端点发送推送通知',                          input: 'json', output: 'json',  primitiveId: 'web-push',          provider: 'Web Push' },
+  { id: 'html-render',        name: 'HTML 渲染',   icon: '🧩', category: 'visual',  description: '生成 HTML/React 组件并渲染预览',                       input: 'text', output: 'html',  primitiveId: 'html-render',       provider: 'Renderer' },
+  { id: 'chart-render',       name: '图表渲染',    icon: '📊', category: 'visual',  description: 'JSON 数据 → Chart.js 可视化图表',                      input: 'json', output: 'image', primitiveId: 'chart-render',      provider: 'Chart.js' },
+  { id: 'browser-action',     name: '浏览器操作',   icon: '🌍', category: 'dev',     description: 'Puppeteer 自动化浏览器交互与截图',                      input: 'url',  output: 'json',  primitiveId: 'browser-action',    provider: 'Puppeteer' },
+  { id: 'file-io',            name: '文件读写',    icon: '📂', category: 'dev',     description: '读取或写入本地文件系统',                               input: 'text', output: 'file',  primitiveId: 'file-io',           provider: 'Node' },
+  { id: 'workflow-engine',    name: '工作流引擎',   icon: '⚙️', category: 'manage',  description: '编排并执行多步骤协作工作流',                            input: 'json', output: 'json',  primitiveId: 'workflow-engine',   provider: 'Workflow' },
+  { id: 'js-execute',         name: 'JS 执行',     icon: '💻', category: 'dev',     description: '执行 JavaScript 代码',                               input: 'text', output: 'text',  primitiveId: 'js-execute',        provider: 'Node' },
 
   // ── 内容创作（基于 text-to-text / structured-output 原型）──
   { id: 'generate-article',  name: '文章生成',   icon: '📝', category: 'content', description: '根据主题和素材生成完整文章',           input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen',
@@ -279,31 +291,21 @@ export const skillGroups: SkillGroup[] = [
     name: '默认助手',
     icon: '💬',
     color: '#A0A0A0',
-    description: '全能猫猫，装备所有原型技能，可处理 AI 对话、绘图、数据分析、邮件、图表、组件生成等全部任务',
+    description: '全能猫猫，装备所有 13 个原型技能',
     skillIds: [
-      'ai-chat',
-      // text-to-text 系列
-      'generate-article', 'polish-text', 'news-to-article', 'meeting-notes', 'summarize-news', 'css-generate',
-      'fix-bug', 'develop-feature', 'optimize-perf', 'site-analyze',
-      // text-to-image
-      'generate-image',
-      // structured-output
-      'generate-outline', 'trend-analysis', 'quality-check', 'content-review',
-      'generate-todo', 'assign-task', 'recruit-cat',
-      // api-call
-      'crawl-news', 'image-enhance',
-      // db-query
-      'query-dashboard', 'task-log',
-      // email-send
-      'send-email', 'send-notification',
-      // html-render
-      'generate-component', 'layout-design', 'update-crafts',
-      // chart-render
-      'generate-chart',
-      // browser-action
-      'regression-test',
-      // workflow-engine
-      'review-approve', 'manage-workflow', 'run-workflow',
+      'ai-chat',           // text-to-text
+      'text-to-image',     // text-to-image
+      'structured-output', // structured-output
+      'api-call',          // api-call
+      'db-query',          // db-query
+      'email-send',        // email-send
+      'web-push',          // web-push
+      'html-render',       // html-render
+      'chart-render',      // chart-render
+      'browser-action',    // browser-action
+      'file-io',           // file-io
+      'workflow-engine',   // workflow-engine
+      'js-execute',        // js-execute
     ],
     catId: 'default',
   },

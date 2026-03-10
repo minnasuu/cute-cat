@@ -65,6 +65,37 @@ import createCraft from './prompt-debug';
 // --- CAT (default) ---
 import aiChat from './ai-chat';
 
+// 直接复用 primitives handler 作为原型技能的 skill handler
+import type { PrimitiveHandler } from './primitives/types';
+import textToImage from './primitives/text-to-image';
+import structuredOutput from './primitives/structured-output';
+import apiCall from './primitives/api-call';
+import dbQuery from './primitives/db-query';
+import emailSend from './primitives/email-send';
+import webPush from './primitives/web-push';
+import htmlRender from './primitives/html-render';
+import chartRender from './primitives/chart-render';
+import browserAction from './primitives/browser-action';
+import fileIo from './primitives/file-io';
+import workflowEngine from './primitives/workflow-engine';
+import jsExecute from './primitives/js-execute';
+
+/** 将 PrimitiveHandler 适配为 SkillHandler（补上缺省 config） */
+function wrapPrimitive(p: PrimitiveHandler): SkillHandler {
+  return {
+    id: p.id,
+    async execute(ctx) {
+      const result = await p.execute({ ...ctx, config: {} });
+      return { success: result.success, data: result.data, summary: result.summary, status: result.status };
+    },
+  };
+}
+
+const primitiveSkills: SkillHandler[] = [
+  textToImage, structuredOutput, apiCall, dbQuery, emailSend,
+  webPush, htmlRender, chartRender, browserAction, fileIo, workflowEngine, jsExecute,
+].map(wrapPrimitive);
+
 /** skillId → SkillHandler 映射表 */
 const handlers: SkillHandler[] = [
   crawlNews, summarizeNews, queryDashboard, trendAnalysis,
@@ -78,7 +109,7 @@ const handlers: SkillHandler[] = [
   qualityCheck, contentReview, regressionTest,
   recruitCat, teamReview, catTraining,
   viewArticles, createArticle, viewCrafts, createCraft,
-  aiChat,
+  aiChat, ...primitiveSkills,
 ];
 
 export const skillRegistry = new Map<string, SkillHandler>(
