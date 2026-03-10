@@ -83,7 +83,7 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
       {/* AI Generate */}
       <button
         onClick={onOpenAiGenerate}
-        className="h-8 px-2.5 rounded-xl flex items-center gap-1.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white hover:from-primary-600 hover:to-primary-700 transition-all shadow-sm cursor-pointer"
+        className="h-8 px-2.5 rounded-xl flex items-center gap-1.5 bg-primary-400 text-white hover:from-primary-600 hover:to-primary-700 transition-all cursor-pointer"
         title="AI 智能建流"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -10,7 +10,7 @@ function mdToHtml(md: string): string {
 
 function buildCatEmailHtml(subject: string, bodyHtml: string): string {
   return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; background: #FFF9F0;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0 auto; padding: 24px; background: #FFF9F0;">
       <div style="background: linear-gradient(135deg, #FFE0B2, #FFCCBC); border-radius: 16px; padding: 24px 28px; margin-bottom: 20px;">
         <h2 style="margin: 0 0 6px; color: #4E342E; font-size: 20px;">${subject}</h2>
         <p style="margin: 0; color: #8D6E63; font-size: 13px;">${new Date().toLocaleString('zh-CN')}</p>
@@ -23,10 +23,10 @@ function buildCatEmailHtml(subject: string, bodyHtml: string): string {
       </div>
       <div style="text-align: right; padding: 16px 8px 0; color: #8D6E63; font-size: 13px; line-height: 1.6;">
         <p style="margin: 0;">🐾 喵~</p>
-        <p style="margin: 4px 0 0;">年年 代 猫咪军团 发出</p>
+        <p style="margin: 4px 0 0;">你的猫咪军团 发出</p>
       </div>
       <div style="text-align: center; margin-top: 20px; padding-top: 12px; border-top: 1px dashed #E0D6CC;">
-        <p style="color: #BCAAA4; font-size: 11px; margin: 0;">🏠 来自 Minna 个站 · I'm Minna ✨</p>
+        <p style="color: #BCAAA4; font-size: 11px; margin: 0;">🏠 来自 CuCaTopia.com ✨</p>
       </div>
     </div>
   `;
@@ -64,7 +64,7 @@ const emailSend: PrimitiveHandler = {
     }
 
     if (!html && !text) {
-      text = '这是一封来自 Minna 猫猫团队的邮件 🐱';
+      text = '这是一封来自猫猫团队的邮件 🐱';
     }
 
     if (!html && text) {

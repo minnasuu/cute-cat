@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import type { WorkflowStep } from '../../../data/types';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import type { WorkflowStep, StepParam } from '../../../data/types';
+import { skillPool } from '../../../data/skills';
 import CatMiniAvatar from '../../../components/CatMiniAvatar';
 
 interface TeamCat {
@@ -15,6 +16,109 @@ interface StepConfigPanelProps {
   onUpdateStep: (index: number, field: keyof WorkflowStep, value: any) => void;
 }
 
+/* ────── 参数值输入控件 ────── */
+const ParamInput: React.FC<{
+  param: StepParam;
+  onChange: (val: unknown) => void;
+}> = ({ param, onChange }) => {
+  const base = 'w-full px-3 py-2 rounded-lg border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm';
+  const val = param.value;
+
+  switch (param.type) {
+    case 'textarea':
+      return (
+        <textarea
+          value={String(val ?? '')}
+          placeholder={param.placeholder || ''}
+          rows={3}
+          onChange={e => onChange(e.target.value)}
+          className={`${base} resize-none`}
+        />
+      );
+    case 'number':
+      return (
+        <input
+          type="number"
+          value={val !== undefined && val !== '' ? String(val) : ''}
+          placeholder={param.placeholder || ''}
+          onChange={e => onChange(e.target.value ? Number(e.target.value) : '')}
+          className={base}
+        />
+      );
+    case 'select':
+      return (
+        <div className="rounded-lg border border-gray-200 pr-2 bg-white">
+          <select
+            value={String(val ?? '')}
+            onChange={e => onChange(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer bg-transparent"
+          >
+            <option value="">请选择...</option>
+            {(param.options || []).map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    case 'toggle':
+      return (
+        <button
+          type="button"
+          onClick={() => onChange(!val)}
+          className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${val ? 'bg-primary-500' : 'bg-gray-300'}`}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${val ? 'left-[22px]' : 'left-0.5'}`} />
+        </button>
+      );
+    case 'tags': {
+      const tags: string[] = Array.isArray(val) ? val : [];
+      const [draft, setDraft] = useState('');
+      return (
+        <div>
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {tags.map((t, i) => (
+                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 text-primary-700 text-[11px] font-medium">
+                  {t}
+                  <button
+                    type="button"
+                    onClick={() => onChange(tags.filter((_, j) => j !== i))}
+                    className="text-primary-400 hover:text-primary-600 cursor-pointer"
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <input
+            value={draft}
+            placeholder={param.placeholder || '输入后回车添加'}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && draft.trim()) {
+                e.preventDefault();
+                onChange([...tags, draft.trim()]);
+                setDraft('');
+              }
+            }}
+            className={base}
+          />
+        </div>
+      );
+    }
+    // text / url / fallback
+    default:
+      return (
+        <input
+          type={param.type === 'url' ? 'url' : 'text'}
+          value={String(val ?? '')}
+          placeholder={param.placeholder || ''}
+          onChange={e => onChange(e.target.value)}
+          className={base}
+        />
+      );
+  }
+};
+
 const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
   open, stepIndex, step, cats,
   onClose, onUpdateStep,
@@ -22,12 +126,53 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const selectedCat = cats.find(c => c.id === step.agentId);
   const catSkills = selectedCat?.skills || [];
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
 
-  // 判断当前 skill 是否是接入 AI 的技能（基于 text-to-text / structured-output 等原型）
+  // 判断当前 skill 是否是接入 AI 的技能
   const AI_PRIMITIVE_IDS = ['text-to-text', 'text-to-image', 'structured-output'];
   const AI_SKILL_IDS = ['ai-chat', 'generate-article', 'polish-text', 'generate-outline', 'news-to-article', 'summarize-news', 'meeting-notes', 'trend-analysis', 'generate-todo', 'assign-task', 'review-approve', 'site-analyze', 'quality-check', 'content-review', 'team-review', 'generate-image', 'css-generate', 'cat-training', 'recruit-cat'];
   const currentSkillDef = catSkills.find((s: any) => s.id === step.skillId);
   const isAiSkill = AI_SKILL_IDS.includes(step.skillId) || AI_PRIMITIVE_IDS.includes(step.skillId) || currentSkillDef?.primitiveId && AI_PRIMITIVE_IDS.includes(currentSkillDef.primitiveId);
+
+  // 当前技能绑定的全部参数定义模板（从 skillPool 或猫猫 skills 获取）
+  const allParamDefs: StepParam[] = useMemo(() => {
+    if (!step.skillId) return [];
+    const fromCat = catSkills.find((s: any) => s.id === step.skillId);
+    const fromPool = skillPool.find(s => s.id === step.skillId);
+    return fromCat?.paramDefs || fromPool?.paramDefs || [];
+  }, [step.skillId, catSkills]);
+
+  // 当前已展示的参数 keys
+  const currentParamKeys = useMemo(() => new Set((step.params || []).map(p => p.key)), [step.params]);
+
+  // 可以添加回的参数（已被删除的非必填项）
+  const addableParams = useMemo(
+    () => allParamDefs.filter(p => !currentParamKeys.has(p.key)),
+    [allParamDefs, currentParamKeys],
+  );
+
+  // 删除参数
+  const handleRemoveParam = useCallback((key: string) => {
+    const newParams = (step.params || []).filter(p => p.key !== key);
+    onUpdateStep(stepIndex, 'params', newParams);
+  }, [step.params, stepIndex, onUpdateStep]);
+
+  // 添加参数
+  const handleAddParam = useCallback((paramDef: StepParam) => {
+    const newParam = { ...paramDef };
+    const newParams = [...(step.params || []), newParam];
+    onUpdateStep(stepIndex, 'params', newParams);
+    setShowAddMenu(false);
+  }, [step.params, stepIndex, onUpdateStep]);
+
+  // 更新参数值
+  const handleParamValueChange = useCallback((key: string, value: unknown) => {
+    const newParams = (step.params || []).map(p =>
+      p.key === key ? { ...p, value } : p,
+    );
+    onUpdateStep(stepIndex, 'params', newParams);
+  }, [step.params, stepIndex, onUpdateStep]);
 
   // Esc 关闭
   useEffect(() => {
@@ -47,10 +192,21 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
         onClose();
       }
     };
-    // 延迟绑定避免打开瞬间触发
     const timer = setTimeout(() => document.addEventListener('mousedown', handleClick), 100);
     return () => { clearTimeout(timer); document.removeEventListener('mousedown', handleClick); };
   }, [open, onClose]);
+
+  // 点击外部关闭添加菜单
+  useEffect(() => {
+    if (!showAddMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showAddMenu]);
 
   return (
     <>
@@ -120,54 +276,109 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
             </div>
           </div>
 
-          {/* 具体行为（可选描述，不影响 AI） */}
+          {/* 具体行为（可选描述） */}
           <div>
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
-              步骤描述 <span className="text-gray-300 font-normal normal-case">(可选)</span>
+              {isAiSkill?'User Prompt':'步骤描述'} <span className="text-gray-300 font-normal normal-case"></span>
             </label>
             <textarea
               value={step.action}
               onChange={(e) => onUpdateStep(stepIndex, 'action', e.target.value)}
-              placeholder="备注这步做什么，仅用于说明..."
+              placeholder="备注这步做什么，对于非AI技能仅用于说明..."
               rows={2}
               className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium resize-none"
             />
           </div>
 
-          {/* 技能参数（由 skill 自动绑定，不可增删） */}
-          {(step.params || []).length > 0 && (
+          {/* ── 技能参数（由 skill 绑定，默认全部展开、支持填写/删除/添加回） ── */}
+          {step.skillId && allParamDefs.length > 0 && (
             <div className="pt-2">
               <div className="flex items-center gap-2 mb-3">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">技能参数</p>
                 <span className="px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-400 text-[8px] font-bold">
-                  由技能定义 · 不可修改
+                  由技能定义 · 可删除非必填项
                 </span>
               </div>
-              <div className="space-y-2">
+
+              <div className="space-y-3">
                 {(step.params || []).map((param, pi) => (
-                  <div key={pi} className="rounded-xl border border-gray-100 bg-gray-50/50 p-3">
-                    <div className="flex items-center gap-2">
+                  <div key={param.key} className="rounded-xl border border-gray-100 bg-gray-50/50 p-3">
+                    {/* 参数标题行 */}
+                    <div className="flex items-center gap-2 mb-2">
                       <span className="text-[10px] font-bold text-primary-600">P{pi + 1}</span>
                       <span className="text-[11px] font-bold text-gray-700">{param.label || param.key}</span>
                       <span className="text-[9px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">{param.type}</span>
                       {param.required && (
                         <span className="text-[8px] font-bold text-red-400 bg-red-50 px-1 py-0.5 rounded">必填</span>
                       )}
+                      {/* 非必填项：删除按钮 */}
+                      {!param.required && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveParam(param.key)}
+                          className="ml-auto w-5 h-5 rounded flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors cursor-pointer"
+                          title="移除此参数"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
+                    {/* 参数描述 */}
                     {param.description && (
-                      <p className="text-[10px] text-gray-400 mt-1">{param.description}</p>
+                      <p className="text-[10px] text-gray-400 mb-2">{param.description}</p>
                     )}
-                    {param.placeholder && (
-                      <p className="text-[9px] text-gray-300 mt-0.5 italic">提示: {param.placeholder}</p>
-                    )}
+                    {/* 参数值输入 */}
+                    <ParamInput
+                      param={param}
+                      onChange={(val) => handleParamValueChange(param.key, val)}
+                    />
                   </div>
                 ))}
               </div>
+
+              {/* 添加已删除的参数 */}
+              {addableParams.length > 0 && (
+                <div className="relative mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMenu(!showAddMenu)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-gray-200 text-gray-400 hover:text-primary-500 hover:border-primary-300 hover:bg-primary-50/30 transition-all text-[11px] font-bold cursor-pointer"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    添加参数（{addableParams.length} 个可用）
+                  </button>
+                  {showAddMenu && (
+                    <div
+                      ref={addMenuRef}
+                      className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-10 overflow-hidden"
+                    >
+                      {addableParams.map(p => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => handleAddParam(p)}
+                          className="w-full text-left px-3 py-2.5 flex items-center gap-2 hover:bg-primary-50 transition-colors cursor-pointer"
+                        >
+                          <span className="text-[11px] font-bold text-gray-700">{p.label || p.key}</span>
+                          <span className="text-[9px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">{p.type}</span>
+                          {p.description && (
+                            <span className="text-[9px] text-gray-400 ml-auto truncate max-w-[120px]">{p.description}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {/* 无参数时的提示 */}
-          {(step.params || []).length === 0 && step.skillId && (
+          {/* 无参数定义时的提示 */}
+          {step.skillId && allParamDefs.length === 0 && (
             <div className="pt-2">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">技能参数</p>
               <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/30 p-4 text-center">

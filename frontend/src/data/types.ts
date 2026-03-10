@@ -85,6 +85,8 @@ export interface StepParam {
   required?: boolean;
   /** 补充说明 */
   description?: string;
+  /** 运行时用户填写的值 */
+  value?: string | number | boolean | string[];
 }
 
 // --- 协作工作流定义 ---
