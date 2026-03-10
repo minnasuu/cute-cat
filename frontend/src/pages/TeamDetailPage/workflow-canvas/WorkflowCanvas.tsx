@@ -14,7 +14,6 @@ interface WorkflowCanvasProps {
   cats: TeamCat[];
   nodePositions: NodePositions;
   selectedStepIndex: number | null;
-  suggestionMode: boolean;
   activeEdgeIndex: number | null;
   onSelectStep: (index: number | null) => void;
   onNodeDrag: (index: number, pos: { x: number; y: number }) => void;
@@ -30,7 +29,7 @@ const DOT_SIZE = 1;
 const DOT_GAP = 20;
 
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
-  steps, cats, nodePositions, selectedStepIndex, suggestionMode,
+  steps, cats, nodePositions, selectedStepIndex,
   activeEdgeIndex, onSelectStep, onNodeDrag, onAddStep, onRemoveStep,
   onEdgeClick, onDoubleClickCanvas, viewportRef,
 }) => {
@@ -74,7 +73,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   return (
     <div
       ref={viewport.containerRef}
-      className="flex-1 relative overflow-hidden bg-gray-50"
+      className="flex-1 h-full relative overflow-hidden bg-gray-50"
       style={{
         backgroundImage: `radial-gradient(circle, #d1d5db ${DOT_SIZE}px, transparent ${DOT_SIZE}px)`,
         backgroundSize: `${DOT_GAP}px ${DOT_GAP}px`,
@@ -135,7 +134,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               skillIcon={skillIcon}
               paramCount={step.params?.length || 0}
               isSelected={selectedStepIndex === i}
-              isSuggestion={suggestionMode}
               onSelect={onSelectStep}
               onDrag={onNodeDrag}
               onRemove={onRemoveStep}

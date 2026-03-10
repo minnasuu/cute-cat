@@ -7,7 +7,6 @@ import type { WorkflowStep, StepParam } from '../../data/types';
 import { getVisibleSkillPool, injectAdminSkillsToCats } from '../../data/skills';
 import { useAuth } from '../../contexts/AuthContext';
 import { aiGenerateWorkflow } from './handleAiGenerateWorkflow';
-import type { SuggestedCat, SuggestedSkill } from './handleAiGenerateWorkflow';
 
 // Canvas components
 import WorkflowCanvas from './workflow-canvas/WorkflowCanvas';
@@ -16,7 +15,6 @@ import EdgePopover from './workflow-canvas/EdgePopover';
 import CanvasToolbar from './workflow-canvas/CanvasToolbar';
 import BasicInfoDrawer from './workflow-canvas/BasicInfoDrawer';
 import AiGenerateDialog from './workflow-canvas/AiGenerateDialog';
-import SuggestionBanner from './workflow-canvas/SuggestionBanner';
 import { autoLayout, type NodePositions } from './workflow-canvas/canvas-utils';
 import { useCanvasViewport } from './workflow-canvas/useCanvasViewport';
 
@@ -48,10 +46,6 @@ const WorkflowEditorPage: React.FC = () => {
 
   // ── AI 生成状态 ──
   const [aiLoading, setAiLoading] = useState(false);
-  const [suggestionMode, setSuggestionMode] = useState(false);
-  const [suggestedCats, setSuggestedCats] = useState<SuggestedCat[]>([]);
-  const [suggestedSkills, setSuggestedSkills] = useState<SuggestedSkill[]>([]);
-  const [suggestionSummary, setSuggestionSummary] = useState('');
 
   // ── 画布状态（新增） ──
   const [nodePositions, setNodePositions] = useState<NodePositions>(new Map());
@@ -178,14 +172,10 @@ const WorkflowEditorPage: React.FC = () => {
     }
   };
 
-  // ── AI 生成（保留原有逻辑） ──
+  // ── AI 生成 ──
   const handleAiGenerate = async (aiPrompt: string) => {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
-    setSuggestionMode(false);
-    setSuggestedCats([]);
-    setSuggestedSkills([]);
-    setSuggestionSummary('');
     try {
       const result = await aiGenerateWorkflow(aiPrompt, cats);
       if (!result) return;
@@ -193,7 +183,6 @@ const WorkflowEditorPage: React.FC = () => {
       if (result.name) setName(result.name);
       if (result.icon) setIcon(result.icon);
       if (result.description) setDescription(result.description);
-      if (Array.isArray(result.steps)) setSteps(result.steps);
       if (result.scheduled) {
         setTrigger('cron');
         setScheduled(true);
@@ -204,36 +193,22 @@ const WorkflowEditorPage: React.FC = () => {
       }
       if (result.persistent !== undefined) setPersistent(result.persistent);
 
-      if (result.suggestionMode) {
+      // 自动为没有 agentId 的步骤分配默认猫猫
+      if (Array.isArray(result.steps)) {
         const defaultCat = cats.find(c => c.role === 'Default');
-        if (defaultCat && Array.isArray(result.steps)) {
-          const patchedSteps = result.steps.map(s => {
-            if (!s.agentId) {
-              return { ...s, agentId: defaultCat.id, skillId: 'ai-chat' };
-            }
-            return s;
-          });
-          setSteps(patchedSteps);
-          setSuggestionSummary(result.suggestionSummary || '部分步骤已自动由默认猫猫 CAT 承接，建议添加专业猫猫以获得更好效果');
-        } else {
-          setSuggestionSummary(result.suggestionSummary || '当前团队缺少完成该工作流所需的猫猫或技能');
-        }
-        setSuggestionMode(true);
-        setSuggestedCats(result.suggestedCats || []);
-        setSuggestedSkills(result.suggestedSkills || []);
+        const finalSteps = result.steps.map(s => {
+          if (!s.agentId && defaultCat) {
+            return { ...s, agentId: defaultCat.id, skillId: s.skillId || 'ai-chat' };
+          }
+          return s;
+        });
+        setSteps(finalSteps);
       }
 
       setShowAiDialog(false);
     } finally {
       setAiLoading(false);
     }
-  };
-
-  const dismissSuggestion = () => {
-    setSuggestionMode(false);
-    setSuggestedCats([]);
-    setSuggestedSkills([]);
-    setSuggestionSummary('');
   };
 
   // ── 画布交互处理器 ──
@@ -327,25 +302,12 @@ const WorkflowEditorPage: React.FC = () => {
 
       {/* ── Canvas Area ── */}
       <main className="flex-1 relative overflow-hidden">
-        {/* Suggestion Banner */}
-        {suggestionMode && (
-          <SuggestionBanner
-            summary={suggestionSummary}
-            suggestedCats={suggestedCats}
-            suggestedSkills={suggestedSkills}
-            cats={cats}
-            teamId={teamId || ''}
-            onDismiss={dismissSuggestion}
-          />
-        )}
-
         {/* Canvas */}
         <WorkflowCanvas
           steps={steps}
           cats={cats}
           nodePositions={nodePositions}
           selectedStepIndex={selectedStepIndex}
-          suggestionMode={suggestionMode}
           activeEdgeIndex={activeEdgeIndex}
           onSelectStep={handleSelectStep}
           onNodeDrag={handleNodeDrag}
@@ -395,7 +357,6 @@ const WorkflowEditorPage: React.FC = () => {
           stepIndex={selectedStepIndex}
           step={steps[selectedStepIndex]}
           cats={cats}
-          suggestionMode={suggestionMode}
           onClose={() => setSelectedStepIndex(null)}
           onUpdateStep={updateStep}
           onAddParam={addStepParam}

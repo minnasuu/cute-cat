@@ -12,7 +12,6 @@ interface StepNodeProps {
   skillIcon?: string;
   paramCount: number;
   isSelected: boolean;
-  isSuggestion: boolean;
   onSelect: (index: number) => void;
   onDrag: (index: number, pos: { x: number; y: number }) => void;
   onRemove: (index: number) => void;
@@ -22,7 +21,7 @@ interface StepNodeProps {
 
 const StepNode: React.FC<StepNodeProps> = ({
   index, agentId, cat, skillName, skillIcon,
-  action, paramCount, isSelected, isSuggestion,
+  action, paramCount, isSelected,
   onSelect, onDrag, onRemove, position, zoom,
 }) => {
   const [hovered, setHovered] = useState(false);
@@ -69,9 +68,7 @@ const StepNode: React.FC<StepNodeProps> = ({
 
   const borderClass = isSelected
     ? 'border-blue-400 ring-2 ring-blue-200 scale-[1.02]'
-    : isSuggestion && !agentId
-      ? 'border-amber-300 bg-amber-50/60'
-      : 'border-gray-200 hover:border-gray-300';
+    : 'border-gray-200 hover:border-gray-300';
 
   return (
     <div
@@ -102,9 +99,7 @@ const StepNode: React.FC<StepNodeProps> = ({
 
       <div className="p-3 flex items-center gap-3">
         {/* Step number badge */}
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0 ${
-          isSuggestion && !agentId ? 'bg-amber-400' : 'bg-blue-500'
-        }`}>
+        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0 bg-blue-500">
           {index + 1}
         </div>
 
@@ -140,15 +135,6 @@ const StepNode: React.FC<StepNodeProps> = ({
           </span>
         )}
       </div>
-
-      {/* Suggestion warning */}
-      {isSuggestion && !agentId && (
-        <div className="px-3 pb-2">
-          <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-700 text-[9px] font-bold">
-            需补充猫猫
-          </span>
-        </div>
-      )}
     </div>
   );
 };

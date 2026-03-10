@@ -11,7 +11,6 @@ interface StepConfigPanelProps {
   stepIndex: number;
   step: WorkflowStep;
   cats: TeamCat[];
-  suggestionMode: boolean;
   onClose: () => void;
   onUpdateStep: (index: number, field: keyof WorkflowStep, value: any) => void;
   onAddParam: (stepIndex: number) => void;
@@ -20,7 +19,7 @@ interface StepConfigPanelProps {
 }
 
 const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
-  open, stepIndex, step, cats, suggestionMode,
+  open, stepIndex, step, cats,
   onClose, onUpdateStep, onAddParam, onUpdateParam, onRemoveParam,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -211,13 +210,6 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
               </button>
             </div>
           </div>
-
-          {/* Suggestion 提示 */}
-          {suggestionMode && !step.agentId && (
-            <div className="mt-4 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-medium">
-              ⚠️ 此步骤尚未分配执行猫猫，请选择一只猫猫来执行。
-            </div>
-          )}
         </div>
       </div>
     </>
