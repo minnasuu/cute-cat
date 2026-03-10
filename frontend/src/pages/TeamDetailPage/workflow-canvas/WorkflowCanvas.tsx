@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import type { WorkflowStep } from '../../../data/types';
 import { useCanvasViewport } from './useCanvasViewport';
 import StepNode from './StepNode';
@@ -34,6 +34,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   onEdgeClick, onDoubleClickCanvas, viewportRef,
 }) => {
   const viewport = useCanvasViewport({ initialZoom: 1 });
+  const isDragging = useRef(false);
+  const dragStartPos = useRef({ x: 0, y: 0 });
 
   // 将 viewport 暴露给父组件
   React.useEffect(() => {
@@ -42,7 +44,25 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     }
   }, [viewport, viewportRef]);
 
+  // 记录按下位置，用于判断是否发生了拖拽（防止拖拽后误触发点击）
+  const handlePointerDownCapture = useCallback((e: React.PointerEvent) => {
+    isDragging.current = false;
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const handlePointerMoveCapture = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) {
+      const dx = Math.abs(e.clientX - dragStartPos.current.x);
+      const dy = Math.abs(e.clientY - dragStartPos.current.y);
+      if (dx > 3 || dy > 3) {
+        isDragging.current = true;
+      }
+    }
+  }, []);
+
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
+    // 如果刚才发生了拖拽，不触发点击
+    if (isDragging.current) return;
     // 点击画布空白区域，取消选中
     if ((e.target as HTMLElement).dataset?.canvasBg === 'true') {
       onSelectStep(null);
@@ -67,6 +87,20 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     return { name: skill?.name || '', icon: skill?.icon || '' };
   };
 
+  // 背景点阵跟随视口变换，产生无限画布效果
+  const bgStyle = useMemo(() => {
+    const { panX, panY, zoom } = viewport.viewport;
+    const scaledGap = DOT_GAP * zoom;
+    const offsetX = panX % scaledGap;
+    const offsetY = panY % scaledGap;
+    const scaledDotSize = Math.max(DOT_SIZE * zoom, 0.5);
+    return {
+      backgroundImage: `radial-gradient(circle, #d1d5db ${scaledDotSize}px, transparent ${scaledDotSize}px)`,
+      backgroundSize: `${scaledGap}px ${scaledGap}px`,
+      backgroundPosition: `${offsetX}px ${offsetY}px`,
+    };
+  }, [viewport.viewport.panX, viewport.viewport.panY, viewport.viewport.zoom]);
+
   const startPos = nodePositions.get(-1);
   const addPos = nodePositions.get(steps.length);
 
@@ -74,19 +108,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     <div
       ref={viewport.containerRef}
       className="flex-1 h-full relative overflow-hidden bg-gray-50"
-      style={{
-        backgroundImage: `radial-gradient(circle, #d1d5db ${DOT_SIZE}px, transparent ${DOT_SIZE}px)`,
-        backgroundSize: `${DOT_GAP}px ${DOT_GAP}px`,
-      }}
+      style={bgStyle}
       onClick={handleCanvasClick}
       onDoubleClick={handleDoubleClick}
+      onPointerDownCapture={handlePointerDownCapture}
+      onPointerMoveCapture={handlePointerMoveCapture}
       {...viewport.canvasEvents}
     >
       {/* 底层：可拖拽背景 */}
       <div
         data-canvas-bg="true"
         className="absolute inset-0"
-        style={{ cursor: 'grab' }}
+        style={{ cursor: isDragging.current ? 'grabbing' : 'grab' }}
       />
 
       {/* 画布内容层（受 transform 影响） */}
@@ -110,7 +143,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               height: START_NODE_SIZE,
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--color-primary-400)">
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>

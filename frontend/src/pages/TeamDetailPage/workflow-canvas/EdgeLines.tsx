@@ -85,7 +85,7 @@ const EdgeLines: React.FC<EdgeLinesProps> = ({
           refX="7" refY="3"
           orient="auto"
         >
-          <path d="M0,0 L8,3 L0,6" fill="#dcfce7" />
+          <path d="M0,0 L8,3 L0,6" fill="#4ade80" />
         </marker>
         <marker
           id={ARROW_MARKER_ACTIVE_ID}

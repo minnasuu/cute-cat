@@ -78,6 +78,8 @@ const TeamDetailPage: React.FC = () => {
 
   // 执行弹窗状态
   const [executingWorkflow, setExecutingWorkflow] = useState<TeamWorkflow | null>(null);
+  const [isPreparing, setIsPreparing] = useState(false); // 预览确认阶段（尚未执行）
+  const [editableStepParams, setEditableStepParams] = useState<Map<number, Record<string, unknown>>>(new Map()); // 每步可编辑参数
   const [runningStepIndex, setRunningStepIndex] = useState(-1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -165,6 +167,8 @@ const TeamDetailPage: React.FC = () => {
   const handleCloseRunDetail = () => {
     setViewingRun(null);
     setExecutingWorkflow(null);
+    setIsPreparing(false);
+    setEditableStepParams(new Map());
     setRunningStepIndex(-1);
     setCompletedSteps([]);
     setIsRunning(false);
@@ -238,10 +242,31 @@ const TeamDetailPage: React.FC = () => {
   const handleRunWorkflow = async (wfId: string) => {
     const wf = team?.workflows.find(w => w.id === wfId);
     if (!wf) return;
+
+    // ── 进入预览确认阶段：初始化每步的可编辑参数 ──
+    const paramsMap = new Map<number, Record<string, unknown>>();
+    wf.steps.forEach((step: any, i: number) => {
+      const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
+      const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+      const paramDefs = step.params || skill?.paramDefs || [];
+      if (paramDefs.length > 0) {
+        const values: Record<string, unknown> = {};
+        for (const p of paramDefs) {
+          // 优先使用步骤上已配置的 value，其次 defaultValue
+          if (p.value !== undefined) values[p.key] = p.value;
+          else if (p.defaultValue !== undefined) values[p.key] = p.defaultValue;
+          else values[p.key] = p.type === 'toggle' ? false : p.type === 'tags' ? [] : p.type === 'number' ? '' : '';
+        }
+        paramsMap.set(i, values);
+      }
+    });
+
     setExecutingWorkflow(wf);
-    setRunningStepIndex(0);
+    setIsPreparing(true);
+    setEditableStepParams(paramsMap);
+    setRunningStepIndex(-1);
     setCompletedSteps([]);
-    setIsRunning(true);
+    setIsRunning(false);
     setCurrentDialog('');
     const emptyMap = new Map<number, SkillResult>();
     setStepResults(emptyMap);
@@ -249,6 +274,41 @@ const TeamDetailPage: React.FC = () => {
     const emptyTimings = new Map<number, { start: number; duration?: number }>();
     setStepTimings(emptyTimings);
     stepTimingsRef.current = emptyTimings;
+    setTotalElapsed(0);
+  };
+
+  /** 更新某步某参数 */
+  const handleStepParamChange = (stepIndex: number, key: string, value: unknown) => {
+    setEditableStepParams(prev => {
+      const next = new Map(prev);
+      const current = next.get(stepIndex) || {};
+      next.set(stepIndex, { ...current, [key]: value });
+      return next;
+    });
+  };
+
+  /** 确认执行工作流（预览确认后点击执行） */
+  const handleConfirmRun = async () => {
+    if (!executingWorkflow) return;
+
+    // 将用户编辑的参数写回到 workflow steps 上（内存中），供执行逻辑读取
+    const wf = { ...executingWorkflow, steps: executingWorkflow.steps.map((step: any, i: number) => {
+      const editedParams = editableStepParams.get(i);
+      if (!editedParams) return step;
+      const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
+      const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+      const paramDefs = step.params || skill?.paramDefs || [];
+      const mergedParams = paramDefs.map((p: any) => ({
+        ...p,
+        value: editedParams[p.key] !== undefined ? editedParams[p.key] : p.value,
+      }));
+      return { ...step, params: mergedParams };
+    }) };
+
+    setExecutingWorkflow(wf);
+    setIsPreparing(false);
+    setRunningStepIndex(0);
+    setIsRunning(true);
     runStartTimeRef.current = Date.now();
     setTotalElapsed(0);
     // 启动实时总耗时定时器
@@ -259,7 +319,7 @@ const TeamDetailPage: React.FC = () => {
     }, 1000);
     // 在后端创建 run 记录并保存 ID
     try {
-      const run = await apiClient.post(`/api/workflows/${wfId}/run`, {});
+      const run = await apiClient.post(`/api/workflows/${executingWorkflow.id}/run`, {});
       currentRunIdRef.current = run?.id || null;
     } catch {
       currentRunIdRef.current = null;
@@ -278,6 +338,8 @@ const TeamDetailPage: React.FC = () => {
     currentRunIdRef.current = null;
     setViewingRun(null);
     setExecutingWorkflow(null);
+    setIsPreparing(false);
+    setEditableStepParams(new Map());
     setRunningStepIndex(-1);
     setCompletedSteps([]);
     setIsRunning(false);
@@ -820,7 +882,7 @@ const TeamDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* 工作流执行弹窗（实时执行 / 查看历史） */}
+      {/* 工作流执行弹窗（预览确认 / 实时执行 / 查看历史） */}
       {executingWorkflow && (() => {
         const isViewingHistory = !!viewingRun;
         const closeHandler = isViewingHistory ? handleCloseRunDetail : handleCloseExecution;
@@ -839,6 +901,11 @@ const TeamDetailPage: React.FC = () => {
             <div className="stage-header">
               <div className="stage-title">
                 <span className="stage-name">{executingWorkflow.icon} {executingWorkflow.name}</span>
+                {isPreparing && (
+                  <span className="ml-3 text-xs font-bold text-amber-600">
+                    📋 确认参数
+                  </span>
+                )}
                 {isViewingHistory && (
                   <span className={`ml-3 text-xs font-bold ${runStatus!.color}`}>
                     {runStatus!.icon} {runStatus!.label}
@@ -852,116 +919,387 @@ const TeamDetailPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="stage-body">
-              <div className="pipeline">
-                {executingWorkflow.steps.map((step: any, i: number) => {
-                  const cat = team.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-                  const skill = cat?.skills.find((s: any) => s.id === step.skillId);
-                  const isCompleted = completedSteps.includes(i);
-                  const isCurrent = runningStepIndex === i;
-                  const isPending = !isCompleted && !isCurrent;
-                  const statusClass = isCompleted ? 'done' : isCurrent ? 'active' : 'waiting';
-                  const result = stepResults.get(i);
-                  const resultStatus = result?.status ?? 'success';
-                  const timing = stepTimings.get(i);
-                  const stepDurationSec = timing?.duration != null ? (timing.duration / 1000).toFixed(1) : null;
+            {/* ── 预览确认阶段：竖向显示步骤和可编辑参数 ── */}
+            {isPreparing ? (
+              <div className="stage-body" style={{ flexDirection: 'column', alignItems: 'stretch', padding: '24px 32px', paddingTop: '24px', overflowY: 'auto', overflowX: 'hidden' }}>
+                <p style={{ fontSize: '0.82rem', color: '#8D6E63', fontWeight: 600, marginBottom: 16 }}>
+                  请确认以下步骤及参数，编辑完成后点击底部「开始执行」按钮。
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {executingWorkflow.steps.map((step: any, i: number) => {
+                    const cat = team.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
+                    const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+                    const paramDefs = step.params || skill?.paramDefs || [];
+                    const editedValues = editableStepParams.get(i) || {};
 
-                  return (
-                    <React.Fragment key={i}>
-                      <div className={`pipeline-node ${statusClass}`}>
-                        {isCurrent && (
-                          <div className="cat-bubble show">
-                            <span className="bubble-text">{currentDialog}</span>
+                    return (
+                      <React.Fragment key={i}>
+                        <div style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 14,
+                          padding: '16px 18px', borderRadius: 16,
+                          border: '1.5px solid #F0EBE6', background: '#FFFCF9',
+                        }}>
+                          {/* 序号 */}
+                          <div style={{
+                            width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                            background: cat?.accent || '#FFB74D', color: '#fff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.75rem', fontWeight: 800, marginTop: 2,
+                          }}>
+                            {i + 1}
                           </div>
-                        )}
 
-                        <div className={`cat-avatar ${isCurrent ? 'working' : ''}`}>
-                          {cat && <CatSVG colors={cat.catColors} className="pipeline-cat" />}
-                        </div>
-
-                        <div className="node-info">
-                          <span className="node-name" style={{ color: cat?.accent }}>
-                            {cat?.name ?? step.agentId}
-                          </span>
-                          {skill && (
-                            <span className="node-skill">
-                              {skill.icon} {skill.name}
-                            </span>
-                          )}
-                          {!skill && step.action && (
-                            <span className="node-skill">
-                              {step.action}
-                            </span>
-                          )}
-                        </div>
-
-                        {isCurrent && (
-                          <div className="node-progress">
-                            <div className="node-progress-bar" style={{ animationDuration: `${STEP_DURATION}ms` }} />
-                          </div>
-                        )}
-                         {stepDurationSec && (
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
-                                  ⏱ {stepDurationSec}s
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {/* 步骤基本信息 */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: paramDefs.length > 0 ? 10 : 0 }}>
+                              {cat && (
+                                <div style={{ width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', border: '1px solid #E0D6CC', flexShrink: 0 }}>
+                                  <CatMiniAvatar colors={cat.catColors} size={26} />
+                                </div>
+                              )}
+                              <span style={{ fontWeight: 800, fontSize: '0.88rem', color: cat?.accent || '#5D4037' }}>
+                                {cat?.name ?? step.agentId}
+                              </span>
+                              {skill && (
+                                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#8D6E63', background: '#F5F0EB', padding: '2px 8px', borderRadius: 6 }}>
+                                  {skill.icon} {skill.name}
                                 </span>
                               )}
-
-                        {isCompleted && result && (
-                          <div className={`node-result status-${resultStatus}`}>
-                            <div className="node-result-header">
-                              {resultStatus === 'success' && '✅'}
-                              {resultStatus === 'warning' && '⚠️'}
-                              {resultStatus === 'error' && '❌'}
-                              <span className="node-result-status">
-                                {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
-                              </span>
+                              {step.action && (
+                                <span style={{ fontSize: '0.72rem', color: '#BCAAA4', fontWeight: 500, marginLeft: 'auto', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {step.action}
+                                </span>
+                              )}
                             </div>
-                            {result.summary && (
-                              <div className="node-result-summary markdown-body">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                  {result.summary}
-                                </ReactMarkdown>
+
+                            {/* 参数编辑区 */}
+                            {paramDefs.length > 0 && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 0 }}>
+                                {paramDefs.map((param: any) => {
+                                  const val = editedValues[param.key];
+                                  return (
+                                    <div key={param.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                      <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#8D6E63', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        {param.label}
+                                        {param.required && <span style={{ color: '#EF5350', fontSize: '0.65rem' }}>*</span>}
+                                        {param.description && (
+                                          <span style={{ fontWeight: 400, color: '#BCAAA4', fontSize: '0.62rem', marginLeft: 4 }}>
+                                            {param.description}
+                                          </span>
+                                        )}
+                                      </label>
+
+                                      {/* text / url 类型 */}
+                                      {(param.type === 'text' || param.type === 'url') && (
+                                        <input
+                                          type={param.type === 'url' ? 'url' : 'text'}
+                                          value={String(val ?? '')}
+                                          placeholder={param.placeholder || ''}
+                                          onChange={e => handleStepParamChange(i, param.key, e.target.value)}
+                                          style={{
+                                            padding: '7px 11px', border: '1.5px solid #E0D6CC', borderRadius: 10,
+                                            fontSize: '0.8rem', fontWeight: 500, color: '#5D4037', background: '#fff',
+                                            outline: 'none', fontFamily: 'inherit', transition: 'border-color 0.2s',
+                                          }}
+                                          onFocus={e => (e.target.style.borderColor = '#FFB74D')}
+                                          onBlur={e => (e.target.style.borderColor = '#E0D6CC')}
+                                        />
+                                      )}
+
+                                      {/* textarea 类型 */}
+                                      {param.type === 'textarea' && (
+                                        <textarea
+                                          value={String(val ?? '')}
+                                          placeholder={param.placeholder || ''}
+                                          rows={3}
+                                          onChange={e => handleStepParamChange(i, param.key, e.target.value)}
+                                          style={{
+                                            padding: '7px 11px', border: '1.5px solid #E0D6CC', borderRadius: 10,
+                                            fontSize: '0.8rem', fontWeight: 500, color: '#5D4037', background: '#fff',
+                                            outline: 'none', fontFamily: 'inherit', resize: 'vertical',
+                                            minHeight: 44, transition: 'border-color 0.2s',
+                                          }}
+                                          onFocus={e => (e.target.style.borderColor = '#FFB74D')}
+                                          onBlur={e => (e.target.style.borderColor = '#E0D6CC')}
+                                        />
+                                      )}
+
+                                      {/* number 类型 */}
+                                      {param.type === 'number' && (
+                                        <input
+                                          type="number"
+                                          value={val !== undefined && val !== '' ? String(val) : ''}
+                                          placeholder={param.placeholder || ''}
+                                          onChange={e => handleStepParamChange(i, param.key, e.target.value ? Number(e.target.value) : '')}
+                                          style={{
+                                            padding: '7px 11px', border: '1.5px solid #E0D6CC', borderRadius: 10,
+                                            fontSize: '0.8rem', fontWeight: 500, color: '#5D4037', background: '#fff',
+                                            outline: 'none', fontFamily: 'inherit', width: 140, transition: 'border-color 0.2s',
+                                          }}
+                                          onFocus={e => (e.target.style.borderColor = '#FFB74D')}
+                                          onBlur={e => (e.target.style.borderColor = '#E0D6CC')}
+                                        />
+                                      )}
+
+                                      {/* select 类型 */}
+                                      {param.type === 'select' && (
+                                        <select
+                                          value={String(val ?? '')}
+                                          onChange={e => handleStepParamChange(i, param.key, e.target.value)}
+                                          style={{
+                                            padding: '7px 11px', border: '1.5px solid #E0D6CC', borderRadius: 10,
+                                            fontSize: '0.8rem', fontWeight: 500, color: '#5D4037', background: '#fff',
+                                            outline: 'none', fontFamily: 'inherit', cursor: 'pointer', transition: 'border-color 0.2s',
+                                          }}
+                                          onFocus={e => (e.target.style.borderColor = '#FFB74D')}
+                                          onBlur={e => (e.target.style.borderColor = '#E0D6CC')}
+                                        >
+                                          <option value="">请选择...</option>
+                                          {(param.options || []).map((opt: any) => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                          ))}
+                                        </select>
+                                      )}
+
+                                      {/* toggle 类型 */}
+                                      {param.type === 'toggle' && (
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: '#5D4037' }}>
+                                          <div
+                                            onClick={() => handleStepParamChange(i, param.key, !val)}
+                                            style={{
+                                              position: 'relative', width: 36, height: 20, borderRadius: 10,
+                                              background: val ? '#81C784' : '#D0D0D0', cursor: 'pointer', transition: 'background 0.25s',
+                                            }}
+                                          >
+                                            <div style={{
+                                              position: 'absolute', top: 2, left: val ? 18 : 2,
+                                              width: 16, height: 16, borderRadius: '50%',
+                                              background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                                              transition: 'left 0.25s',
+                                            }} />
+                                          </div>
+                                          <span>{val ? '开启' : '关闭'}</span>
+                                        </label>
+                                      )}
+
+                                      {/* tags 类型 */}
+                                      {param.type === 'tags' && (() => {
+                                        const tags = Array.isArray(val) ? val as string[] : [];
+                                        return (
+                                          <div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: tags.length > 0 ? 6 : 0 }}>
+                                              {tags.map((tag, ti) => (
+                                                <span key={ti} style={{
+                                                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                  fontSize: '0.72rem', fontWeight: 600, color: '#5D4037',
+                                                  background: '#F5F0EB', padding: '2px 8px', borderRadius: 6,
+                                                }}>
+                                                  {tag}
+                                                  <span
+                                                    style={{ cursor: 'pointer', color: '#BCAAA4', fontSize: '0.8rem', lineHeight: 1 }}
+                                                    onClick={() => {
+                                                      const next = [...tags];
+                                                      next.splice(ti, 1);
+                                                      handleStepParamChange(i, param.key, next);
+                                                    }}
+                                                  >×</span>
+                                                </span>
+                                              ))}
+                                            </div>
+                                            <input
+                                              type="text"
+                                              placeholder={param.placeholder || '输入后回车添加'}
+                                              onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  const v = (e.target as HTMLInputElement).value.trim();
+                                                  if (v) {
+                                                    handleStepParamChange(i, param.key, [...tags, v]);
+                                                    (e.target as HTMLInputElement).value = '';
+                                                  }
+                                                }
+                                              }}
+                                              style={{
+                                                padding: '6px 11px', border: '1.5px solid #E0D6CC', borderRadius: 10,
+                                                fontSize: '0.78rem', fontWeight: 500, color: '#5D4037', background: '#fff',
+                                                outline: 'none', fontFamily: 'inherit', width: '100%', transition: 'border-color 0.2s',
+                                              }}
+                                              onFocus={e => (e.target.style.borderColor = '#FFB74D')}
+                                              onBlur={e => (e.target.style.borderColor = '#E0D6CC')}
+                                            />
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* 无参数时的提示 */}
+                            {paramDefs.length === 0 && (
+                              <span style={{ fontSize: '0.72rem', color: '#BCAAA4', fontStyle: 'italic' }}>
+                                无需配置参数
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 步骤之间的连接箭头 */}
+                        {i < executingWorkflow.steps.length - 1 && (
+                          <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0' }}>
+                            <svg width="16" height="20" viewBox="0 0 16 20" fill="none">
+                              <path d="M8 0 L8 14 M3 10 L8 16 L13 10" stroke="#E0D6CC" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* ── 执行态 / 历史查看态 ── */
+              <div className="stage-body">
+                <div className="pipeline">
+                  {executingWorkflow.steps.map((step: any, i: number) => {
+                    const cat = team.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
+                    const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+                    const isCompleted = completedSteps.includes(i);
+                    const isCurrent = runningStepIndex === i;
+                    const isPending = !isCompleted && !isCurrent;
+                    const statusClass = isCompleted ? 'done' : isCurrent ? 'active' : 'waiting';
+                    const result = stepResults.get(i);
+                    const resultStatus = result?.status ?? 'success';
+                    const timing = stepTimings.get(i);
+                    const stepDurationSec = timing?.duration != null ? (timing.duration / 1000).toFixed(1) : null;
+
+                    return (
+                      <React.Fragment key={i}>
+                        <div className={`pipeline-node ${statusClass}`}>
+                          {isCurrent && (
+                            <div className="cat-bubble show">
+                              <span className="bubble-text">{currentDialog}</span>
+                            </div>
+                          )}
+
+                          <div className={`cat-avatar ${isCurrent ? 'working' : ''}`}>
+                            {cat && <CatSVG colors={cat.catColors} className="pipeline-cat" />}
+                          </div>
+
+                          <div className="node-info">
+                            <span className="node-name" style={{ color: cat?.accent }}>
+                              {cat?.name ?? step.agentId}
+                            </span>
+                            {skill && (
+                              <span className="node-skill">
+                                {skill.icon} {skill.name}
+                              </span>
+                            )}
+                            {!skill && step.action && (
+                              <span className="node-skill">
+                                {step.action}
+                              </span>
+                            )}
+                          </div>
+
+                          {isCurrent && (
+                            <div className="node-progress">
+                              <div className="node-progress-bar" style={{ animationDuration: `${STEP_DURATION}ms` }} />
+                            </div>
+                          )}
+                           {stepDurationSec && (
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                                    ⏱ {stepDurationSec}s
+                                  </span>
+                                )}
+
+                          {isCompleted && result && (
+                            <div className={`node-result status-${resultStatus}`}>
+                              <div className="node-result-header">
+                                {resultStatus === 'success' && '✅'}
+                                {resultStatus === 'warning' && '⚠️'}
+                                {resultStatus === 'error' && '❌'}
+                                <span className="node-result-status">
+                                  {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
+                                </span>
+                              </div>
+                              {result.summary && (
+                                <div className="node-result-summary markdown-body">
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {result.summary}
+                                  </ReactMarkdown>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {!isCompleted && skill && (
+                            <div className="node-io">
+                              <span className="io-tag io-in">{skill.input}</span>
+                              <span className="io-arrow">→</span>
+                              <span className="io-tag io-out">{skill.output}</span>
+                            </div>
+                          )}
+
+                          {isPending && <div className="node-dim" />}
+                        </div>
+
+                        {i < executingWorkflow.steps.length - 1 && (
+                          <div className={`pipeline-arrow ${isCompleted ? 'done' : ''}`}>
+                            <div className="arrow-line" />
+                            <div className="arrow-head">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </div>
+                            {isCompleted && (
+                              <div className="arrow-data-tag">
+                                <span className="data-type">
+                                  {skill?.output ?? ''}
+                                </span>
                               </div>
                             )}
                           </div>
                         )}
-
-                        {!isCompleted && skill && (
-                          <div className="node-io">
-                            <span className="io-tag io-in">{skill.input}</span>
-                            <span className="io-arrow">→</span>
-                            <span className="io-tag io-out">{skill.output}</span>
-                          </div>
-                        )}
-
-                        {isPending && <div className="node-dim" />}
-                      </div>
-
-                      {i < executingWorkflow.steps.length - 1 && (
-                        <div className={`pipeline-arrow ${isCompleted ? 'done' : ''}`}>
-                          <div className="arrow-line" />
-                          <div className="arrow-head">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          </div>
-                          {isCompleted && (
-                            <div className="arrow-data-tag">
-                              <span className="data-type">
-                                {skill?.output ?? ''}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="stage-footer">
-              {isViewingHistory ? (
+              {isPreparing ? (
+                /* ── 预览确认态底部 ── */
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', justifyContent: 'center' }}>
+                  <button
+                    onClick={closeHandler}
+                    style={{
+                      padding: '10px 24px', border: '1.5px solid #DADADA', borderRadius: 12,
+                      background: '#fff', color: '#8D6E63', fontSize: '0.85rem', fontWeight: 600,
+                      cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit',
+                    }}
+                    onMouseOver={e => { (e.target as HTMLElement).style.borderColor = '#BCAAA4'; (e.target as HTMLElement).style.background = '#F5F0EB'; }}
+                    onMouseOut={e => { (e.target as HTMLElement).style.borderColor = '#DADADA'; (e.target as HTMLElement).style.background = '#fff'; }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleConfirmRun}
+                    style={{
+                      padding: '10px 32px', border: 'none', borderRadius: 12,
+                      background: '#FFB74D', color: '#fff', fontSize: '0.85rem', fontWeight: 700,
+                      cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit',
+                      boxShadow: '0 3px 10px rgba(255, 183, 77, 0.3)',
+                    }}
+                    onMouseOver={e => { (e.target as HTMLElement).style.background = '#FFA726'; (e.target as HTMLElement).style.transform = 'translateY(-1px)'; }}
+                    onMouseOut={e => { (e.target as HTMLElement).style.background = '#FFB74D'; (e.target as HTMLElement).style.transform = 'translateY(0)'; }}
+                  >
+                    ▶ 开始执行
+                  </button>
+                </div>
+              ) : isViewingHistory ? (
                 <div className="exec-done">
                   <span className="done-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     {new Date(viewingRun!.startedAt).toLocaleString('zh-CN')}
