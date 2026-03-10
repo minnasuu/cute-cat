@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import type { WorkflowStep, StepParam, ParamValueSource, SystemKey } from '../../../data/types';
-import { SYSTEM_KEYS, UPSTREAM_FIELD_SUGGESTIONS } from '../../../data/types';
+import { SYSTEM_KEYS } from '../../../data/types';
 import { skillPool } from '../../../data/skills';
 import CatMiniAvatar from '../../../components/CatMiniAvatar';
 
@@ -151,49 +151,18 @@ const ValueSourceSelector: React.FC<{
   </div>
 );
 
-/* ────── 上游字段选择控件 ────── */
-const UpstreamFieldSelect: React.FC<{
-  value: string;
-  onChange: (field: string) => void;
-}> = ({ value, onChange }) => {
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  return (
-    <div className="relative">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-[10px]">⬆️</span>
-        <span className="text-[10px] text-gray-500">上游输出字段名</span>
-      </div>
-      <div className="flex gap-1.5">
-        <input
-          type="text"
-          value={value || ''}
-          placeholder="输入字段名，如 text、summary"
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => setShowSuggestions(true)}
-          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-          className="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm"
-        />
-      </div>
-      {showSuggestions && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg border border-gray-200 shadow-lg z-10 overflow-hidden">
-          <p className="px-3 py-1.5 text-[9px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50">常用字段</p>
-          {UPSTREAM_FIELD_SUGGESTIONS.map(f => (
-            <button
-              key={f}
-              type="button"
-              onMouseDown={() => { onChange(f); setShowSuggestions(false); }}
-              className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-primary-50 transition-colors cursor-pointer ${
-                f === value ? 'text-primary-600 font-bold' : 'text-gray-600'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      )}
+/* ────── 上游输出只读提示 ────── */
+const UpstreamHint: React.FC = () => (
+  <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs">⬆️</span>
+      <span className="text-[11px] font-bold text-blue-600">来自上游步骤</span>
     </div>
-  );
-};
+    <p className="mt-1 text-[10px] text-blue-500/80">
+      执行时将自动使用上一步的输出结果，无需手动填写
+    </p>
+  </div>
+);
 
 /* ────── 系统变量只读展示 ────── */
 const SystemKeyDisplay: React.FC<{
@@ -288,14 +257,6 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
   const handleParamSourceChange = useCallback((key: string, valueSource: ParamValueSource) => {
     const newParams = (step.params || []).map(p =>
       p.key === key ? { ...p, valueSource } : p,
-    );
-    onUpdateStep(stepIndex, 'params', newParams);
-  }, [step.params, stepIndex, onUpdateStep]);
-
-  // 更新 upstream 字段名
-  const handleUpstreamFieldChange = useCallback((key: string, upstreamField: string) => {
-    const newParams = (step.params || []).map(p =>
-      p.key === key ? { ...p, upstreamField } : p,
     );
     onUpdateStep(stepIndex, 'params', newParams);
   }, [step.params, stepIndex, onUpdateStep]);
@@ -478,10 +439,7 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
                       />
                     )}
                     {source === 'upstream' && (
-                      <UpstreamFieldSelect
-                        value={param.upstreamField || ''}
-                        onChange={(field) => handleUpstreamFieldChange(param.key, field)}
-                      />
+                      <UpstreamHint />
                     )}
                     {source === 'system' && (
                       <SystemKeyDisplay

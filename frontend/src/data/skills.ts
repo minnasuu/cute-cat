@@ -113,7 +113,7 @@ export const skillPool: SkillTemplate[] = [
   // ── 沟通运营（基于 email-send / web-push / db-query 原型）──
   { id: 'send-email',        name: '发送邮件',   category: 'comm', description: '发送 HTML 格式邮件',                     input: 'text', output: 'email', primitiveId: 'email-send',        provider: 'SMTP',
     paramDefs: [
-      { key: 'body', label: '邮件内容', type: 'textarea', placeholder: '输入邮件正文内容', description: '可手动填写，也可使用上一步输出', valueSource: 'upstream', upstreamField: 'text' },
+      { key: 'body', label: '邮件内容', type: 'textarea', placeholder: '输入邮件正文内容', description: '默认使用上一步的输出作为邮件正文', valueSource: 'upstream' },
       { key: 'to', label: '收件邮箱', type: 'text', placeholder: 'user@example.com', description: '默认发送到用户注册邮箱，也可手动指定', valueSource: 'system', systemKey: 'user.email' },
       { key: 'subject', label: '邮件主题', type: 'text', placeholder: '邮件标题', required: true },
     ],

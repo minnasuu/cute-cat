@@ -368,13 +368,19 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
         for (const p of step.params) {
           const source = (p as any).valueSource || 'static';
           if (source === 'upstream') {
-            const field = (p as any).upstreamField || p.key;
+            // 从上游步骤输出中自动提取主体内容（无需指定字段名）
             let found: unknown = undefined;
             for (let i = runningStepIndex - 1; i >= 0; i--) {
               const prevData = stepResultsRef.current.get(i)?.data;
-              if (prevData && typeof prevData === 'object' && field in (prevData as Record<string, unknown>)) {
-                found = (prevData as Record<string, unknown>)[field];
-                break;
+              if (prevData != null) {
+                if (typeof prevData === 'string') {
+                  found = prevData;
+                } else if (typeof prevData === 'object') {
+                  const d = prevData as Record<string, unknown>;
+                  found = d.text ?? d.summary ?? d.notes ?? d.content ?? d.result ?? d.html ?? d.body ?? d.data;
+                  if (found === undefined) found = JSON.stringify(prevData);
+                }
+                if (found !== undefined) break;
               }
             }
             paramValues[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);

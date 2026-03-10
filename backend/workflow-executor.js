@@ -191,16 +191,21 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
       const source = p.valueSource || 'static';
 
       if (source === 'upstream') {
-        // 从上游步骤输出中提取指定字段
-        const field = p.upstreamField || p.key;
+        // 从上游步骤输出中自动提取主体内容（无需指定字段名）
         let found = undefined;
-        if (prevResults && typeof prevResults === 'object' && field in prevResults) {
-          found = prevResults[field];
+        if (prevResults != null) {
+          if (typeof prevResults === 'string') {
+            found = prevResults;
+          } else if (typeof prevResults === 'object') {
+            found = prevResults.text ?? prevResults.summary ?? prevResults.notes ?? prevResults.content ?? prevResults.result ?? prevResults.html ?? prevResults.body ?? prevResults.data;
+            // 如果没有匹配到已知字段，将整个对象 JSON 序列化
+            if (found === undefined) found = JSON.stringify(prevResults);
+          }
         }
         // 回退到 static value 或 defaultValue
         pv[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
         if (found === undefined) {
-          console.warn(`[executor] param "${p.key}" upstream field "${field}" not found in prevResults, falling back to static value`);
+          console.warn(`[executor] param "${p.key}" upstream: no content found in prevResults, falling back to static value`);
         }
       } else if (source === 'system') {
         // 从系统上下文注入

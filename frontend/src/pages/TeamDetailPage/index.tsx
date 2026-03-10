@@ -426,14 +426,21 @@ const TeamDetailPage: React.FC = () => {
         for (const p of step.params) {
           const source = p.valueSource || 'static';
           if (source === 'upstream') {
-            // 从上游步骤输出中提取指定字段
-            const field = p.upstreamField || p.key;
+            // 从上游步骤输出中自动提取主体内容（无需指定字段名）
             let found: unknown = undefined;
             for (let i = runningStepIndex - 1; i >= 0; i--) {
               const prevData = stepResultsRef.current.get(i)?.data;
-              if (prevData && typeof prevData === 'object' && field in (prevData as Record<string, unknown>)) {
-                found = (prevData as Record<string, unknown>)[field];
-                break;
+              if (prevData != null) {
+                if (typeof prevData === 'string') {
+                  found = prevData;
+                } else if (typeof prevData === 'object') {
+                  const d = prevData as Record<string, unknown>;
+                  // 优先取常见主体字段
+                  found = d.text ?? d.summary ?? d.notes ?? d.content ?? d.result ?? d.html ?? d.body ?? d.data;
+                  // 如果没有匹配到已知字段，将整个对象 JSON 序列化
+                  if (found === undefined) found = JSON.stringify(prevData);
+                }
+                if (found !== undefined) break;
               }
             }
             // 回退到 static value 或 defaultValue

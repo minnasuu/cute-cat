@@ -80,17 +80,6 @@ export const SYSTEM_KEYS = {
 
 export type SystemKey = keyof typeof SYSTEM_KEYS;
 
-/** upstream 模式下常用的上游输出字段建议 */
-export const UPSTREAM_FIELD_SUGGESTIONS = [
-  'text',
-  'summary',
-  'notes',
-  'html',
-  'content',
-  'result',
-  'data',
-] as const;
-
 // --- 用户输入/配置项定义 ---
 export type StepParamType = 'text' | 'textarea' | 'number' | 'select' | 'toggle' | 'url' | 'tags';
 
@@ -115,8 +104,6 @@ export interface StepParam {
   value?: string | number | boolean | string[];
   /** 参数值的来源方式，默认 'static'（用户手动填写） */
   valueSource?: ParamValueSource;
-  /** valueSource='upstream' 时，从上游步骤输出中提取的字段名 */
-  upstreamField?: string;
   /** valueSource='system' 时，注入的系统上下文变量 key */
   systemKey?: SystemKey;
 }
