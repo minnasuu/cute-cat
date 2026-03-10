@@ -2,9 +2,7 @@ import type { Assistant, Skill } from '../types';
 import { lihuajiabaiTheme } from '../themes';
 
 export const huajiaoSkills: Skill[] = [
-  { id: 'generate-todo', name: '代办清单', icon: '📋', description: '分析需求，自动生成结构化待办清单', input: 'json', output: 'json', provider: 'Qwen', mockResult: '输出 JSON 代办清单 (8项待办)' },
   { id: 'assign-task', name: '任务分配', icon: '📌', description: '将任务拆解并分配给指定猫猫', input: 'text', output: 'json', provider: 'TaskQueue', mockResult: '输出 JSON 任务卡片 (状态/负责人)' },
-  { id: 'review-approve', name: '审批流程', icon: '✅', description: '审核工作成果并决定是否发布', input: 'json', output: 'json', provider: 'Workflow Engine', mockResult: '输出审批结果: approved/rejected' },
   { id: 'manage-workflow', name: '工作流管理', icon: '🔧', description: '新增、修改或删除协作工作流', input: 'json', output: 'json', provider: 'Workflow Engine', mockResult: '工作流已更新' },
   { id: 'run-workflow', name: '执行工作流', icon: '▶️', description: '触发指定工作流立即执行', input: 'text', output: 'json', provider: 'Workflow Engine', mockResult: '工作流已触发执行' },
   { id: 'recruit-cat', name: '招募新猫', icon: '🐱', description: '根据团队需求招募新猫并定义角色', input: 'json', output: 'json', provider: 'Qwen', mockResult: '新猫已招募' },

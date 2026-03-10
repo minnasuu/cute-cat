@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import type { WorkflowStep, StepParam } from '../../../data/types';
+import type { WorkflowStep, StepParam, ParamValueSource, SystemKey } from '../../../data/types';
+import { SYSTEM_KEYS, UPSTREAM_FIELD_SUGGESTIONS } from '../../../data/types';
 import { skillPool } from '../../../data/skills';
 import CatMiniAvatar from '../../../components/CatMiniAvatar';
 
@@ -119,6 +120,115 @@ const ParamInput: React.FC<{
   }
 };
 
+/* ────── 值来源选择器 ────── */
+const VALUE_SOURCE_OPTIONS: { value: ParamValueSource; label: string; icon: string; desc: string }[] = [
+  { value: 'static',   label: '手动填写', icon: '✏️', desc: '直接配置固定值' },
+  { value: 'upstream', label: '上游输出', icon: '⬆️', desc: '取上一步的输出字段' },
+  { value: 'system',   label: '系统注入', icon: '⚙️', desc: '运行时自动填充' },
+];
+
+const ValueSourceSelector: React.FC<{
+  value: ParamValueSource;
+  onChange: (v: ParamValueSource) => void;
+}> = ({ value, onChange }) => (
+  <div className="flex gap-1 mb-2">
+    {VALUE_SOURCE_OPTIONS.map(opt => (
+      <button
+        key={opt.value}
+        type="button"
+        onClick={() => onChange(opt.value)}
+        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+          value === opt.value
+            ? 'bg-primary-100 text-primary-700 border border-primary-300'
+            : 'bg-gray-50 text-gray-400 border border-transparent hover:bg-gray-100 hover:text-gray-600'
+        }`}
+        title={opt.desc}
+      >
+        <span className="text-[10px]">{opt.icon}</span>
+        {opt.label}
+      </button>
+    ))}
+  </div>
+);
+
+/* ────── 上游字段选择控件 ────── */
+const UpstreamFieldSelect: React.FC<{
+  value: string;
+  onChange: (field: string) => void;
+}> = ({ value, onChange }) => {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  return (
+    <div className="relative">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-[10px]">⬆️</span>
+        <span className="text-[10px] text-gray-500">上游输出字段名</span>
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={value || ''}
+          placeholder="输入字段名，如 text、summary"
+          onChange={e => onChange(e.target.value)}
+          onFocus={() => setShowSuggestions(true)}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+          className="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm"
+        />
+      </div>
+      {showSuggestions && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg border border-gray-200 shadow-lg z-10 overflow-hidden">
+          <p className="px-3 py-1.5 text-[9px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50">常用字段</p>
+          {UPSTREAM_FIELD_SUGGESTIONS.map(f => (
+            <button
+              key={f}
+              type="button"
+              onMouseDown={() => { onChange(f); setShowSuggestions(false); }}
+              className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-primary-50 transition-colors cursor-pointer ${
+                f === value ? 'text-primary-600 font-bold' : 'text-gray-600'
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ────── 系统变量只读展示 ────── */
+const SystemKeyDisplay: React.FC<{
+  systemKey?: SystemKey;
+  onChange: (key: SystemKey) => void;
+}> = ({ systemKey, onChange }) => {
+  const entries = Object.entries(SYSTEM_KEYS) as [SystemKey, string][];
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-[10px]">⚙️</span>
+        <span className="text-[10px] text-gray-500">系统自动注入的值</span>
+      </div>
+      <div className="rounded-lg border border-gray-200 pr-2 bg-white">
+        <select
+          value={systemKey || ''}
+          onChange={e => onChange(e.target.value as SystemKey)}
+          className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer bg-transparent"
+        >
+          <option value="">选择系统变量...</option>
+          {entries.map(([key, desc]) => (
+            <option key={key} value={key}>{desc}（{key}）</option>
+          ))}
+        </select>
+      </div>
+      {systemKey && (
+        <p className="mt-1.5 text-[10px] text-gray-400 flex items-center gap-1">
+          <span className="text-amber-500">ⓘ</span>
+          执行时将自动使用「{SYSTEM_KEYS[systemKey]}」，无需手动填写
+        </p>
+      )}
+    </div>
+  );
+};
+
 const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
   open, stepIndex, step, cats,
   onClose, onUpdateStep,
@@ -131,7 +241,7 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
 
   // 判断当前 skill 是否是接入 AI 的技能
   const AI_PRIMITIVE_IDS = ['text-to-text', 'text-to-image', 'structured-output'];
-  const AI_SKILL_IDS = ['ai-chat', 'generate-article', 'polish-text', 'generate-outline', 'news-to-article', 'summarize-news', 'meeting-notes', 'trend-analysis', 'generate-todo', 'assign-task', 'review-approve', 'site-analyze', 'quality-check', 'content-review', 'team-review', 'generate-image', 'css-generate', 'cat-training', 'recruit-cat'];
+  const AI_SKILL_IDS = ['ai-chat', 'generate-article',  'generate-outline', 'meeting-notes', 'assign-task', 'content-review', 'team-review', 'generate-image', 'cat-training', 'recruit-cat'];
   const currentSkillDef = catSkills.find((s: any) => s.id === step.skillId);
   const isAiSkill = AI_SKILL_IDS.includes(step.skillId) || AI_PRIMITIVE_IDS.includes(step.skillId) || currentSkillDef?.primitiveId && AI_PRIMITIVE_IDS.includes(currentSkillDef.primitiveId);
 
@@ -170,6 +280,30 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
   const handleParamValueChange = useCallback((key: string, value: unknown) => {
     const newParams = (step.params || []).map(p =>
       p.key === key ? { ...p, value } : p,
+    );
+    onUpdateStep(stepIndex, 'params', newParams);
+  }, [step.params, stepIndex, onUpdateStep]);
+
+  // 切换参数值来源
+  const handleParamSourceChange = useCallback((key: string, valueSource: ParamValueSource) => {
+    const newParams = (step.params || []).map(p =>
+      p.key === key ? { ...p, valueSource } : p,
+    );
+    onUpdateStep(stepIndex, 'params', newParams);
+  }, [step.params, stepIndex, onUpdateStep]);
+
+  // 更新 upstream 字段名
+  const handleUpstreamFieldChange = useCallback((key: string, upstreamField: string) => {
+    const newParams = (step.params || []).map(p =>
+      p.key === key ? { ...p, upstreamField } : p,
+    );
+    onUpdateStep(stepIndex, 'params', newParams);
+  }, [step.params, stepIndex, onUpdateStep]);
+
+  // 更新 system key
+  const handleSystemKeyChange = useCallback((key: string, systemKey: SystemKey) => {
+    const newParams = (step.params || []).map(p =>
+      p.key === key ? { ...p, systemKey } : p,
     );
     onUpdateStep(stepIndex, 'params', newParams);
   }, [step.params, stepIndex, onUpdateStep]);
@@ -301,7 +435,9 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
               </div>
 
               <div className="space-y-3">
-                {(step.params || []).map((param, pi) => (
+                {(step.params || []).map((param, pi) => {
+                  const source = param.valueSource || 'static';
+                  return (
                   <div key={param.key} className="rounded-xl border border-gray-100 bg-gray-50/50 p-3">
                     {/* 参数标题行 */}
                     <div className="flex items-center gap-2 mb-2">
@@ -329,13 +465,33 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
                     {param.description && (
                       <p className="text-[10px] text-gray-400 mb-2">{param.description}</p>
                     )}
-                    {/* 参数值输入 */}
-                    <ParamInput
-                      param={param}
-                      onChange={(val) => handleParamValueChange(param.key, val)}
+                    {/* 值来源选择器 */}
+                    <ValueSourceSelector
+                      value={source}
+                      onChange={(v) => handleParamSourceChange(param.key, v)}
                     />
+                    {/* 根据 valueSource 显示不同控件 */}
+                    {source === 'static' && (
+                      <ParamInput
+                        param={param}
+                        onChange={(val) => handleParamValueChange(param.key, val)}
+                      />
+                    )}
+                    {source === 'upstream' && (
+                      <UpstreamFieldSelect
+                        value={param.upstreamField || ''}
+                        onChange={(field) => handleUpstreamFieldChange(param.key, field)}
+                      />
+                    )}
+                    {source === 'system' && (
+                      <SystemKeyDisplay
+                        systemKey={param.systemKey}
+                        onChange={(key) => handleSystemKeyChange(param.key, key)}
+                      />
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* 添加已删除的参数 */}

@@ -57,10 +57,22 @@ const emailSend: PrimitiveHandler = {
     if (typeof input === 'string') {
       text = input;
     } else if (input && typeof input === 'object') {
-      to = (input.to as string) || to;
-      subject = (input.subject as string) || subject;
-      html = (input.html as string) || '';
-      text = (input.notes as string) || (input.text as string) || (input.summary as string) || '';
+      // _params 来自工作流参数系统（优先级最高，已经过 valueSource 解析）
+      const params = input._params as Record<string, unknown> | undefined;
+
+      // 收件人：_params.to > input.to > 当前用户邮箱
+      to = (params?.to as string) || (input.to as string) || to;
+      // 主题：_params.subject > input.subject > 默认主题
+      subject = (params?.subject as string) || (input.subject as string) || subject;
+
+      // 邮件正文：_params.body > input.html > input.notes/text/summary
+      const bodyParam = params?.body as string | undefined;
+      if (bodyParam) {
+        text = bodyParam;
+      } else {
+        html = (input.html as string) || '';
+        text = (input.notes as string) || (input.text as string) || (input.summary as string) || '';
+      }
     }
 
     if (!html && !text) {

@@ -3,10 +3,6 @@ import { heimaotaxueTheme } from '../themes';
 
 export const xueSkills: Skill[] = [
   { id: 'crawl-news', name: '资讯爬取', icon: '🕸️', description: '定时爬取指定网站/RSS，获取最新资讯', input: 'url', output: 'json', provider: 'Crawler/RSS', mockResult: '返回 JSON 资讯列表 (标题/摘要/链接)' },
-  { id: 'summarize-news', name: '资讯摘要', icon: '📰', description: '对爬取内容进行智能摘要和分类', input: 'json', output: 'text', provider: 'Qwen', mockResult: '返回分类摘要 (5条资讯)' },
-  { id: 'query-dashboard', name: '数据查询', icon: '🔍', description: '查询数据库获取结构化数据', input: 'text', output: 'json', provider: 'PostgreSQL', mockResult: '返回 JSON 数据集 (UV/PV/转化率)' },
-  { id: 'trend-analysis', name: '趋势分析', icon: '📈', description: '对时序数据进行趋势分析和异常检测', input: 'json', output: 'json', provider: 'Qwen', mockResult: '返回 JSON 趋势结论 + 异常点' },
-  { id: 'site-analyze', name: '网站诊断', icon: '🔬', description: '分析网站内容分布和质量，给出优化建议', input: 'url', output: 'json', provider: 'Qwen', mockResult: '输出 JSON 诊断报告 (6条建议)' },
 ];
 
 export const xueMessages = [

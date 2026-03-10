@@ -155,9 +155,7 @@ const CAT_TEMPLATES = [
     accent: '#8DB889',
     systemPrompt: '你是「花椒」，一只沉稳可靠的猫猫总管。你的职责是统筹调度整个猫猫团队，分配任务、审批成果、管理工作流。',
     skills: [
-      { id: 'generate-todo', name: '代办清单', icon: '📋', description: '分析网站内容，自动生成代办清单', input: 'json', output: 'json' },
       { id: 'assign-task', name: '任务分配', icon: '📌', description: '将任务拆解并分配给指定猫猫', input: 'text', output: 'json' },
-      { id: 'review-approve', name: '审批流程', icon: '✅', description: '审核工作成果并决定是否发布', input: 'json', output: 'json' },
       { id: 'manage-workflow', name: '工作流管理', icon: '🔧', description: '新增、修改或删除协作工作流', input: 'json', output: 'json' },
       { id: 'run-workflow', name: '执行工作流', icon: '▶️', description: '选择并触发指定工作流立即执行', input: 'text', output: 'json' },
     ],
@@ -174,9 +172,7 @@ const CAT_TEMPLATES = [
     systemPrompt: '你是「阿蓝」，一只文艺气质的蓝灰色猫猫写手。你负责所有文字创作工作。',
     skills: [
       { id: 'generate-article', name: '文章生成', icon: '📝', description: '根据主题和素材调用 AI 生成完整文章', input: 'text', output: 'text' },
-      { id: 'polish-text', name: '内容润色', icon: '✨', description: '优化文本表达，调整语气和风格', input: 'text', output: 'text' },
       { id: 'generate-outline', name: '大纲生成', icon: '📑', description: '根据主题快速生成结构化大纲', input: 'text', output: 'json' },
-      { id: 'news-to-article', name: '资讯转文章', icon: '📰', description: '将爬取的资讯摘要整理为可发布的博文', input: 'json', output: 'text' },
     ],
     item: 'notebook',
     catColors: { body: '#8E9AAF', bodyDark: '#6B7A8D', belly: '#B8C4D4', earInner: '#C4A6A6', eyes: '#D4944C', nose: '#B87D75', blush: '#C9A6A6', stroke: '#4A5568', apron: '#5B8DB8', apronLight: '#D0DFE9', apronLine: '#5B8DB8', desk: '#E8D5B8', deskDark: '#C4A87A', deskLeg: '#D4BF9A', paw: '#B8C4D4', tail: '#6B7A8D', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
@@ -191,9 +187,6 @@ const CAT_TEMPLATES = [
     systemPrompt: '你是「雪」，一只机警敏锐的黑色猫猫侦察员。你是团队的眼睛和耳朵，负责信息采集和数据分析。',
     skills: [
       { id: 'crawl-news', name: '资讯爬取', icon: '🕸️', description: '定时爬取指定网站/RSS，获取最新资讯', input: 'url', output: 'json' },
-      { id: 'summarize-news', name: '资讯摘要', icon: '📰', description: '对爬取内容进行智能摘要和分类', input: 'json', output: 'text' },
-      { id: 'query-dashboard', name: '数据查询', icon: '🔍', description: '查询网站数据库获取结构化数据', input: 'text', output: 'json' },
-      { id: 'trend-analysis', name: '趋势分析', icon: '📈', description: '对时序数据进行趋势分析和异常检测', input: 'json', output: 'json' },
     ],
     item: 'laptop',
     catColors: { body: '#3D3D3D', bodyDark: '#2A2A2A', belly: '#3D3D3D', earInner: '#E8909A', eyes: '#000', nose: '#542615', blush: '#F28686', stroke: '#1A1A1A', apron: '#7EB8DA', apronLight: '#D6EAF5', apronLine: '#7EB8DA', desk: '#C8D8E8', deskDark: '#8BA4BD', deskLeg: '#A6BCCF', paw: '#fff', tail: '#3D3D3D', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
@@ -208,7 +201,6 @@ const CAT_TEMPLATES = [
     systemPrompt: '你是「年年」，一只温暖热情的橘色猫猫信使。你是团队与外界沟通的桥梁，负责所有邮件和通知。',
     skills: [
       { id: 'send-email', name: '发送邮件', icon: '📧', description: '发送 HTML 格式邮件给指定收件人', input: 'text', output: 'email' },
-      { id: 'send-notification', name: '推送通知', icon: '🔔', description: '向订阅者批量推送通知', input: 'text', output: 'json' },
     ],
     item: 'mail',
     catColors: { body: '#F7AC5E', bodyDark: '#D3753E', belly: '', earInner: '#F28686', eyes: '#542615', nose: '#542615', blush: '#F28686', stroke: '#542615', apron: '#BDBDBD', apronLight: '#FEFFFE', apronLine: '#BDBDBD', desk: '#D7CCC8', deskDark: '#A1887F', deskLeg: '#BCAAA4', paw: '', tail: '#F7AC5E', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
@@ -222,10 +214,6 @@ const CAT_TEMPLATES = [
     accent: '#FFB74D',
     systemPrompt: '你是「小虎」，一只活力十足的三花猫猫建造师。你是团队的创意工匠，专注于前端组件和视觉呈现。',
     skills: [
-      { id: 'generate-component', name: '组件生成', icon: '🧩', description: '根据描述生成 React/HTML 创意组件代码', input: 'text', output: 'html' },
-      { id: 'update-crafts', name: 'Crafts 更新', icon: '🔄', description: '自动为 Crafts 页面新增交互 demo', input: 'text', output: 'html' },
-      { id: 'layout-design', name: '排版布局', icon: '📐', description: '将文章+图片组合排版为精美页面', input: 'json', output: 'html' },
-      { id: 'css-generate', name: '样式生成', icon: '🎨', description: '为组件生成匹配的 CSS/动画代码', input: 'html', output: 'file' },
     ],
     item: 'palette',
     catColors: { body: '#FAFAFA', bodyDark: '', belly: '#FFFFFF', earInner: '#FFB5C5', eyes: '#542615', nose: '#E8998D', blush: '#FFB5C5', stroke: '#5D4037', apron: '#FFB74D', apronLight: '#FFF3E0', apronLine: '#FFB74D', desk: '#FFE0B2', deskDark: '#FFB74D', deskLeg: '#FFCC80', paw: ['#5C4A3A','#FAFAFA','#F7AC5E','#FAFAFA'], tail: '#5C4A3A', faceDark: '', month: '', head: '#FAFAFA', bodyDarkBottom: '#F7AC5E', leg: ['#F7AC5E','#FAFAFA','#5C4A3A','#F7AC5E'], headTopLeft: '#F7AC5E', headTopRight: '#5C4A3A' },
@@ -256,8 +244,6 @@ const CAT_TEMPLATES = [
     systemPrompt: '你是「黄金」，一只技术派的金色猫猫程序员。你负责网站的开发、更新与维护工作。',
     skills: [
       { id: 'fix-bug', name: 'Bug 修复', icon: '🐛', description: '排查并修复网站前后端的 bug', input: 'text', output: 'text' },
-      { id: 'develop-feature', name: '功能开发', icon: '🛠️', description: '根据需求开发新功能模块', input: 'text', output: 'text' },
-      { id: 'optimize-perf', name: '性能优化', icon: '⚡', description: '分析并优化网站性能瓶颈', input: 'text', output: 'text' },
     ],
     item: 'camera',
     catColors: { body: '#FAF3EB', bodyDark: '#FAF3EB', belly: '#FAF3EB', earInner: '#F7AC5E', eyes: '#A1E0FF', nose: '#5D4037', blush: '#FFCCBC', stroke: '#5D4037', apron: '#B39DDB', apronLight: '#EDE7F6', apronLine: '#B39DDB', desk: '#B3E5FC', deskDark: '#4FC3F7', deskLeg: '#81D4FA', paw: '#F7AC5E', tail: '#F7AC5E', faceDark: '#F7AC5E', month: '#333', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
@@ -286,10 +272,7 @@ const CAT_TEMPLATES = [
     accent: '#EC407A',
     systemPrompt: '你是「小白」，一只严谨认真的奶牛猫猫质检官。你是团队的最后一道防线，确保所有产出的质量达标。',
     skills: [
-      { id: 'quality-check', name: '质量检测', icon: '🔎', description: '对输出内容进行质量评分和问题检测', input: 'json', output: 'json' },
       { id: 'content-review', name: '内容审核', icon: '🛡️', description: '检查文本是否合规、无敏感内容', input: 'text', output: 'json' },
-      { id: 'regression-test', name: '回归测试', icon: '🧪', description: '对页面组件执行自动化回归测试', input: 'url', output: 'json' },
-      { id: 'site-analyze', name: '网站诊断', icon: '🔬', description: '总结网站现有内容，提出改进建议', input: 'url', output: 'json' },
     ],
     item: 'clipboard',
     catColors: { body: '#FFF', bodyDark: '', belly: '#FFFFFF', earInner: '#FFB5C5', eyes: '#000', nose: '#E8998D', blush: '#FFB5C5', stroke: '#5D4037', apron: '#FFB74D', apronLight: '#FFF3E0', apronLine: '#FFB74D', desk: '#F8BBD0', deskDark: '#EC407A', deskLeg: '#F48FB1', paw: ['#333','#FAFAFA','#333','#333'], tail: '#333', faceDark: '', month: '', head: '#FFF', bodyDarkBottom: '#333', leg: ['#FAFAFA','#333','#333','#FAFAFA'], headTopLeft: '#333', headTopRight: '#333' },

@@ -84,14 +84,8 @@ export const skillPool: SkillTemplate[] = [
       { key: 'wordCount', label: '目标字数', type: 'number', defaultValue: 1500, placeholder: '如 1500' },
     ],
   },
-  { id: 'polish-text',       name: '内容润色',   category: 'content', description: '优化文本表达、调整语气和风格',          input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen',
-    paramDefs: [
-      { key: 'tone', label: '目标语气', type: 'select', options: [{ label: '正式', value: 'formal' }, { label: '友好', value: 'friendly' }, { label: '幽默', value: 'humorous' }] },
-    ],
-  },
   { id: 'generate-outline',  name: '大纲生成',   category: 'content', description: '快速生成结构化内容大纲',               input: 'text', output: 'json',  primitiveId: 'structured-output', provider: 'Qwen' },
-  { id: 'news-to-article',   name: '资讯整理',   category: 'content', description: '将零散资讯整理为可发布内容',            input: 'json', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen' },
-  { id: 'meeting-notes',     name: '会议纪要',   category: 'content', description: '生成结构化会议纪要',                  input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Dify',
+  { id: 'meeting-notes',     name: '会议纪要',   category: 'content', description: '生成结构化会议纪要',                  input: 'text', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen',
     paramDefs: [
       { key: 'participants', label: '参会人员', type: 'tags', placeholder: '输入姓名后回车' },
       { key: 'meetingDate', label: '会议日期', type: 'text', placeholder: '如 2026-03-08' },
@@ -99,31 +93,11 @@ export const skillPool: SkillTemplate[] = [
   },
 
   // ── 数据分析（基于 api-call / db-query / structured-output 原型）──
-  { id: 'crawl-news',        name: '资讯爬取',   category: 'data', description: '定时爬取指定网站/RSS 最新资讯',           input: 'url',  output: 'json',  primitiveId: 'api-call',          provider: 'Crawler',
-    paramDefs: [
-      { key: 'sources', label: 'RSS / API 源', type: 'tags', placeholder: '输入 URL 后回车添加', required: true },
-      { key: 'keyword', label: '关键词过滤', type: 'text', placeholder: '可选，如 AI、前端' },
-      { key: 'maxItems', label: '最大条数', type: 'number', defaultValue: 20 },
-    ],
-  },
-  { id: 'summarize-news',    name: '资讯摘要',   category: 'data', description: '对爬取内容进行智能摘要和分类',             input: 'json', output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen' },
-  { id: 'query-dashboard',   name: '数据查询',   category: 'data', description: '查询数据库获取结构化数据',                input: 'text', output: 'json',  primitiveId: 'db-query',          provider: 'PostgreSQL',
-    paramDefs: [
-      { key: 'query', label: '查询语句', type: 'textarea', placeholder: '输入 SQL 或自然语言查询', required: true },
-      { key: 'dbName', label: '数据库名称', type: 'text', placeholder: '如 analytics' },
-    ],
-  },
-  { id: 'trend-analysis',    name: '趋势分析',   category: 'data', description: '对时序数据进行趋势分析和异常检测',          input: 'json', output: 'json',  primitiveId: 'structured-output', provider: 'Qwen' },
-  { id: 'site-analyze',      name: '网站诊断',   category: 'data', description: '分析网站内容分布和质量，给出优化建议',       input: 'none', output: 'json',  primitiveId: 'text-to-text',      provider: 'Dify',
-    paramDefs: [
-      { key: 'siteUrl', label: '网站地址', type: 'url', placeholder: 'https://example.com', required: true },
-    ],
-  },
+  { id: 'crawl-news',        name: '网站爬取',   category: 'data', description: '爬取指定网站最新资讯',           input: 'url',  output: 'json',  primitiveId: 'api-call',          provider: 'Crawler',},
 
   // ── 视觉设计（基于 text-to-image / chart-render / html-render 原型）──
   { id: 'generate-image',    name: 'AI 绘图',   category: 'visual', description: '根据文字描述生成高质量图片',             input: 'text',  output: 'image', primitiveId: 'text-to-image',     provider: 'Qwen',
     paramDefs: [
-      { key: 'prompt', label: '图片描述', type: 'textarea', placeholder: '描述你想生成的图片内容', required: true },
       { key: 'aspectRatio', label: '宽高比', type: 'select', options: [{ label: '1:1', value: '1:1' }, { label: '16:9', value: '16:9' }, { label: '9:16', value: '9:16' }, { label: '4:3', value: '4:3' }], defaultValue: '1:1' },
     ],
   },
@@ -132,38 +106,16 @@ export const skillPool: SkillTemplate[] = [
       { key: 'chartType', label: '图表类型', type: 'select', options: [{ label: '折线图', value: 'line' }, { label: '柱状图', value: 'bar' }, { label: '饼图', value: 'pie' }, { label: '雷达图', value: 'radar' }], required: true },
     ],
   },
-  { id: 'generate-component',name: '组件生成',   category: 'visual', description: '生成 React/HTML 创意组件代码',           input: 'text',  output: 'html',  primitiveId: 'html-render',       provider: 'Qwen',
-    paramDefs: [
-      { key: 'framework', label: '框架', type: 'select', options: [{ label: 'React', value: 'react' }, { label: 'HTML', value: 'html' }, { label: 'Vue', value: 'vue' }], defaultValue: 'react' },
-    ],
-  },
-  { id: 'layout-design',     name: '排版布局',   category: 'visual', description: '将内容组合排版为精美页面',               input: 'json',  output: 'html',  primitiveId: 'html-render',       provider: 'Template' },
   { id: 'image-enhance',     name: '图片增强',   category: 'visual', description: '对图片进行超分辨率放大和降噪',            input: 'image', output: 'image', primitiveId: 'api-call',          provider: 'Real-ESRGAN',
     disabled: true, disabledReason: '需要 Real-ESRGAN 超分辨率 API 服务，当前未配置服务端点',
-    paramDefs: [
-      { key: 'scale', label: '放大倍数', type: 'select', options: [{ label: '2x', value: '2' }, { label: '4x', value: '4' }], defaultValue: '2' },
-    ],
-  },
-  { id: 'css-generate',      name: '样式生成',   category: 'visual', description: '为组件生成匹配的 CSS/动画代码',          input: 'text',  output: 'text',  primitiveId: 'text-to-text',      provider: 'Qwen' },
-  { id: 'update-crafts',     name: 'Crafts 更新', category: 'visual', description: '为 Crafts 页面新增交互 demo',       input: 'json', output: 'html', primitiveId: 'html-render',       provider: 'Qwen',
-    paramDefs: [
-      { key: 'craftName', label: 'Craft 名称', type: 'text', placeholder: '新 demo 的名称', required: true },
-      { key: 'craftDesc', label: '效果描述', type: 'textarea', placeholder: '描述想要的交互效果' },
-    ],
   },
 
   // ── 沟通运营（基于 email-send / web-push / db-query 原型）──
   { id: 'send-email',        name: '发送邮件',   category: 'comm', description: '发送 HTML 格式邮件',                     input: 'text', output: 'email', primitiveId: 'email-send',        provider: 'SMTP',
     paramDefs: [
-      { key: 'to', label: '收件邮箱', type: 'text', placeholder: 'user@example.com', required: true, description: '不填则使用用户注册邮箱' },
-      { key: 'subject', label: '邮件主题', type: 'text', placeholder: '邮件标题' },
-      { key: 'cc', label: '抄送', type: 'tags', placeholder: '输入邮箱后回车添加' },
-    ],
-  },
-  { id: 'send-notification', name: '推送通知',   category: 'comm', description: '向订阅者批量推送通知',                    input: 'text', output: 'json',  primitiveId: 'email-send',        provider: 'SMTP',
-    paramDefs: [
-      { key: 'recipients', label: '接收人列表', type: 'tags', placeholder: '输入邮箱后回车', required: true },
-      { key: 'urgency', label: '紧急程度', type: 'select', options: [{ label: '普通', value: 'normal' }, { label: '重要', value: 'important' }, { label: '紧急', value: 'urgent' }], defaultValue: 'normal' },
+      { key: 'body', label: '邮件内容', type: 'textarea', placeholder: '输入邮件正文内容', description: '可手动填写，也可使用上一步输出', valueSource: 'upstream', upstreamField: 'text' },
+      { key: 'to', label: '收件邮箱', type: 'text', placeholder: 'user@example.com', description: '默认发送到用户注册邮箱，也可手动指定', valueSource: 'system', systemKey: 'user.email' },
+      { key: 'subject', label: '邮件主题', type: 'text', placeholder: '邮件标题', required: true },
     ],
   },
   { id: 'task-log',          name: '任务日志',   category: 'comm', description: '记录和整理任务执行日志',                   input: 'json', output: 'text',  primitiveId: 'db-query',          provider: 'PostgreSQL' },
@@ -176,37 +128,10 @@ export const skillPool: SkillTemplate[] = [
       { key: 'bugDesc', label: 'Bug 描述', type: 'textarea', placeholder: '详细描述 bug 现象和复现步骤', required: true },
     ],
   },
-  { id: 'develop-feature',   name: '功能开发',   category: 'dev', description: '根据需求开发新功能模块',                   input: 'text', output: 'text', primitiveId: 'text-to-text',      provider: 'Full Stack',
-    disabled: true, disabledReason: '需要完整全栈开发环境与多文件编排能力，单一原型无法实现端到端功能开发',
-    paramDefs: [
-      { key: 'requirement', label: '需求描述', type: 'textarea', placeholder: '详细描述功能需求', required: true },
-      { key: 'techStack', label: '技术栈', type: 'tags', placeholder: '如 React, Node.js' },
-    ],
-  },
-  { id: 'optimize-perf',     name: '性能优化',   category: 'dev', description: '分析并优化性能瓶颈',                      input: 'text', output: 'text', primitiveId: 'text-to-text',      provider: 'Lighthouse',
-    disabled: true, disabledReason: '需要 Lighthouse 性能分析服务集成，当前后端未部署该能力',
-    paramDefs: [
-      { key: 'targetUrl', label: '目标页面', type: 'url', placeholder: 'https://...', required: true },
-    ],
-  },
-  { id: 'quality-check',     name: '质量检测',   category: 'dev', description: '对输出内容进行质量评分',                   input: 'json', output: 'json', primitiveId: 'structured-output', provider: 'Rules Engine' },
   { id: 'content-review',    name: '内容审核',   category: 'dev', description: '检查内容是否合规、无敏感信息',              input: 'text', output: 'json', primitiveId: 'structured-output', provider: 'Moderation' },
-  { id: 'regression-test',   name: '回归测试',   category: 'dev', description: '自动化回归测试',                         input: 'url',  output: 'json', primitiveId: 'browser-action',    provider: 'Puppeteer',
-    paramDefs: [
-      { key: 'testUrl', label: '测试地址', type: 'url', placeholder: 'https://...', required: true },
-      { key: 'testCases', label: '测试用例', type: 'textarea', placeholder: '描述需要验证的功能点' },
-    ],
-  },
 
   // ── 项目管理（基于 structured-output / workflow-engine 原型）──
-  { id: 'generate-todo',     name: '代办清单',   category: 'manage', description: '分析需求自动生成代办清单',               input: 'json', output: 'json', primitiveId: 'structured-output', provider: 'Dify' },
   { id: 'assign-task',       name: '任务分配',   category: 'manage', description: '将任务拆解并分配给指定猫猫',              input: 'text', output: 'json', primitiveId: 'structured-output', provider: 'Dify' },
-  { id: 'review-approve',    name: '审批流程',   category: 'manage', description: '审核工作成果决定是否发布',               input: 'json', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow',
-    paramDefs: [
-      { key: 'approvers', label: '审批人', type: 'tags', placeholder: '输入审批人后回车', required: true },
-      { key: 'autoApprove', label: '自动审批（质量评分达标时）', type: 'toggle', defaultValue: false },
-    ],
-  },
   { id: 'manage-workflow',   name: '工作流管理', category: 'manage', description: '新增、修改或删除协作工作流',              input: 'json', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow' },
   { id: 'run-workflow',      name: '执行工作流',category: 'manage', description: '触发指定工作流开始执行',                input: 'json', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow' },
   { id: 'recruit-cat',       name: '招募新猫',   category: 'manage', description: '招募新猫并定义角色与技能',               input: 'json', output: 'json', primitiveId: 'structured-output', provider: 'Qwen',
@@ -322,7 +247,7 @@ export const skillGroups: SkillGroup[] = [
     icon: '👔',
     color: '#8DB889',
     description: '任务规划、分配、审批、工作流管理、团队扩编等全局管理能力',
-    skillIds: ['generate-todo', 'assign-task', 'review-approve', 'manage-workflow', 'run-workflow', 'recruit-cat'],
+    skillIds: ['assign-task', 'manage-workflow', 'run-workflow', 'recruit-cat'],
     catId: 'manager',
   },
   {
@@ -331,7 +256,7 @@ export const skillGroups: SkillGroup[] = [
     icon: '✍️',
     color: '#FF6B6B',
     description: '文章撰写、内容润色、大纲规划、资讯整理、会议纪要等文字创作能力',
-    skillIds: ['generate-article', 'polish-text', 'generate-outline', 'news-to-article', 'meeting-notes'],
+    skillIds: ['generate-article', 'generate-outline', 'meeting-notes'],
     catId: 'writer',
   },
   {
@@ -340,7 +265,7 @@ export const skillGroups: SkillGroup[] = [
     icon: '📊',
     color: '#96BAFF',
     description: '资讯爬取、资讯摘要、数据查询、趋势分析、网站诊断等数据洞察能力',
-    skillIds: ['crawl-news', 'summarize-news', 'query-dashboard', 'trend-analysis', 'site-analyze'],
+    skillIds: ['crawl-news'],
     catId: 'analyst',
   },
   {
@@ -349,7 +274,7 @@ export const skillGroups: SkillGroup[] = [
     icon: '🎨',
     color: '#B39DDB',
     description: 'AI 绘图、图表生成、组件设计、排版布局、图片增强、样式生成等视觉创作能力',
-    skillIds: ['generate-image', 'generate-chart', 'generate-component', 'layout-design', 'image-enhance', 'css-generate'],
+    skillIds: ['generate-image', 'generate-chart', 'image-enhance'],
     catId: 'designer',
   },
   {
@@ -358,7 +283,7 @@ export const skillGroups: SkillGroup[] = [
     icon: '🔎',
     color: '#80CBC4',
     description: '质量检测、内容审核、回归测试等质量保障能力',
-    skillIds: ['quality-check', 'content-review', 'regression-test'],
+    skillIds: ['content-review'],
     catId: 'reviewer',
   },
   {
@@ -367,7 +292,7 @@ export const skillGroups: SkillGroup[] = [
     icon: '📮',
     color: '#F2A5B9',
     description: '邮件发送、消息推送、任务日志等沟通运营能力',
-    skillIds: ['send-email', 'send-notification', 'task-log'],
+    skillIds: ['send-email', 'task-log'],
     catId: 'ops',
   },
   {
@@ -376,7 +301,7 @@ export const skillGroups: SkillGroup[] = [
     icon: '💻',
     color: '#90CAF9',
     description: 'Bug 修复、功能开发、性能优化、Crafts 更新等全栈开发能力',
-    skillIds: ['fix-bug', 'develop-feature', 'optimize-perf', 'update-crafts'],
+    skillIds: ['fix-bug'],
     catId: 'engineer',
   },
 ]

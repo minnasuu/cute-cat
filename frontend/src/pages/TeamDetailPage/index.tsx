@@ -420,12 +420,44 @@ const TeamDetailPage: React.FC = () => {
       if (step.action) {
         merged._action = step.action;
       }
-      // 将步骤的用户参数配置也注入
+      // 将步骤的用户参数配置也注入（支持 valueSource 来源解析）
       if (step.params && step.params.length > 0) {
         const paramValues: Record<string, unknown> = {};
         for (const p of step.params) {
-          if (p.value !== undefined) paramValues[p.key] = p.value;
-          else if (p.defaultValue !== undefined) paramValues[p.key] = p.defaultValue;
+          const source = p.valueSource || 'static';
+          if (source === 'upstream') {
+            // 从上游步骤输出中提取指定字段
+            const field = p.upstreamField || p.key;
+            let found: unknown = undefined;
+            for (let i = runningStepIndex - 1; i >= 0; i--) {
+              const prevData = stepResultsRef.current.get(i)?.data;
+              if (prevData && typeof prevData === 'object' && field in (prevData as Record<string, unknown>)) {
+                found = (prevData as Record<string, unknown>)[field];
+                break;
+              }
+            }
+            // 回退到 static value 或 defaultValue
+            paramValues[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
+          } else if (source === 'system') {
+            // 从系统上下文注入
+            const sysKey = p.systemKey || '';
+            if (sysKey === 'user.email') {
+              paramValues[p.key] = user?.email || '';
+            } else if (sysKey === 'user.name') {
+              paramValues[p.key] = user?.nickname || '';
+            } else if (sysKey === 'workflow.name') {
+              paramValues[p.key] = executingWorkflow?.name || '';
+            } else if (sysKey === 'timestamp') {
+              paramValues[p.key] = new Date().toISOString();
+            } else {
+              // 未知 system key，回退到 static
+              paramValues[p.key] = p.value ?? p.defaultValue;
+            }
+          } else {
+            // static：取用户填写的值或默认值
+            if (p.value !== undefined) paramValues[p.key] = p.value;
+            else if (p.defaultValue !== undefined) paramValues[p.key] = p.defaultValue;
+          }
         }
         if (Object.keys(paramValues).length > 0) merged._params = paramValues;
       }
@@ -626,7 +658,7 @@ const TeamDetailPage: React.FC = () => {
 
               {/* Add cat card */}
               <div
-                className="bg-surface/50 rounded-[24px] border-2 border-dashed border-border-strong p-5 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[220px]"
+                className={`bg-surface/50 rounded-[24px] border-2 border-dashed border-border-strong p-5 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[220px] ${team.cats?.length >= 5 ? 'opacity-60 pointer-events-none' : 'hover:border-primary-400 hover:bg-primary-50/50'}`}
                 onClick={() => navigate(`/teams/${teamId}/cats/new`)}
               >
                 <div className="w-14 h-14 rounded-full bg-primary-50 border border-primary-100 flex items-center justify-center text-primary-500 text-2xl mb-3">+</div>

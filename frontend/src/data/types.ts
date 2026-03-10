@@ -65,6 +65,32 @@ export interface Skill {
   handler?: SkillHandler;
 }
 
+// --- 参数值来源 ---
+
+/** 参数值来源类型 */
+export type ParamValueSource = 'static' | 'upstream' | 'system';
+
+/** 可用的系统注入 key 白名单 */
+export const SYSTEM_KEYS = {
+  'user.email': '用户注册邮箱',
+  'user.name': '用户名称',
+  'workflow.name': '工作流名称',
+  'timestamp': '当前时间戳',
+} as const;
+
+export type SystemKey = keyof typeof SYSTEM_KEYS;
+
+/** upstream 模式下常用的上游输出字段建议 */
+export const UPSTREAM_FIELD_SUGGESTIONS = [
+  'text',
+  'summary',
+  'notes',
+  'html',
+  'content',
+  'result',
+  'data',
+] as const;
+
 // --- 用户输入/配置项定义 ---
 export type StepParamType = 'text' | 'textarea' | 'number' | 'select' | 'toggle' | 'url' | 'tags';
 
@@ -87,6 +113,12 @@ export interface StepParam {
   description?: string;
   /** 运行时用户填写的值 */
   value?: string | number | boolean | string[];
+  /** 参数值的来源方式，默认 'static'（用户手动填写） */
+  valueSource?: ParamValueSource;
+  /** valueSource='upstream' 时，从上游步骤输出中提取的字段名 */
+  upstreamField?: string;
+  /** valueSource='system' 时，注入的系统上下文变量 key */
+  systemKey?: SystemKey;
 }
 
 // --- 协作工作流定义 ---

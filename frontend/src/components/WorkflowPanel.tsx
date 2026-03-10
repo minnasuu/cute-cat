@@ -344,17 +344,55 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     const handler = getSkillHandler(step.skillId);
     // 构建 input：合并所有前序步骤的结果，让下游 skill 能访问完整上下文
     let skillInput: unknown = undefined;
-    if (runningStepIndex > 0) {
+    {
       const merged: Record<string, unknown> = {};
-      for (let i = 0; i < runningStepIndex; i++) {
-        const prev = stepResultsRef.current.get(i)?.data;
-        if (prev && typeof prev === 'object') {
-          Object.assign(merged, prev);
+      if (runningStepIndex > 0) {
+        for (let i = 0; i < runningStepIndex; i++) {
+          const prev = stepResultsRef.current.get(i)?.data;
+          if (prev && typeof prev === 'object') {
+            Object.assign(merged, prev);
+          }
         }
       }
       // 注入参会猫猫列表
       if (activeWorkflow) {
         merged._attendees = activeWorkflow.steps.map((s) => s.agentId);
+      }
+      // 将步骤的 action 作为任务指令注入
+      if (step.action) {
+        merged._action = step.action;
+      }
+      // 将步骤的用户参数配置也注入（支持 valueSource 来源解析）
+      if (step.params && step.params.length > 0) {
+        const paramValues: Record<string, unknown> = {};
+        for (const p of step.params) {
+          const source = (p as any).valueSource || 'static';
+          if (source === 'upstream') {
+            const field = (p as any).upstreamField || p.key;
+            let found: unknown = undefined;
+            for (let i = runningStepIndex - 1; i >= 0; i--) {
+              const prevData = stepResultsRef.current.get(i)?.data;
+              if (prevData && typeof prevData === 'object' && field in (prevData as Record<string, unknown>)) {
+                found = (prevData as Record<string, unknown>)[field];
+                break;
+              }
+            }
+            paramValues[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
+          } else if (source === 'system') {
+            const sysKey = (p as any).systemKey || '';
+            if (sysKey === 'workflow.name') {
+              paramValues[p.key] = activeWorkflow?.name || '';
+            } else if (sysKey === 'timestamp') {
+              paramValues[p.key] = new Date().toISOString();
+            } else {
+              paramValues[p.key] = p.value ?? p.defaultValue;
+            }
+          } else {
+            if (p.value !== undefined) paramValues[p.key] = p.value;
+            else if (p.defaultValue !== undefined) paramValues[p.key] = p.defaultValue;
+          }
+        }
+        if (Object.keys(paramValues).length > 0) merged._params = paramValues;
       }
       skillInput = Object.keys(merged).length > 0 ? merged : undefined;
     }

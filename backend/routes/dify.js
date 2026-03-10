@@ -226,30 +226,6 @@ async function createGeminiClient(apiKey) {
 
 // Skill 对应的系统提示词
 const SKILL_SYSTEM_PROMPTS = {
-  'site-analyze': `你是一位专业的个人网站诊断顾问。用户会提供他们网站的现有文章和 Crafts 列表，请你：
-1. 分析网站内容的完整性和丰富度
-2. 指出内容上的不足和改进方向
-3. 给出具体、可操作的建议（包括文章选题、Crafts 创意、功能扩展）
-4. 用简洁友好的语气回复，适当使用 emoji
-请用中文回复，控制在 300-500 字。`,
-
-  'generate-todo': `你是一位项目管理助手，擅长为个人网站制定下周工作计划。根据用户提供的网站现状和诊断结论，生成下周代办清单。
-请严格按以下格式输出，每个分类 2-3 项：
-
-**文章选题**
-- 具体文章标题和简短描述
-- ...
-
-**Crafts 计划**
-- 具体 Craft 名称和简短描述
-- ...
-
-**功能扩展**
-- 具体功能名称和简短描述
-- ...
-
-用中文回复，每项简明扼要。`,
-
   'meeting-notes': `你是一位会议纪要撰写助手。根据用户提供的周会内容（包括产出统计、网站诊断、代办清单、任务分配等），生成结构化的会议纪要。
 
 格式要求（Markdown）：
@@ -279,13 +255,6 @@ const SKILL_SYSTEM_PROMPTS = {
 
 只返回 JSON 数组，不要添加任何额外文字。`,
 
-  'summarize-news': `你是一位数据分析师。请对以下爬取的资讯内容进行智能摘要和分类。
-规则：
-1. 按领域分组（如 AI/前端/设计/行业动态等）
-2. 每条资讯用一句话概括核心要点
-3. 最后给出整体趋势判断（2-3句话）
-4. 用中文回复，简洁专业，适当使用 emoji`,
-
   'ai-chat': `你是一只友善的猫猫助手 CAT，团队的万能基础成员。请根据用户输入完成对应的文本任务（总结、分析、翻译、改写、问答等）。用简洁清晰的中文回答。`,
 
   'workflow-gen': `你是一个工作流编排助手，根据用户需求和可用猫猫团队生成工作流配置。严格输出 JSON，不要任何其他文字。
@@ -299,22 +268,21 @@ const SKILL_SYSTEM_PROMPTS = {
 {"suggestionMode":false,"suggestionSummary":"","suggestedCats":[{"role":"角色名","reason":"原因","suggestedSkills":["技能id"]}],"suggestedSkills":[{"agentId":"猫猫id","agentName":"名字","skillId":"技能id","skillName":"技能名","reason":"原因"}],"name":"工作流名称","icon":"emoji","description":"描述","scheduled":false,"cron":"","startTime":"","endTime":"","persistent":false,"steps":[{"agentId":"猫猫id或空","skillId":"技能id或空","action":"行为描述","inputFrom":"上一步agentId","params":[{"key":"k","label":"标签","type":"text|textarea|number|select|tags|toggle|url","placeholder":"提示","required":true,"description":"说明"}]}]}
 
 ## 可用技能ID
-内容创作: generate-article, polish-text, generate-outline, news-to-article, meeting-notes
-数据分析: crawl-news, summarize-news, query-dashboard, trend-analysis, site-analyze
-视觉设计: generate-image, generate-chart, generate-component, layout-design, image-enhance, css-generate, update-crafts
-沟通运营: send-email, send-notification, task-log
-开发运维: fix-bug, develop-feature, optimize-perf, quality-check, content-review, regression-test
-项目管理: generate-todo, assign-task, review-approve, manage-workflow, run-workflow, recruit-cat
+内容创作: generate-article, generate-outline, meeting-notes
+数据分析: crawl-news,
+视觉设计: generate-image, generate-chart, image-enhance
+沟通运营: send-email, task-log
+开发运维: fix-bug, content-review
+项目管理: assign-task, manage-workflow, run-workflow, recruit-cat
 
 ## 角色对应
-Project Manager: generate-todo, assign-task, review-approve, manage-workflow, run-workflow, recruit-cat
-Content Editor: generate-article, polish-text, generate-outline, news-to-article, meeting-notes
-Data Analyst: crawl-news, summarize-news, query-dashboard, trend-analysis, site-analyze
-Visual Designer: generate-image, generate-chart, generate-component, layout-design, image-enhance, css-generate
-QA Reviewer: quality-check, content-review, regression-test
-Operations Assistant: send-email, send-notification, task-log
-Engineer: fix-bug, develop-feature, optimize-perf, update-crafts
-
+Project Manager: assign-task, manage-workflow, run-workflow, recruit-cat
+Content Editor: generate-article, generate-outline, meeting-notes
+Data Analyst: crawl-news,
+Visual Designer: generate-image, generate-chart, image-enhance
+QA Reviewer, content-review
+Operations Assistant: send-email, task-log
+Engineer: fix-bug,
 规则：agentId/skillId 正常模式下必须来自用户提供的真实 id；params 不需要则空数组；定时任务设 scheduled=true 填 cron/startTime/endTime；inputFrom 填上一步 agentId，第一步不需要。`,
 };
 

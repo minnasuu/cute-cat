@@ -41,13 +41,15 @@ router.post('/send', async (req, res) => {
     const transport = getTransporter();
     const from = process.env.SMTP_FROM || process.env.SMTP_USER;
 
-    const info = await transport.sendMail({
-      from: `"Minna 猫猫团队 🐱" <${from}>`,
+    const mailOptions = {
+      from: `"猫猫团队 🐱" <${from}>`,
       to,
       subject,
       text: text || '',
       html: html || '',
-    });
+    };
+
+    const info = await transport.sendMail(mailOptions);
 
     console.log(`[email] 邮件已发送 → ${to} (messageId: ${info.messageId})`);
 

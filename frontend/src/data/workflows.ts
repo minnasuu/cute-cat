@@ -14,21 +14,6 @@ export const workflows: Workflow[] = [
           { key: 'maxItems', label: '最大条数', type: 'number', defaultValue: 20, description: '每个源最多抓取条数' },
         ],
       },
-      {
-        agentId: 'analyst', skillId: 'summarize-news', action: '对资讯内容进行摘要分类 → 输出 Text 摘要', inputFrom: 'analyst',
-        params: [
-          { key: 'language', label: '摘要语言', type: 'select', defaultValue: 'zh', options: [{ label: '中文', value: 'zh' }, { label: 'English', value: 'en' }] },
-          { key: 'summaryLength', label: '摘要长度', type: 'select', defaultValue: 'medium', options: [{ label: '精简', value: 'short' }, { label: '适中', value: 'medium' }, { label: '详细', value: 'long' }] },
-        ],
-      },
-      { agentId: 'writer', skillId: 'news-to-article', action: '整理为可发布的资讯日报 → 输出 Text', inputFrom: 'analyst' },
-      {
-        agentId: 'ops', skillId: 'send-notification', action: '推送资讯日报给订阅者 → 输出推送状态', inputFrom: 'writer',
-        params: [
-          { key: 'recipients', label: '收件人', type: 'tags', placeholder: '输入邮箱后回车', required: true, description: '推送目标邮箱' },
-          { key: 'subjectPrefix', label: '邮件主题前缀', type: 'text', placeholder: '如 [每日资讯]', defaultValue: '[每日资讯]' },
-        ],
-      },
     ],
     startTime: '09:00',
     endTime: '09:15',
@@ -58,9 +43,7 @@ export const workflows: Workflow[] = [
           { key: 'imageCount', label: '配图数量', type: 'number', defaultValue: 3 },
         ],
       },
-      { agentId: 'designer', skillId: 'layout-design', action: '排版为精美页面 → 输出 HTML', inputFrom: 'designer' },
       { agentId: 'reviewer', skillId: 'content-review', action: '内容质量审核 → 输出 JSON 审核报告', inputFrom: 'designer' },
-      { agentId: 'ops', skillId: 'send-notification', action: '推送发布通知 → 输出推送状态', inputFrom: 'reviewer' },
     ],
     startTime: '14:00',
     endTime: '14:30',
@@ -71,14 +54,6 @@ export const workflows: Workflow[] = [
     name: '数据周报',
     description: '雪采集数据 → 趋势分析 → Pixel 图表可视化 → 阿蓝撰写报告 → 年年邮件发送',
     steps: [
-      {
-        agentId: 'analyst', skillId: 'query-dashboard', action: '采集一周核心数据 → 输出 JSON 数据集',
-        params: [
-          { key: 'dateRange', label: '数据范围', type: 'select', defaultValue: '7d', options: [{ label: '近 7 天', value: '7d' }, { label: '近 14 天', value: '14d' }, { label: '近 30 天', value: '30d' }] },
-          { key: 'metrics', label: '关注指标', type: 'tags', placeholder: '如 PV、UV、跳出率', description: '指定需要关注的核心指标' },
-        ],
-      },
-      { agentId: 'analyst', skillId: 'trend-analysis', action: '趋势分析与异常检测 → 输出 JSON 分析结论', inputFrom: 'analyst' },
       { agentId: 'designer', skillId: 'generate-chart', action: '生成数据可视化图表 → 输出 Image', inputFrom: 'analyst' },
       { agentId: 'writer', skillId: 'generate-article', action: '撰写数据分析报告 → 输出 Text', inputFrom: 'designer' },
       {

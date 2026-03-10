@@ -2,9 +2,7 @@ import { meiduanColors } from '../themes';
 import type { Assistant, Skill } from '../types';
 
 export const fafaSkills: Skill[] = [
-  { id: 'quality-check', name: '质量检测', icon: '🔎', description: '对输出内容进行质量评分和问题检测', input: 'json', output: 'json', provider: 'Rules Engine', mockResult: '输出 JSON 质量报告 (score: 92)' },
   { id: 'content-review', name: '内容审核', icon: '🛡️', description: '检查内容是否合规、无敏感信息', input: 'text', output: 'json', provider: 'Moderation API', mockResult: '输出审核结果: safe/flagged' },
-  { id: 'regression-test', name: '回归测试', icon: '🧪', description: '对页面组件执行自动化回归测试', input: 'url', output: 'json', provider: 'Puppeteer', mockResult: '输出 JSON 测试报告 (通过率 98%)' },
 ];
 
 export const fafaMessages = [

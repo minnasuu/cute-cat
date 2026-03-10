@@ -72,11 +72,6 @@ function buildMeetingInput(input: unknown, attendeeNames: string[], date: string
     contentParts.push(`【网站诊断】\n${obj.analysis}`);
   }
 
-  // generate-todo 代办清单
-  if (obj.todos && typeof obj.todos === 'string') {
-    contentParts.push(`【下周代办】\n${obj.todos}`);
-  }
-
   // assign-task 任务分配结果
   if (obj.created && Array.isArray(obj.created)) {
     const list = (obj.created as { name: string; category: string }[])

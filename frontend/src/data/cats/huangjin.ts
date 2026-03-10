@@ -3,9 +3,6 @@ import type { Assistant, Skill } from '../types';
 
 export const huangjinSkills: Skill[] = [
   { id: 'fix-bug', name: 'Bug 修复', icon: '🐛', description: '排查并修复前后端 bug', input: 'text', output: 'text', provider: 'Code Analysis', mockResult: '已修复 3 个 bug，回归测试通过' },
-  { id: 'develop-feature', name: '功能开发', icon: '🛠️', description: '根据需求开发新功能模块', input: 'text', output: 'text', provider: 'Full Stack', mockResult: '新功能模块开发完成并部署' },
-  { id: 'optimize-perf', name: '性能优化', icon: '⚡', description: '分析并优化性能瓶颈', input: 'text', output: 'text', provider: 'Lighthouse', mockResult: '页面加载速度提升 40%' },
-  { id: 'update-crafts', name: 'Crafts 更新', icon: '🔄', description: '为 Crafts 页面新增交互 demo 和效果', input: 'text', output: 'html', provider: 'Qwen', mockResult: '输出新 Craft 组件 (含动画)' },
 ];
 
 export const huangjinMessages = [

@@ -154,33 +154,33 @@ function getTransporter() {
 async function sendEmailDirect({ to, subject, html, text }) {
   const transport = getTransporter();
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-  const info = await transport.sendMail({ from: `"Minna 猫猫团队 🐱" <${from}>`, to, subject, text: text || '', html: html || '' });
+  const info = await transport.sendMail({ from: `"猫猫团队 🐱" <${from}>`, to, subject, text: text || '', html: html || '' });
   return { success: true, messageId: info.messageId, to, subject };
 }
 
 // ─── Skill → 系统提示词 映射 ───
 const SKILL_PROMPTS = {
   'ai-chat': '你是一只友善的猫猫助手 CAT，团队的万能基础成员。请根据用户输入完成对应的文本任务。用简洁清晰的中文回答。',
-  'summarize-news': '你是一位数据分析师。请对以下爬取的资讯内容进行智能摘要和分类，按领域分组输出重点信息。每条资讯用一句话概括核心要点。最后给出整体趋势判断。',
   'generate-article': '你是一位专业的内容创作者。请根据提供的素材和要求，撰写一篇高质量的文章。用中文回复，内容详实、逻辑清晰。',
-  'polish-text': '你是一位文字润色专家。请对提供的文本进行润色改写，提升表达质量，保持原意不变。用中文回复。',
   'generate-outline': '你是一位大纲规划专家。请根据主题生成详细的文章大纲，包含标题、各段要点。用中文回复。',
-  'news-to-article': '你是一位资讯编辑。请根据提供的新闻资讯，改写为一篇可读性强的文章。用中文回复。',
-  'generate-todo': '你是一位项目管理助手。根据提供的信息，生成下周工作计划代办清单。用中文回复。',
   'assign-task': '你是一位项目任务拆解助手。从前序输出中提取最重要、最可执行的任务。返回 JSON 数组。',
-  'review-approve': '你是一位审核专家。请审核提供的内容并给出评审意见。用中文回复。',
-  'site-analyze': '你是一位专业的个人网站诊断顾问。请分析网站内容的完整性和丰富度，给出具体改进建议。用中文回复。',
   'meeting-notes': '你是一位会议纪要撰写助手。根据提供的内容生成结构化的会议纪要。用中文回复。',
   'task-log': '你是一位工作日志助手。根据提供的任务信息，生成结构化的工作日志。用中文回复。',
-  'trend-analysis': '你是一位数据趋势分析师。请对提供的数据进行趋势分析并给出洞察。用中文回复。',
-  'quality-check': '你是一位质量检查专家。请对提供的内容进行质量评估。用中文回复。',
   'content-review': '你是一位内容审核专家。请审核内容的准确性和合规性。用中文回复。',
   'team-review': '你是一位团队绩效分析师。请根据提供的数据给出团队评估报告。用中文回复。',
 };
 
+// ─── 系统注入 key 白名单 ───
+const SYSTEM_KEYS = {
+  'user.email': true,
+  'user.name': true,
+  'workflow.name': true,
+  'timestamp': true,
+};
+
 // ─── 单步执行：根据 skillId 分发到对应的后端能力 ───
-async function executeStep(step, prevResults, userEmail, catSystemPrompt) {
-  const { skillId, action, agentId, params } = step;
+async function executeStep(step, prevResults, userEmail, catSystemPrompt, context = {}) {
+  const { skillId, action, params } = step;
 
   // 合并上游结果 + 当前步骤参数
   const merged = { ...prevResults };
@@ -188,10 +188,48 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt) {
   if (params && params.length > 0) {
     const pv = {};
     for (const p of params) {
-      if (p.value !== undefined) pv[p.key] = p.value;
-      else if (p.defaultValue !== undefined) pv[p.key] = p.defaultValue;
+      const source = p.valueSource || 'static';
+
+      if (source === 'upstream') {
+        // 从上游步骤输出中提取指定字段
+        const field = p.upstreamField || p.key;
+        let found = undefined;
+        if (prevResults && typeof prevResults === 'object' && field in prevResults) {
+          found = prevResults[field];
+        }
+        // 回退到 static value 或 defaultValue
+        pv[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
+        if (found === undefined) {
+          console.warn(`[executor] param "${p.key}" upstream field "${field}" not found in prevResults, falling back to static value`);
+        }
+      } else if (source === 'system') {
+        // 从系统上下文注入
+        const sysKey = p.systemKey || '';
+        if (!SYSTEM_KEYS[sysKey]) {
+          console.warn(`[executor] param "${p.key}" unknown systemKey "${sysKey}", falling back to static value`);
+          pv[p.key] = p.value ?? p.defaultValue;
+        } else if (sysKey === 'user.email') {
+          pv[p.key] = userEmail || p.value || p.defaultValue || '';
+        } else if (sysKey === 'user.name') {
+          pv[p.key] = context.userName || p.value || p.defaultValue || '';
+        } else if (sysKey === 'workflow.name') {
+          pv[p.key] = context.workflowName || p.value || p.defaultValue || '';
+        } else if (sysKey === 'timestamp') {
+          pv[p.key] = new Date().toISOString();
+        } else {
+          pv[p.key] = p.value ?? p.defaultValue;
+        }
+      } else {
+        // static：取用户填写的值或默认值
+        if (p.value !== undefined) pv[p.key] = p.value;
+        else if (p.defaultValue !== undefined) pv[p.key] = p.defaultValue;
+      }
     }
-    if (Object.keys(pv).length > 0) merged._params = pv;
+    if (Object.keys(pv).length > 0) {
+      merged._params = pv;
+      // 同时将 _params 中的值平铺到 merged 顶层（用于邮件等技能的兼容读取）
+      Object.assign(merged, pv);
+    }
   }
 
   try {
@@ -209,10 +247,14 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt) {
     }
 
     // ─── 邮件类技能 ───
-    if (skillId === 'send-email' || skillId === 'send-notification') {
-      const to = merged.to || userEmail || '';
-      const subject = merged.subject || (skillId === 'send-email' ? '【猫猫周会】🐱 Minna 猫猫邮件' : 'I-am-minna 猫猫团队通知');
-      const text = merged.notes || merged.text || merged.summary || '这是一封来自 Minna 猫猫团队的邮件 🐱';
+    if (skillId === 'send-email') {
+      const p = merged._params || {};
+      // 收件人：_params.to > merged.to > userEmail
+      const to = p.to || merged.to || userEmail || '';
+      // 主题：_params.subject > merged.subject > 默认主题
+      const subject = p.subject || merged.subject || (skillId === 'send-email' ? '【猫猫邮件】' : 'I-am-minna 猫猫团队通知');
+      // 正文：_params.body > merged.notes/text/summary
+      const text = p.body || merged.notes || merged.text || merged.summary || '这是一封来自猫猫团队的邮件 🐱';
       if (!to) return { success: false, data: null, summary: '未配置收件人邮箱', status: 'error' };
       try {
         const result = await sendEmailDirect({ to, subject, html: '', text });
@@ -283,17 +325,30 @@ async function executeWorkflow(workflow, triggeredBy) {
     },
   });
 
-  // 获取触发用户的邮箱（用于邮件类技能）
+  // 获取触发用户的邮箱和名称（用于 system key 注入）
   let userEmail = '';
+  let userName = '';
   if (triggeredBy) {
-    const user = await prisma.user.findUnique({ where: { id: triggeredBy }, select: { email: true } }).catch(() => null);
-    if (user) userEmail = user.email;
+    const user = await prisma.user.findUnique({ where: { id: triggeredBy }, select: { email: true, nickname: true } }).catch(() => null);
+    if (user) {
+      userEmail = user.email;
+      userName = user.nickname || '';
+    }
   }
-  // 如果没有 triggeredBy，用团队 owner 的邮箱
+  // 如果没有 triggeredBy，用团队 owner 的信息
   if (!userEmail) {
-    const team = await prisma.team.findUnique({ where: { id: workflow.teamId }, include: { owner: { select: { email: true } } } }).catch(() => null);
-    if (team?.owner) userEmail = team.owner.email;
+    const team = await prisma.team.findUnique({ where: { id: workflow.teamId }, include: { owner: { select: { email: true, nickname: true } } } }).catch(() => null);
+    if (team?.owner) {
+      userEmail = team.owner.email;
+      userName = team.owner.nickname || '';
+    }
   }
+
+  // 构建系统上下文（传给 executeStep 供 system key 解析使用）
+  const executionContext = {
+    userName,
+    workflowName: workflow.name,
+  };
 
   const steps = Array.isArray(workflow.steps) ? workflow.steps : (typeof workflow.steps === 'string' ? JSON.parse(workflow.steps) : []);
   let prevResults = {};
@@ -312,7 +367,7 @@ async function executeWorkflow(workflow, triggeredBy) {
     // 带超时保护（60 秒）
     let result;
     try {
-      const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt);
+      const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt, executionContext);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (60s)')), 60000));
       result = await Promise.race([executePromise, timeoutPromise]);
     } catch (err) {

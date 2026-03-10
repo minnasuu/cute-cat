@@ -94,8 +94,6 @@ function getAgentForCategory(category: string): { agentId: string; skillId: stri
   switch (category) {
     case '文章':
       return { agentId: 'writer', skillId: 'generate-article' };
-    case 'Crafts':
-      return { agentId: 'engineer', skillId: 'update-crafts' };
     case '功能扩展':
       return { agentId: 'manager', skillId: 'manage-workflow' };
     default:
