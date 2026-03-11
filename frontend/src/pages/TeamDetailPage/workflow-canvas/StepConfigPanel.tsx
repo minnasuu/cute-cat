@@ -17,6 +17,54 @@ interface StepConfigPanelProps {
   onUpdateStep: (index: number, field: keyof WorkflowStep, value: any) => void;
 }
 
+/* ────── 异步选项加载 Hook ────── */
+const useAsyncOptions = (asyncOptionsFrom?: string, valueKey = 'id', labelKey = 'name') => {
+  const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!asyncOptionsFrom) return;
+    let cancelled = false;
+    setLoading(true);
+
+    const load = async () => {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : 'http://localhost:8002');
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const token = localStorage.getItem('accessToken');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        // 替换路径中的 :teamId 占位符
+        let url = asyncOptionsFrom;
+        const teamMatch = window.location.pathname.match(/\/teams\/([^/]+)/);
+        if (teamMatch) {
+          url = url.replace(':teamId', teamMatch[1]);
+        }
+
+        const resp = await fetch(`${backendUrl}${url}`, { headers });
+        if (resp.ok && !cancelled) {
+          const data = await resp.json();
+          if (Array.isArray(data)) {
+            setOptions(data.map((item: any) => ({
+              label: String(item[labelKey] || item.name || item.id || ''),
+              value: String(item[valueKey] || item.id || ''),
+            })));
+          }
+        }
+      } catch (err) {
+        console.warn('[StepConfigPanel] async options load failed:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [asyncOptionsFrom, valueKey, labelKey]);
+
+  return { options, loading };
+};
+
 /* ────── 参数值输入控件 ────── */
 const ParamInput: React.FC<{
   param: StepParam;
@@ -24,6 +72,11 @@ const ParamInput: React.FC<{
 }> = ({ param, onChange }) => {
   const base = 'w-full px-3 py-2 rounded-lg border border-gray-200 bg-white focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm';
   const val = param.value;
+  const { options: asyncOpts, loading: asyncLoading } = useAsyncOptions(
+    param.asyncOptionsFrom,
+    param.asyncOptionsValueKey,
+    param.asyncOptionsLabelKey,
+  );
 
   switch (param.type) {
     case 'textarea':
@@ -46,21 +99,25 @@ const ParamInput: React.FC<{
           className={base}
         />
       );
-    case 'select':
+    case 'select': {
+      // 合并静态 options 和异步加载的 options
+      const mergedOptions = param.asyncOptionsFrom ? asyncOpts : (param.options || []);
       return (
         <div className="rounded-lg border border-gray-200 pr-2 bg-white">
           <select
             value={String(val ?? '')}
             onChange={e => onChange(e.target.value)}
             className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer bg-transparent"
+            disabled={asyncLoading}
           >
-            <option value="">请选择...</option>
-            {(param.options || []).map(o => (
+            <option value="">{asyncLoading ? '加载中...' : '请选择...'}</option>
+            {mergedOptions.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
         </div>
       );
+    }
     case 'toggle':
       return (
         <button

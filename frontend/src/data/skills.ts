@@ -132,7 +132,13 @@ export const skillPool: SkillTemplate[] = [
 
   // ── 项目管理（基于 structured-output / workflow-engine 原型）──
   { id: 'assign-task',       name: '任务分配',   category: 'manage', description: '将任务拆解并分配给指定猫猫',              input: 'text', output: 'json', primitiveId: 'structured-output', provider: 'Dify' },
-  { id: 'manage-workflow',   name: '工作流管理', category: 'manage', description: '新增、修改或删除协作工作流',              input: 'json', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow' },
+  { id: 'manage-workflow',   name: '工作流管理', category: 'manage', description: '管理当前团队工作流：新增（AI 自动生成）、修改、删除', input: 'text', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow',
+    paramDefs: [
+      { key: 'action', label: '操作类型', type: 'select', required: true, description: '选择对工作流进行的操作', options: [{ label: '🆕 新增工作流', value: 'create' }, { label: '✏️ 修改工作流', value: 'update' }, { label: '🗑️ 删除工作流', value: 'delete' }], defaultValue: 'create' },
+      { key: 'workflowId', label: '目标工作流', type: 'select', required: false, description: '修改或删除时必须选择目标工作流，新增时无需选择', asyncOptionsFrom: '/api/workflows/team/:teamId', asyncOptionsValueKey: 'id', asyncOptionsLabelKey: 'name' },
+      { key: 'prompt', label: '工作流需求描述', type: 'textarea', placeholder: '描述你想要自动化的任务，如：每天自动爬取行业资讯并生成日报发送邮件', required: false, description: '新增时作为 AI 生成依据；修改时描述要修改的内容；留空则使用上游步骤的输出', valueSource: 'upstream' },
+    ],
+  },
   { id: 'run-workflow',      name: '执行工作流',category: 'manage', description: '触发指定工作流开始执行',                input: 'json', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow' },
   { id: 'recruit-cat',       name: '招募新猫',   category: 'manage', description: '招募新猫并定义角色与技能',               input: 'json', output: 'json', primitiveId: 'structured-output', provider: 'Qwen',
     paramDefs: [

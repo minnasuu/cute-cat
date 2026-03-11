@@ -96,6 +96,16 @@ export interface StepParam {
   defaultValue?: string | number | boolean | string[];
   /** type 为 select 时的选项列表 */
   options?: { label: string; value: string }[];
+  /**
+   * type 为 select 时，动态加载选项的 API 路径（相对于 backendUrl）
+   * 例如 '/api/workflows/team/:teamId'，其中 :teamId 会被当前团队 ID 替换。
+   * API 应返回数组，每个元素需包含 `id` 和 `name` 字段。
+   */
+  asyncOptionsFrom?: string;
+  /** asyncOptionsFrom 返回数据中用作选项 value 的字段，默认 'id' */
+  asyncOptionsValueKey?: string;
+  /** asyncOptionsFrom 返回数据中用作选项 label 的字段，默认 'name' */
+  asyncOptionsLabelKey?: string;
   /** 是否必填，默认 false */
   required?: boolean;
   /** 补充说明 */
