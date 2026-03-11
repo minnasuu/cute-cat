@@ -165,53 +165,114 @@ function escapeHtml(str) {
 
 function simpleMarkdownToHtml(md) {
   if (!md) return '';
-  let html = md;
 
-  // 代码块 ```...```
-  html = html.replace(/```[\s\S]*?```/g, (m) => {
-    const code = m.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
-    return `<pre style="background:#3E2723;color:#FFCCBC;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.5;margin:10px 0"><code>${escapeHtml(code)}</code></pre>`;
+  // ── 0. 预处理：统一换行符，确保正则能正确匹配行首/行尾 ──
+  let text = md
+    .replace(/\r\n/g, '\n')   // Windows → Unix
+    .replace(/\r/g, '\n')     // old Mac → Unix
+    .replace(/\\n/g, '\n');   // JSON 转义的 \n 也还原
+
+  // ── 1. 代码块 ```...``` ──
+  text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_m, code) => {
+    return `\n<pre style="background:#3E2723;color:#FFCCBC;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.5;margin:10px 0"><code>${escapeHtml(code.trim())}</code></pre>\n`;
   });
 
-  // 行内代码 `...`
-  html = html.replace(/`([^`]+)`/g, '<code style="background:#F5F0EB;padding:2px 6px;border-radius:4px;font-size:13px;color:#D84315;font-family:Menlo,Consolas,monospace">$1</code>');
+  // ── 2. 行内代码 `...` ──
+  text = text.replace(/`([^`]+)`/g, '<code style="background:#F5F0EB;padding:2px 6px;border-radius:4px;font-size:13px;color:#D84315;font-family:Menlo,Consolas,monospace">$1</code>');
 
-  // 标题 h1-h3
-  html = html.replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:600;color:#6D4C41;margin:12px 0 4px;line-height:1.4">$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:700;color:#5D4037;margin:14px 0 6px;line-height:1.4">$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1 style="font-size:20px;font-weight:700;color:#4E342E;margin:16px 0 8px;line-height:1.4">$1</h1>');
+  // ── 3. 逐行处理（标题、列表、分隔线） ──
+  const lines = text.split('\n');
+  const outputLines = [];
+  let inUl = false;
+  let inOl = false;
 
-  // 粗体、斜体
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // 无序列表（连续的 - 行合并为 <ul>）
-  html = html.replace(/(^- .+$(\n^- .+$)*)/gm, (block) => {
-    const items = block.split('\n').map(l => `<li style="margin:4px 0;line-height:1.7">${l.replace(/^- /, '')}</li>`).join('');
-    return `<ul style="margin:8px 0;padding-left:20px">${items}</ul>`;
-  });
-
-  // 有序列表（连续的 1. 行合并为 <ol>）
-  html = html.replace(/(^\d+\. .+$(\n^\d+\. .+$)*)/gm, (block) => {
-    const items = block.split('\n').map(l => `<li style="margin:4px 0;line-height:1.7">${l.replace(/^\d+\. /, '')}</li>`).join('');
-    return `<ol style="margin:8px 0;padding-left:20px">${items}</ol>`;
-  });
-
-  // 分隔线
-  html = html.replace(/^---$/gm, '<hr style="border:none;border-top:1px dashed #E0D6CC;margin:16px 0">');
-
-  // 链接 [text](url)
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a style="color:#E65100;text-decoration:underline" href="$2">$1</a>');
-
-  // 段落：将剩余的非空行包裹为 <p>（跳过已转为 HTML 标签的行）
-  html = html.split('\n').map(line => {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
-    if (!trimmed) return '';
-    if (trimmed.startsWith('<')) return trimmed;
-    return `<p style="margin:8px 0;line-height:1.8">${trimmed}</p>`;
-  }).join('\n');
 
-  return html;
+    // 已经是 HTML 标签的行直接输出
+    if (trimmed.startsWith('<pre') || trimmed.startsWith('<code') || trimmed.startsWith('</')) {
+      if (inUl) { outputLines.push('</ul>'); inUl = false; }
+      if (inOl) { outputLines.push('</ol>'); inOl = false; }
+      outputLines.push(trimmed);
+      continue;
+    }
+
+    // 分隔线 --- 或 ___
+    if (/^[-_]{3,}\s*$/.test(trimmed)) {
+      if (inUl) { outputLines.push('</ul>'); inUl = false; }
+      if (inOl) { outputLines.push('</ol>'); inOl = false; }
+      outputLines.push('<hr style="border:none;border-top:1px dashed #E0D6CC;margin:16px 0">');
+      continue;
+    }
+
+    // 标题 ### / ## / #
+    const h3 = trimmed.match(/^###\s+(.+)/);
+    if (h3) {
+      if (inUl) { outputLines.push('</ul>'); inUl = false; }
+      if (inOl) { outputLines.push('</ol>'); inOl = false; }
+      outputLines.push(`<h3 style="font-size:15px;font-weight:600;color:#6D4C41;margin:16px 0 6px;line-height:1.4">${applyInlineStyles(h3[1])}</h3>`);
+      continue;
+    }
+    const h2 = trimmed.match(/^##\s+(.+)/);
+    if (h2) {
+      if (inUl) { outputLines.push('</ul>'); inUl = false; }
+      if (inOl) { outputLines.push('</ol>'); inOl = false; }
+      outputLines.push(`<h2 style="font-size:17px;font-weight:700;color:#5D4037;margin:18px 0 8px;line-height:1.4">${applyInlineStyles(h2[1])}</h2>`);
+      continue;
+    }
+    const h1 = trimmed.match(/^#\s+(.+)/);
+    if (h1) {
+      if (inUl) { outputLines.push('</ul>'); inUl = false; }
+      if (inOl) { outputLines.push('</ol>'); inOl = false; }
+      outputLines.push(`<h1 style="font-size:20px;font-weight:700;color:#4E342E;margin:20px 0 10px;line-height:1.4">${applyInlineStyles(h1[1])}</h1>`);
+      continue;
+    }
+
+    // 无序列表 - item  或  * item
+    const ulMatch = trimmed.match(/^[-*]\s+(.+)/);
+    if (ulMatch) {
+      if (inOl) { outputLines.push('</ol>'); inOl = false; }
+      if (!inUl) { outputLines.push('<ul style="margin:8px 0;padding-left:20px">'); inUl = true; }
+      outputLines.push(`<li style="margin:4px 0;line-height:1.7">${applyInlineStyles(ulMatch[1])}</li>`);
+      continue;
+    }
+
+    // 有序列表 1. item
+    const olMatch = trimmed.match(/^\d+[.)]\s+(.+)/);
+    if (olMatch) {
+      if (inUl) { outputLines.push('</ul>'); inUl = false; }
+      if (!inOl) { outputLines.push('<ol style="margin:8px 0;padding-left:20px">'); inOl = true; }
+      outputLines.push(`<li style="margin:4px 0;line-height:1.7">${applyInlineStyles(olMatch[1])}</li>`);
+      continue;
+    }
+
+    // 空行
+    if (!trimmed) {
+      if (inUl) { outputLines.push('</ul>'); inUl = false; }
+      if (inOl) { outputLines.push('</ol>'); inOl = false; }
+      continue;
+    }
+
+    // 普通段落
+    if (inUl) { outputLines.push('</ul>'); inUl = false; }
+    if (inOl) { outputLines.push('</ol>'); inOl = false; }
+    outputLines.push(`<p style="margin:8px 0;line-height:1.8">${applyInlineStyles(trimmed)}</p>`);
+  }
+
+  // 闭合未关闭的列表
+  if (inUl) outputLines.push('</ul>');
+  if (inOl) outputLines.push('</ol>');
+
+  return outputLines.join('\n');
+}
+
+/** 处理行内 Markdown 样式：粗体、斜体、链接 */
+function applyInlineStyles(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a style="color:#E65100;text-decoration:underline" href="$2">$1</a>');
 }
 
 function buildCatEmailHtml(subject, bodyHtml) {
@@ -386,10 +447,28 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
       const p = merged._params || {};
       // 收件人：_params.to > merged.to > userEmail
       const to = p.to || merged.to || userEmail || '';
-      // 主题：_params.subject > merged.subject > 默认主题
-      const subject = p.subject || merged.subject || (skillId === 'send-email' ? '【猫猫邮件】' : 'I-am-minna 猫猫团队通知');
-      // 正文：_params.body > merged.notes/text/summary
-      const text = p.body || merged.notes || merged.text || merged.summary || '这是一封来自猫猫团队的邮件 🐱';
+      // 主题（初始值）
+      let subject = p.subject || merged.subject || '【猫猫邮件】';
+      // 正文（原始 Markdown）
+      let text = p.body || merged.notes || merged.text || merged.summary || '这是一封来自猫猫团队的邮件 🐱';
+
+      // ── 预处理：统一换行符 ──
+      text = text.replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      // ── 从正文中提取并移除 Subject 行（AI 可能把 Subject 混在正文里） ──
+      const subjectLineMatch = text.match(/^Subject\s*[:：]\s*(.+)/im);
+      if (subjectLineMatch) {
+        // 如果 subject 还是默认值，则用提取的 Subject
+        if (subject === '【猫猫邮件】') {
+          subject = subjectLineMatch[1].trim();
+        }
+        // 从正文中移除 Subject 行
+        text = text.replace(/^Subject\s*[:：]\s*.+\n?/im, '').trim();
+      }
+
+      // ── 移除称呼开头语（如「你好~嗯~」等寒暄，已在模板中有「老大！」） ──
+      text = text.replace(/^(你好[~～！!]*|嗨[~～！!]*|Hi[~～！!]*)\s*\n*/i, '').trim();
+
       if (!to) return { success: false, data: null, summary: '未配置收件人邮箱', status: 'error' };
       try {
         // 将 Markdown 正文转为带内联样式的 HTML 邮件
