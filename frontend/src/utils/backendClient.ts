@@ -45,6 +45,7 @@ export const verifyEditorPassword = async (password: string): Promise<VerifyPass
 import type { StepParam } from '../data/types';
 
 export interface WorkflowStep {
+  stepId?: string;
   agentId: string;
   skillId: string;
   action: string;

@@ -463,11 +463,18 @@ const CommunityPage = () => {
                                           </span>
                                         </>
                                       )}
-                                      {step.inputFrom && (
-                                        <span className="text-[9px] font-bold uppercase bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded ml-auto">
-                                          ← {agentNameMap[step.inputFrom] ?? step.inputFrom}
-                                        </span>
-                                      )}
+                                      {step.inputFrom && (() => {
+                                        // 优先用 stepId 找来源步骤的猫咪名
+                                        const sourceStep = wf.steps.find(s => s.stepId === step.inputFrom);
+                                        const label = sourceStep
+                                          ? (agentNameMap[sourceStep.agentId] ?? sourceStep.agentId)
+                                          : (agentNameMap[step.inputFrom] ?? step.inputFrom);
+                                        return (
+                                          <span className="text-[9px] font-bold uppercase bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded ml-auto">
+                                            ← {label}
+                                          </span>
+                                        );
+                                      })()}
                                     </div>
                                     <p className="text-sm text-text-primary font-medium">{step.action}</p>
                                     {/* Step params preview */}

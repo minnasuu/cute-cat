@@ -4,6 +4,7 @@ import { apiClient } from '../../utils/apiClient';
 import { showToast } from '../../components/Toast';
 import CatLogo from '../../components/CatLogo';
 import type { WorkflowStep } from '../../data/types';
+import { generateStepId, ensureStepIds } from '../../data/types';
 import { getVisibleSkillPool, injectAdminSkillsToCats } from '../../data/skills';
 import { useAuth } from '../../contexts/AuthContext';
 import { aiGenerateWorkflow } from './handleAiGenerateWorkflow';
@@ -35,7 +36,7 @@ const WorkflowEditorPage: React.FC = () => {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('📋');
   const [description, setDescription] = useState('');
-  const [steps, setSteps] = useState<WorkflowStep[]>([{ agentId: '', skillId: '', action: '' }]);
+  const [steps, setSteps] = useState<WorkflowStep[]>([{ stepId: generateStepId(), agentId: '', skillId: '', action: '' }]);
   const [trigger, setTrigger] = useState('manual');
   const [cron, setCron] = useState('');
   const [, setScheduled] = useState(false);
@@ -84,7 +85,7 @@ const WorkflowEditorPage: React.FC = () => {
         setName(wf.name);
         setIcon(wf.icon || '📋');
         setDescription(wf.description);
-        setSteps(wf.steps || []);
+        setSteps(ensureStepIds(wf.steps || []));
         const isCron = wf.trigger === 'cron' || !!wf.scheduled;
         setTrigger(isCron ? 'cron' : 'manual');
         setCron(wf.cron || '');
@@ -97,18 +98,27 @@ const WorkflowEditorPage: React.FC = () => {
     }
   }, [teamId, workflowId, isEditing, navigate, isAdmin]);
 
-  // ── 自动布局：steps 变化时重新计算节点位置 ──
+  // ── 自动布局：steps 变化时重新计算节点位置（DAG 感知） ──
   useEffect(() => {
-    setNodePositions(autoLayout(steps.length));
-  }, [steps.length]);
+    setNodePositions(autoLayout(steps));
+  }, [steps]);
 
   // ── 步骤操作函数（保留原有逻辑） ──
   const addStep = useCallback(() => {
-    setSteps(prev => [...prev, { agentId: '', skillId: '', action: '' }]);
+    setSteps(prev => [...prev, { stepId: generateStepId(), agentId: '', skillId: '', action: '' }]);
   }, []);
 
   const removeStep = useCallback((index: number) => {
-    setSteps(prev => prev.filter((_, i) => i !== index));
+    setSteps(prev => {
+      const removedStepId = prev[index]?.stepId;
+      return prev.filter((_, i) => i !== index).map(s => {
+        // 清理引用了被删除步骤的 inputFrom
+        if (removedStepId && s.inputFrom === removedStepId) {
+          return { ...s, inputFrom: undefined };
+        }
+        return s;
+      });
+    });
     if (selectedStepIndex === index) setSelectedStepIndex(null);
     else if (selectedStepIndex !== null && selectedStepIndex > index) {
       setSelectedStepIndex(selectedStepIndex - 1);
@@ -190,12 +200,12 @@ const WorkflowEditorPage: React.FC = () => {
       // 自动为没有 agentId 的步骤分配默认猫猫
       if (Array.isArray(result.steps)) {
         const defaultCat = cats.find(c => c.role === 'Default');
-        const finalSteps = result.steps.map(s => {
+        const finalSteps = ensureStepIds(result.steps.map(s => {
           if (!s.agentId && defaultCat) {
             return { ...s, agentId: defaultCat.id, skillId: s.skillId || 'ai-chat' };
           }
           return s;
-        });
+        }));
         setSteps(finalSteps);
       }
 
@@ -216,7 +226,7 @@ const WorkflowEditorPage: React.FC = () => {
   }, []);
 
   const handleEdgeClick = useCallback((index: number, midpoint: { x: number; y: number }) => {
-    if (index <= 0) return; // 开始节点的连线不可编辑
+    if (index < 1) return; // 开始节点的连线（负数或0）不可编辑
     setActiveEdgeIndex(index);
     setEdgePopover({ index, pos: midpoint });
   }, []);
@@ -226,8 +236,8 @@ const WorkflowEditorPage: React.FC = () => {
   }, [updateStep]);
 
   const handleAutoLayout = useCallback(() => {
-    setNodePositions(autoLayout(steps.length));
-  }, [steps.length]);
+    setNodePositions(autoLayout(steps));
+  }, [steps]);
 
   const handleDoubleClickCanvas = useCallback((_pos: { x: number; y: number }) => {
     // 双击画布空白区域添加新步骤
@@ -248,10 +258,10 @@ const WorkflowEditorPage: React.FC = () => {
     if (sourceIndex === -1) {
       updateStep(targetIndex, 'inputFrom', undefined);
     } else {
-      // 找到 sourceIndex 对应步骤的 agentId，设为目标步骤的 inputFrom
+      // 使用 stepId 标识来源步骤（唯一且稳定）
       const sourceStep = steps[sourceIndex];
-      if (sourceStep?.agentId) {
-        updateStep(targetIndex, 'inputFrom', sourceStep.agentId);
+      if (sourceStep?.stepId) {
+        updateStep(targetIndex, 'inputFrom', sourceStep.stepId);
       }
     }
   }, [steps, updateStep]);
@@ -375,6 +385,7 @@ const WorkflowEditorPage: React.FC = () => {
           viewport={viewportRef.current?.viewport ?? { panX: 0, panY: 0, zoom: 1 }}
           containerSize={containerSize}
           stepCount={steps.length}
+          steps={steps}
           onSetPan={(panX, panY) => viewportRef.current?.setPan(panX, panY)}
         />
       </main>

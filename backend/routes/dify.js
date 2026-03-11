@@ -265,10 +265,11 @@ const SKILL_SYSTEM_PROMPTS = {
 - 不足 → "suggestionMode": true，填写 suggestedCats/suggestedSkills/suggestionSummary，不能覆盖的步骤 agentId 留空
 
 ## JSON 格式
-{"suggestionMode":false,"suggestionSummary":"","suggestedCats":[{"role":"角色名","reason":"原因","suggestedSkills":["技能id"]}],"suggestedSkills":[{"agentId":"猫猫id","agentName":"名字","skillId":"技能id","skillName":"技能名","reason":"原因"}],"name":"工作流名称","icon":"emoji","description":"描述","scheduled":false,"cron":"","startTime":"","endTime":"","persistent":false,"steps":[{"agentId":"猫猫id或空","skillId":"技能id或空","action":"行为描述","inputFrom":"上一步agentId","params":[{"key":"k","label":"标签","type":"text|textarea|number|select|tags|toggle|url","placeholder":"提示","required":true,"description":"说明"}]}]}
+{"suggestionMode":false,"suggestionSummary":"","suggestedCats":[{"role":"角色名","reason":"原因","suggestedSkills":["技能id"]}],"suggestedSkills":[{"agentId":"猫猫id","agentName":"名字","skillId":"技能id","skillName":"技能名","reason":"原因"}],"name":"工作流名称","icon":"emoji","description":"描述","scheduled":false,"cron":"","startTime":"","endTime":"","persistent":false,"steps":[{"stepId":"唯一步骤id如s_abc123","agentId":"猫猫id或空","skillId":"技能id或空","action":"行为描述","inputFrom":"来源步骤的stepId","params":[{"key":"k","label":"标签","type":"text|textarea|number|select|tags|toggle|url","placeholder":"提示","required":true,"description":"说明"}]}]}
 
 ## 可用技能ID
 内容创作: generate-article, generate-outline, meeting-notes
+创意策划: mece-analysis, scamper-creative, six-hats
 数据分析: crawl-news,
 视觉设计: generate-image, generate-chart, image-enhance
 沟通运营: send-email, task-log
@@ -280,10 +281,10 @@ Project Manager: assign-task, manage-workflow, run-workflow, recruit-cat
 Content Editor: generate-article, generate-outline, meeting-notes
 Data Analyst: crawl-news,
 Visual Designer: generate-image, generate-chart, image-enhance
-QA Reviewer, content-review
+Creative Strategist: mece-analysis, scamper-creative, six-hats
 Operations Assistant: send-email, task-log
 Engineer: fix-bug,
-规则：agentId/skillId 正常模式下必须来自用户提供的真实 id；params 不需要则空数组；定时任务设 scheduled=true 填 cron/startTime/endTime；inputFrom 填上一步 agentId，第一步不需要。`,
+规则：agentId/skillId 正常模式下必须来自用户提供的真实 id；每个步骤必须有唯一 stepId（格式如 s_abc123）；params 不需要则空数组；定时任务设 scheduled=true 填 cron/startTime/endTime；inputFrom 填来源步骤的 stepId（不是 agentId），第一步不需要。`,
 };
 
 // Qwen (通义千问) 调用 — 兼容 OpenAI Chat Completions 格式

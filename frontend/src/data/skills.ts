@@ -142,7 +142,7 @@ export const skillPool: SkillTemplate[] = [
   { id: 'run-workflow',      name: '执行工作流',category: 'manage', description: '触发指定工作流开始执行',                input: 'json', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow' },
   { id: 'recruit-cat',       name: '招募新猫',   category: 'manage', description: '招募新猫并定义角色与技能',               input: 'json', output: 'json', primitiveId: 'structured-output', provider: 'Qwen',
     paramDefs: [
-      { key: 'role', label: '期望角色', type: 'select', options: [{ label: 'Content Editor', value: 'Content Editor' }, { label: 'Data Analyst', value: 'Data Analyst' }, { label: 'Visual Designer', value: 'Visual Designer' }, { label: 'Engineer', value: 'Engineer' }, { label: 'QA Reviewer', value: 'QA Reviewer' }, { label: 'Operations Assistant', value: 'Operations Assistant' }], required: true },
+      { key: 'role', label: '期望角色', type: 'select', options: [{ label: 'Content Editor', value: 'Content Editor' }, { label: 'Data Analyst', value: 'Data Analyst' }, { label: 'Visual Designer', value: 'Visual Designer' }, { label: 'Creative Strategist', value: 'Creative Strategist' }, { label: 'Engineer', value: 'Engineer' }, { label: 'Operations Assistant', value: 'Operations Assistant' }], required: true },
       { key: 'catName', label: '猫猫名字', type: 'text', placeholder: '给新猫猫起个名字' },
     ],
   },

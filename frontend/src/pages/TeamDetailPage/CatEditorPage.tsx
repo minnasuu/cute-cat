@@ -16,7 +16,7 @@ const ROLE_SKILL_MAP: Record<string, string> = {
   'Content Editor': 'editor',
   'Data Analyst': 'analyst',
   'Visual Designer': 'designer',
-  'QA Reviewer': 'qa',
+  'Creative Strategist': 'creative',
   'Operations Assistant': 'ops',
   'Engineer': 'engineer',
 };
@@ -75,7 +75,7 @@ const DEFAULT_COLORS: CatColors = {
   bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '',
 };
 
-const ROLE_OPTIONS = ['Project Manager', 'Content Editor', 'Data Analyst', 'Visual Designer', 'QA Reviewer', 'Operations Assistant', 'Engineer', 'Custom'];
+const ROLE_OPTIONS = ['Project Manager', 'Content Editor', 'Data Analyst', 'Visual Designer', 'Creative Strategist', 'Operations Assistant', 'Engineer', 'Recorder', 'QA Inspector', 'Image Creator', 'HR', 'Custom'];
 
 const CatEditorPage: React.FC = () => {
   const { teamId, catId } = useParams<{ teamId: string; catId: string }>();

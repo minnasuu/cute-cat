@@ -56,11 +56,12 @@ const EdgePopover: React.FC<EdgePopoverProps> = ({
       </button>
       {prevSteps.map((s, si) => {
         const cat = cats.find(c => c.id === s.agentId);
-        const isActive = step.inputFrom === s.agentId;
+        // 用 stepId 匹配激活状态（兼容旧 agentId 格式）
+        const isActive = step.inputFrom === s.stepId || (!s.stepId && step.inputFrom === s.agentId);
         return (
           <button
-            key={si}
-            onClick={() => { onUpdateInputFrom(stepIndex, s.agentId || undefined); onClose(); }}
+            key={s.stepId || si}
+            onClick={() => { onUpdateInputFrom(stepIndex, s.stepId || s.agentId || undefined); onClose(); }}
             className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
               isActive ? 'bg-primary-50 text-primary-600' : 'text-gray-700 hover:bg-gray-50'
             }`}

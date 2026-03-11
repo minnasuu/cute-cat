@@ -309,7 +309,7 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
   }
 }
 
-// ─── 执行整个工作流 ───
+// ─── 执行整个工作流（DAG 分层并行执行） ───
 async function executeWorkflow(workflow, triggeredBy) {
   const startTime = Date.now();
   const stepsData = [];
@@ -356,44 +356,97 @@ async function executeWorkflow(workflow, triggeredBy) {
   };
 
   const steps = Array.isArray(workflow.steps) ? workflow.steps : (typeof workflow.steps === 'string' ? JSON.parse(workflow.steps) : []);
-  let prevResults = {};
-  let hasFailed = false;
 
+  // ── 构建 DAG：解析每个步骤的上游依赖索引 ──
+  const parentIndex = [];
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
-
-    // 查询猫猫的性格 systemPrompt（用于 AI 类技能注入）
-    let catSystemPrompt = '';
-    if (step.agentId) {
-      const cat = await prisma.teamCat.findUnique({ where: { id: step.agentId }, select: { systemPrompt: true } }).catch(() => null);
-      if (cat?.systemPrompt) catSystemPrompt = cat.systemPrompt;
-    }
-
-    // 带超时保护（60 秒）
-    let result;
-    try {
-      const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt, executionContext);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (60s)')), 60000));
-      result = await Promise.race([executePromise, timeoutPromise]);
-    } catch (err) {
-      result = { success: false, data: null, summary: err.message || '步骤执行异常', status: 'error' };
-    }
-
-    stepsData.push({
-      index: i, skillId: step.skillId, action: step.action,
-      success: result.success, status: result.status, summary: result.summary,
-    });
-
-    if (result.data && typeof result.data === 'object') {
-      prevResults = { ...prevResults, ...result.data };
-    }
-
-    if (!result.success) {
-      hasFailed = true;
-      console.warn(`[executor] ${workflow.name} 步骤 ${i + 1} 失败: ${result.summary}`);
-      break;
+    if (!step.inputFrom) {
+      parentIndex.push(i === 0 ? -1 : i - 1);
+    } else {
+      // 优先按 stepId 匹配
+      let found = steps.findIndex((s, si) => si < i && s.stepId === step.inputFrom);
+      if (found < 0) {
+        // fallback: 按 agentId 匹配
+        found = steps.findIndex((s, si) => si < i && s.agentId === step.inputFrom);
+      }
+      parentIndex.push(found >= 0 ? found : (i === 0 ? -1 : i - 1));
     }
   }
+
+  // ── 计算拓扑层级（depth） ──
+  const depth = new Array(steps.length).fill(0);
+  for (let i = 0; i < steps.length; i++) {
+    const pi = parentIndex[i];
+    depth[i] = pi >= 0 ? depth[pi] + 1 : 1;
+  }
+
+  // ── 按层级分组 ──
+  const maxDepth = Math.max(...depth, 0);
+  const layers = [];
+  for (let d = 0; d <= maxDepth; d++) {
+    layers.push([]);
+  }
+  for (let i = 0; i < steps.length; i++) {
+    layers[depth[i]].push(i);
+  }
+
+  // ── 按层级顺序执行，同层并行 ──
+  const stepResults = new Array(steps.length).fill(null);  // 每个步骤的执行结果
+  let hasFailed = false;
+
+  for (let d = 1; d <= maxDepth && !hasFailed; d++) {
+    const layer = layers[d];
+    if (layer.length === 0) continue;
+
+    // 同层的步骤可以并行执行
+    const layerPromises = layer.map(async (i) => {
+      const step = steps[i];
+      const pi = parentIndex[i];
+
+      // 获取上游结果
+      const prevResults = pi >= 0 && stepResults[pi]?.data
+        ? { ...stepResults[pi].data }
+        : {};
+
+      // 查询猫猫的性格 systemPrompt
+      let catSystemPrompt = '';
+      if (step.agentId) {
+        const cat = await prisma.teamCat.findUnique({ where: { id: step.agentId }, select: { systemPrompt: true } }).catch(() => null);
+        if (cat?.systemPrompt) catSystemPrompt = cat.systemPrompt;
+      }
+
+      // 带超时保护（60 秒）
+      let result;
+      try {
+        const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt, executionContext);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (60s)')), 60000));
+        result = await Promise.race([executePromise, timeoutPromise]);
+      } catch (err) {
+        result = { success: false, data: null, summary: err.message || '步骤执行异常', status: 'error' };
+      }
+
+      stepResults[i] = result;
+      return { index: i, result };
+    });
+
+    const layerResults = await Promise.all(layerPromises);
+
+    for (const { index: i, result } of layerResults) {
+      stepsData.push({
+        index: i, skillId: steps[i].skillId, action: steps[i].action,
+        success: result.success, status: result.status, summary: result.summary,
+      });
+
+      if (!result.success) {
+        hasFailed = true;
+        console.warn(`[executor] ${workflow.name} 步骤 ${i + 1} 失败: ${result.summary}`);
+      }
+    }
+  }
+
+  // 按步骤索引排序 stepsData
+  stepsData.sort((a, b) => a.index - b.index);
 
   // 更新 run 记录
   await prisma.workflowRun.update({

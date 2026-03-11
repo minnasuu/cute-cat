@@ -120,12 +120,45 @@ export interface StepParam {
 
 // --- 协作工作流定义 ---
 export interface WorkflowStep {
+  /** 步骤唯一标识，创建后不变，用于连线引用 */
+  stepId?: string;
   agentId: string;
   skillId: string;
   action: string;
+  /** 数据来源：引用另一个步骤的 stepId（新格式）或 agentId（旧格式兼容） */
   inputFrom?: string;
   /** 该步骤需要用户输入/配置的参数列表 */
   params?: StepParam[];
+}
+
+/** 生成步骤唯一 ID */
+export function generateStepId(): string {
+  return 's_' + Math.random().toString(36).slice(2, 8);
+}
+
+/** 确保步骤列表中每个步骤都有 stepId（兼容旧数据） */
+export function ensureStepIds(steps: WorkflowStep[]): WorkflowStep[] {
+  return steps.map(s => s.stepId ? s : { ...s, stepId: generateStepId() });
+}
+
+/**
+ * 根据 inputFrom 在步骤列表中查找来源步骤的索引。
+ * 优先按 stepId 匹配，fallback 按 agentId 匹配（兼容旧数据）。
+ * 只在 currentIndex 之前的步骤中查找。
+ */
+export function resolveInputFromIndex(
+  steps: WorkflowStep[],
+  currentIndex: number,
+  inputFrom: string | undefined,
+): number {
+  if (!inputFrom) return currentIndex - 1;
+  // 优先匹配 stepId
+  const byStepId = steps.findIndex((s, si) => si < currentIndex && s.stepId === inputFrom);
+  if (byStepId >= 0) return byStepId;
+  // fallback: 匹配 agentId（兼容旧数据）
+  const byAgentId = steps.findIndex((s, si) => si < currentIndex && s.agentId === inputFrom);
+  if (byAgentId >= 0) return byAgentId;
+  return currentIndex - 1;
 }
 
 export interface Workflow {

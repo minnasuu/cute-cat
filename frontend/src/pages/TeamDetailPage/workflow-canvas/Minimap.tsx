@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import type { ViewportState, NodePositions } from './canvas-utils';
 import { NODE_WIDTH, NODE_HEIGHT, START_NODE_SIZE } from './canvas-utils';
+import type { WorkflowStep } from '../../../data/types';
+import { resolveInputFromIndex } from '../../../data/types';
 
 interface MinimapProps {
   /** 画布中的节点位置 */
@@ -11,6 +13,8 @@ interface MinimapProps {
   containerSize: { width: number; height: number };
   /** 步骤总数（用来区分添加按钮节点） */
   stepCount: number;
+  /** 工作流步骤数据（用于 DAG 连线绘制） */
+  steps: WorkflowStep[];
   /** 设置视口平移 */
   onSetPan: (panX: number, panY: number) => void;
 }
@@ -26,7 +30,7 @@ const BG_COLOR = '#fafafa';
 const BORDER_COLOR = '#e5e7eb';
 
 const Minimap: React.FC<MinimapProps> = ({
-  nodePositions, viewport, containerSize, stepCount, onSetPan,
+  nodePositions, viewport, containerSize, stepCount, steps, onSetPan,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDragging = useRef(false);
@@ -101,19 +105,23 @@ const Minimap: React.FC<MinimapProps> = ({
     ctx.roundRect(0, 0, MINIMAP_WIDTH, MINIMAP_HEIGHT, 8);
     ctx.fill();
 
-    // 绘制连线（简化为直线）
+    // 绘制连线（基于 DAG 拓扑关系）
     ctx.strokeStyle = '#d1d5db';
     ctx.lineWidth = 1;
-    const positions = Array.from(nodePositions.entries());
-    for (let i = 0; i < positions.length - 1; i++) {
-      const [idxA, posA] = positions[i];
-      const [idxB, posB] = positions[i + 1];
-      if (idxA === stepCount) continue; // 跳过添加按钮的连线
-      const wA = idxA === -1 ? START_NODE_SIZE : NODE_WIDTH;
-      const hA = idxA === -1 ? START_NODE_SIZE : NODE_HEIGHT;
-      const wB = idxB === -1 ? START_NODE_SIZE : NODE_WIDTH;
-      const fromPt = toMinimap(posA.x + wA / 2, posA.y + hA);
-      const toPt = toMinimap(posB.x + wB / 2, posB.y);
+
+    for (let i = 0; i < steps.length; i++) {
+      const parentIdx = resolveInputFromIndex(steps, i, steps[i].inputFrom);
+      // 源节点：parentIdx >= 0 时是步骤节点，< 0 时是开始节点
+      const fromNodeIdx = parentIdx >= 0 ? parentIdx : -1;
+      const fromPos = nodePositions.get(fromNodeIdx);
+      const toPos = nodePositions.get(i);
+      if (!fromPos || !toPos) continue;
+
+      const wA = fromNodeIdx === -1 ? START_NODE_SIZE : NODE_WIDTH;
+      const hA = fromNodeIdx === -1 ? START_NODE_SIZE : NODE_HEIGHT;
+      const wB = NODE_WIDTH;
+      const fromPt = toMinimap(fromPos.x + wA / 2, fromPos.y + hA);
+      const toPt = toMinimap(toPos.x + wB / 2, toPos.y);
       ctx.beginPath();
       ctx.moveTo(fromPt.x, fromPt.y);
       ctx.lineTo(toPt.x, toPt.y);
@@ -173,7 +181,7 @@ const Minimap: React.FC<MinimapProps> = ({
     ctx.beginPath();
     ctx.roundRect(vpPt.x, vpPt.y, vpW, vpH, 2);
     ctx.stroke();
-  }, [nodePositions, viewport, containerSize, stepCount, scale, toMinimap]);
+  }, [nodePositions, viewport, containerSize, stepCount, steps, scale, toMinimap]);
 
   // 点击 / 拖拽定位
   const handlePointerDown = useCallback((e: React.PointerEvent) => {

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { WorkflowStep } from '../../../data/types';
+import { resolveInputFromIndex } from '../../../data/types';
 import {
   computeEdgePath,
   ARROW_MARKER_ID,
@@ -38,31 +39,40 @@ const EdgeLines: React.FC<EdgeLinesProps> = ({
       midY: number;
     }> = [];
 
-    // 开始节点 → 第一个步骤
     const startPos = nodePositions.get(-1);
-    const firstPos = nodePositions.get(0);
-    if (startPos && firstPos && steps.length > 0) {
-      const path = computeEdgePath(
-        { x: startPos.x, y: startPos.y, width: START_NODE_SIZE, height: START_NODE_SIZE },
-        { x: firstPos.x, y: firstPos.y, width: NODE_WIDTH, height: NODE_HEIGHT },
-      );
-      const sx = startPos.x + START_NODE_SIZE / 2;
-      const sy = startPos.y + START_NODE_SIZE;
-      const ex = firstPos.x + NODE_WIDTH / 2;
-      const ey = firstPos.y;
-      result.push({ index: -1, path, midX: (sx + ex) / 2, midY: (sy + ey) / 2 });
+
+    // 收集每个步骤的上游索引
+    const parentIndex: number[] = [];
+    for (let i = 0; i < steps.length; i++) {
+      parentIndex.push(resolveInputFromIndex(steps, i, steps[i].inputFrom));
+    }
+
+    // 开始节点 → 所有来自开始节点的步骤（parentIndex === -1 或 === i-1 且 i === 0）
+    // 即所有 "根" 步骤
+    for (let i = 0; i < steps.length; i++) {
+      if (parentIndex[i] === -1 || (i === 0 && !steps[i].inputFrom)) {
+        const targetPos = nodePositions.get(i);
+        if (startPos && targetPos) {
+          const path = computeEdgePath(
+            { x: startPos.x, y: startPos.y, width: START_NODE_SIZE, height: START_NODE_SIZE },
+            { x: targetPos.x, y: targetPos.y, width: NODE_WIDTH, height: NODE_HEIGHT },
+          );
+          const sx = startPos.x + START_NODE_SIZE / 2;
+          const sy = startPos.y + START_NODE_SIZE;
+          const ex = targetPos.x + NODE_WIDTH / 2;
+          const ey = targetPos.y;
+          // 开始节点连线用 index = -(i+2) 以保持唯一 key（-1 已被预留）
+          result.push({ index: -(i + 2), path, midX: (sx + ex) / 2, midY: (sy + ey) / 2 });
+        }
+      }
     }
 
     // 步骤之间的连线
-    for (let i = 1; i < steps.length; i++) {
-      const step = steps[i];
-      let fromIndex = i - 1;
-      if (step.inputFrom) {
-        const foundIdx = steps.findIndex((s, si) => si < i && s.agentId === step.inputFrom);
-        if (foundIdx >= 0) fromIndex = foundIdx;
-      }
+    for (let i = 0; i < steps.length; i++) {
+      const fromIdx = parentIndex[i];
+      if (fromIdx < 0) continue; // 来自开始节点的已在上面处理
 
-      const fromPos = nodePositions.get(fromIndex);
+      const fromPos = nodePositions.get(fromIdx);
       const toPos = nodePositions.get(i);
       if (!fromPos || !toPos) continue;
 
@@ -187,7 +197,7 @@ const EdgeLines: React.FC<EdgeLinesProps> = ({
             )}
 
             {/* 连线中点删除按钮（hover 且非开始节点连线时显示） */}
-            {isHovered && index > 0 && onDeleteEdge && (
+            {isHovered && index >= 1 && onDeleteEdge && (
               <g
                 className="pointer-events-auto cursor-pointer"
                 onClick={(e) => { e.stopPropagation(); onDeleteEdge(index); }}
