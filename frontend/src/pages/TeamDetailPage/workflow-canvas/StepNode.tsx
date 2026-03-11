@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import CatMiniAvatar from '../../../components/CatMiniAvatar';
-import { NODE_WIDTH } from './canvas-utils';
+import { NODE_WIDTH, PORT_SIZE } from './canvas-utils';
 
 interface StepNodeProps {
   index: number;
@@ -17,23 +17,31 @@ interface StepNodeProps {
   onRemove: (index: number) => void;
   position: { x: number; y: number };
   zoom: number;
+  /** 从输出端口开始拖拽连线 */
+  onPortDragStart?: (nodeIndex: number, e: React.PointerEvent) => void;
+  /** 是否正在被拖拽连线悬浮（作为目标） */
+  isDropTarget?: boolean;
 }
 
 const StepNode: React.FC<StepNodeProps> = ({
   index, agentId, cat, skillName, skillIcon,
   action, paramCount, isSelected,
   onSelect, onDrag, onRemove, position, zoom,
+  onPortDragStart, isDropTarget,
 }) => {
   const [hovered, setHovered] = useState(false);
+  const [portHovered, setPortHovered] = useState<'input' | 'output' | null>(null);
   const isDragging = useRef(false);
+  const wasDragged = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    // 只响应左键，且不是在按钮上
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
+    if ((e.target as HTMLElement).closest('[data-port]')) return; // 不拦截端口事件
 
     isDragging.current = true;
+    wasDragged.current = false;
     dragStart.current = {
       x: e.clientX,
       y: e.clientY,
@@ -48,6 +56,12 @@ const StepNode: React.FC<StepNodeProps> = ({
     if (!isDragging.current) return;
     const dx = (e.clientX - dragStart.current.x) / zoom;
     const dy = (e.clientY - dragStart.current.y) / zoom;
+
+    // 标记已经发生了拖拽
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      wasDragged.current = true;
+    }
+
     onDrag(index, {
       x: dragStart.current.posX + dx,
       y: dragStart.current.posY + dy,
@@ -56,23 +70,32 @@ const StepNode: React.FC<StepNodeProps> = ({
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (!isDragging.current) return;
-    const dx = Math.abs(e.clientX - dragStart.current.x);
-    const dy = Math.abs(e.clientY - dragStart.current.y);
     isDragging.current = false;
 
     // 如果没有实际移动，视为点击 → 选中节点
-    if (dx < 4 && dy < 4) {
+    if (!wasDragged.current) {
       onSelect(index);
     }
   }, [index, onSelect]);
 
+  const handleOutputPortDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
+    onPortDragStart?.(index, e);
+  }, [index, onPortDragStart]);
+
   const borderClass = isSelected
     ? 'border-primary-400 ring-2 ring-primary-200 scale-[1.02]'
+    : isDropTarget
+    ? 'border-blue-400 ring-2 ring-blue-200 scale-[1.02]'
     : 'border-gray-200 hover:border-gray-300';
+
+  const shadowClass = isDragging.current
+    ? 'shadow-lg'
+    : 'shadow-sm';
 
   return (
     <div
-      className={`absolute select-none cursor-grab active:cursor-grabbing transition-all duration-150 rounded-[20px] border bg-white shadow-sm ${borderClass}`}
+      className={`absolute select-none cursor-grab active:cursor-grabbing transition-all duration-150 rounded-[20px] border bg-white ${shadowClass} ${borderClass}`}
       style={{
         left: position.x,
         top: position.y,
@@ -82,8 +105,61 @@ const StepNode: React.FC<StepNodeProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => { setHovered(false); setPortHovered(null); }}
     >
+      {/* ── 输入端口（顶部中心） ── */}
+      <div
+        data-port
+        data-port-type="input"
+        data-port-index={index}
+        className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center z-20"
+        style={{
+          top: -PORT_SIZE / 2 - 2,
+          width: PORT_SIZE * 2.5,
+          height: PORT_SIZE * 2.5,
+        }}
+        onMouseEnter={() => setPortHovered('input')}
+        onMouseLeave={() => setPortHovered(null)}
+      >
+        <div
+          className="rounded-full border-2 transition-all duration-150"
+          style={{
+            width: portHovered === 'input' || isDropTarget ? PORT_SIZE * 1.5 : PORT_SIZE,
+            height: portHovered === 'input' || isDropTarget ? PORT_SIZE * 1.5 : PORT_SIZE,
+            backgroundColor: isDropTarget ? '#3b82f6' : portHovered === 'input' ? '#4ade80' : '#d1d5db',
+            borderColor: isDropTarget ? '#2563eb' : portHovered === 'input' ? '#22c55e' : '#e5e7eb',
+            boxShadow: portHovered === 'input' || isDropTarget ? '0 0 6px rgba(74,222,128,0.4)' : 'none',
+          }}
+        />
+      </div>
+
+      {/* ── 输出端口（底部中心） ── */}
+      <div
+        data-port
+        data-port-type="output"
+        data-port-index={index}
+        className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center z-20 cursor-crosshair"
+        style={{
+          bottom: -PORT_SIZE / 2 - 2,
+          width: PORT_SIZE * 2.5,
+          height: PORT_SIZE * 2.5,
+        }}
+        onMouseEnter={() => setPortHovered('output')}
+        onMouseLeave={() => setPortHovered(null)}
+        onPointerDown={handleOutputPortDown}
+      >
+        <div
+          className="rounded-full border-2 transition-all duration-150"
+          style={{
+            width: portHovered === 'output' ? PORT_SIZE * 1.5 : PORT_SIZE,
+            height: portHovered === 'output' ? PORT_SIZE * 1.5 : PORT_SIZE,
+            backgroundColor: portHovered === 'output' ? '#4ade80' : '#d1d5db',
+            borderColor: portHovered === 'output' ? '#22c55e' : '#e5e7eb',
+            boxShadow: portHovered === 'output' ? '0 0 6px rgba(74,222,128,0.4)' : 'none',
+          }}
+        />
+      </div>
+
       {/* Delete button */}
       {hovered && (
         <button

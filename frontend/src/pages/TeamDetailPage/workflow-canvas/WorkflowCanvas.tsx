@@ -1,9 +1,12 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { WorkflowStep } from '../../../data/types';
 import { useCanvasViewport } from './useCanvasViewport';
+import { useEdgeDrag } from './useEdgeDrag';
+import { useCanvasKeyboard } from './useCanvasKeyboard';
 import StepNode from './StepNode';
 import EdgeLines from './EdgeLines';
-import { NODE_WIDTH, START_NODE_SIZE, ADD_NODE_HEIGHT, type NodePositions } from './canvas-utils';
+import DragPreviewLine from './DragPreviewLine';
+import { NODE_WIDTH, START_NODE_SIZE, ADD_NODE_HEIGHT, PORT_SIZE, type NodePositions } from './canvas-utils';
 
 interface TeamCat {
   id: string; name: string; role: string; catColors: any; skills: any[]; accent: string;
@@ -21,6 +24,8 @@ interface WorkflowCanvasProps {
   onRemoveStep: (index: number) => void;
   onEdgeClick: (index: number, midpoint: { x: number; y: number }) => void;
   onDoubleClickCanvas: (pos: { x: number; y: number }) => void;
+  onConnect: (sourceIndex: number, targetIndex: number) => void;
+  onDeleteEdge: (index: number) => void;
   // 暴露 viewport 控制
   viewportRef: React.RefObject<ReturnType<typeof useCanvasViewport> | null>;
 }
@@ -31,11 +36,12 @@ const DOT_GAP = 20;
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   steps, cats, nodePositions, selectedStepIndex,
   activeEdgeIndex, onSelectStep, onNodeDrag, onAddStep, onRemoveStep,
-  onEdgeClick, onDoubleClickCanvas, viewportRef,
+  onEdgeClick, onDoubleClickCanvas, onConnect, onDeleteEdge, viewportRef,
 }) => {
   const viewport = useCanvasViewport({ initialZoom: 1 });
   const isDragging = useRef(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
+  const [isSpaceMode, setIsSpaceMode] = useState(false);
 
   // 将 viewport 暴露给父组件
   React.useEffect(() => {
@@ -43,6 +49,28 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       (viewportRef as React.MutableRefObject<ReturnType<typeof useCanvasViewport> | null>).current = viewport;
     }
   }, [viewport, viewportRef]);
+
+  // ── 拖拽连线 hook ──
+  const { dragState, handlePortPointerDown } = useEdgeDrag({
+    nodePositions,
+    zoom: viewport.viewport.zoom,
+    panX: viewport.viewport.panX,
+    panY: viewport.viewport.panY,
+    containerRef: viewport.containerRef,
+    onConnect,
+  });
+
+  // ── 键盘快捷键 hook ──
+  useCanvasKeyboard({
+    selectedStepIndex,
+    activeEdgeIndex,
+    onDeleteStep: onRemoveStep,
+    onDeleteEdge,
+    onClearSelection: useCallback(() => {
+      onSelectStep(null);
+    }, [onSelectStep]),
+    onSpaceChange: setIsSpaceMode,
+  });
 
   // 记录按下位置，用于判断是否发生了拖拽（防止拖拽后误触发点击）
   const handlePointerDownCapture = useCallback((e: React.PointerEvent) => {
@@ -101,13 +129,18 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     };
   }, [viewport.viewport.panX, viewport.viewport.panY, viewport.viewport.zoom]);
 
+  // 空格模式光标
+  const cursorStyle = isSpaceMode
+    ? 'cursor-grab'
+    : '';
+
   const startPos = nodePositions.get(-1);
   const addPos = nodePositions.get(steps.length);
 
   return (
     <div
       ref={viewport.containerRef}
-      className="flex-1 h-full relative overflow-hidden bg-gray-50"
+      className={`flex-1 h-full relative overflow-hidden bg-gray-50 ${cursorStyle}`}
       style={bgStyle}
       onClick={handleCanvasClick}
       onDoubleClick={handleDoubleClick}
@@ -119,7 +152,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       <div
         data-canvas-bg="true"
         className="absolute inset-0"
-        style={{ cursor: isDragging.current ? 'grabbing' : 'grab' }}
+        style={{ cursor: isDragging.current || isSpaceMode ? 'grabbing' : 'grab' }}
       />
 
       {/* 画布内容层（受 transform 影响） */}
@@ -130,7 +163,11 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           nodePositions={nodePositions}
           activeEdgeIndex={activeEdgeIndex}
           onEdgeClick={onEdgeClick}
+          onDeleteEdge={onDeleteEdge}
         />
+
+        {/* 拖拽连线预览 */}
+        <DragPreviewLine dragState={dragState} />
 
         {/* 开始节点 */}
         {startPos && (
@@ -146,6 +183,28 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
             <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--color-primary-400)">
               <path d="M8 5v14l11-7z" />
             </svg>
+
+            {/* 开始节点的输出端口 */}
+            <div
+              data-port
+              data-port-type="output"
+              data-port-index={-1}
+              className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center z-20 cursor-crosshair"
+              style={{
+                bottom: -PORT_SIZE / 2 - 2,
+                width: PORT_SIZE * 2.5,
+                height: PORT_SIZE * 2.5,
+              }}
+              onPointerDown={(e) => handlePortPointerDown(-1, e)}
+            >
+              <div
+                className="rounded-full border-2 border-primary-300 bg-primary-200 hover:bg-primary-400 hover:border-primary-500 transition-all duration-150"
+                style={{
+                  width: PORT_SIZE,
+                  height: PORT_SIZE,
+                }}
+              />
+            </div>
           </div>
         )}
 
@@ -172,6 +231,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
               onRemove={onRemoveStep}
               position={pos}
               zoom={viewport.viewport.zoom}
+              onPortDragStart={handlePortPointerDown}
+              isDropTarget={dragState.isDragging && dragState.targetIndex === i}
             />
           );
         })}

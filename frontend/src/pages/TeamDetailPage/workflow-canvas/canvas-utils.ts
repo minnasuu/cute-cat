@@ -138,6 +138,55 @@ export function computeEdgeMidpoint(
 export const ARROW_MARKER_ID = 'wf-arrow';
 export const ARROW_MARKER_ACTIVE_ID = 'wf-arrow-active';
 
+// ── 端口（Port）系统 ──
+
+/** 端口尺寸 */
+export const PORT_SIZE = 8;
+
+/** 端口位置信息 */
+export interface PortPosition {
+  x: number; // 端口中心 x（画布坐标）
+  y: number; // 端口中心 y（画布坐标）
+}
+
+/**
+ * 计算节点输入端口位置（节点顶部中心）
+ */
+export function getInputPortPos(nodePos: { x: number; y: number }, width = NODE_WIDTH): PortPosition {
+  return { x: nodePos.x + width / 2, y: nodePos.y };
+}
+
+/**
+ * 计算节点输出端口位置（节点底部中心）
+ */
+export function getOutputPortPos(
+  nodePos: { x: number; y: number },
+  width = NODE_WIDTH,
+  height = NODE_HEIGHT,
+): PortPosition {
+  return { x: nodePos.x + width / 2, y: nodePos.y + height };
+}
+
+/**
+ * 计算开始节点的输出端口位置
+ */
+export function getStartOutputPortPos(nodePos: { x: number; y: number }): PortPosition {
+  return { x: nodePos.x + START_NODE_SIZE / 2, y: nodePos.y + START_NODE_SIZE };
+}
+
+/**
+ * 检查两个节点间是否可以建立连接
+ * - 不允许自连接
+ * - 不允许连接到开始节点 (index = -1) 的输入
+ * - 不允许 target 索引 <= source 索引（防止环路，仅允许从上游到下游）
+ */
+export function canConnect(sourceIdx: number, targetIdx: number): boolean {
+  if (sourceIdx === targetIdx) return false;
+  if (targetIdx <= 0) return false; // 不允许连到开始节点或第一步（第一步由开始节点连接）
+  if (targetIdx <= sourceIdx) return false; // 禁止环路
+  return true;
+}
+
 // ── 缩放范围 ──
 
 export const ZOOM_MIN = 0.3;

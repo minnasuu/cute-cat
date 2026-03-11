@@ -15,6 +15,7 @@ import EdgePopover from './workflow-canvas/EdgePopover';
 import CanvasToolbar from './workflow-canvas/CanvasToolbar';
 import BasicInfoDrawer from './workflow-canvas/BasicInfoDrawer';
 import AiGenerateDialog from './workflow-canvas/AiGenerateDialog';
+import Minimap from './workflow-canvas/Minimap';
 import { autoLayout, type NodePositions } from './workflow-canvas/canvas-utils';
 import { useCanvasViewport } from './workflow-canvas/useCanvasViewport';
 
@@ -57,6 +58,23 @@ const WorkflowEditorPage: React.FC = () => {
 
   // 画布 viewport ref
   const viewportRef = useRef<ReturnType<typeof useCanvasViewport> | null>(null);
+
+  // 画布容器尺寸（Minimap 需要）
+  const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
+  const mainRef = useRef<HTMLDivElement>(null);
+
+  // 跟踪画布容器尺寸
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setContainerSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // ── 数据加载（保留原有逻辑） ──
   useEffect(() => {
@@ -223,6 +241,30 @@ const WorkflowEditorPage: React.FC = () => {
     setActiveEdgeIndex(null);
   }, []);
 
+  // ── 拖拽连线完成 → 更新 inputFrom ──
+  const handleConnect = useCallback((sourceIndex: number, targetIndex: number) => {
+    // sourceIndex 是输出端口所属节点索引，targetIndex 是输入端口所属节点索引
+    // 对于开始节点 (sourceIndex = -1)，目标步骤的 inputFrom 应该清空（默认就是从开始节点来的）
+    if (sourceIndex === -1) {
+      updateStep(targetIndex, 'inputFrom', undefined);
+    } else {
+      // 找到 sourceIndex 对应步骤的 agentId，设为目标步骤的 inputFrom
+      const sourceStep = steps[sourceIndex];
+      if (sourceStep?.agentId) {
+        updateStep(targetIndex, 'inputFrom', sourceStep.agentId);
+      }
+    }
+  }, [steps, updateStep]);
+
+  // ── 删除连线 → 清除 inputFrom ──
+  const handleDeleteEdge = useCallback((index: number) => {
+    if (index > 0) {
+      updateStep(index, 'inputFrom', undefined);
+      setActiveEdgeIndex(null);
+      setEdgePopover(null);
+    }
+  }, [updateStep]);
+
   return (
     <div className="h-screen flex flex-col bg-white text-gray-900">
       {/* ── Header ── */}
@@ -277,7 +319,7 @@ const WorkflowEditorPage: React.FC = () => {
       </header>
 
       {/* ── Canvas Area ── */}
-      <main className="flex-1 relative overflow-hidden">
+      <main ref={mainRef} className="flex-1 relative overflow-hidden">
         {/* Canvas */}
         <WorkflowCanvas
           steps={steps}
@@ -291,6 +333,8 @@ const WorkflowEditorPage: React.FC = () => {
           onRemoveStep={removeStep}
           onEdgeClick={handleEdgeClick}
           onDoubleClickCanvas={handleDoubleClickCanvas}
+          onConnect={handleConnect}
+          onDeleteEdge={handleDeleteEdge}
           viewportRef={viewportRef}
         />
 
@@ -323,6 +367,15 @@ const WorkflowEditorPage: React.FC = () => {
           onAutoLayout={handleAutoLayout}
           onOpenBasicInfo={() => setShowBasicInfo(true)}
           onOpenAiGenerate={() => setShowAiDialog(true)}
+        />
+
+        {/* Minimap */}
+        <Minimap
+          nodePositions={nodePositions}
+          viewport={viewportRef.current?.viewport ?? { panX: 0, panY: 0, zoom: 1 }}
+          containerSize={containerSize}
+          stepCount={steps.length}
+          onSetPan={(panX, panY) => viewportRef.current?.setPan(panX, panY)}
         />
       </main>
 

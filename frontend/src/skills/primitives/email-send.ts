@@ -4,8 +4,29 @@ import { marked } from 'marked';
 
 const FALLBACK_TO = '';
 
+/** 为 Markdown 转换后的 HTML 标签注入邮件兼容的内联样式 */
+function injectEmailStyles(html: string): string {
+  return html
+    .replace(/<h1/g, '<h1 style="font-size:20px;font-weight:700;color:#4E342E;margin:16px 0 8px;line-height:1.4"')
+    .replace(/<h2/g, '<h2 style="font-size:17px;font-weight:700;color:#5D4037;margin:14px 0 6px;line-height:1.4"')
+    .replace(/<h3/g, '<h3 style="font-size:15px;font-weight:600;color:#6D4C41;margin:12px 0 4px;line-height:1.4"')
+    .replace(/<p/g, '<p style="margin:8px 0;line-height:1.8"')
+    .replace(/<ul/g, '<ul style="margin:8px 0;padding-left:20px"')
+    .replace(/<ol/g, '<ol style="margin:8px 0;padding-left:20px"')
+    .replace(/<li/g, '<li style="margin:4px 0;line-height:1.7"')
+    .replace(/<blockquote/g, '<blockquote style="margin:10px 0;padding:8px 16px;border-left:4px solid #FFCCBC;background:#FFF3E0;color:#5D4037;border-radius:4px"')
+    .replace(/<code/g, '<code style="background:#F5F0EB;padding:2px 6px;border-radius:4px;font-size:13px;color:#D84315;font-family:Menlo,Consolas,monospace"')
+    .replace(/<pre/g, '<pre style="background:#3E2723;color:#FFCCBC;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.5;margin:10px 0"')
+    .replace(/<a /g, '<a style="color:#E65100;text-decoration:underline" ')
+    .replace(/<table/g, '<table style="border-collapse:collapse;width:100%;margin:10px 0"')
+    .replace(/<th/g, '<th style="border:1px solid #E0D6CC;padding:8px 12px;background:#FFF3E0;font-weight:600;text-align:left;font-size:13px"')
+    .replace(/<td/g, '<td style="border:1px solid #E0D6CC;padding:8px 12px;font-size:13px"')
+    .replace(/<hr/g, '<hr style="border:none;border-top:1px dashed #E0D6CC;margin:16px 0"');
+}
+
 function mdToHtml(md: string): string {
-  return marked.parse(md, { async: false }) as string;
+  const raw = marked.parse(md, { async: false }) as string;
+  return injectEmailStyles(raw);
 }
 
 function buildCatEmailHtml(subject: string, bodyHtml: string): string {
