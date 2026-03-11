@@ -201,7 +201,7 @@ function parseJsonToItems(raw: string): Record<string, unknown>[] {
 }
 
 /** API 目标地址 */
-const CRAFT_API_URL = 'https://suminhan.cn/crafts';
+const CRAFT_API_URL = 'https://suminhan.cn/api/crafts';
 
 /** 🛠️ 新增 Craft — 管理员私有
  *  接收 JSON 对象/数组/字符串，直接 POST 到 https://suminhan.cn/crafts 创建 Craft。
