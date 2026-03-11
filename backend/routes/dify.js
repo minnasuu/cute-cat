@@ -287,7 +287,7 @@ Engineer: fix-bug,
 };
 
 // Qwen (通义千问) 调用 — 兼容 OpenAI Chat Completions 格式
-async function callQwen(systemPrompt, userText, maxTokens = 2048) {
+async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
 
@@ -364,9 +364,20 @@ router.post('/skill', optionalAuth, async (req, res) => {
     const systemPrompt = SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
     const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
 
-    // 根据 taskId 动态调整 token 限制（workflow-gen 需要更多输出空间）
-    const TASK_MAX_TOKENS = { 'workflow-gen': 4096 };
-    const maxTokens = TASK_MAX_TOKENS[taskId] || 2048;
+    // 根据 taskId 动态调整 token 限制
+    // 结构化输出类（JSON 格式）需要更大空间防止截断
+    const TASK_MAX_TOKENS = {
+      'workflow-gen': 8192,
+      'mece-analysis': 8192,
+      'scamper-creative': 8192,
+      'six-hats': 8192,
+      'generate-outline': 8192,
+      'content-review': 8192,
+      'recruit-cat': 8192,
+      'team-review': 8192,
+      'cat-training': 8192,
+    };
+    const maxTokens = TASK_MAX_TOKENS[taskId] || 4096;
 
     console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}`);
 

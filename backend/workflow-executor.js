@@ -26,7 +26,7 @@ async function createGeminiClient(apiKey) {
 }
 
 // ─── Qwen 调用 ───
-async function callQwen(systemPrompt, userText, maxTokens = 2048) {
+async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
   const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -58,7 +58,7 @@ async function callQwen(systemPrompt, userText, maxTokens = 2048) {
 }
 
 // ─── Gemini 调用 ───
-async function callGemini(systemPrompt, userText, maxTokens = 2048) {
+async function callGemini(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set');
   const ai = await createGeminiClient(apiKey);
@@ -71,7 +71,7 @@ async function callGemini(systemPrompt, userText, maxTokens = 2048) {
 }
 
 // ─── 通用 AI 调用 ───
-async function callAI(systemPrompt, userText, model, maxTokens = 2048) {
+async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
   const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
   if (selectedModel === 'qwen') return callQwen(systemPrompt, userText, maxTokens);
   return callGemini(systemPrompt, userText, maxTokens);

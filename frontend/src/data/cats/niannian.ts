@@ -4,6 +4,7 @@ import type { Assistant, Skill } from '../types';
 export const niannianSkills: Skill[] = [
   { id: 'send-email', name: '发送邮件', icon: '📧', description: '发送 HTML 格式邮件给指定收件人', input: 'text', output: 'email', provider: 'SMTP/SendGrid', mockResult: '邮件发送成功 → 状态 200' },
   { id: 'task-log', name: '任务日志', icon: '📒', description: '记录和整理任务执行日志', input: 'json', output: 'text', provider: 'Qwen', mockResult: '输出任务日志 (含状态/时间/负责人)' },
+  { id: 'content-review', name: '内容审核', icon: '🛡️', description: '检查内容是否合规、无敏感信息', input: 'text', output: 'json', provider: 'Moderation API', mockResult: '输出审核结果: safe/flagged' },
 ];
 
 export const niannianMessages = [
@@ -11,7 +12,7 @@ export const niannianMessages = [
   '邮件编辑中...',
   '日志整理好了📒',
   '邮件送达率99%! 💌',
-  '通知！通知！',
+  '你的内容违规了，请整改！',
 ];
 
 export const niannian: Assistant = {

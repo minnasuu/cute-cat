@@ -73,7 +73,7 @@ model TeamCat {
   skills       Json
   aiModel      String?
   temperature  Float    @default(0.7)
-  maxTokens    Int      @default(2048)
+  maxTokens    Int      @default(4096)
   accent       String   @default("#8DB889")
   item         String   @default("clipboard")
   messages     String[]

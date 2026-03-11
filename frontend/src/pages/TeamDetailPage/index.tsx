@@ -1240,6 +1240,11 @@ const TeamDetailPage: React.FC = () => {
                                 {step.action}
                               </span>
                             )}
+                            {(step.description||step.prompt) && (
+                              <span className="max-w-25 truncate text-xs text-tertiary">
+                                {(step.description||step.prompt)}
+                              </span> 
+                            )}
                           </div>
 
                           {isCurrent && (

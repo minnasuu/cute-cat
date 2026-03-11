@@ -37,6 +37,11 @@ import meetingNotes from './meeting-notes';
 // --- 小白 (milk) ---
 import contentReview from './content-review';
 
+// --- 发发 (creative) ---
+import meceAnalysis from './mece-analysis';
+import scamperCreative from './scamper-creative';
+import sixHats from './six-hats';
+
 // --- 发发 (hr) ---
 import recruitCat from './recruit-cat';
 import teamReview from './team-review';
@@ -92,6 +97,7 @@ const handlers: SkillHandler[] = [
 
   taskLog, meetingNotes,
  contentReview,
+  meceAnalysis, scamperCreative, sixHats,
   recruitCat, teamReview, catTraining,
   viewArticles, createArticle, viewCrafts, createCraft,
   aiChat, ...primitiveSkills,

@@ -284,12 +284,12 @@ export const skillGroups: SkillGroup[] = [
     catId: 'designer',
   },
   {
-    id: 'qa',
-    name: '质量审核员',
-    icon: '🔎',
-    color: '#80CBC4',
-    description: '质量检测、内容审核、回归测试等质量保障能力',
-    skillIds: ['content-review'],
+    id: 'creative',
+    name: '创意策划师',
+    icon: '💡',
+    color: '#FFB74D',
+    description: 'MECE 拆解、SCAMPER 改造、六顶思考帽等 AI 驱动的头脑风暴方法论',
+    skillIds: ['mece-analysis', 'scamper-creative', 'six-hats'],
     catId: 'reviewer',
   },
   {
