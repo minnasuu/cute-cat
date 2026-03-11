@@ -91,8 +91,17 @@ const emailSend: PrimitiveHandler = {
       if (bodyParam) {
         text = bodyParam;
       } else {
-        html = (input.html as string) || '';
-        text = (input.notes as string) || (input.text as string) || (input.summary as string) || '';
+        const rawHtml = (input.html as string) || '';
+        // 检测 input.html 是否真的是 HTML（含标签），还是实际是 Markdown 字符串
+        if (rawHtml && /<[a-z][\s\S]*>/i.test(rawHtml)) {
+          html = rawHtml;
+        } else if (rawHtml) {
+          // input.html 字段实际是 Markdown 文本，当作正文走 mdToHtml 转换
+          text = rawHtml;
+        }
+        if (!text) {
+          text = (input.notes as string) || (input.text as string) || (input.summary as string) || '';
+        }
       }
     }
 

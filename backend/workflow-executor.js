@@ -158,6 +158,87 @@ async function sendEmailDirect({ to, subject, html, text }) {
   return { success: true, messageId: info.messageId, to, subject };
 }
 
+// ─── Markdown → HTML 轻量转换（后端邮件用，不依赖外部库） ───
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function simpleMarkdownToHtml(md) {
+  if (!md) return '';
+  let html = md;
+
+  // 代码块 ```...```
+  html = html.replace(/```[\s\S]*?```/g, (m) => {
+    const code = m.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
+    return `<pre style="background:#3E2723;color:#FFCCBC;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.5;margin:10px 0"><code>${escapeHtml(code)}</code></pre>`;
+  });
+
+  // 行内代码 `...`
+  html = html.replace(/`([^`]+)`/g, '<code style="background:#F5F0EB;padding:2px 6px;border-radius:4px;font-size:13px;color:#D84315;font-family:Menlo,Consolas,monospace">$1</code>');
+
+  // 标题 h1-h3
+  html = html.replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:600;color:#6D4C41;margin:12px 0 4px;line-height:1.4">$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:700;color:#5D4037;margin:14px 0 6px;line-height:1.4">$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1 style="font-size:20px;font-weight:700;color:#4E342E;margin:16px 0 8px;line-height:1.4">$1</h1>');
+
+  // 粗体、斜体
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // 无序列表（连续的 - 行合并为 <ul>）
+  html = html.replace(/(^- .+$(\n^- .+$)*)/gm, (block) => {
+    const items = block.split('\n').map(l => `<li style="margin:4px 0;line-height:1.7">${l.replace(/^- /, '')}</li>`).join('');
+    return `<ul style="margin:8px 0;padding-left:20px">${items}</ul>`;
+  });
+
+  // 有序列表（连续的 1. 行合并为 <ol>）
+  html = html.replace(/(^\d+\. .+$(\n^\d+\. .+$)*)/gm, (block) => {
+    const items = block.split('\n').map(l => `<li style="margin:4px 0;line-height:1.7">${l.replace(/^\d+\. /, '')}</li>`).join('');
+    return `<ol style="margin:8px 0;padding-left:20px">${items}</ol>`;
+  });
+
+  // 分隔线
+  html = html.replace(/^---$/gm, '<hr style="border:none;border-top:1px dashed #E0D6CC;margin:16px 0">');
+
+  // 链接 [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a style="color:#E65100;text-decoration:underline" href="$2">$1</a>');
+
+  // 段落：将剩余的非空行包裹为 <p>（跳过已转为 HTML 标签的行）
+  html = html.split('\n').map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('<')) return trimmed;
+    return `<p style="margin:8px 0;line-height:1.8">${trimmed}</p>`;
+  }).join('\n');
+
+  return html;
+}
+
+function buildCatEmailHtml(subject, bodyHtml) {
+  const now = new Date().toLocaleString('zh-CN');
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0 auto; padding: 24px; background: #FFF9F0;">
+      <div style="background: linear-gradient(135deg, #FFE0B2, #FFCCBC); border-radius: 16px; padding: 24px 28px; margin-bottom: 20px;">
+        <h2 style="margin: 0 0 6px; color: #4E342E; font-size: 20px;">${subject}</h2>
+        <p style="margin: 0; color: #8D6E63; font-size: 13px;">${now}</p>
+      </div>
+      <div style="padding: 0 4px; margin-bottom: 4px;">
+        <p style="color: #5D4037; font-size: 15px; margin: 0;">老大！</p>
+      </div>
+      <div style="background: #fff; border: 1px solid #E0D6CC; border-radius: 12px; padding: 24px; line-height: 1.9; color: #333; font-size: 14px;">
+        ${bodyHtml}
+      </div>
+      <div style="text-align: right; padding: 16px 8px 0; color: #8D6E63; font-size: 13px; line-height: 1.6;">
+        <p style="margin: 0;">🐾 喵~</p>
+        <p style="margin: 4px 0 0;">你的猫咪军团 发出</p>
+      </div>
+      <div style="text-align: center; margin-top: 20px; padding-top: 12px; border-top: 1px dashed #E0D6CC;">
+        <p style="color: #BCAAA4; font-size: 11px; margin: 0;">🏠 来自 CuCaTopia.com ✨</p>
+      </div>
+    </div>
+  `;
+}
+
 // ─── Skill → 系统提示词 映射 ───
 const SKILL_PROMPTS = {
   'ai-chat': '你是一只友善的猫猫助手 CAT，团队的万能基础成员。请根据用户输入完成对应的文本任务。用简洁清晰的中文回答。',
@@ -251,6 +332,55 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
       return { success: true, data, summary: `成功爬取 ${successCount} 条资讯`, status: 'success' };
     }
 
+    // ─── Craft 类技能（直接传递数据，不走 AI 通道） ───
+    if (skillId === 'create-craft' || skillId === 'view-crafts') {
+      // create-craft / view-crafts 是前端技能，后端无 /api/crafts 路由
+      // 在工作流中作为数据传递节点：直接将上游 craft 数据原样输出
+      // 这样下游步骤可以获取到完整的 craft 对象
+      const p = merged._params || {};
+
+      // 尝试从上游结果中提取 craft 数据
+      let craftData = null;
+      if (merged.name && merged.htmlCode) {
+        // 上游直接传递了 craft 对象字段
+        const { _action, _params, ...rest } = merged;
+        craftData = rest;
+      } else if (typeof p.jsonData === 'string' || typeof p.content === 'string' || typeof p.text === 'string' || typeof merged.text === 'string') {
+        // 上游传递了 JSON 字符串
+        const raw = String(p.jsonData || p.content || p.text || merged.text || '');
+        try {
+          // 尝试从文本中提取 JSON
+          let jsonStr = raw.trim();
+          // 去掉 markdown 代码块包裹
+          const codeMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+          if (codeMatch) jsonStr = codeMatch[1].trim();
+          // 尝试找到 JSON 对象/数组
+          const start = Math.min(
+            jsonStr.indexOf('{') >= 0 ? jsonStr.indexOf('{') : Infinity,
+            jsonStr.indexOf('[') >= 0 ? jsonStr.indexOf('[') : Infinity
+          );
+          if (start < Infinity) {
+            const openChar = jsonStr[start];
+            const closeChar = openChar === '{' ? '}' : ']';
+            const end = jsonStr.lastIndexOf(closeChar);
+            if (end > start) jsonStr = jsonStr.substring(start, end + 1);
+          }
+          craftData = JSON.parse(jsonStr);
+        } catch {
+          // JSON 解析失败，将原始文本作为 summary 传递
+          return { success: true, data: { text: raw }, summary: `Craft 数据（待解析）: ${raw.substring(0, 200)}...`, status: 'success' };
+        }
+      }
+
+      if (craftData) {
+        const items = Array.isArray(craftData) ? craftData : [craftData];
+        const names = items.map(i => i.name || '未命名').join(', ');
+        return { success: true, data: craftData, summary: `Craft 数据已准备: ${names}`, status: 'success' };
+      }
+
+      return { success: true, data: merged, summary: 'Craft 数据传递完成', status: 'success' };
+    }
+
     // ─── 邮件类技能 ───
     if (skillId === 'send-email') {
       const p = merged._params || {};
@@ -262,7 +392,10 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
       const text = p.body || merged.notes || merged.text || merged.summary || '这是一封来自猫猫团队的邮件 🐱';
       if (!to) return { success: false, data: null, summary: '未配置收件人邮箱', status: 'error' };
       try {
-        const result = await sendEmailDirect({ to, subject, html: '', text });
+        // 将 Markdown 正文转为带内联样式的 HTML 邮件
+        const bodyHtml = simpleMarkdownToHtml(text);
+        const html = buildCatEmailHtml(subject, bodyHtml);
+        const result = await sendEmailDirect({ to, subject, html, text });
         return { success: true, data: { messageId: result.messageId, to, subject }, summary: `邮件已发送至 ${to}`, status: 'success' };
       } catch (err) {
         return { success: false, data: null, summary: `邮件发送失败: ${err.message}`, status: 'error' };

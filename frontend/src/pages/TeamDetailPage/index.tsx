@@ -6,6 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { apiClient } from '../../utils/apiClient';
 import { getSkillHandler } from '../../skills';
 import type { SkillResult } from '../../skills/types';
+import type { WorkflowStep } from '../../data/types';
+import { resolveInputFromIndex } from '../../data/types';
 import CatSVG, { CatColors } from '../../components/CatSVG';
 import CatMiniAvatar from '../../components/CatMiniAvatar';
 import CatLogo from '../../components/CatLogo';
@@ -80,13 +82,13 @@ const TeamDetailPage: React.FC = () => {
   const [executingWorkflow, setExecutingWorkflow] = useState<TeamWorkflow | null>(null);
   const [isPreparing, setIsPreparing] = useState(false); // 预览确认阶段（尚未执行）
   const [editableStepParams, setEditableStepParams] = useState<Map<number, Record<string, unknown>>>(new Map()); // 每步可编辑参数
-  const [runningStepIndex, setRunningStepIndex] = useState(-1);
+  const [runningStepIndices, setRunningStepIndices] = useState<Set<number>>(new Set()); // 当前并行执行中的步骤索引集合
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const completedStepsRef = useRef<number[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [currentDialog, setCurrentDialog] = useState('');
   const [stepResults, setStepResults] = useState<Map<number, SkillResult>>(new Map());
   const stepResultsRef = useRef<Map<number, SkillResult>>(new Map());
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentRunIdRef = useRef<string | null>(null); // 当前手动执行的 run 记录 ID
   const runStartTimeRef = useRef<number>(0);
   // 每步耗时: { start: 开始时间戳ms, duration: 耗时ms(完成后填入) }
@@ -96,6 +98,9 @@ const TeamDetailPage: React.FC = () => {
   const [totalElapsed, setTotalElapsed] = useState(0);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [viewingRun, setViewingRun] = useState<WorkflowRunRecord | null>(null); // 查看历史执行详情
+  // DAG 层级信息
+  const [dagLayers, setDagLayers] = useState<number[][]>([]);
+  const [dagParentIndex, setDagParentIndex] = useState<number[]>([]);
 
   /** 点击历史记录，用 workflowPanel 展示执行详情 */
   const handleViewRunDetail = (run: WorkflowRunRecord) => {
@@ -105,7 +110,7 @@ const TeamDetailPage: React.FC = () => {
     setViewingRun(run);
     setExecutingWorkflow(wf);
     setIsRunning(false);
-    setRunningStepIndex(-1);
+    setRunningStepIndices(new Set());
     setCurrentDialog('');
 
     const runSteps = Array.isArray(run.steps) ? run.steps : [];
@@ -169,7 +174,7 @@ const TeamDetailPage: React.FC = () => {
     setExecutingWorkflow(null);
     setIsPreparing(false);
     setEditableStepParams(new Map());
-    setRunningStepIndex(-1);
+    setRunningStepIndices(new Set());
     setCompletedSteps([]);
     setIsRunning(false);
     setCurrentDialog('');
@@ -264,7 +269,7 @@ const TeamDetailPage: React.FC = () => {
     setExecutingWorkflow(wf);
     setIsPreparing(true);
     setEditableStepParams(paramsMap);
-    setRunningStepIndex(-1);
+    setRunningStepIndices(new Set());
     setCompletedSteps([]);
     setIsRunning(false);
     setCurrentDialog('');
@@ -275,6 +280,8 @@ const TeamDetailPage: React.FC = () => {
     setStepTimings(emptyTimings);
     stepTimingsRef.current = emptyTimings;
     setTotalElapsed(0);
+    setDagLayers([]);
+    setDagParentIndex([]);
   };
 
   /** 更新某步某参数 */
@@ -307,7 +314,30 @@ const TeamDetailPage: React.FC = () => {
 
     setExecutingWorkflow(wf);
     setIsPreparing(false);
-    setRunningStepIndex(0);
+
+    // ── 构建 DAG：解析每个步骤的上游依赖索引和拓扑层级 ──
+    const steps = wf.steps as WorkflowStep[];
+    const pIndex: number[] = [];
+    for (let i = 0; i < steps.length; i++) {
+      pIndex.push(resolveInputFromIndex(steps, i, steps[i].inputFrom));
+    }
+    // 计算拓扑层级
+    const depth: number[] = new Array(steps.length).fill(0);
+    for (let i = 0; i < steps.length; i++) {
+      depth[i] = pIndex[i] >= 0 ? depth[pIndex[i]] + 1 : 1;
+    }
+    const maxDepth = Math.max(...depth, 0);
+    const layers: number[][] = [];
+    for (let d = 0; d <= maxDepth; d++) layers.push([]);
+    for (let i = 0; i < steps.length; i++) layers[depth[i]].push(i);
+
+    setDagParentIndex(pIndex);
+    setDagLayers(layers);
+
+    // 启动第一层步骤（depth=1）
+    const firstLayer = layers[1] || [];
+    completedStepsRef.current = [];
+    setRunningStepIndices(new Set(firstLayer));
     setIsRunning(true);
     runStartTimeRef.current = Date.now();
     setTotalElapsed(0);
@@ -340,7 +370,7 @@ const TeamDetailPage: React.FC = () => {
     setExecutingWorkflow(null);
     setIsPreparing(false);
     setEditableStepParams(new Map());
-    setRunningStepIndex(-1);
+    setRunningStepIndices(new Set());
     setCompletedSteps([]);
     setIsRunning(false);
     setCurrentDialog('');
@@ -351,6 +381,8 @@ const TeamDetailPage: React.FC = () => {
     setStepTimings(emptyTimings);
     stepTimingsRef.current = emptyTimings;
     setTotalElapsed(0);
+    setDagLayers([]);
+    setDagParentIndex([]);
     if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
     loadTeam();
     loadWorkflowRuns();
@@ -379,169 +411,183 @@ const TeamDetailPage: React.FC = () => {
     currentRunIdRef.current = null;
   };
 
-  // 执行步骤逻辑
+  // ── DAG 分层并行执行引擎 ──
   useEffect(() => {
-    if (!isRunning || !executingWorkflow || runningStepIndex < 0) return;
-    if (runningStepIndex >= executingWorkflow.steps.length) {
-      setIsRunning(false);
-      setRunningStepIndex(-1);
-      setCurrentDialog('');
-      return;
-    }
+    if (!isRunning || !executingWorkflow || runningStepIndices.size === 0) return;
 
-    // 记录当前步骤开始时间
-    const stepStartTime = Date.now();
-    setStepTimings(prev => {
-      const next = new Map(prev);
-      next.set(runningStepIndex, { start: stepStartTime });
-      stepTimingsRef.current = next;
-      return next;
-    });
-
-    const step = executingWorkflow.steps[runningStepIndex];
-    const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-    const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+    const steps = executingWorkflow.steps;
     const dialogs = workingDialogs;
     setCurrentDialog(dialogs[0]);
 
-    const handler = getSkillHandler(step.skillId);
-    // 构建 skillInput：合并上游步骤输出 + 当前步骤的 action（任务指令）+ params 配置
-    let skillInput: unknown = undefined;
-    {
-      const merged: Record<string, unknown> = {};
-      // 合并前序步骤的输出数据
-      if (runningStepIndex > 0) {
-        for (let i = 0; i < runningStepIndex; i++) {
-          const prev = stepResultsRef.current.get(i)?.data;
-          if (prev && typeof prev === 'object') Object.assign(merged, prev);
+    // 为当前层的每个步骤创建执行 Promise
+    const cleanups: (() => void)[] = [];
+
+    const layerPromises = Array.from(runningStepIndices).map(async (stepIdx) => {
+      const step = steps[stepIdx];
+      const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
+      const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+
+      // 记录步骤开始时间
+      const stepStartTime = Date.now();
+      setStepTimings(prev => {
+        const next = new Map(prev);
+        next.set(stepIdx, { start: stepStartTime });
+        stepTimingsRef.current = next;
+        return next;
+      });
+
+      const handler = getSkillHandler(step.skillId);
+
+      // 构建 skillInput：合并上游步骤输出 + action + params
+      let skillInput: unknown = undefined;
+      {
+        const merged: Record<string, unknown> = {};
+        // 合并上游步骤输出（按 DAG 依赖关系，只取直接上游的结果）
+        const parentIdx = dagParentIndex[stepIdx] ?? (stepIdx === 0 ? -1 : stepIdx - 1);
+        if (parentIdx >= 0) {
+          const prev = stepResultsRef.current.get(parentIdx)?.data;
+          if (prev && typeof prev === 'object') Object.assign(merged, prev as Record<string, unknown>);
         }
-      }
-      // 将步骤的 action 作为任务指令注入，让 AI 技能知道本步骤该做什么
-      if (step.action) {
-        merged._action = step.action;
-      }
-      // 将步骤的用户参数配置也注入（支持 valueSource 来源解析）
-      if (step.params && step.params.length > 0) {
-        const paramValues: Record<string, unknown> = {};
-        for (const p of step.params) {
-          const source = p.valueSource || 'static';
-          if (source === 'upstream') {
-            // 从上游步骤输出中自动提取主体内容（无需指定字段名）
-            let found: unknown = undefined;
-            for (let i = runningStepIndex - 1; i >= 0; i--) {
-              const prevData = stepResultsRef.current.get(i)?.data;
-              if (prevData != null) {
-                if (typeof prevData === 'string') {
-                  found = prevData;
-                } else if (typeof prevData === 'object') {
-                  const d = prevData as Record<string, unknown>;
-                  // 优先取常见主体字段
-                  found = d.text ?? d.summary ?? d.notes ?? d.content ?? d.result ?? d.html ?? d.body ?? d.data;
-                  // 如果没有匹配到已知字段，将整个对象 JSON 序列化
-                  if (found === undefined) found = JSON.stringify(prevData);
+        // 将步骤的 action 作为任务指令注入
+        if (step.action) merged._action = step.action;
+        // 参数配置注入（支持 valueSource 来源解析）
+        if (step.params && step.params.length > 0) {
+          const paramValues: Record<string, unknown> = {};
+          for (const p of step.params) {
+            const source = p.valueSource || 'static';
+            if (source === 'upstream') {
+              let found: unknown = undefined;
+              // 从上游依赖链中提取
+              let searchIdx = parentIdx;
+              while (searchIdx >= 0 && found === undefined) {
+                const prevData = stepResultsRef.current.get(searchIdx)?.data;
+                if (prevData != null) {
+                  if (typeof prevData === 'string') {
+                    found = prevData;
+                  } else if (typeof prevData === 'object') {
+                    const d = prevData as Record<string, unknown>;
+                    found = d.text ?? d.summary ?? d.notes ?? d.content ?? d.result ?? d.html ?? d.body ?? d.data;
+                    if (found === undefined) found = JSON.stringify(prevData);
+                  }
                 }
-                if (found !== undefined) break;
+                // 继续向上游追溯
+                searchIdx = dagParentIndex[searchIdx] ?? -1;
               }
-            }
-            // 回退到 static value 或 defaultValue
-            paramValues[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
-          } else if (source === 'system') {
-            // 从系统上下文注入
-            const sysKey = p.systemKey || '';
-            if (sysKey === 'user.email') {
-              paramValues[p.key] = user?.email || '';
-            } else if (sysKey === 'user.name') {
-              paramValues[p.key] = user?.nickname || '';
-            } else if (sysKey === 'workflow.name') {
-              paramValues[p.key] = executingWorkflow?.name || '';
-            } else if (sysKey === 'timestamp') {
-              paramValues[p.key] = new Date().toISOString();
+              paramValues[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
+            } else if (source === 'system') {
+              const sysKey = p.systemKey || '';
+              if (sysKey === 'user.email') paramValues[p.key] = user?.email || '';
+              else if (sysKey === 'user.name') paramValues[p.key] = user?.nickname || '';
+              else if (sysKey === 'workflow.name') paramValues[p.key] = executingWorkflow?.name || '';
+              else if (sysKey === 'timestamp') paramValues[p.key] = new Date().toISOString();
+              else paramValues[p.key] = p.value ?? p.defaultValue;
             } else {
-              // 未知 system key，回退到 static
-              paramValues[p.key] = p.value ?? p.defaultValue;
+              if (p.value !== undefined) paramValues[p.key] = p.value;
+              else if (p.defaultValue !== undefined) paramValues[p.key] = p.defaultValue;
             }
-          } else {
-            // static：取用户填写的值或默认值
-            if (p.value !== undefined) paramValues[p.key] = p.value;
-            else if (p.defaultValue !== undefined) paramValues[p.key] = p.defaultValue;
           }
+          if (Object.keys(paramValues).length > 0) merged._params = paramValues;
         }
-        if (Object.keys(paramValues).length > 0) merged._params = paramValues;
+        skillInput = Object.keys(merged).length > 0 ? merged : undefined;
       }
-      skillInput = Object.keys(merged).length > 0 ? merged : undefined;
-    }
 
-    const executePromise = handler
-      ? handler.execute({ agentId: step.agentId, input: skillInput, timestamp: new Date().toISOString() })
-      : Promise.resolve<SkillResult>({
-          success: true, data: null,
-          summary: skill?.mockResult ?? step.action ?? '执行完成',
-          status: 'success',
-        });
+      const executePromise = handler
+        ? handler.execute({ agentId: step.agentId, input: skillInput, timestamp: new Date().toISOString() })
+        : Promise.resolve<SkillResult>({
+            success: true, data: null,
+            summary: skill?.mockResult ?? step.action ?? '执行完成',
+            status: 'success',
+          });
 
-    const midTimer = setTimeout(() => setCurrentDialog(dialogs[1]), STEP_DURATION * 0.4);
+      // 等待最小展示时间
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, STEP_DURATION);
+        cleanups.push(() => clearTimeout(t));
+      });
 
-    timerRef.current = setTimeout(() => {
-      executePromise.then((result) => {
-        // 记录步骤耗时
+      try {
+        const result = await executePromise;
         const stepDuration = Date.now() - stepStartTime;
         setStepTimings(prev => {
           const next = new Map(prev);
-          next.set(runningStepIndex, { start: stepStartTime, duration: stepDuration });
+          next.set(stepIdx, { start: stepStartTime, duration: stepDuration });
           stepTimingsRef.current = next;
           return next;
         });
-
-        setStepResults((prev) => {
+        setStepResults(prev => {
           const next = new Map(prev);
-          next.set(runningStepIndex, result);
+          next.set(stepIdx, result);
           stepResultsRef.current = next;
           return next;
         });
-        setCurrentDialog(result.summary || dialogs[2]);
-        const failed = result.status === 'error' || result.success === false;
-        setTimeout(() => {
-          setCompletedSteps(prev => [...prev, runningStepIndex]);
-          if (failed) {
-            // 步骤失败 → 更新 run 记录为 failed
-            updateRunRecord('failed');
-            setIsRunning(false);
-            setRunningStepIndex(-1);
-          } else {
-            setRunningStepIndex(prev => prev + 1);
-          }
-        }, 500);
-      }).catch(() => {
-        // 记录步骤耗时（失败场景）
+        return { stepIdx, result, failed: result.status === 'error' || result.success === false };
+      } catch {
         const stepDuration = Date.now() - stepStartTime;
         setStepTimings(prev => {
           const next = new Map(prev);
-          next.set(runningStepIndex, { start: stepStartTime, duration: stepDuration });
+          next.set(stepIdx, { start: stepStartTime, duration: stepDuration });
           stepTimingsRef.current = next;
           return next;
         });
-
-        setStepResults((prev) => {
+        const errResult: SkillResult = { success: false, data: null, summary: '执行出错', status: 'error' };
+        setStepResults(prev => {
           const next = new Map(prev);
-          next.set(runningStepIndex, { success: false, data: null, summary: '执行出错', status: 'error' });
+          next.set(stepIdx, errResult);
           stepResultsRef.current = next;
           return next;
         });
-        setCurrentDialog('出错了...');
-        setTimeout(() => {
-          setCompletedSteps(prev => [...prev, runningStepIndex]);
+        return { stepIdx, result: errResult, failed: true };
+      }
+    });
+
+    // 当前层所有步骤执行完毕后，决定下一步
+    Promise.all(layerPromises).then(results => {
+      const completedIndices = results.map(r => r.stepIdx);
+      const hasFailed = results.some(r => r.failed);
+
+      setCurrentDialog(hasFailed ? '出错了...' : (results[0]?.result.summary || dialogs[2]));
+
+      setTimeout(() => {
+        setCompletedSteps(prev => {
+          const next = [...prev, ...completedIndices];
+          completedStepsRef.current = next;
+          return next;
+        });
+
+        if (hasFailed) {
           updateRunRecord('failed');
           setIsRunning(false);
-          setRunningStepIndex(-1);
-        }, 500);
-      });
-    }, STEP_DURATION);
+          setRunningStepIndices(new Set());
+          return;
+        }
+
+        // 找到下一层可执行的步骤（所有上游依赖都已完成的步骤）
+        const allCompleted = new Set([...completedStepsRef.current, ...completedIndices]);
+        const nextSteps: number[] = [];
+        for (let i = 0; i < steps.length; i++) {
+          if (allCompleted.has(i)) continue;
+          // 检查上游依赖是否已完成
+          const parentIdx = dagParentIndex[i] ?? (i === 0 ? -1 : i - 1);
+          if (parentIdx < 0 || allCompleted.has(parentIdx)) {
+            nextSteps.push(i);
+          }
+        }
+
+        if (nextSteps.length > 0) {
+          setRunningStepIndices(new Set(nextSteps));
+        } else {
+          // 所有步骤都已完成
+          setIsRunning(false);
+          setRunningStepIndices(new Set());
+          setCurrentDialog('');
+        }
+      }, 500);
+    });
 
     return () => {
-      clearTimeout(midTimer);
-      if (timerRef.current) clearTimeout(timerRef.current);
+      cleanups.forEach(fn => fn());
     };
-  }, [isRunning, runningStepIndex, executingWorkflow, team]);
+  }, [isRunning, runningStepIndices, executingWorkflow, team]);
 
   const allDone = executingWorkflow && !isRunning && completedSteps.length === executingWorkflow.steps.length;
 
@@ -1198,117 +1244,155 @@ const TeamDetailPage: React.FC = () => {
                 </div>
               </div>
             ) : (
-              /* ── 执行态 / 历史查看态 ── */
+              /* ── 执行态 / 历史查看态（DAG 分层布局） ── */
               <div className="stage-body">
                 <div className="pipeline">
-                  {executingWorkflow.steps.map((step: any, i: number) => {
-                    const cat = team.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-                    const skill = cat?.skills.find((s: any) => s.id === step.skillId);
-                    const isCompleted = completedSteps.includes(i);
-                    const isCurrent = runningStepIndex === i;
-                    const isPending = !isCompleted && !isCurrent;
-                    const statusClass = isCompleted ? 'done' : isCurrent ? 'active' : 'waiting';
-                    const result = stepResults.get(i);
-                    const resultStatus = result?.status ?? 'success';
-                    const timing = stepTimings.get(i);
-                    const stepDurationSec = timing?.duration != null ? (timing.duration / 1000).toFixed(1) : null;
+                  {(() => {
+                    // 计算 DAG 层级（执行态用已有 dagLayers，历史查看态需临时计算）
+                    const steps = executingWorkflow.steps as WorkflowStep[];
+                    let layers: number[][];
+                    if (dagLayers.length > 0) {
+                      layers = dagLayers;
+                    } else {
+                      // 历史查看态：临时计算层级
+                      const pIdx: number[] = [];
+                      for (let i = 0; i < steps.length; i++) {
+                        pIdx.push(resolveInputFromIndex(steps, i, steps[i].inputFrom));
+                      }
+                      const dep: number[] = new Array(steps.length).fill(0);
+                      for (let i = 0; i < steps.length; i++) {
+                        dep[i] = pIdx[i] >= 0 ? dep[pIdx[i]] + 1 : 1;
+                      }
+                      const mxDep = Math.max(...dep, 0);
+                      layers = [];
+                      for (let d = 0; d <= mxDep; d++) layers.push([]);
+                      for (let i = 0; i < steps.length; i++) layers[dep[i]].push(i);
+                    }
 
-                    return (
-                      <React.Fragment key={i}>
-                        <div className={`pipeline-node ${statusClass}`}>
-                          {isCurrent && (
-                            <div className="cat-bubble show">
-                              <span className="bubble-text">{currentDialog}</span>
+                    // 过滤空层
+                    const nonEmptyLayers = layers.filter(l => l.length > 0);
+
+                    return nonEmptyLayers.map((layer, layerIdx) => (
+                      <React.Fragment key={`layer-${layerIdx}`}>
+                        {/* 层间箭头（非首层） */}
+                        {layerIdx > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0' }}>
+                            <div className={`pipeline-arrow ${layer.every(i => completedSteps.includes(i)) || nonEmptyLayers[layerIdx - 1].every(i => completedSteps.includes(i)) ? 'done' : ''}`}>
+                              <div className="arrow-line" />
+                              <div className="arrow-head">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
                             </div>
-                          )}
-
-                          <div className={`cat-avatar ${isCurrent ? 'working' : ''}`}>
-                            {cat && <CatSVG colors={cat.catColors} className="pipeline-cat" />}
                           </div>
+                        )}
 
-                          <div className="node-info">
-                            <span className="node-name" style={{ color: cat?.accent }}>
-                              {cat?.name ?? step.agentId}
-                            </span>
-                            {skill && (
-                              <span className="node-skill">
-                                {skill.icon} {skill.name}
-                              </span>
-                            )}
-                            {!skill && step.action && (
-                              <span className="node-skill">
-                                {step.action}
-                              </span>
-                            )}
-                            {(step.description||step.prompt) && (
-                              <span className="max-w-25 truncate text-xs text-tertiary">
-                                {(step.description||step.prompt)}
-                              </span> 
-                            )}
-                          </div>
+                        {/* 本层步骤：单步居中，多步水平并排 */}
+                        <div style={{
+                          display: 'flex',
+                          gap: 12,
+                          justifyContent: 'center',
+                          alignItems: 'flex-start',
+                          flexWrap: 'wrap',
+                        }}>
+                          {layer.map(i => {
+                            const step = steps[i];
+                            const cat = team.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
+                            const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+                            const isCompleted = completedSteps.includes(i);
+                            const isCurrent = runningStepIndices.has(i);
+                            const isPending = !isCompleted && !isCurrent;
+                            const statusClass = isCompleted ? 'done' : isCurrent ? 'active' : 'waiting';
+                            const result = stepResults.get(i);
+                            const resultStatus = result?.status ?? 'success';
+                            const timing = stepTimings.get(i);
+                            const stepDurationSec = timing?.duration != null ? (timing.duration / 1000).toFixed(1) : null;
 
-                          {isCurrent && (
-                            <div className="node-progress">
-                              <div className="node-progress-bar" style={{ animationDuration: `${STEP_DURATION}ms` }} />
-                            </div>
-                          )}
-                           {stepDurationSec && (
+                            return (
+                              <div
+                                key={i}
+                                className={`pipeline-node ${statusClass}`}
+                                style={layer.length > 1 ? { flex: '1 1 0', minWidth: 0, maxWidth: 280 } : undefined}
+                              >
+                                {isCurrent && (
+                                  <div className="cat-bubble show">
+                                    <span className="bubble-text">{currentDialog}</span>
+                                  </div>
+                                )}
+
+                                <div className={`cat-avatar ${isCurrent ? 'working' : ''}`}>
+                                  {cat && <CatSVG colors={cat.catColors} className="pipeline-cat" />}
+                                </div>
+
+                                <div className="node-info">
+                                  <span className="node-name" style={{ color: cat?.accent }}>
+                                    {cat?.name ?? step.agentId}
+                                  </span>
+                                  {skill && (
+                                    <span className="node-skill">
+                                      {skill.icon} {skill.name}
+                                    </span>
+                                  )}
+                                  {!skill && step.action && (
+                                    <span className="node-skill">
+                                      {step.action}
+                                    </span>
+                                  )}
+                                  {((step as any).description || (step as any).prompt) && (
+                                    <span className="max-w-25 truncate text-xs text-tertiary">
+                                      {(step as any).description || (step as any).prompt}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {isCurrent && (
+                                  <div className="node-progress">
+                                    <div className="node-progress-bar" style={{ animationDuration: `${STEP_DURATION}ms` }} />
+                                  </div>
+                                )}
+                                {stepDurationSec && (
                                   <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
                                     ⏱ {stepDurationSec}s
                                   </span>
                                 )}
 
-                          {isCompleted && result && (
-                            <div className={`node-result status-${resultStatus}`}>
-                              <div className="node-result-header">
-                                {resultStatus === 'success' && '✅'}
-                                {resultStatus === 'warning' && '⚠️'}
-                                {resultStatus === 'error' && '❌'}
-                                <span className="node-result-status">
-                                  {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
-                                </span>
+                                {isCompleted && result && (
+                                  <div className={`node-result status-${resultStatus}`}>
+                                    <div className="node-result-header">
+                                      {resultStatus === 'success' && '✅'}
+                                      {resultStatus === 'warning' && '⚠️'}
+                                      {resultStatus === 'error' && '❌'}
+                                      <span className="node-result-status">
+                                        {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
+                                      </span>
+                                    </div>
+                                    {result.summary && (
+                                      <div className="node-result-summary markdown-body">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                          {result.summary}
+                                        </ReactMarkdown>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {!isCompleted && skill && (
+                                  <div className="node-io">
+                                    <span className="io-tag io-in">{skill.input}</span>
+                                    <span className="io-arrow">→</span>
+                                    <span className="io-tag io-out">{skill.output}</span>
+                                  </div>
+                                )}
+
+                                {isPending && <div className="node-dim" />}
                               </div>
-                              {result.summary && (
-                                <div className="node-result-summary markdown-body">
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                    {result.summary}
-                                  </ReactMarkdown>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {!isCompleted && skill && (
-                            <div className="node-io">
-                              <span className="io-tag io-in">{skill.input}</span>
-                              <span className="io-arrow">→</span>
-                              <span className="io-tag io-out">{skill.output}</span>
-                            </div>
-                          )}
-
-                          {isPending && <div className="node-dim" />}
+                            );
+                          })}
                         </div>
-
-                        {i < executingWorkflow.steps.length - 1 && (
-                          <div className={`pipeline-arrow ${isCompleted ? 'done' : ''}`}>
-                            <div className="arrow-line" />
-                            <div className="arrow-head">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M8 5v14l11-7z" />
-                              </svg>
-                            </div>
-                            {isCompleted && (
-                              <div className="arrow-data-tag">
-                                <span className="data-type">
-                                  {skill?.output ?? ''}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </React.Fragment>
-                    );
-                  })}
+                    ));
+                  })()}
                 </div>
               </div>
             )}
@@ -1361,7 +1445,7 @@ const TeamDetailPage: React.FC = () => {
                         <span /><span /><span />
                       </div>
                       <span className="exec-label">
-                        步骤 {Math.min(runningStepIndex + 1, executingWorkflow.steps.length)} / {executingWorkflow.steps.length} 执行中...
+                        {completedSteps.length + runningStepIndices.size} / {executingWorkflow.steps.length} 执行中{runningStepIndices.size > 1 ? `（${runningStepIndices.size} 个并行）` : '...'}
                       </span>
                       {totalElapsed > 0 && (
                         <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
