@@ -267,7 +267,7 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
 
   // 判断当前 skill 是否是接入 AI 的技能
   const AI_PRIMITIVE_IDS = ['text-to-text', 'text-to-image', 'structured-output'];
-  const AI_SKILL_IDS = ['ai-chat', 'generate-article',  'generate-outline', 'meeting-notes', 'assign-task', 'content-review', 'team-review', 'generate-image', 'cat-training', 'recruit-cat'];
+  const AI_SKILL_IDS = ['aigc', 'ai-chat', 'generate-article',  'generate-outline', 'meeting-notes', 'assign-task', 'content-review', 'team-review', 'generate-image', 'cat-training', 'recruit-cat'];
   const currentSkillDef = catSkills.find((s: any) => s.id === step.skillId);
   const isAiSkill = AI_SKILL_IDS.includes(step.skillId) || AI_PRIMITIVE_IDS.includes(step.skillId) || currentSkillDef?.primitiveId && AI_PRIMITIVE_IDS.includes(currentSkillDef.primitiveId);
 
@@ -412,9 +412,9 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
             </div>
           </div>
 
-          {/* 技能 */}
+          {/* 执行能力（官方猫统一 AIGC） */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">技能</label>
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">执行能力</label>
             <div className="rounded-xl border border-gray-200 pr-3 bg-white">
               <select
                 value={step.skillId}
@@ -422,7 +422,7 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
                 className="w-full px-3 py-2.5 rounded-xl text-sm font-medium outline-none cursor-pointer bg-transparent"
                 disabled={!step.agentId}
               >
-                <option value="">选择技能...</option>
+                <option value="">选择...</option>
                 {catSkills.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>

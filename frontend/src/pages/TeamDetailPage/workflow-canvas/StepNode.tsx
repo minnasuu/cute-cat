@@ -195,7 +195,7 @@ const StepNode: React.FC<StepNodeProps> = ({
           </div>
           <div className="text-[10px] text-gray-500 truncate mt-0.5 flex items-center gap-1">
             {skillIcon && <span>{skillIcon}</span>}
-            <span>{skillName || '未选择技能'}</span>
+            <span>{skillName || '未选择执行能力'}</span>
           </div>
           {action && (
             <div className="text-[10px] text-gray-400 truncate mt-0.5">

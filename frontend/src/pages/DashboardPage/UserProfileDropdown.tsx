@@ -12,9 +12,14 @@ interface User {
 
 interface UserProfileDropdownProps {
   user: User;
-  teamCount: number;
-  totalCats: number;
-  totalWorkflows: number;
+  /** 当前工作台工作流数 */
+  workflowCount: number;
+  /** 官方猫猫数（通常为 17） */
+  officialCatCount: number;
+  /** 工作流累计执行记录数 */
+  workflowRuns: number;
+  /** AI 调用日志按猫聚合总和 */
+  totalAiCalls: number;
   onLogout: () => void;
 }
 
@@ -30,7 +35,14 @@ const PLAN_LABELS: Record<string, string> = {
   enterprise: 'Enterprise',
 };
 
-const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ user, teamCount, totalCats, totalWorkflows, onLogout }) => {
+const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
+  user,
+  workflowCount,
+  officialCatCount,
+  workflowRuns,
+  totalAiCalls,
+  onLogout,
+}) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -92,24 +104,16 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ user, teamCou
           <div className="px-5 py-4 space-y-3">
             <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">账户用量</p>
 
-            {/* Teams */}
-            <QuotaRow
-              label="团队"
-              used={teamCount}
-              max={limits.maxTeams}
-            />
-            {/* Cats per team */}
-            <QuotaRow
-              label="猫猫 / 团队"
-              used={totalCats}
-              max={limits.maxCatsPerTeam}
-            />
-            {/* Workflows per team */}
-            <QuotaRow
-              label="工作流 / 团队"
-              used={totalWorkflows}
-              max={limits.maxWorkflowsPerTeam}
-            />
+            <QuotaRow label="工作流（工作台）" used={workflowCount} max={limits.maxWorkflowsPerTeam} />
+            <QuotaRow label="官方猫猫" used={officialCatCount} max={limits.maxCatsPerTeam} />
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-text-secondary">历史执行次数</span>
+              <span className="text-xs font-bold text-text-primary">{workflowRuns}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-text-secondary">猫咪 AI 调用（计次）</span>
+              <span className="text-xs font-bold text-text-primary">{totalAiCalls}</span>
+            </div>
             {/* AI Calls */}
             <div>
               <div className="flex items-center justify-between mb-1.5">

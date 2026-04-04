@@ -130,11 +130,12 @@ router.post('/:id/execute', async (req, res) => {
     if (!team) return res.status(404).json({ error: '无权访问' });
 
     const { executeWorkflow } = require('../workflow-executor');
+    const userInput = typeof req.body?.userInput === 'string' ? req.body.userInput : '';
 
     // 异步执行，立即返回
     res.json({ message: '工作流已开始执行', workflowId: workflow.id });
 
-    executeWorkflow(workflow, req.userId).catch(err => {
+    executeWorkflow(workflow, req.userId, { userInput }).catch(err => {
       console.error(`[workflows] execute error for ${workflow.id}:`, err.message);
     });
   } catch (err) {
@@ -151,9 +152,8 @@ router.post('/:id/run', async (req, res) => {
     const team = await verifyTeamOwner(workflow.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '无权访问' });
 
-    // 每个团队最多保存 30 条日志，达到上限时先清空再插入
     const runCount = await prisma.workflowRun.count({ where: { teamId: workflow.teamId } });
-    if (runCount >= 30) {
+    if (runCount >= 100) {
       await prisma.workflowRun.deleteMany({ where: { teamId: workflow.teamId } });
     }
 
@@ -181,7 +181,7 @@ router.get('/team/:teamId/runs', async (req, res) => {
     const runs = await prisma.workflowRun.findMany({
       where: { teamId: req.params.teamId },
       orderBy: { startedAt: 'desc' },
-      take: 30,
+      take: 100,
     });
     res.json(runs);
   } catch (err) {

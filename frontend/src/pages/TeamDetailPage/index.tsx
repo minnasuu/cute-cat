@@ -73,6 +73,7 @@ const TeamDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout, isAdmin } = useAuth();
   const [team, setTeam] = useState<Team | null>(null);
+  const [totalAiCalls, setTotalAiCalls] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'cats' | 'workflows' | 'history'>('cats');
   const [selectedCat, setSelectedCat] = useState<TeamCat | null>(null);
@@ -190,10 +191,13 @@ const TeamDetailPage: React.FC = () => {
   const loadTeam = useCallback(async () => {
     if (!teamId) return;
     try {
-      const data = await apiClient.get(`/api/teams/${teamId}`);
-      // 管理员的 Default 猫动态注入管理员私有技能
+      const [data, stats] = await Promise.all([
+        apiClient.get(`/api/teams/${teamId}`),
+        apiClient.get<Array<{ count: number }>>(`/api/teams/${teamId}/ai-stats`).catch(() => []),
+      ]);
       if (data.cats) data.cats = injectAdminSkillsToCats(data.cats, isAdmin);
       setTeam(data);
+      setTotalAiCalls(Array.isArray(stats) ? stats.reduce((s, r) => s + (r.count || 0), 0) : 0);
     } catch (err) {
       console.error(err);
       navigate('/dashboard');
@@ -252,7 +256,7 @@ const TeamDetailPage: React.FC = () => {
     const paramsMap = new Map<number, Record<string, unknown>>();
     wf.steps.forEach((step: any, i: number) => {
       const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-      const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+      const skill = cat?.skills?.find((s: any) => s.id === step.skillId);
       const paramDefs = step.params || skill?.paramDefs || [];
       if (paramDefs.length > 0) {
         const values: Record<string, unknown> = {};
@@ -303,7 +307,7 @@ const TeamDetailPage: React.FC = () => {
       const editedParams = editableStepParams.get(i);
       if (!editedParams) return step;
       const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-      const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+      const skill = cat?.skills?.find((s: any) => s.id === step.skillId);
       const paramDefs = step.params || skill?.paramDefs || [];
       const mergedParams = paramDefs.map((p: any) => ({
         ...p,
@@ -425,7 +429,7 @@ const TeamDetailPage: React.FC = () => {
     const layerPromises = Array.from(runningStepIndices).map(async (stepIdx) => {
       const step = steps[stepIdx];
       const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-      const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+      const skill = cat?.skills?.find((s: any) => s.id === step.skillId);
 
       // 记录步骤开始时间
       const stepStartTime = Date.now();
@@ -612,9 +616,10 @@ const TeamDetailPage: React.FC = () => {
         rightSlot={user ? (
           <UserProfileDropdown
             user={user}
-            teamCount={1}
-            totalCats={team._count.cats}
-            totalWorkflows={team._count.workflows}
+            workflowCount={team._count.workflows}
+            officialCatCount={team._count.cats}
+            workflowRuns={team._count.workflowRuns}
+            totalAiCalls={totalAiCalls}
             onLogout={logout}
           />
         ) : undefined}
@@ -631,7 +636,7 @@ const TeamDetailPage: React.FC = () => {
             className="flex items-center gap-1.5 text-sm font-medium text-text-tertiary hover:text-text-secondary transition-colors mb-4 cursor-pointer"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            返回团队列表
+            返回工作台
           </button>
 
           <div className="flex items-center gap-3 mb-2">
@@ -686,6 +691,7 @@ const TeamDetailPage: React.FC = () => {
                   className="bg-surface rounded-[24px] border border-border p-5 hover:shadow-lg hover:border-border-strong transition-all cursor-pointer group relative"
                   onClick={() => setSelectedCat(cat)}
                 >
+                  {isAdmin && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteCat(cat.id, cat.name); }}
                     className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-danger-500 transition-all p-1.5 rounded-lg hover:bg-danger-50 cursor-pointer"
@@ -693,6 +699,7 @@ const TeamDetailPage: React.FC = () => {
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                   </button>
+                  )}
                   <div className="flex justify-center mb-4">
                     <div className="w-20 h-20">
                       <CatSVG colors={cat.catColors} className="w-full h-full" />
@@ -701,22 +708,20 @@ const TeamDetailPage: React.FC = () => {
                   <h4 className="font-black text-text-primary text-center">{cat.name}</h4>
                   <p className="text-xs font-bold text-center mt-1" style={{ color: cat.accent }}>{cat.role}</p>
                   <div className="flex flex-wrap gap-1.5 justify-center mt-3">
-                    {cat.skills.slice(0, 3).map((skill: any) => (
-                      <span key={skill.id} className="text-[10px] font-bold bg-surface-secondary text-text-secondary px-2 py-0.5 rounded-full border border-border">{skill.name}</span>
-                    ))}
-                    {cat.skills.length > 3 && <span className="text-[10px] font-bold text-text-tertiary">+{cat.skills.length - 3}</span>}
+                    <span className="text-[10px] font-bold bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full border border-primary-200">✨ AIGC</span>
                   </div>
                 </div>
               ))}
 
-              {/* Add cat card */}
+              {isAdmin && (
               <div
-                className={`bg-surface/50 rounded-[24px] border-2 border-dashed border-border-strong p-5 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[220px] ${team.cats?.length >= 5 ? 'opacity-60 pointer-events-none' : 'hover:border-primary-400 hover:bg-primary-50/50'}`}
+                className={`bg-surface/50 rounded-[24px] border-2 border-dashed border-border-strong p-5 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[220px] hover:border-primary-400 hover:bg-primary-50/50`}
                 onClick={() => navigate(`/teams/${teamId}/cats/new`)}
               >
                 <div className="w-14 h-14 rounded-full bg-primary-50 border border-primary-100 flex items-center justify-center text-primary-500 text-2xl mb-3">+</div>
-                <span className="text-sm font-bold text-text-secondary">添加猫猫</span>
+                <span className="text-sm font-bold text-text-secondary">添加官方猫猫</span>
               </div>
+              )}
             </div>
           </section>
         )}
@@ -936,17 +941,15 @@ const TeamDetailPage: React.FC = () => {
               </button>
             </div>
 
-            <p className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">技能列表</p>
-            <div className="space-y-2.5">
-              {selectedCat.skills.map((skill: any) => (
-                <div key={skill.id} className="bg-surface-secondary rounded-2xl p-4 border border-border">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{skill.icon}</span>
-                    <span className="font-bold text-sm text-text-primary">{skill.name}</span>
-                  </div>
-                  <p className="text-xs text-text-secondary font-medium mt-1.5">{skill.description}</p>
-                </div>
-              ))}
+            <p className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">协作方式</p>
+            <div className="bg-surface-secondary rounded-2xl p-4 border border-border">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">✨</span>
+                <span className="font-bold text-sm text-text-primary">AIGC 统一入口</span>
+              </div>
+              <p className="text-xs text-text-secondary font-medium mt-1.5">
+                不再按「技能」罗列；该猫以岗位角色参与工作流，执行统一走 AIGC（当前占位，后续接入真实生成）。
+              </p>
             </div>
 
             <div className="mt-6 flex gap-3">
@@ -1013,7 +1016,7 @@ const TeamDetailPage: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {executingWorkflow.steps.map((step: any, i: number) => {
                     const cat = team.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-                    const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+                    const skill = cat?.skills?.find((s: any) => s.id === step.skillId);
                     const paramDefs = step.params || skill?.paramDefs || [];
                     const editedValues = editableStepParams.get(i) || {};
 
@@ -1299,7 +1302,7 @@ const TeamDetailPage: React.FC = () => {
                           {layer.map(i => {
                             const step = steps[i];
                             const cat = team.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-                            const skill = cat?.skills.find((s: any) => s.id === step.skillId);
+                            const skill = cat?.skills?.find((s: any) => s.id === step.skillId);
                             const isCompleted = completedSteps.includes(i);
                             const isCurrent = runningStepIndices.has(i);
                             const isPending = !isCompleted && !isCurrent;

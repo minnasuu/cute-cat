@@ -196,7 +196,8 @@ export interface Assistant {
   description: string;
   accent: string;
   systemPrompt: string;
-  skills: Skill[];
+  /** 社区展示可为空；团队内猫猫仍可能含内置 AIGC 元数据 */
+  skills?: Skill[];
   item: string;
   catColors: CatColors;
   messages: string[];

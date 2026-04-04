@@ -1,278 +1,326 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { apiClient } from '../../utils/apiClient';
-import CatMiniAvatar from '../../components/CatMiniAvatar';
-import CatLogo from '../../components/CatLogo';
-import Navbar from '../../components/Navbar';
-import UserProfileDropdown from './UserProfileDropdown';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import { apiClient } from "../../utils/apiClient";
+import CatLogo from "../../components/CatLogo";
+import Navbar from "../../components/Navbar";
+import UserProfileDropdown from "./UserProfileDropdown";
+import { showToast } from "../../components/Toast";
+import type { WorkflowRow, WorkbenchPayload } from "./workbenchTypes";
+import {
+  featureBlurb,
+  featureLabel,
+  isOfficialWorkflow,
+} from "./workbenchUtils";
 
-interface Team {
-  id: string;
-  name: string;
-  description?: string;
-  icon?: string;
-  cats: Array<{ id: string; name: string; role: string; catColors: any; accent: string }>;
-  _count: { cats: number; workflows: number; workflowRuns: number };
+/** 顶栏 Logo 右侧：聊天气泡式问候 */
+function GreetingBubble({ nickname }: { nickname?: string | null }) {
+  const hour = new Date().getHours();
+  let line = "夜深了，有我们呢";
+  if (hour >= 6 && hour < 9) line = "早上好呀";
+  else if (hour >= 9 && hour < 12) line = "上午好呀";
+  else if (hour >= 12 && hour < 14) line = "中午好呀";
+  else if (hour >= 14 && hour < 18) line = "下午好呀";
+  else if (hour >= 18 && hour < 24) line = "晚上好呀";
+
+  const who = nickname?.trim() || "创作者";
+  return (
+    <div className="relative max-w-[min(11rem,46vw)] sm:max-w-[min(16rem,40vw)] shrink min-w-0">
+      <div
+        className="relative rounded-2xl rounded-tl-md border border-primary-200/70 bg-primary-50/90 text-text-primary px-3 py-2 backdrop-blur-sm"
+        aria-live="polite"
+      >
+        <p className="text-[13px] font-semibold leading-snug">
+          喵～ <span className="text-primary-700">{who}</span>，{line}！
+        </p>
+        <span
+          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[5px] w-2.5 h-2.5 rotate-45 border-l border-b border-primary-200/70 bg-primary-50/90"
+          aria-hidden
+        />
+      </div>
+    </div>
+  );
 }
 
-const getGreeting = () => {
-  const hour = new Date().getHours();
-  if (hour < 6) return '夜深了，有我们呢';
-  if (hour < 9) return '早上好呀';
-  if (hour < 12) return '上午好呀';
-  if (hour < 14) return '中午好呀';
-  if (hour < 18) return '下午好呀';
-  if (hour < 24) return '晚上好呀';
-  return '夜深了，有我们呢';
-};
+function FeatureCard({
+  icon,
+  title,
+  blurb,
+  selected,
+  onSelect,
+}: {
+  icon: string;
+  title: string;
+  blurb: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`shrink-0 flex flex-col text-left rounded-2xl border px-3 py-2.5 min-w-[6.75rem] sm:min-w-[7.5rem] max-w-[9.5rem] transition-all cursor-pointer ${
+        selected
+          ? "border-primary-400 bg-primary-50/50 shadow-sm ring-2 ring-primary-200/50"
+          : "border-border bg-surface hover:border-border-strong hover:shadow-sm"
+      }`}
+    >
+      <span className="text-2xl leading-none mb-1" aria-hidden>
+        {icon}
+      </span>
+      <span className="text-[11px] sm:text-xs font-black text-text-primary leading-tight">
+        {title}
+      </span>
+      <span className="text-[10px] text-text-tertiary font-medium mt-1 line-clamp-2 leading-snug">
+        {blurb}
+      </span>
+    </button>
+  );
+}
 
 const DashboardPage: React.FC = () => {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [workbench, setWorkbench] = useState<WorkbenchPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newTeamName, setNewTeamName] = useState('');
-  const [newTeamDesc, setNewTeamDesc] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [userInput, setUserInput] = useState("");
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
+    null,
+  );
+  const [executingId, setExecutingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadTeams();
+  /** 仅官方种子工作流，供能力卡片展示（不含团队自建流程） */
+  const officialWorkflows = useMemo(
+    () => (workbench?.workflows ?? []).filter(isOfficialWorkflow),
+    [workbench],
+  );
+
+  const selectedFeature = useMemo((): WorkflowRow | null => {
+    if (!selectedWorkflowId) return null;
+    return officialWorkflows.find((w) => w.id === selectedWorkflowId) ?? null;
+  }, [officialWorkflows, selectedWorkflowId]);
+
+  const totalAiCalls = useMemo(
+    () => (workbench?.aiStats ?? []).reduce((s, r) => s + r.count, 0),
+    [workbench],
+  );
+
+  const loadWorkbench = useCallback(async (opts?: { quiet?: boolean }) => {
+    const quiet = opts?.quiet ?? false;
+    if (!quiet) setLoading(true);
+    try {
+      const wb = await apiClient.get<WorkbenchPayload>("/api/teams/workbench");
+      setTeamId(wb.teamId);
+      setWorkbench(wb);
+      const officials = (wb.workflows ?? []).filter(isOfficialWorkflow);
+      setSelectedWorkflowId((prev) =>
+        prev && officials.some((w) => w.id === prev)
+          ? prev
+          : (officials[0]?.id ?? null),
+      );
+    } catch (e) {
+      console.error(e);
+    } finally {
+      if (!quiet) setLoading(false);
+    }
   }, []);
 
-  const loadTeams = async () => {
-    try {
-      const data = await apiClient.get('/api/teams');
-      setTeams(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    loadWorkbench();
+  }, [loadWorkbench]);
 
-  const handleCreateTeam = async () => {
-    if (!newTeamName.trim()) return;
-    setCreating(true);
+  const refreshAfterRun = useCallback(async () => {
     try {
-      await apiClient.post('/api/teams', { name: newTeamName, description: newTeamDesc });
-      setShowCreate(false);
-      setNewTeamName('');
-      setNewTeamDesc('');
-      loadTeams();
+      await loadWorkbench({ quiet: true });
     } catch {
-      // toast shown by apiClient
-    } finally {
-      setCreating(false);
+      /* ignore */
     }
-  };
+  }, [loadWorkbench]);
 
-  const handleDeleteTeam = async (teamId: string, teamName: string) => {
-    if (!confirm(`确定要删除团队「${teamName}」吗？此操作不可恢复。`)) return;
+  const runSelected = async () => {
+    const wfId = selectedWorkflowId;
+    if (!wfId) return;
+    setExecutingId(wfId);
     try {
-      await apiClient.delete(`/api/teams/${teamId}`);
-      loadTeams();
+      await apiClient.post(`/api/workflows/${wfId}/execute`, {
+        userInput: userInput.trim(),
+      });
+      showToast("已收到，猫猫们开始接力啦");
+      setTimeout(() => refreshAfterRun(), 2500);
     } catch {
-      // toast shown by apiClient
+      /* toast via apiClient */
+    } finally {
+      setExecutingId(null);
     }
   };
 
-  const totalCats = teams.reduce((sum, t) => sum + t._count.cats, 0);
-  const totalWorkflows = teams.reduce((sum, t) => sum + t._count.workflows, 0);
-  const totalRuns = teams.reduce((sum, t) => sum + t._count.workflowRuns, 0);
+  const inputPlaceholder = selectedFeature
+    ? "描述你的页面或站点：目标用户、必备模块、风格气质…"
+    : "请先点选上方一个创作方向";
 
   return (
     <div className="min-h-screen bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900">
-      {/* Navbar */}
       <Navbar
-        rightSlot={user ? (
-          <UserProfileDropdown
-            user={user}
-            teamCount={teams.length}
-            totalCats={totalCats}
-            totalWorkflows={totalWorkflows}
-            onLogout={logout}
-          />
-        ) : undefined}
+        afterLogo={<GreetingBubble nickname={user?.nickname} />}
+        rightSlot={
+          user ? (
+            <UserProfileDropdown
+              user={user}
+              workflowCount={workbench?.counts.workflows ?? 0}
+              officialCatCount={workbench?.counts.cats ?? 0}
+              workflowRuns={workbench?.counts.workflowRuns ?? 0}
+              totalAiCalls={totalAiCalls}
+              onLogout={logout}
+            />
+          ) : undefined
+        }
       />
 
-      <main className="max-w-6xl mx-auto px-6" style={{minHeight: 'calc(100vh - 133px)'}}>
-        {/* Hero welcome */}
-        <section className="relative py-12 md:py-16">
+      <main
+        className="w-full max-w-4xl mx-auto px-6 pb-16 flex flex-col items-stretch"
+        style={{ minHeight: "calc(100vh - 133px)" }}
+      >
+        <section className="relative py-8 md:py-11 text-center max-w-2xl mx-auto">
           <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
           <div className="absolute top-8 right-1/4 w-72 h-72 bg-accent-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-2">
-            喵～ {user?.nickname}，{getGreeting()}！🐾
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary-600 mb-2">
+            开始创作
+          </p>
+          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-text-primary mb-3 leading-tight">
+            选好方向，写下需求，
+            <span className="text-primary-600"> 一键开跑</span>
           </h1>
-          <p className="text-text-secondary font-medium">你的猫猫们已经准备好大干一场啦</p>
+          <p className="text-text-secondary font-medium text-sm md:text-base leading-relaxed">
+            点选能力卡片后，输入框前会出现当前模式标签；提交后由猫猫按{" "}
+            <span className="text-text-primary font-semibold">
+              架构 → 交互 → 视觉 → 前端
+            </span>{" "}
+            接力完成（AIGC 占位）。
+          </p>
         </section>
 
-        {/* Stats — LandingPage style minimal cards */}
-        <section className="py-6 mb-8 border-y border-border bg-surface-secondary/30 -mx-6 px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              { label: '我的团队', val: String(teams.length) },
-              { label: '猫猫总数', val: String(totalCats) },
-              { label: '工作流', val: String(totalWorkflows) },
-              { label: '总执行次数', val: String(totalRuns) },
-            ].map((s, i) => (
-              <div key={i} className="text-center">
-                <div className="text-2xl font-black text-text-primary">{s.val}</div>
-                <div className="text-xs font-bold text-text-tertiary uppercase tracking-widest mt-1">{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Teams Section */}
-        <section className="pb-16">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <p className="text-sm font-bold text-primary-500 uppercase tracking-widest mb-1">TEAMS</p>
-              <h2 className="text-2xl font-black tracking-tight">我的团队</h2>
-            </div>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="px-6 py-3 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all"
-            >
-              + 创建团队
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="text-center py-20 text-text-tertiary font-medium">加载中...</div>
-          ) : teams.length === 0 ? (
-            <div className="text-center py-20 rounded-[32px] border border-border bg-surface-secondary/50">
-              <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-primary-50 border border-primary-100 flex items-center justify-center">
-                <CatLogo size={48} />
-              </div>
-              <h3 className="text-xl font-black text-text-primary mb-2">还没有团队</h3>
-              <p className="text-text-secondary font-medium mb-8 max-w-sm mx-auto">创建你的第一个猫猫团队，开始 AI 工作流之旅</p>
-              <button
-                onClick={() => setShowCreate(true)}
-                className="px-10 py-4 text-lg font-bold bg-primary-500 text-text-inverse rounded-2xl hover:bg-primary-600 transition-all"
+        <section className="w-full mb-8">
+          <div className="rounded-[28px] border border-border-strong bg-surface-secondary/40 p-3 sm:p-4 shadow-sm">
+            <div className="flex flex-col lg:flex-row gap-4 lg:items-stretch">
+              {/* 功能卡片：横向排列，与输入区在同一行（大屏） */}
+              <div
+                className="flex flex-row flex-wrap gap-2 content-start shrink-0 lg:max-w-[min(100%,14rem)] xl:max-w-[min(100%,22rem)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-x-auto pb-1 lg:overflow-x-visible lg:pb-0"
+                role="tablist"
+                aria-label="创作能力"
               >
-                创建第一个团队
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {teams.map(team => (
-                <div
-                  key={team.id}
-                  className="rounded-[24px] border border-border p-6 bg-surface hover:border-border-strong hover:shadow-lg transition-all cursor-pointer group"
-                  onClick={() => navigate(`/teams/${team.id}`)}
-                >
-                  <div className="flex items-start justify-between mb-5">
-                    <div>
-                      <h3 className="text-lg font-black text-text-primary group-hover:text-primary-600 transition-colors">{team.name}</h3>
-                      {team.description && <p className="text-sm text-text-secondary font-medium mt-1 line-clamp-1">{team.description}</p>}
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteTeam(team.id, team.name); }}
-                      className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-danger-500 transition-all p-1.5 rounded-lg hover:bg-danger-50"
-                      title="删除团队"
+                {loading ? (
+                  <div className="text-xs text-text-tertiary font-medium py-4 px-2">
+                    加载中…
+                  </div>
+                ) : !officialWorkflows.length ? (
+                  <div className="text-xs text-text-tertiary font-medium py-4 px-2">
+                    暂无官方创作能力
+                  </div>
+                ) : (
+                  officialWorkflows.map((wf) => (
+                    <FeatureCard
+                      key={wf.id}
+                      icon={wf.icon}
+                      title={featureLabel(wf)}
+                      blurb={featureBlurb(wf)}
+                      selected={selectedWorkflowId === wf.id}
+                      onSelect={() => setSelectedWorkflowId(wf.id)}
+                    />
+                  ))
+                )}
+              </div>
+
+              <div className="flex-1 flex flex-col min-w-0 border-t border-border lg:border-t-0 lg:border-l lg:pl-4 pt-3 lg:pt-0 lg:min-w-[12rem]">
+                <div className="flex gap-2 items-start min-h-[6.5rem] sm:min-h-[7.5rem]">
+                  {selectedFeature ? (
+                    <div
+                      className="shrink-0 pt-1"
+                      role="status"
+                      aria-label="当前模式"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                    </button>
-                  </div>
-
-                  {/* Cat avatars */}
-                  <div className="flex items-center gap-1.5 mb-4">
-                    {team.cats.slice(0, 6).map(cat => (
-                      <div key={cat.id} className="w-9 h-9 rounded-full bg-surface-secondary border-2 border-surface shadow-sm overflow-hidden flex items-center justify-center">
-                        <CatMiniAvatar colors={cat.catColors} size={28} />
-                      </div>
-                    ))}
-                    {team._count.cats > 6 && (
-                      <div className="w-9 h-9 rounded-full bg-surface-tertiary border-2 border-surface shadow-sm flex items-center justify-center text-xs text-text-secondary font-bold">
-                        +{team._count.cats - 6}
-                      </div>
-                    )}
-                    {team._count.cats === 0 && <span className="text-xs text-text-tertiary font-medium">还没有猫猫</span>}
-                  </div>
-
-                  {/* Stats pills */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-3 py-1 rounded-full bg-surface-secondary border border-border text-xs font-bold text-text-secondary">
-                      🐱 {team._count.cats} 只猫猫
-                    </span>
-                    <span className="px-3 py-1 rounded-full bg-surface-secondary border border-border text-xs font-bold text-text-secondary">
-                      📋 {team._count.workflows} 个工作流
-                    </span>
-                    <span className="px-3 py-1 rounded-full bg-surface-secondary border border-border text-xs font-bold text-text-secondary">
-                      ▶️ {team._count.workflowRuns} 次执行
-                    </span>
-                  </div>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-primary-300/80 bg-primary-50 px-2.5 py-1.5 text-xs font-bold text-primary-900 shadow-sm">
+                        <span className="text-base leading-none" aria-hidden>
+                          {selectedFeature.icon}
+                        </span>
+                        {featureLabel(selectedFeature)}
+                      </span>
+                    </div>
+                  ) : null}
+                  <textarea
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    placeholder={inputPlaceholder}
+                    rows={4}
+                    disabled={!selectedFeature}
+                    className="flex-1 min-h-[6.5rem] sm:min-h-[7.5rem] px-3 py-2 rounded-2xl bg-transparent border-0 outline-none resize-y text-sm font-medium placeholder:text-text-tertiary disabled:opacity-50"
+                  />
                 </div>
-              ))}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 px-1 pt-2">
+                  <span className="text-xs text-text-tertiary font-medium max-w-[20rem]">
+                    {selectedFeature
+                      ? "内容会作为第一步的主题描述提交给当前模式。"
+                      : "选择左侧或上方的能力后再输入。"}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!selectedWorkflowId || !!executingId}
+                    onClick={runSelected}
+                    className="px-7 py-2.5 rounded-2xl bg-text-primary text-text-inverse text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                  >
+                    {executingId ? "处理中…" : "开始创作"}
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
+
+          <nav
+            className="mt-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs font-bold text-text-tertiary"
+            aria-label="更多入口"
+          >
+            <Link
+              to="/dashboard/history"
+              className="hover:text-primary-600 transition-colors"
+            >
+              历史记录
+            </Link>
+            <Link
+              to="/dashboard/usage"
+              className="hover:text-primary-600 transition-colors"
+            >
+              猫猫调用次数
+            </Link>
+            {teamId ? (
+              <Link
+                to={`/teams/${teamId}`}
+                className="hover:text-primary-600 transition-colors"
+              >
+                团队与流程
+              </Link>
+            ) : null}
+            {teamId && selectedWorkflowId ? (
+              <Link
+                to={`/teams/${teamId}/workflows/${selectedWorkflowId}`}
+                className="hover:text-primary-600 transition-colors"
+              >
+                流程设计（进阶）
+              </Link>
+            ) : null}
+          </nav>
         </section>
       </main>
 
-      {/* Footer — same as LandingPage */}
       <footer className="py-4 border-t border-border">
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 cursor-pointer">
             <CatLogo size={36} />
           </Link>
-          <p className="text-text-tertiary text-xs font-medium">&copy; 2026 CuCaTopia.</p>
+          <p className="text-text-tertiary text-xs font-medium">
+            &copy; 2026 CuCaTopia.
+          </p>
         </div>
       </footer>
-
-      {/* Create Team Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowCreate(false)}>
-          <div className="bg-surface rounded-[28px] shadow-2xl p-8 w-full max-w-md mx-4 border border-border" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-black text-text-primary mb-6">创建新团队</h2>
-
-            <div className="space-y-5">
-              <div>
-                <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">团队名称</label>
-                <input
-                  type="text"
-                  value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder="例如：我的内容团队"
-                  autoFocus
-                  className="w-full px-4 py-3.5 rounded-2xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">
-                  团队描述 <span className="normal-case tracking-normal font-medium">(可选)</span>
-                </label>
-                <textarea
-                  value={newTeamDesc}
-                  onChange={(e) => setNewTeamDesc(e.target.value)}
-                  placeholder="这个团队的用途..."
-                  rows={2}
-                  className="w-full px-4 py-3.5 rounded-2xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none resize-none text-sm font-medium"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowCreate(false)}
-                  className="flex-1 py-3.5 text-text-secondary font-bold rounded-2xl border border-border-strong hover:bg-surface-secondary transition-all cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleCreateTeam}
-                  disabled={creating || !newTeamName.trim()}
-                  className="flex-1 py-3.5 bg-text-primary text-text-inverse font-bold rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  {creating ? '创建中...' : '创建团队'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

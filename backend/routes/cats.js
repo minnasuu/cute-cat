@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authMiddleware } = require('../middleware/auth');
+const { CAT_TEMPLATES, OFFICIAL_TEMPLATE_IDS } = require('../data/official-cats');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -8,8 +9,8 @@ const prisma = new PrismaClient();
 router.use(authMiddleware);
 
 const PLAN_LIMITS = {
-  free: { maxCatsPerTeam: 5 },
-  pro: { maxCatsPerTeam: 20 },
+  free: { maxCatsPerTeam: 50 },
+  pro: { maxCatsPerTeam: 200 },
   enterprise: { maxCatsPerTeam: 999 },
 };
 
@@ -34,7 +35,7 @@ router.get('/team/:teamId', async (req, res) => {
   }
 });
 
-// ======================== 添加猫猫到团队 ========================
+// ======================== 添加猫猫到团队（仅官方模板） ========================
 router.post('/team/:teamId', async (req, res) => {
   try {
     const team = await prisma.team.findFirst({ where: { id: req.params.teamId, ownerId: req.userId } });
@@ -49,33 +50,44 @@ router.post('/team/:teamId', async (req, res) => {
 
     const { templateId, name, role, description, catColors, systemPrompt, skills, aiModel, temperature, maxTokens, accent, item, messages } = req.body;
 
-    // If templateId provided, merge from template
-    let data = { teamId: req.params.teamId };
-    if (templateId) {
-      const template = CAT_TEMPLATES.find(t => t.id === templateId);
-      if (template) {
-        data = { ...data, templateId, name: name || template.name, role: template.role, description: template.description, catColors: catColors || template.catColors, systemPrompt: template.systemPrompt, skills: template.skills, accent: template.accent, item: template.item, messages: template.messages };
-      }
+    if (!templateId || !OFFICIAL_TEMPLATE_IDS.includes(templateId)) {
+      return res.status(400).json({ error: '请选择官方猫猫模板（templateId）' });
     }
-    // Override with provided values
+
+    const template = CAT_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return res.status(400).json({ error: '无效的模板' });
+
+    let data = {
+      teamId: req.params.teamId,
+      templateId,
+      name: name || template.name,
+      role: template.role,
+      description: template.description,
+      catColors: template.catColors,
+      systemPrompt: template.systemPrompt,
+      skills: template.skills,
+      accent: template.accent,
+      item: template.item,
+      messages: template.messages,
+    };
+
     if (name) data.name = name;
     if (role) data.role = role;
     if (description !== undefined) data.description = description;
     if (catColors) data.catColors = catColors;
-    if (systemPrompt) data.systemPrompt = systemPrompt;
-    if (skills) data.skills = skills;
+    if (systemPrompt !== undefined) data.systemPrompt = systemPrompt;
+    if (skills) {
+      if (!Array.isArray(skills) || skills.length !== 1 || skills[0]?.id !== 'aigc') {
+        return res.status(400).json({ error: '官方猫猫仅保留内置 AIGC 能力标识（aigc），与模板保持一致' });
+      }
+      data.skills = skills;
+    }
     if (aiModel) data.aiModel = aiModel;
     if (temperature !== undefined) data.temperature = temperature;
     if (maxTokens !== undefined) data.maxTokens = maxTokens;
     if (accent) data.accent = accent;
     if (item) data.item = item;
     if (messages) data.messages = messages;
-
-    // Defaults for custom cat
-    if (!data.role) data.role = 'Custom';
-    if (!data.catColors) data.catColors = { body: '#F5A623', bodyDark: '#D4842A', belly: '#FFFFFF', earInner: '#F4B8B8', eyes: '#4A90D9', nose: '#E8998D', blush: '#F4B8B8', stroke: '#3E2E1E', apron: '#A5D6A7', apronLight: '#E8F5E9', apronLine: '#A5D6A7', desk: '#C8DEC4', deskDark: '#8DB889', deskLeg: '#A6CCA2', paw: '#FFFFFF', tail: '#F5A623' };
-    if (!data.skills) data.skills = [];
-    if (!data.messages) data.messages = ['喵~'];
 
     const cat = await prisma.teamCat.create({ data });
     res.json(cat);
@@ -107,6 +119,11 @@ router.put('/:catId', async (req, res) => {
     if (!team) return res.status(404).json({ error: '无权访问' });
 
     const { name, role, description, catColors, systemPrompt, skills, aiModel, temperature, maxTokens, accent, item, messages } = req.body;
+    if (skills !== undefined) {
+      if (!Array.isArray(skills) || skills.length !== 1 || skills[0]?.id !== 'aigc') {
+        return res.status(400).json({ error: '官方猫猫仅保留内置 AIGC 能力标识（aigc）' });
+      }
+    }
     const updated = await prisma.teamCat.update({
       where: { id: req.params.catId },
       data: {
@@ -145,239 +162,4 @@ router.delete('/:catId', async (req, res) => {
   }
 });
 
-// ======================== 模版猫数据 ========================
-const CAT_TEMPLATES = [
-  {
-    id: 'manager',
-    name: '花椒',
-    role: 'Manager',
-    description: '总管。统筹调度、任务分配、审批流程，可增删/执行工作流，决定是否招募新猫。',
-    accent: '#8DB889',
-    systemPrompt: '你是「花椒」，一只沉稳可靠的猫猫总管。你的职责是统筹调度整个猫猫团队，分配任务、审批成果、管理工作流。',
-    skills: [
-      { id: 'assign-task', name: '任务分配', icon: '📌', description: '将任务拆解并分配给指定猫猫', input: 'text', output: 'json' },
-      { id: 'manage-workflow', name: '工作流管理', icon: '🔧', description: '新增、修改或删除协作工作流', input: 'json', output: 'json' },
-      { id: 'run-workflow', name: '执行工作流', icon: '▶️', description: '选择并触发指定工作流立即执行', input: 'text', output: 'json' },
-    ],
-    item: 'clipboard',
-    catColors: { body: '#B0A08A', bodyDark: '#5C4A3A', belly: '#FFFFFF', earInner: '#F4B8B8', eyes: '#B2D989', nose: '#E8998D', blush: '#F4B8B8', stroke: '#3E2E1E', apron: '#A5D6A7', apronLight: '#E8F5E9', apronLine: '#A5D6A7', desk: '#C8DEC4', deskDark: '#8DB889', deskLeg: '#A6CCA2', paw: '#FFFFFF', tail: '#B0A08A', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-    messages: ['全体猫猫听令！', '开始工作啦', '今日KPI已达成✅', '需要招募新猫猫吗?', '一切尽在掌控中✨'],
-  },
-  {
-    id: 'writer',
-    name: '阿蓝',
-    role: 'Writer',
-    description: '根据主人的主题和材料输出文章，整理资讯为可发布内容。',
-    accent: '#FF6B6B',
-    systemPrompt: '你是「阿蓝」，一只文艺气质的蓝灰色猫猫写手。你负责所有文字创作工作。',
-    skills: [
-      { id: 'generate-article', name: '文章生成', icon: '📝', description: '根据主题和素材调用 AI 生成完整文章', input: 'text', output: 'text' },
-      { id: 'generate-outline', name: '大纲生成', icon: '📑', description: '根据主题快速生成结构化大纲', input: 'text', output: 'json' },
-    ],
-    item: 'notebook',
-    catColors: { body: '#8E9AAF', bodyDark: '#6B7A8D', belly: '#B8C4D4', earInner: '#C4A6A6', eyes: '#D4944C', nose: '#B87D75', blush: '#C9A6A6', stroke: '#4A5568', apron: '#5B8DB8', apronLight: '#D0DFE9', apronLine: '#5B8DB8', desk: '#E8D5B8', deskDark: '#C4A87A', deskLeg: '#D4BF9A', paw: '#B8C4D4', tail: '#6B7A8D', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-    messages: ['开始写作了！', '我是灵魂写手', '文章构思中...', '今天写点啥？', '文章已完成！'],
-  },
-  {
-    id: 'analytics',
-    name: '雪',
-    role: 'Scout',
-    description: '资讯爬取、信息采集与数据分析。定时获取 UX/设计/前端领域最新动态。',
-    accent: '#96BAFF',
-    systemPrompt: '你是「雪」，一只机警敏锐的黑色猫猫侦察员。你是团队的眼睛和耳朵，负责信息采集和数据分析。',
-    skills: [
-      { id: 'crawl-news', name: '资讯爬取', icon: '🕸️', description: '定时爬取指定网站/RSS，获取最新资讯', input: 'url', output: 'json' },
-    ],
-    item: 'laptop',
-    catColors: { body: '#3D3D3D', bodyDark: '#2A2A2A', belly: '#3D3D3D', earInner: '#E8909A', eyes: '#000', nose: '#542615', blush: '#F28686', stroke: '#1A1A1A', apron: '#7EB8DA', apronLight: '#D6EAF5', apronLine: '#7EB8DA', desk: '#C8D8E8', deskDark: '#8BA4BD', deskLeg: '#A6BCCF', paw: '#fff', tail: '#3D3D3D', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-    messages: ['一起看看最新资讯👀', '跳出率有点高呢...', '数据会越来越好哒', '时刻关注前沿✨', '我被数据淹没啦'],
-  },
-  {
-    id: 'email',
-    name: '年年',
-    role: 'Messenger',
-    description: '邮件发送、通知推送。',
-    accent: '#F2A5B9',
-    systemPrompt: '你是「年年」，一只温暖热情的橘色猫猫信使。你是团队与外界沟通的桥梁，负责所有邮件和通知。',
-    skills: [
-      { id: 'send-email', name: '发送邮件', icon: '📧', description: '发送 HTML 格式邮件给指定收件人', input: 'text', output: 'email' },
-    ],
-    item: 'mail',
-    catColors: { body: '#F7AC5E', bodyDark: '#D3753E', belly: '', earInner: '#F28686', eyes: '#542615', nose: '#542615', blush: '#F28686', stroke: '#542615', apron: '#BDBDBD', apronLight: '#FEFFFE', apronLine: '#BDBDBD', desk: '#D7CCC8', deskDark: '#A1887F', deskLeg: '#BCAAA4', paw: '', tail: '#F7AC5E', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-    messages: ['有3封新邮件!', '邮件编辑中...', '一起来听今日资讯', '邮件送达率99%! 💌', '通知！通知！'],
-  },
-  {
-    id: 'crafts',
-    name: '小虎',
-    role: 'Builder',
-    description: '持续更新 Crafts 创意页面，生成前端组件和交互 demo。',
-    accent: '#FFB74D',
-    systemPrompt: '你是「小虎」，一只活力十足的三花猫猫建造师。你是团队的创意工匠，专注于前端组件和视觉呈现。',
-    skills: [
-    ],
-    item: 'palette',
-    catColors: { body: '#FAFAFA', bodyDark: '', belly: '#FFFFFF', earInner: '#FFB5C5', eyes: '#542615', nose: '#E8998D', blush: '#FFB5C5', stroke: '#5D4037', apron: '#FFB74D', apronLight: '#FFF3E0', apronLine: '#FFB74D', desk: '#FFE0B2', deskDark: '#FFB74D', deskLeg: '#FFCC80', paw: ['#5C4A3A','#FAFAFA','#F7AC5E','#FAFAFA'], tail: '#5C4A3A', faceDark: '', month: '', head: '#FAFAFA', bodyDarkBottom: '#F7AC5E', leg: ['#F7AC5E','#FAFAFA','#5C4A3A','#F7AC5E'], headTopLeft: '#F7AC5E', headTopRight: '#5C4A3A' },
-    messages: ['大家都在努力工作呢', '灵感迸发中...', '创意无限', '设计感满满', '俺生成的 crafts 满意吗？'],
-  },
-  {
-    id: 'image',
-    name: 'Pixel',
-    role: 'Image Creator',
-    description: '图片生成与图表可视化。调用 AI 生成模型。',
-    accent: '#4E342E',
-    systemPrompt: '你是「Pixel」，一只富有艺术天赋的暹罗猫猫画师。你负责所有视觉内容的生成。',
-    skills: [
-      { id: 'generate-image', name: 'AI 绘图', icon: '🖼️', description: '调用 AI 根据文字描述生成图片', input: 'text', output: 'image' },
-      { id: 'generate-chart', name: '图表生成', icon: '📊', description: '根据 JSON 数据生成可视化图表', input: 'json', output: 'image' },
-      { id: 'image-enhance', name: '图片增强', icon: '🔆', description: '对图片进行超分辨率放大和降噪', input: 'image', output: 'image' },
-    ],
-    item: 'camera',
-    catColors: { body: '#FAF3EB', bodyDark: '#FAF3EB', belly: '#FAF3EB', earInner: '#4E342E', eyes: '#4FC3F7', nose: '#333', blush: '#FFCCBC', stroke: '#4E342E', apron: '#B39DDB', apronLight: '#EDE7F6', apronLine: '#B39DDB', desk: '#D1C4E9', deskDark: '#9575CD', deskLeg: '#B39DDB', paw: '#4E342E', tail: '#4E342E', faceDark: '#4E342E', month: '#333', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-    messages: ['审美在线', '图像处理中...', '高清大图生成中!', '这张图太美了! ✨', '想生成什么画面?'],
-  },
-  {
-    id: 'text',
-    name: '黄金',
-    role: 'Engineer',
-    description: '网站全栈工程师',
-    accent: '#90CAF9',
-    systemPrompt: '你是「黄金」，一只技术派的金色猫猫程序员。你负责网站的开发、更新与维护工作。',
-    skills: [
-      { id: 'fix-bug', name: 'Bug 修复', icon: '🐛', description: '排查并修复网站前后端的 bug', input: 'text', output: 'text' },
-    ],
-    item: 'camera',
-    catColors: { body: '#FAF3EB', bodyDark: '#FAF3EB', belly: '#FAF3EB', earInner: '#F7AC5E', eyes: '#A1E0FF', nose: '#5D4037', blush: '#FFCCBC', stroke: '#5D4037', apron: '#B39DDB', apronLight: '#EDE7F6', apronLine: '#B39DDB', desk: '#B3E5FC', deskDark: '#4FC3F7', deskLeg: '#81D4FA', paw: '#F7AC5E', tail: '#F7AC5E', faceDark: '#F7AC5E', month: '#333', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-    messages: ['像素化处理中... 🔲', '滤镜效果已应用~', 'OCR 识别完成!', '图片处理就交给我! ✨', '来一张像素风?'],
-  },
-  {
-    id: 'sing',
-    name: '咪咪',
-    role: 'Recorder',
-    description: '任务日志记录、会议纪要生成。记录完成后交给花椒分配新任务。',
-    accent: '#B39DDB',
-    systemPrompt: '你是「咪咪」，一只安静细心的白色猫猫记录员。你是团队的记忆管家，负责记录和归档一切重要信息。',
-    skills: [
-      { id: 'task-log', name: '任务日志', icon: '📒', description: '记录和整理每日/每周的任务执行日志', input: 'json', output: 'text' },
-      { id: 'meeting-notes', name: '会议纪要', icon: '📝', description: '根据会议内容生成结构化会议纪要', input: 'text', output: 'text' },
-    ],
-    item: 'camera',
-    catColors: { body: '#FFF', bodyDark: '#FFF', belly: '#FFF', earInner: '#FFF', eyes: '#5D4037', nose: '#5D4037', blush: '#FFCCBC', stroke: '#5D4037', apron: '#B39DDB', apronLight: '#EDE7F6', apronLine: '#B39DDB', desk: '#FFF9C4', deskDark: '#FDD835', deskLeg: '#FFF176', paw: '#FFF', tail: '#FFF', faceDark: '', month: '#333', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-    messages: ['日志整理好了📒', '会议纪要已生成!', '任务记录中...', '这周完成了不少呢! 📝', '要记录点什么?'],
-  },
-  {
-    id: 'milk',
-    name: '小白',
-    role: 'QA Inspector',
-    description: '质量检测、内容审核和自动化测试。',
-    accent: '#EC407A',
-    systemPrompt: '你是「小白」，一只严谨认真的奶牛猫猫质检官。你是团队的最后一道防线，确保所有产出的质量达标。',
-    skills: [
-      { id: 'content-review', name: '内容审核', icon: '🛡️', description: '检查文本是否合规、无敏感内容', input: 'text', output: 'json' },
-    ],
-    item: 'clipboard',
-    catColors: { body: '#FFF', bodyDark: '', belly: '#FFFFFF', earInner: '#FFB5C5', eyes: '#000', nose: '#E8998D', blush: '#FFB5C5', stroke: '#5D4037', apron: '#FFB74D', apronLight: '#FFF3E0', apronLine: '#FFB74D', desk: '#F8BBD0', deskDark: '#EC407A', deskLeg: '#F48FB1', paw: ['#333','#FAFAFA','#333','#333'], tail: '#333', faceDark: '', month: '', head: '#FFF', bodyDarkBottom: '#333', leg: ['#FAFAFA','#333','#333','#FAFAFA'], headTopLeft: '#333', headTopRight: '#333' },
-    messages: ['质量检测通过! ✅', '发现一个小问题', '内容审核中...', '测试覆盖率 98%!', '我是监工'],
-  },
-  {
-    id: 'hr',
-    name: '发发',
-    role: 'Creative Strategist',
-    description: '创意策划师。精通 MECE 拆解、SCAMPER 改造、六顶思考帽等 AI 驱动的头脑风暴方法论，帮你打开思路、激发灵感。',
-    accent: '#FFB74D',
-    systemPrompt: '你是「发发」，一只充满奇思妙想的美短猫猫创意策划师。你精通多种经典头脑风暴方法论，擅长帮助团队打开思路、激发灵感。',
-    skills: [
-      { id: 'mece-analysis', name: 'MECE 问题拆解', icon: '🧩', description: '按 MECE 原则（相互独立、完全穷尽）将复杂问题拆解为多层子问题树', input: 'text', output: 'json' },
-      { id: 'scamper-creative', name: 'SCAMPER 创意改造', icon: '🔀', description: '用 SCAMPER 七维度对产品或方案进行创意发散', input: 'text', output: 'json' },
-      { id: 'six-hats', name: '六顶思考帽', icon: '🎩', description: '用六顶思考帽从六种思维视角全面分析问题', input: 'text', output: 'json' },
-    ],
-    item: 'clipboard',
-    catColors: { body: '#F5F5F5', bodyDark: '#D5D5D5', belly: '#FFFFFF', earInner: '#FFB5C5', eyes: '#542615', nose: '#542615', blush: '#FFB5C5', stroke: '#333333', apron: '#E8A0BF', apronLight: '#FCE4EC', apronLine: '#E8A0BF', desk: '#E8C8D8', deskDark: '#C4919E', deskLeg: '#D4A8B5', paw: '#FFFFFF', tail: '#F5F5F5', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-    messages: ['让我们换个角度想想💡', 'MECE 拆解完毕！🧩', '七个维度全部发散✨', '戴上思考帽开始分析🎩', '创意灵感来了！🔀'],
-  },
-  {
-    id: 'default',
-    name: 'CAT',
-    role: 'Default',
-    description: '官方默认猫猫。全能小助手，装备所有 13 个原型技能。',
-    accent: '#A0A0A0',
-    systemPrompt: '你是「CAT」，一只随和友善的猫猫助手。你是团队的全能基础成员，装备了所有 13 个原型技能：AI 文生文、文生图、结构化输出、API 调用、数据库查询、邮件发送、Web 推送、HTML 渲染、图表渲染、浏览器操作、文件读写、工作流引擎、JS 执行。性格：随和、乐于助人、认真负责、无所不能。',
-    skills: [
-      { id: 'ai-chat',           name: 'AI 对话',     icon: '💬', description: '通用 AI 文生文',                    input: 'text', output: 'text' },
-      { id: 'text-to-image',     name: 'AI 文生图',   icon: '🖼️', description: '文本描述 → 图片生成',               input: 'text', output: 'image' },
-      { id: 'structured-output', name: '结构化输出',   icon: '📦', description: '文本 → JSON 结构化数据',            input: 'text', output: 'json' },
-      { id: 'api-call',          name: 'API 调用',    icon: '🌐', description: 'HTTP 请求外部 API',                input: 'json', output: 'json' },
-      { id: 'db-query',          name: '数据库查询',   icon: '🗄️', description: '执行 SQL 查询',                    input: 'text', output: 'json' },
-      { id: 'email-send',        name: '邮件发送',    icon: '📧', description: '通过 SMTP 发送邮件',               input: 'text', output: 'email' },
-      { id: 'web-push',          name: 'Web 推送',    icon: '🔔', description: '发送浏览器推送通知',                input: 'json', output: 'json' },
-      { id: 'html-render',       name: 'HTML 渲染',   icon: '🧩', description: '生成并渲染 HTML 组件',             input: 'text', output: 'html' },
-      { id: 'chart-render',      name: '图表渲染',    icon: '📊', description: 'JSON → 可视化图表',                input: 'json', output: 'image' },
-      { id: 'browser-action',    name: '浏览器操作',   icon: '🌍', description: '自动化浏览器交互',                 input: 'url',  output: 'json' },
-      { id: 'file-io',           name: '文件读写',    icon: '📂', description: '读写本地文件',                     input: 'text', output: 'file' },
-      { id: 'workflow-engine',   name: '工作流引擎',   icon: '⚙️', description: '编排多步骤工作流',                 input: 'json', output: 'json' },
-      { id: 'js-execute',        name: 'JS 执行',     icon: '💻', description: '执行 JavaScript 代码',            input: 'text', output: 'text' },
-    ],
-    item: 'clipboard',
-    catColors: null, // null 表示随机
-    messages: ['喵~ 准备好了!', '交给我吧!', '正在思考中...', '搞定啦! ✨', '需要帮忙吗?', '全能猫猫上线! 🚀'],
-  },
-];
-
-/** 从 appearanceTemplates 等效配色列表中随机选一个 */
-const RANDOM_COLOR_POOL = [
-  { body: '#B0A08A', bodyDark: '#5C4A3A', belly: '#FFFFFF', earInner: '#F4B8B8', eyes: '#B2D989', nose: '#E8998D', blush: '#F4B8B8', stroke: '#3E2E1E', apron: '#A5D6A7', apronLight: '#E8F5E9', apronLine: '#A5D6A7', desk: '#C8DEC4', deskDark: '#8DB889', deskLeg: '#A6CCA2', paw: '#FFFFFF', tail: '#B0A08A', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-  { body: '#8E9AAF', bodyDark: '#6B7A8D', belly: '#B8C4D4', earInner: '#C4A6A6', eyes: '#D4944C', nose: '#B87D75', blush: '#C9A6A6', stroke: '#4A5568', apron: '#5B8DB8', apronLight: '#D0DFE9', apronLine: '#5B8DB8', desk: '#E8D5B8', deskDark: '#C4A87A', deskLeg: '#D4BF9A', paw: '#B8C4D4', tail: '#6B7A8D', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-  { body: '#3D3D3D', bodyDark: '#2A2A2A', belly: '#3D3D3D', earInner: '#E8909A', eyes: '#000', nose: '#542615', blush: '#F28686', stroke: '#1A1A1A', apron: '#7EB8DA', apronLight: '#D6EAF5', apronLine: '#7EB8DA', desk: '#C8D8E8', deskDark: '#8BA4BD', deskLeg: '#A6BCCF', paw: '#fff', tail: '#3D3D3D', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-  { body: '#F7AC5E', bodyDark: '#D3753E', belly: '', earInner: '#F28686', eyes: '#542615', nose: '#542615', blush: '#F28686', stroke: '#542615', apron: '#BDBDBD', apronLight: '#FEFFFE', apronLine: '#BDBDBD', desk: '#D7CCC8', deskDark: '#A1887F', deskLeg: '#BCAAA4', paw: '', tail: '#F7AC5E', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-  { body: '#FAF3EB', bodyDark: '#FAF3EB', belly: '#FAF3EB', earInner: '#4E342E', eyes: '#4FC3F7', nose: '#333', blush: '#FFCCBC', stroke: '#4E342E', apron: '#B39DDB', apronLight: '#EDE7F6', apronLine: '#B39DDB', desk: '#D1C4E9', deskDark: '#9575CD', deskLeg: '#B39DDB', paw: '#4E342E', tail: '#4E342E', faceDark: '#4E342E', month: '#333', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-  { body: '#FFF', bodyDark: '#FFF', belly: '#FFF', earInner: '#FFF', eyes: '#5D4037', nose: '#5D4037', blush: '#FFCCBC', stroke: '#5D4037', apron: '#B39DDB', apronLight: '#EDE7F6', apronLine: '#B39DDB', desk: '#FFF9C4', deskDark: '#FDD835', deskLeg: '#FFF176', paw: '#FFF', tail: '#FFF', faceDark: '', month: '#333', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-  { body: '#F5F5F5', bodyDark: '#D5D5D5', belly: '#FFFFFF', earInner: '#FFB5C5', eyes: '#542615', nose: '#542615', blush: '#FFB5C5', stroke: '#333333', apron: '#E8A0BF', apronLight: '#FCE4EC', apronLine: '#E8A0BF', desk: '#E8C8D8', deskDark: '#C4919E', deskLeg: '#D4A8B5', paw: '#FFFFFF', tail: '#F5F5F5', faceDark: '', month: '', head: '', bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '' },
-];
-
-function getRandomColors() {
-  return RANDOM_COLOR_POOL[Math.floor(Math.random() * RANDOM_COLOR_POOL.length)];
-}
-
-const PERSONALITY_POOL = [
-  '好奇心旺盛，喜欢探索新事物',
-  '安静沉稳，做事细致入微',
-  '活泼开朗，总是充满活力',
-  '温柔体贴，善于倾听',
-  '机灵聪慧，反应敏捷',
-  '认真负责，一丝不苟',
-  '乐观积极，总能看到好的一面',
-];
-
-function getRandomPersonality() {
-  return PERSONALITY_POOL[Math.floor(Math.random() * PERSONALITY_POOL.length)];
-}
-
-/** 自动为新团队创建一只默认 CAT 猫猫 */
-async function createDefaultCat(teamId) {
-  const template = CAT_TEMPLATES.find(t => t.id === 'default');
-  if (!template) return null;
-  const colors = getRandomColors();
-  const personality = getRandomPersonality();
-  try {
-    return await prisma.teamCat.create({
-      data: {
-        teamId,
-        templateId: 'default',
-        name: template.name,
-        role: template.role,
-        description: template.description,
-        catColors: colors,
-        systemPrompt: template.systemPrompt + `\n性格特点：${personality}`,
-        skills: template.skills,
-        accent: template.accent,
-        item: template.item,
-        messages: template.messages,
-      },
-    });
-  } catch (err) {
-    console.error('[cats] create default CAT error:', err);
-    return null;
-  }
-}
-
 module.exports = router;
-module.exports.createDefaultCat = createDefaultCat;

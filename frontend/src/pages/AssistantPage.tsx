@@ -135,34 +135,48 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
               </div>
             </div>
 
-            {/* 第2栏：Skills */}
+            {/* 第2栏：AIGC（原「技能」收口为角色 + 统一生成入口） */}
             <div className="col col-skills">
               <h3 className="col-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selectedAssistant.catColors.deskDark} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                 </svg>
-                技能工具
-                <span className="col-count">{(selectedAssistant.skills as Skill[]).length}</span>
+                AIGC 协作
+                <span className="col-count">{(selectedAssistant.skills ?? []).length || 1}</span>
               </h3>
               <div className="col-scroll">
                 <div className="skill-detail-list">
-                  {(selectedAssistant.skills as Skill[]).map((skill) => (
-                    <div key={skill.id} className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
-                      <div className="skill-detail-head">
-                        <span className="sd-name">{skill.name}</span>
-                        <div className="sd-io">
-                          <span className="sd-io-tag sd-in">{skill.input}</span>
-                          <span className="sd-arrow">→</span>
-                          <span className="sd-io-tag sd-out">{skill.output}</span>
+                  {(selectedAssistant.skills ?? []).length > 0 ? (
+                    (selectedAssistant.skills as Skill[]).map((skill) => (
+                      <div key={skill.id} className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
+                        <div className="skill-detail-head">
+                          <span className="sd-name">{skill.name}</span>
+                          <div className="sd-io">
+                            <span className="sd-io-tag sd-in">{skill.input}</span>
+                            <span className="sd-arrow">→</span>
+                            <span className="sd-io-tag sd-out">{skill.output}</span>
+                          </div>
+                        </div>
+                        <p className="sd-desc">{skill.description}</p>
+                        <div className="sd-meta">
+                          {skill.provider && <span className="sd-provider">via {skill.provider}</span>}
+                          {skill.mockResult && <span className="sd-mock">{skill.mockResult}</span>}
                         </div>
                       </div>
-                      <p className="sd-desc">{skill.description}</p>
-                      <div className="sd-meta">
-                        {skill.provider && <span className="sd-provider">via {skill.provider}</span>}
-                        {skill.mockResult && <span className="sd-mock">{skill.mockResult}</span>}
+                    ))
+                  ) : (
+                    <div className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
+                      <div className="skill-detail-head">
+                        <span className="sd-name">✨ AIGC</span>
+                        <div className="sd-io">
+                          <span className="sd-io-tag sd-in">text</span>
+                          <span className="sd-arrow">→</span>
+                          <span className="sd-io-tag sd-out">text</span>
+                        </div>
                       </div>
+                      <p className="sd-desc">按岗位角色参与生成式协作；执行管道占位，后续统一接入模型。</p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
@@ -192,7 +206,10 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
                     </div>
                   ) : (
                     selectedHistory.map((item) => {
-                      const skill = (selectedAssistant.skills as Skill[]).find((s) => s.id === item.skillId);
+                      const skillsList = selectedAssistant.skills ?? [];
+                      const skill = item.skillId === 'aigc'
+                        ? { icon: '✨', name: 'AIGC' }
+                        : (skillsList as Skill[]).find((s) => s.id === item.skillId);
                       return (
                         <div key={item.id} className={`history-item status-${item.status}`}>
                           <div className="hi-top">

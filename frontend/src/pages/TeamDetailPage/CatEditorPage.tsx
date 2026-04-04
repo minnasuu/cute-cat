@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, Navigate } from 'react-router-dom';
 import { apiClient } from '../../utils/apiClient';
 import { showToast } from '../../components/Toast';
 import CatSVG from '../../components/CatSVG';
@@ -7,33 +7,8 @@ import type { CatColors } from '../../components/CatSVG';
 import CatLogo from '../../components/CatLogo';
 import { appearanceTemplates } from '../../data/themes';
 import { personalityTemplates } from '../../data/personality';
-import { skillCategories, getVisibleSkillPool, getVisibleSkillGroups, type SkillGroup } from '../../data/skills';
+import { getVisibleSkillPool } from '../../data/skills';
 import { useAuth } from '../../contexts/AuthContext';
-
-/** ROLE_OPTIONS value -> skillGroups id */
-const ROLE_SKILL_MAP: Record<string, string> = {
-  'Project Manager': 'pm',
-  'Content Editor': 'editor',
-  'Data Analyst': 'analyst',
-  'Visual Designer': 'designer',
-  'Creative Strategist': 'creative',
-  'Operations Assistant': 'ops',
-  'Engineer': 'engineer',
-};
-
-/** 根据 skillGroup id 获取对应的 skillIds（需传入当前可见的 skillGroups） */
-function getGroupSkillIds(groups: SkillGroup[], groupId: string): string[] {
-  return groups.find(g => g.id === groupId)?.skillIds ?? [];
-}
-
-/** 判断当前选中的技能是否完全匹配某个角色的技能组 */
-function matchesRoleSkills(groups: SkillGroup[], selected: string[], roleName: string): boolean {
-  const groupId = ROLE_SKILL_MAP[roleName];
-  if (!groupId) return false;
-  const expected = getGroupSkillIds(groups, groupId);
-  if (expected.length !== selected.length) return false;
-  return expected.every(id => selected.includes(id));
-}
 
 interface CatTemplate {
   id: string; name: string; role: string; description: string; accent: string;
@@ -75,23 +50,20 @@ const DEFAULT_COLORS: CatColors = {
   bodyDarkBottom: '', leg: '', headTopLeft: '', headTopRight: '',
 };
 
-const ROLE_OPTIONS = ['Project Manager', 'Content Editor', 'Data Analyst', 'Visual Designer', 'Creative Strategist', 'Operations Assistant', 'Engineer', 'Recorder', 'QA Inspector', 'Image Creator', 'HR', 'Custom'];
-
 const CatEditorPage: React.FC = () => {
   const { teamId, catId } = useParams<{ teamId: string; catId: string }>();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const skillPool = getVisibleSkillPool(isAdmin);
-  const skillGroups = getVisibleSkillGroups(isAdmin);
   const isEditing = catId && catId !== 'new';
 
-  const [mode, setMode] = useState<'template' | 'custom'>(isEditing ? 'custom' : 'template');
   const [templates, setTemplates] = useState<CatTemplate[]>([]);
+  const [lockedSkills, setLockedSkills] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState('');
-  const [role, setRole] = useState('Custom');
+  const [role, setRole] = useState('');
   const [description, setDescription] = useState('');
   const [catColors, _setCatColors] = useState<CatColors>(DEFAULT_COLORS);
   /** 确保 catColors 永远不为 null（后端/模板可能返回 null） */
@@ -106,7 +78,6 @@ const CatEditorPage: React.FC = () => {
   const [messages, setMessages] = useState<string[]>(['喵~']);
   const [tailEnabled, setTailEnabled] = useState(!!DEFAULT_COLORS.tail);
   const [configTab, setConfigTab] = useState('s-basic');
-  const [skillFilter, setSkillFilter] = useState<string>('all');
   const [addedTemplateIds, setAddedTemplateIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -127,6 +98,7 @@ const CatEditorPage: React.FC = () => {
         setCatColors(colors);
         setTailEnabled(!!colors.tail);
         setSystemPrompt(cat.systemPrompt || '');
+        setLockedSkills(Array.isArray(cat.skills) ? cat.skills : []);
         setSelectedSkills((cat.skills || []).map((s: any) => s.id));
         setAccent(cat.accent || '#8DB889');
         setMessages(cat.messages || ['喵~']);
@@ -150,9 +122,16 @@ const CatEditorPage: React.FC = () => {
     if (!name.trim()) { showToast('请输入猫猫名称', 'warning'); return; }
     setSaving(true);
     try {
-      const skills = skillPool.filter(s => selectedSkills.includes(s.id)).map(s => ({ id: s.id, name: s.name, description: s.description, input: s.input, output: s.output, ...(s.paramDefs?.length ? { paramDefs: s.paramDefs } : {}) }));
+      const skillsPayload = isEditing
+        ? lockedSkills
+        : skillPool.filter(s => selectedSkills.includes(s.id)).map(s => ({ id: s.id, name: s.name, description: s.description, input: s.input, output: s.output, ...(s.paramDefs?.length ? { paramDefs: s.paramDefs } : {}) }));
+      if (isEditing && (skillsPayload.length !== 1 || skillsPayload[0]?.id !== 'aigc')) {
+        showToast('官方猫猫仅保留内置 AIGC 标识（aigc）', 'warning');
+        setSaving(false);
+        return;
+      }
       const finalColors = { ...catColors, tail: tailEnabled ? catColors.tail : '' };
-      const data = { name, role, description, catColors: finalColors, systemPrompt, skills, accent, item: 'clipboard', messages };
+      const data = { name, role, description, catColors: finalColors, systemPrompt, skills: skillsPayload, accent, item: 'clipboard', messages };
       if (isEditing) {
         await apiClient.put(`/api/cats/${catId}`, data);
       } else {
@@ -164,24 +143,6 @@ const CatEditorPage: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleRoleChange = (newRole: string) => {
-    setRole(newRole);
-    const groupId = ROLE_SKILL_MAP[newRole];
-    if (groupId) {
-      setSelectedSkills(getGroupSkillIds(skillGroups, groupId));
-    }
-  };
-
-  const toggleSkill = (skillId: string) => {
-    setSelectedSkills(prev => {
-      const next = prev.includes(skillId) ? prev.filter(id => id !== skillId) : [...prev, skillId];
-      if (role !== 'Custom' && !matchesRoleSkills(skillGroups, next, role)) {
-        setRole('Custom');
-      }
-      return next;
-    });
   };
 
   const QUAD_KEYS: (keyof CatColors)[] = ['paw', 'leg'];
@@ -201,19 +162,30 @@ const CatEditorPage: React.FC = () => {
     });
   };
 
-  const NAV_ITEMS = [
-    { id: 's-basic', icon: '📋', label: '基本信息' },
-    { id: 'g-colors', icon: '🐈', label: '外观配色' },
-    { id: 's-ai', icon: '🐾', label: '性格' },
-    { id: 's-skills', icon: '⚡', label: '技能装备' },
-    { id: 's-messages', icon: '💬', label: '猫猫语录' },
-  ];
+  const NAV_ITEMS = isEditing
+    ? [
+        { id: 's-basic', icon: '📋', label: '基本信息' },
+        { id: 's-ai', icon: '🐾', label: 'Prompt' },
+        { id: 's-skills', icon: '✨', label: 'AIGC' },
+        { id: 's-messages', icon: '💬', label: '猫猫语录' },
+      ]
+    : [
+        { id: 's-basic', icon: '📋', label: '基本信息' },
+        { id: 'g-colors', icon: '🐈', label: '外观配色' },
+        { id: 's-ai', icon: '🐾', label: '性格' },
+        { id: 's-skills', icon: '✨', label: 'AIGC' },
+        { id: 's-messages', icon: '💬', label: '猫猫语录' },
+      ];
 
   const applyPreset = (preset: any) => {
     setCatColors(prev => ({ ...prev, ...preset.colors }));
     setAccent(preset.colors.deskDark || preset.colors.apron);
     setTailEnabled(!!preset.colors.tail);
   };
+
+  if (!isAdmin && teamId) {
+    return <Navigate to={`/teams/${teamId}`} replace />;
+  }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-text-tertiary font-medium">加载中...</div>;
 
@@ -241,7 +213,7 @@ const CatEditorPage: React.FC = () => {
             </h1>
           </div>
           </div>
-          {(mode === 'custom' || isEditing) && (
+          {isEditing && (
               <button
                 onClick={handleSaveCustom}
                 disabled={saving}
@@ -253,28 +225,10 @@ const CatEditorPage: React.FC = () => {
         </section>
       <main className="flex-1 h-px max-w-6xl mx-auto px-6 flex flex-col">
 
-        {/* Mode tabs */}
+        {/* === Template Mode（仅管理员添加官方猫） === */}
         {!isEditing && (
-          <div className="flex gap-1 mb-8 bg-surface-tertiary/60 rounded-2xl p-1.5 w-fit">
-            <button
-              onClick={() => setMode('template')}
-              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all cursor-pointer ${mode === 'template' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-secondary'}`}
-            >
-              从模版选择
-            </button>
-            <button
-              onClick={() => setMode('custom')}
-              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all cursor-pointer ${mode === 'custom' ? 'bg-surface text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-secondary'}`}
-            >
-              自定义创建
-            </button>
-          </div>
-        )}
-
-        {/* === Template Mode === */}
-        {mode === 'template' && !isEditing && (
           <section className="flex-1 h-px flex flex-col">
-            <div className="text-sm text-text-secondary mb-6">选择官方猫猫模版，自动装配技能</div>
+            <div className="text-sm text-text-secondary mb-6">选择官方猫猫模版：按岗位角色划分，统一围绕 AIGC；执行逻辑当前为占位。定制外形与自由组合已关闭。</div>
             <div className="flex-1 grid grid-cols-2 pb-4 md:grid-cols-3 lg:grid-cols-5 gap-5 overflow-y-auto">
               {templates.map(t => {
                 const isAdded = addedTemplateIds.has(t.id);
@@ -292,9 +246,7 @@ const CatEditorPage: React.FC = () => {
                     <p className="text-xs font-bold text-center" style={{ color: t.accent }}>{t.role}</p>
                     <p className="text-xs text-text-secondary font-medium line-clamp-2 text-center">{t.description}</p>
                     <div className="flex flex-wrap gap-1.5 justify-center">
-                      {t.skills.slice(0, 3).map((s: any) => (
-                        <span key={s.id} className="text-[10px] font-bold bg-surface-secondary text-text-secondary px-2 py-0.5 rounded-full border border-border">{s.name}</span>
-                      ))}
+                      <span className="text-[10px] font-bold bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full border border-primary-200">✨ AIGC</span>
                     </div>
                     <button
                       onClick={() => handleAddTemplate(t)}
@@ -316,14 +268,14 @@ const CatEditorPage: React.FC = () => {
               <div className="text-center py-20 rounded-[32px] border border-border bg-surface-secondary/50">
                 <div className="text-5xl mb-4">🐱</div>
                 <h3 className="text-xl font-black text-text-primary mb-2">暂无猫猫模版</h3>
-                <p className="text-text-secondary font-medium">切换到自定义创建模式来创造你的猫猫</p>
+                <p className="text-text-secondary font-medium">请联系管理员检查后端模版配置</p>
               </div>
             )}
           </section>
         )}
 
-        {/* === Custom Mode === */}
-        {(mode === 'custom' || isEditing) && (
+        {/* === 编辑官方猫（管理员） === */}
+        {isEditing && (
           <section className="flex-1 h-px pb-4">
             <div className="flex gap-8 md:flex-row flex-col h-full">
               {/* Left: Preview */}
@@ -337,22 +289,6 @@ const CatEditorPage: React.FC = () => {
                   {description && <p className="text-sm text-text-secondary font-medium mt-2 text-center max-w-xs">{description}</p>}
                 </div>
 
-                {/* Presets */}
-                <div className="w-full mt-5">
-                  <p className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">快速配色方案</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {appearanceTemplates.map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => applyPreset(t)}
-                        className="px-3.5 py-2 bg-surface border border-border rounded-2xl text-xs font-bold text-text-secondary hover:border-border-strong transition-all flex items-center gap-2 cursor-pointer"
-                      >
-                        <span className="w-3.5 h-3.5 rounded-full border border-border" style={{ background: typeof t.colors.body === 'string' ? t.colors.body : '#ccc' }} />
-                        {t.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               {/* Right: Config */}
@@ -390,16 +326,14 @@ const CatEditorPage: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">角色</label>
-                        <div className='rounded-2xl border border-border-strong pr-4 bg-surface-secondary'>
-                          <select
-                            value={role}
-                            onChange={(e) => handleRoleChange(e.target.value)}
-                            className="w-full px-4 py-3 rounded-2xl text-sm font-medium outline-none cursor-pointer"
-                          >
-                            {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                          </select>
-                        </div>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">岗位角色</label>
+                        <input
+                          type="text"
+                          value={role}
+                          onChange={(e) => setRole(e.target.value)}
+                          placeholder="如：视觉设计师"
+                          className="w-full px-4 py-3 rounded-2xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium"
+                        />
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">描述</label>
@@ -496,7 +430,7 @@ const CatEditorPage: React.FC = () => {
                   {/* AI Settings */}
                   {configTab === 's-ai' && (
                     <div className="p-6 space-y-6">
-                      {/* Personality templates */}
+                      {!isEditing && (
                       <div>
                         <p className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">官方性格模版</p>
                         <div className="grid grid-cols-3 gap-2">
@@ -522,16 +456,17 @@ const CatEditorPage: React.FC = () => {
                           })}
                         </div>
                       </div>
+                      )}
 
                       {/* Custom prompt */}
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-xs font-bold text-text-tertiary uppercase tracking-widest">自定义 Prompt</p>
-                          <span className={`text-[10px] font-bold ${systemPrompt.length > 200 ? 'text-danger-500' : 'text-text-tertiary'}`}>{systemPrompt.length}/200</span>
+                          <span className={`text-[10px] font-bold ${systemPrompt.length > 8000 ? 'text-danger-500' : 'text-text-tertiary'}`}>{systemPrompt.length}/8000</span>
                         </div>
                         <textarea
                           value={systemPrompt}
-                          onChange={(e) => { if (e.target.value.length <= 200) setSystemPrompt(e.target.value); }}
+                          onChange={(e) => { if (e.target.value.length <= 8000) setSystemPrompt(e.target.value); }}
                           placeholder="指导猫猫行为的系统提示词..."
                           rows={6}
                           className="w-full px-4 py-3 rounded-2xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium resize-none"
@@ -542,74 +477,17 @@ const CatEditorPage: React.FC = () => {
                   )}
 
                   {/* Skills */}
-                  {configTab === 's-skills' && (
+                  {configTab === 's-skills' && isEditing && (
                     <div className="p-6">
-                      {/* Category filter + count */}
-                      <div className="flex items-center gap-2 flex-wrap mb-4">
-                        <button
-                          onClick={() => setSkillFilter('all')}
-                          className={`px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
-                            skillFilter === 'all'
-                              ? 'bg-text-primary text-text-inverse border-transparent'
-                              : 'bg-surface-secondary border-border text-text-secondary hover:border-border-strong'
-                          }`}
-                        >
-                          全部 ({skillPool.length})
-                        </button>
-                        {skillCategories.map(cat => {
-                          const count = skillPool.filter(s => s.category === cat.id).length;
-                          return (
-                            <button
-                              key={cat.id}
-                              onClick={() => setSkillFilter(cat.id)}
-                              className={`px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
-                                skillFilter === cat.id
-                                  ? 'text-white border-transparent'
-                                  : 'bg-surface-secondary border-border text-text-secondary hover:border-border-strong'
-                              }`}
-                              style={skillFilter === cat.id ? { background: cat.color } : undefined}
-                            >
-                          {cat.name} ({count})
-                            </button>
-                          );
-                        })}
-                        <span className="ml-auto px-2.5 py-1 rounded-full bg-primary-50 border border-primary-200 text-[10px] font-bold text-primary-600">
-                          已装备 {selectedSkills.length} 个技能
-                        </span>
-                      </div>
-
-                      {/* Skill cards */}
-                      <div className="grid grid-cols-2 gap-2.5">
-                        {(skillFilter === 'all' ? skillPool : skillPool.filter(s => s.category === skillFilter)).map(skill => {
-                          const isSelected = selectedSkills.includes(skill.id);
-                          const cat = skillCategories.find(c => c.id === skill.category);
-                          return (
-                            <button
-                              key={skill.id}
-                              onClick={() => toggleSkill(skill.id)}
-                              className={`text-left p-3 rounded-2xl border transition-all cursor-pointer ${
-                                isSelected
-                                  ? 'border-primary-400 bg-primary-50 shadow-sm'
-                                  : 'border-border hover:border-border-strong hover:shadow-sm'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <div className="min-w-0">
-                                  <span className={`font-bold text-xs block ${isSelected ? 'text-primary-700' : 'text-text-primary'}`}>{skill.name}</span>
-                                  <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold text-white" style={{ background: cat?.color }}>{cat?.name}</span>
-                                </div>
-                              </div>
-                              <p className="text-[10px] text-text-tertiary line-clamp-1 mb-1.5">{skill.description}</p>
-                              <div className="flex gap-1.5 flex-wrap">
-                                <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-surface-secondary text-text-tertiary border border-border">入: {skill.input}</span>
-                                <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-surface-secondary text-text-tertiary border border-border">出: {skill.output}</span>
-                                {skill.provider && (
-                                  <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-surface-tertiary text-text-tertiary">{skill.provider}</span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
+                      <p className="text-sm text-text-secondary font-medium mb-4">
+                        产品侧不再强调「技能」：每只官方猫仅有统一的 AIGC 协作入口，具体生成能力将按岗位在后续版本接入（当前为占位）。
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {lockedSkills.map((s: any) => (
+                          <span key={s.id} className="px-3 py-1.5 rounded-full bg-primary-50 border border-primary-200 text-xs font-bold text-primary-800">
+                            {s.icon ? `${s.icon} ` : ''}{s.name || s.id}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   )}

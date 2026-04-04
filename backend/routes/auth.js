@@ -6,6 +6,7 @@ const nodemailer = require('nodemailer');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const { ensureWorkbenchTeam } = require('../lib/workbench-seed');
 
 // ======================== 简易内存速率限制 ========================
 const rateLimitMap = new Map();
@@ -164,6 +165,12 @@ router.post('/register', async (req, res) => {
       data: { email, password: hashedPassword, nickname },
     });
     console.log('[auth] register: user created |', user.id, '|', email, '| hash length:', hashedPassword.length);
+
+    try {
+      await ensureWorkbenchTeam(prisma, user.id);
+    } catch (seedErr) {
+      console.error('[auth] workbench seed error:', seedErr);
+    }
 
     // Mark code as used
     await prisma.emailVerification.update({

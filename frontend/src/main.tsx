@@ -8,6 +8,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import DashboardPage from './pages/DashboardPage';
+import DashboardHistoryPage from './pages/DashboardPage/HistoryPage';
+import DashboardUsagePage from './pages/DashboardPage/UsagePage';
 import TeamDetailPage from './pages/TeamDetailPage';
 import CatEditorPage from './pages/TeamDetailPage/CatEditorPage';
 import WorkflowEditorPage from './pages/TeamDetailPage/WorkflowEditorPage';
@@ -59,6 +61,8 @@ const App: React.FC = () => {
 
             {/* Dashboard - requires login */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+            <Route path="/dashboard/history" element={<ProtectedRoute><DashboardHistoryPage /></ProtectedRoute>} />
+            <Route path="/dashboard/usage" element={<ProtectedRoute><DashboardUsagePage /></ProtectedRoute>} />
             <Route path="/teams/:teamId" element={<ProtectedRoute><TeamDetailPage /></ProtectedRoute>} />
             <Route path="/teams/:teamId/cats/new" element={<ProtectedRoute><CatEditorPage /></ProtectedRoute>} />
             <Route path="/teams/:teamId/cats/:catId" element={<ProtectedRoute><CatEditorPage /></ProtectedRoute>} />

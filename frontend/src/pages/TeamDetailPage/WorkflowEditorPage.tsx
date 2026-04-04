@@ -313,10 +313,7 @@ const WorkflowEditorPage: React.FC = () => {
 
         <div className="flex items-center gap-2">
           {cats.length === 0 && (
-            <span className="text-[10px] font-bold text-red-500 mr-2">
-              团队暂无猫猫，
-              <button onClick={() => navigate(`/teams/${teamId}/cats/new`)} className="underline cursor-pointer hover:text-red-600">去添加</button>
-            </span>
+            <span className="text-[10px] font-bold text-red-500 mr-2">团队暂无猫猫，请在工作台重新初始化或联系管理员</span>
           )}
           <button
             onClick={handleSave}

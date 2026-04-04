@@ -306,10 +306,19 @@ const SKILL_PROMPTS = {
   'generate-article': '你是一位专业的内容创作者。请根据提供的素材和要求，撰写一篇高质量的文章。用中文回复，内容详实、逻辑清晰。',
   'generate-outline': '你是一位大纲规划专家。请根据主题生成详细的文章大纲，包含标题、各段要点。用中文回复。',
   'assign-task': '你是一位项目任务拆解助手。从前序输出中提取最重要、最可执行的任务。返回 JSON 数组。',
+  'manage-workflow': '你是工作流编排助手。根据用户需求说明如何调整或管理工作流步骤。用中文、结构化输出。',
+  'run-workflow': '你是工作流执行助手。说明当前应触发的工作流与预期结果。用中文、简洁 JSON 或列表。',
   'meeting-notes': '你是一位会议纪要撰写助手。根据提供的内容生成结构化的会议纪要。用中文回复。',
   'task-log': '你是一位工作日志助手。根据提供的任务信息，生成结构化的工作日志。用中文回复。',
   'content-review': '你是一位内容审核专家。请审核内容的准确性和合规性。用中文回复。',
   'team-review': '你是一位团队绩效分析师。请根据提供的数据给出团队评估报告。用中文回复。',
+  'html-render': '你是前端组件专家。根据需求输出可用的 HTML 片段与简要说明。用中文。',
+  'generate-image': '你是视觉创意助手。根据描述输出画面构图、色彩与风格建议（文字），便于后续生图。用中文。',
+  'generate-chart': '你是数据可视化顾问。根据数据说明合适的图表类型与关键洞察。用中文。',
+  'image-enhance': '你是图像处理顾问。说明如何增强清晰度与降噪的策略。用中文。',
+  'fix-bug': '你是全栈工程师。根据报错与复现步骤给出修复建议与补丁思路。用中文。',
+  'mece-analysis': '你是结构化思维顾问。用 MECE 输出分层 JSON 或树状大纲。用中文。',
+  'scamper-creative': '你是创意发散顾问。按 SCAMPER 七维度输出创意点。用中文、结构化。',
 };
 
 // ─── 系统注入 key 白名单 ───
@@ -380,6 +389,26 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
   }
 
   try {
+    // ─── 官方统一 AIGC（占位：不接真实生成模型，后续聚合多模态）───
+    if (skillId === 'aigc') {
+      const role = context.catRole || '协作猫';
+      const task = action ? String(action) : '';
+      let upstreamHint = '';
+      if (merged.text) upstreamHint = String(merged.text).slice(0, 500);
+      else if (merged.summary) upstreamHint = String(merged.summary).slice(0, 500);
+      const text =
+        `【AIGC 占位】岗位：「${role}」\n\n` +
+        '后续将在此统一接入生成式能力（文案、图像等）。当前不调用外部模型，仅用于联调工作流链路。\n\n' +
+        (task ? `任务：${task}\n\n` : '') +
+        (upstreamHint ? `上游参考：${upstreamHint}${upstreamHint.length >= 500 ? '…' : ''}` : '');
+      return {
+        success: true,
+        data: { text },
+        summary: 'AIGC 占位完成（未调用生成模型）',
+        status: 'success',
+      };
+    }
+
     // ─── 爬取类技能 ───
     if (skillId === 'crawl-news') {
       const p = merged._params || merged;
@@ -522,13 +551,14 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
 }
 
 // ─── 执行整个工作流（DAG 分层并行执行） ───
-async function executeWorkflow(workflow, triggeredBy) {
+async function executeWorkflow(workflow, triggeredBy, options = {}) {
   const startTime = Date.now();
   const stepsData = [];
+  const userInput = typeof options.userInput === 'string' ? options.userInput.trim() : '';
 
   // 检查日志上限并创建 run 记录
   const runCount = await prisma.workflowRun.count({ where: { teamId: workflow.teamId } });
-  if (runCount >= 30) {
+  if (runCount >= 100) {
     await prisma.workflowRun.deleteMany({ where: { teamId: workflow.teamId } });
   }
 
@@ -565,9 +595,23 @@ async function executeWorkflow(workflow, triggeredBy) {
   const executionContext = {
     userName,
     workflowName: workflow.name,
+    userInput,
   };
 
-  const steps = Array.isArray(workflow.steps) ? workflow.steps : (typeof workflow.steps === 'string' ? JSON.parse(workflow.steps) : []);
+  let steps = Array.isArray(workflow.steps) ? workflow.steps : (typeof workflow.steps === 'string' ? JSON.parse(workflow.steps) : []);
+  steps = JSON.parse(JSON.stringify(steps));
+
+  if (userInput && steps.length > 0) {
+    const first = steps[0];
+    if (!Array.isArray(first.params)) first.params = [];
+    const topicParam = first.params.find((p) => p.key === 'topic');
+    if (topicParam) topicParam.value = userInput;
+    else {
+      const kw = first.params.find((p) => p.key === 'keyword');
+      if (kw) kw.value = userInput;
+      else first.params.push({ key: 'topic', label: '用户输入', type: 'text', value: userInput });
+    }
+  }
 
   // ── 构建 DAG：解析每个步骤的上游依赖索引 ──
   const parentIndex = [];
@@ -623,15 +667,17 @@ async function executeWorkflow(workflow, triggeredBy) {
 
       // 查询猫猫的性格 systemPrompt
       let catSystemPrompt = '';
+      let catRole = '';
       if (step.agentId) {
-        const cat = await prisma.teamCat.findUnique({ where: { id: step.agentId }, select: { systemPrompt: true } }).catch(() => null);
+        const cat = await prisma.teamCat.findUnique({ where: { id: step.agentId }, select: { systemPrompt: true, role: true } }).catch(() => null);
         if (cat?.systemPrompt) catSystemPrompt = cat.systemPrompt;
+        if (cat?.role) catRole = cat.role;
       }
 
       // 带超时保护（60 秒）
       let result;
       try {
-        const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt, executionContext);
+        const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt, { ...executionContext, catRole });
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (60s)')), 60000));
         result = await Promise.race([executePromise, timeoutPromise]);
       } catch (err) {

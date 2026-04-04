@@ -4,13 +4,21 @@ set -e
 echo "🐱 CuCaTopia backend starting..."
 
 # ---- 解析 DATABASE_URL 获取连接信息 ----
-# DATABASE_URL 格式: postgresql://user:password@host:port/dbname
-DB_URL="${DATABASE_URL}"
-DB_USER=$(echo "$DB_URL" | sed -n 's|postgresql://\([^:]*\):.*|\1|p')
-DB_PASS=$(echo "$DB_URL" | sed -n 's|postgresql://[^:]*:\([^@]*\)@.*|\1|p')
-DB_HOST=$(echo "$DB_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
-DB_PORT=$(echo "$DB_URL" | sed -n 's|.*:\([0-9]*\)/.*|\1|p')
-DB_NAME=$(echo "$DB_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+# DATABASE_URL 格式: postgresql://user:password@host:port/dbname[?params]
+# 密码中含 @ 时需 URL 编码为 %40；路径末尾不要多余 /
+DB_URL=$(echo "${DATABASE_URL}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s|/$||')
+DB_USER=$(echo "$DB_URL" | sed -n 's|^postgresql://\([^:]*\):.*|\1|p')
+DB_PASS=$(echo "$DB_URL" | sed -n 's|^postgresql://[^:]*:\([^@]*\)@.*|\1|p')
+DB_HOST=$(echo "$DB_URL" | sed -n 's|^[^@]*@\([^:]*\):.*|\1|p')
+DB_PORT=$(echo "$DB_URL" | sed -n 's|^[^@]*@[^:]*:\([0-9][0-9]*\)/.*|\1|p')
+# 库名：@host:port/ 之后、? 之前（避免末尾 / 导致解析成空串）
+DB_NAME=$(echo "$DB_URL" | sed -n 's|^[^@]*@[^/]*/\([^?]*\).*$|\1|p' | sed 's|/$||' | tr -d '\r\n[:space:]')
+
+if [ -z "$DB_NAME" ] || [ -z "$DB_HOST" ] || [ -z "$DB_USER" ]; then
+  echo "❌ Invalid DATABASE_URL (could not parse host, user, or database name)."
+  echo "   Expected: postgresql://USER:PASSWORD@HOST:PORT/DBNAME"
+  exit 1
+fi
 
 echo "📡 Database config: host=$DB_HOST port=$DB_PORT db=$DB_NAME"
 
@@ -39,7 +47,11 @@ DB_EXISTS=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"
 
 if [ "$DB_EXISTS" != "1" ]; then
   echo "📦 Database '$DB_NAME' does not exist, creating..."
-  PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE \"$DB_NAME\";" 2>&1
+  # createdb 比手写 CREATE DATABASE 更不易被引号/转义坑到
+  if ! PGPASSWORD="$DB_PASS" createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME" 2>&1; then
+    echo "❌ Could not create database '$DB_NAME'. If you use managed Postgres, create the DB in the console first."
+    exit 1
+  fi
   echo "✅ Database '$DB_NAME' created"
 else
   echo "✅ Database '$DB_NAME' already exists"
