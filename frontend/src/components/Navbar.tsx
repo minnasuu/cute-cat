@@ -52,8 +52,8 @@ const Navbar: React.FC<NavbarProps> = ({
     : 'sticky top-0 z-50 bg-surface/80 backdrop-blur-xl border-b border-border';
 
   const innerClass = isFixed
-    ? '' // fixed variant uses the header itself as flex container
-    : 'max-w-6xl mx-auto px-6 h-16 flex items-center justify-between';
+    ? "" // fixed variant uses the header itself as flex container
+    : "mx-auto px-6 h-16 flex items-center justify-between";
 
   /* Default right section based on auth state */
   const defaultRight = user ? (

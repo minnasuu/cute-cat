@@ -9,14 +9,14 @@ export const workflows: Workflow[] = [
     id: 'web-page-builder',
     name: '网页制作流水线',
     description:
-      '产品策划根据需求产出网站架构 → 交互设计师梳理链路与关键交互 → 视觉设计师定义风格与页面气质 → 前端工程师输出页面实现稿（全程 AIGC 占位执行）。',
+      '产品策划根据需求产出网站架构 → 交互设计师梳理链路与关键交互 → 视觉设计师定义风格与页面气质 → 前端工程师输出页面实现稿（全程 AIGC 执行）。',
     steps: [
       {
         stepId: 'wpb_arch',
-        agentId: 'writer-outline',
+        agentId: 'product-architect',
         skillId: 'aigc',
         action:
-          '（产品策划）根据用户输入，输出网站信息架构：建站目标、受众、页面树（站点地图）、各页核心模块与内容要点。用 Markdown，便于后续步骤引用。',
+          '（产品策划·花椒）根据用户输入，输出网站信息架构：建站目标、受众、页面树（站点地图）、各页核心模块与内容要点。输出 JSON 格式的结构树。',
         params: [
           {
             key: 'topic',
@@ -35,11 +35,11 @@ export const workflows: Workflow[] = [
       },
       {
         stepId: 'wpb_ix',
-        agentId: 'builder-html',
+        agentId: 'ux-designer',
         skillId: 'aigc',
         inputFrom: 'wpb_arch',
         action:
-          '（交互设计师）基于上一步网站架构，输出核心用户路径与交互说明：主要任务流、页面间跳转、关键页面上的组件级交互与空态/加载建议。Markdown。',
+          '（交互设计师·阿蓝）基于上一步网站架构，输出核心用户路径与交互说明：主要任务流、页面间跳转、关键页面上的组件级交互与空态/加载建议。Markdown。',
         params: [
           {
             key: 'topic',
@@ -51,11 +51,11 @@ export const workflows: Workflow[] = [
       },
       {
         stepId: 'wpb_visual',
-        agentId: 'pixel-image',
+        agentId: 'visual-designer',
         skillId: 'aigc',
         inputFrom: 'wpb_ix',
         action:
-          '（视觉设计师）基于架构与交互稿，输出页面视觉方向：主色/辅色、字体气质、圆角与间距倾向、组件风格关键词、可参考的 moodboard 文字描述。Markdown。',
+          '（视觉设计师·墨墨）基于架构与交互稿，从视觉 prompt 库中匹配最符合的视觉方向，输出：主色/辅色、字体气质、圆角与间距倾向、组件风格关键词。',
         params: [
           {
             key: 'topic',
@@ -67,11 +67,11 @@ export const workflows: Workflow[] = [
       },
       {
         stepId: 'wpb_fe',
-        agentId: 'engineer-fix',
+        agentId: 'frontend-engineer',
         skillId: 'aigc',
         inputFrom: 'wpb_visual',
         action:
-          '（前端工程师）综合信息架构、交互与视觉方向，输出可交付的页面实现：单页或可复制的 HTML 草稿（含内联关键样式说明），并标注与架构各模块的对应关系。Markdown + 代码块。',
+          '（前端工程师·琥珀）综合信息架构、交互与视觉方向，输出完整可运行的 HTML 单页代码（含内联 CSS），标注与架构各模块的对应关系。',
         params: [
           {
             key: 'topic',

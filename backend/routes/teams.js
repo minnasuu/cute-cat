@@ -47,6 +47,7 @@ async function buildWorkbenchJson(userId) {
         startedAt: true,
         completedAt: true,
         totalDuration: true,
+        steps: true,
       },
     }),
     prisma.aICallLog.groupBy({

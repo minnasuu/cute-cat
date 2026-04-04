@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import type { WorkflowStep, StepParam, ParamValueSource, SystemKey } from '../../../data/types';
 import { SYSTEM_KEYS } from '../../../data/types';
-import { skillPool } from '../../../data/skills';
 import CatMiniAvatar from '../../../components/CatMiniAvatar';
 import { AppIcon } from '../../../components/icons';
 
@@ -272,12 +271,11 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
   const currentSkillDef = catSkills.find((s: any) => s.id === step.skillId);
   const isAiSkill = AI_SKILL_IDS.includes(step.skillId) || AI_PRIMITIVE_IDS.includes(step.skillId) || currentSkillDef?.primitiveId && AI_PRIMITIVE_IDS.includes(currentSkillDef.primitiveId);
 
-  // 当前技能绑定的全部参数定义模板（从 skillPool 或猫猫 skills 获取）
+  // 当前技能绑定的全部参数定义模板（从猫猫 skills 获取）
   const allParamDefs: StepParam[] = useMemo(() => {
     if (!step.skillId) return [];
     const fromCat = catSkills.find((s: any) => s.id === step.skillId);
-    const fromPool = skillPool.find(s => s.id === step.skillId);
-    return fromCat?.paramDefs || fromPool?.paramDefs || [];
+    return fromCat?.paramDefs || [];
   }, [step.skillId, catSkills]);
 
   // 当前已展示的参数 keys

@@ -5,8 +5,6 @@ import { showToast } from '../../components/Toast';
 import CatLogo from '../../components/CatLogo';
 import type { WorkflowStep } from '../../data/types';
 import { generateStepId, ensureStepIds } from '../../data/types';
-import { getVisibleSkillPool, injectAdminSkillsToCats } from '../../data/skills';
-import { useAuth } from '../../contexts/AuthContext';
 import { aiGenerateWorkflow } from './handleAiGenerateWorkflow';
 
 // Canvas components
@@ -29,8 +27,6 @@ interface TeamCat {
 const WorkflowEditorPage: React.FC = () => {
   const { teamId, workflowId } = useParams<{ teamId: string; workflowId: string }>();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
-  const skillPool = getVisibleSkillPool(isAdmin);
   const isEditing = workflowId && workflowId !== 'new';
 
   // ── 核心数据状态（保留原有逻辑） ──
@@ -81,7 +77,7 @@ const WorkflowEditorPage: React.FC = () => {
 
   // ── 数据加载（保留原有逻辑） ──
   useEffect(() => {
-    apiClient.get(`/api/cats/team/${teamId}`).then((data: TeamCat[]) => setCats(injectAdminSkillsToCats(data, isAdmin))).catch(console.error);
+    apiClient.get(`/api/cats/team/${teamId}`).then((data: TeamCat[]) => setCats(data)).catch(console.error);
     if (isEditing) {
       apiClient.get(`/api/workflows/${workflowId}`).then(wf => {
         setName(wf.name);
@@ -98,7 +94,7 @@ const WorkflowEditorPage: React.FC = () => {
         setPersistent(!!wf.persistent);
       }).catch(() => navigate(`/teams/${teamId}`));
     }
-  }, [teamId, workflowId, isEditing, navigate, isAdmin]);
+  }, [teamId, workflowId, isEditing, navigate]);
 
   // ── 自动布局：steps 变化时重新计算节点位置（DAG 感知） ──
   useEffect(() => {
@@ -138,7 +134,7 @@ const WorkflowEditorPage: React.FC = () => {
       if (field === 'skillId' && value) {
         const cat = cats.find(c => c.id === s.agentId);
         const skill = cat?.skills?.find((sk: any) => sk.id === value);
-        const paramDefs = skill?.paramDefs || skillPool.find(sp => sp.id === value)?.paramDefs;
+        const paramDefs = skill?.paramDefs;
         if (paramDefs?.length) {
           updated.params = paramDefs.map((p: any) => ({ ...p }));
         } else if (!updated.params?.length) {
@@ -147,7 +143,7 @@ const WorkflowEditorPage: React.FC = () => {
       }
       return updated;
     }));
-  }, [cats, skillPool]);
+  }, [cats]);
 
   // ── 保存（保留原有逻辑） ──
   const handleSave = async () => {

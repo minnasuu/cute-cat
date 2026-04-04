@@ -52,7 +52,7 @@ function officialCat(templateId, name, roleTitle, accent, item, messages, descri
 /** 17 条官方模板（id 稳定，供 TeamCat.templateId 引用） */
 const CAT_TEMPLATES = [
   officialCat('manager-assign', '花椒', '项目经理', '#8DB889', 'clipboard', ['任务已拆解！', '下一步交给哪位猫猫？', '听令行事～'], '拆解需求、对齐目标与分工节奏，面向 AIGC 产出任务简报。', 0),
-  officialCat('manager-workflow', '青稞', '流程架构师', '#8DB889', 'clipboard', ['流程已更新', '这条链路更顺了', '工作流听你的～'], '设计协作链路自动化，用 AIGC 描述流程草案与改进建议。', 1),
+  officialCat('manager-workflow', '阿蓝', '流程架构师', '#8DB889', 'clipboard', ['流程已更新', '这条链路更顺了', '工作流听你的～'], '设计协作链路自动化，用 AIGC 描述流程草案与改进建议。', 1),
   officialCat('manager-run', '琥珀', '项目协调', '#8DB889', 'clipboard', ['开始跑流程！', '执行中…', '本轮跑完啦'], '跟进执行状态与结果摘要，AIGC 生成进展说明与风险提示。', 2),
   officialCat('writer-article', '阿蓝', '内容编辑', '#FF6B6B', 'notebook', ['开始写作了！', '文章构思中…', '成稿请过目～'], '长文、专栏与多平台稿件，核心为 AIGC 辅助成文与润色。', 3),
   officialCat('writer-outline', '米卷', '产品策划', '#FF6B6B', 'notebook', ['大纲好了！', '章节逻辑理清了', '要再拆细一点吗？'], '需求结构、版本叙事与方案骨架，AIGC 输出大纲与要点。', 4),
@@ -68,6 +68,11 @@ const CAT_TEMPLATES = [
   officialCat('qa-review', '小白', '质量控制', '#EC407A', 'clipboard', ['审核完毕', '这里建议改一下', '风险点标出来了～'], '内容质量与合规把关，AIGC 输出审阅意见与修改建议。', 14),
   officialCat('creative-mece', '发发', '商业分析师', '#FFB74D', 'clipboard', ['MECE 树画好了！', '穷尽且无重', '再开一层？'], '结构化拆解与商业论证，AIGC 辅助 MECE 式分析文稿。', 15),
   officialCat('creative-scamper', '灵犀', '创意策划', '#FFB74D', 'clipboard', ['七个维度扫完了！', '灵感清单在这', '要组合一版吗？'], 'Campaign 与产品创意，AIGC 做 SCAMPER 等发散与整合。', 16),
+  // ── 网页制作流水线专属猫猫 ──
+  officialCat('product-architect', '花椒', '产品策划', '#8DB889', 'clipboard', ['架构中', '让我思考最重要的结构'], '根据用户需求生成符合产品逻辑的结构树型架构图', 0),
+  officialCat('ux-designer', '阿蓝', '交互设计师', '#8DB889', 'clipboard', ['交互中', '让我思考最重要的交互流程'], '根据用户需求生成符合产品逻辑的交互流程图', 1),
+  officialCat('visual-designer', '墨墨', '视觉设计师', '#4E342E', 'camera', ['画面生成中…', '你喜欢什么风格？'], '主视觉与配图创意，AIGC 生成画面方向。', 8),
+  officialCat('frontend-engineer', '琥珀', '前端工程师', '#8DB889', 'camera', ['开始设计网页！', '让我看看你的设计'], '根据用户需求生成符合产品逻辑的网页结构和样式', 2),
 ];
 
 const OFFICIAL_TEMPLATE_IDS = CAT_TEMPLATES.map((t) => t.id);

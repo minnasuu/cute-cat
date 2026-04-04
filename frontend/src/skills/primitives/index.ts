@@ -3,39 +3,18 @@
  *
  * 原型是底层能力引擎，不对用户暴露。
  * 技能层通过 executePrimitive() 调用原型，附带预设配置。
+ *
+ * 当前仅保留「网页制作流水线」所需的原型：
+ *   - text-to-text：文生文（AI 对话）
  */
 import type { PrimitiveHandler, PrimitiveContext, PrimitiveResult } from './types';
 import type { PrimitiveId } from '../../data/types';
 import type { SkillContext } from '../types';
 
 import textToText from './text-to-text';
-import textToImage from './text-to-image';
-import structuredOutput from './structured-output';
-import apiCall from './api-call';
-import dbQuery from './db-query';
-import emailSend from './email-send';
-import webPush from './web-push';
-import htmlRender from './html-render';
-import chartRender from './chart-render';
-import browserAction from './browser-action';
-import fileIo from './file-io';
-import workflowEngine from './workflow-engine';
-import jsExecute from './js-execute';
 
 const primitiveHandlers: PrimitiveHandler[] = [
   textToText,
-  textToImage,
-  structuredOutput,
-  apiCall,
-  dbQuery,
-  emailSend,
-  webPush,
-  htmlRender,
-  chartRender,
-  browserAction,
-  fileIo,
-  workflowEngine,
-  jsExecute,
 ];
 
 const registry = new Map<PrimitiveId, PrimitiveHandler>(

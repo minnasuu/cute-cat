@@ -372,7 +372,7 @@ export const appearanceTemplates: AppearanceTemplate[] = [
   { id: 'jubai',      name: '橘色加白猫',  preview: '暖橘毛色，亲切温暖',   colors: jumaojiabaiTheme },
   { id: 'sanhua',    name: '三花猫',  preview: '多彩拼接，活力满分',   colors: sanhuaColors },
   { id: 'xianluomao',name: '暹罗猫',  preview: '深浅渐变，高贵优雅',   colors: xianluoColors },
-  { id: 'jinsemao',  name: '金色暹罗猫',    preview: '暖金毛色，阳光开朗',   colors: goldenxianluoColors },
+  { id: 'glodenxianluomao',  name: '金色暹罗猫',    preview: '暖金毛色，阳光开朗',   colors: goldenxianluoColors },
   { id: 'xuanmao',    name: '黑猫',  preview: '全身黑色，神秘利落',   colors: xuanmaoTheme },
   { id: 'baimao',    name: '白猫',  preview: '通体纯白，干净温柔',   colors: baimaoColors },
   { id: 'naimao',    name: '奶牛猫',  preview: '黑白拼接，俏皮可爱',   colors: milkColors },

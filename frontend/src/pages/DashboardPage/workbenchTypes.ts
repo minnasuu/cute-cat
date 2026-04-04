@@ -23,6 +23,19 @@ export interface WorkbenchPayload {
   counts: { cats: number; workflows: number; workflowRuns: number };
 }
 
+export interface WorkflowRunStep {
+  index: number;
+  skillId?: string;
+  action?: string;
+  success?: boolean;
+  status?: string;
+  summary?: string;
+  /** 结果类型标记，如 'html-page' */
+  resultType?: string;
+  /** 完整结果内容（如 HTML 代码） */
+  resultData?: string;
+}
+
 export interface WorkflowRun {
   id: string;
   workflowId: string | null;
@@ -31,6 +44,8 @@ export interface WorkflowRun {
   startedAt: string;
   completedAt: string | null;
   totalDuration: number | null;
+  /** 后端执行引擎写入的步骤摘要（JSON） */
+  steps?: WorkflowRunStep[] | null;
 }
 
 export interface AiStatRow {

@@ -10,6 +10,7 @@ import {
 } from "../../data/officialCatsCommunity";
 import { OFFICIAL_BRAND_CAT_COLORS } from "../../data/officialBrandCat";
 import { AppIcon } from "../../components/icons";
+import CatMiniAvatar from '../../components/CatMiniAvatar';
 
 const allCats: Assistant[] = officialCatsCommunity;
 
@@ -31,16 +32,13 @@ function resolveWorkflowAgent(agentId: string): Assistant | null {
     accent: "#8DB889",
     systemPrompt: "",
     skills: [],
-    item: "clipboard",
     catColors: OFFICIAL_BRAND_CAT_COLORS,
     messages: [],
   };
 }
 
 /* ── 工作流主题色 ── */
-const workflowColors: Record<string, string> = {
-  'web-page-builder': '#5C6BC0',
-};
+const WORKFLOW_THEME_COLOR = '#8DB889';
 
 /* ── Tab types ── */
 type Tab = "cats" | "workflows";
@@ -67,7 +65,7 @@ const CommunityPage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900">
+    <div className="h-screen flex flex-col bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900">
       {/* Navbar */}
       <header className="sticky top-0 z-50 bg-surface/80 backdrop-blur-xl border-b border-border">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -110,7 +108,8 @@ const CommunityPage = () => {
             猫猫专家阵容
           </h1>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            17 只官方猫猫各有岗位角色，统一围绕 AIGC 协作；执行管道当前为占位，便于后续接入真实生成能力。
+            {allCats.length} 只官方猫猫各有岗位角色，统一围绕 AIGC
+            协作；执行管道当前为占位，便于后续接入真实生成能力。
           </p>
         </div>
       </section>
@@ -129,7 +128,11 @@ const CommunityPage = () => {
                     : "border-transparent text-text-tertiary hover:text-text-primary"
                 }`}
               >
-                <AppIcon symbol={t.iconSymbol} size={18} className="text-primary-600" />
+                <AppIcon
+                  symbol={t.iconSymbol}
+                  size={18}
+                  className="text-primary-600"
+                />
                 <span>{t.label}</span>
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -146,7 +149,7 @@ const CommunityPage = () => {
         </div>
       </div>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
+      <main className="max-w-6xl mx-auto px-6 py-10 flex-1">
         {/* ═══ Cats Tab ═══ */}
         {tab === "cats" && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -214,7 +217,8 @@ const CommunityPage = () => {
                         AIGC 说明
                       </p>
                       <p className="text-xs text-text-secondary font-medium leading-relaxed p-3 rounded-xl bg-surface-secondary/60 border border-border">
-                        不再按「技能」拆分能力；该猫猫在团队内以岗位角色参与工作流，统一走 AIGC 执行入口（当前占位）。
+                        不再按「技能」拆分能力；该猫猫在团队内以岗位角色参与工作流，统一走
+                        AIGC 执行入口（当前占位）。
                       </p>
                     </div>
                   </div>
@@ -228,12 +232,13 @@ const CommunityPage = () => {
         {tab === "workflows" && (
           <div>
             <p className="text-text-secondary font-medium mb-8 max-w-2xl">
-              官方示意工作流：按猫猫岗位串联，多步统一走 AIGC 占位执行，便于后续接入真实生成管道。
+              官方示意工作流：按猫猫岗位串联，多步统一走 AIGC
+              占位执行，便于后续接入真实生成管道。
             </p>
             <div className="space-y-5">
               {workflows.map((wf) => {
                 const isExpanded = expandedWf === wf.id;
-                const color = workflowColors[wf.id] ?? "#8DB889";
+                const color = WORKFLOW_THEME_COLOR;
                 const involvedCats = [
                   ...new Set(wf.steps.map((s) => s.agentId)),
                 ]
@@ -260,7 +265,11 @@ const CommunityPage = () => {
                           style={{ background: color }}
                         >
                           <AppIcon
-                            symbol={wf.id === "web-page-builder" ? "Globe" : "ClipboardList"}
+                            symbol={
+                              wf.id === "web-page-builder"
+                                ? "Globe"
+                                : "ClipboardList"
+                            }
                             size={24}
                             className="text-white"
                           />
@@ -282,10 +291,11 @@ const CommunityPage = () => {
                             </span>
                             {wf.scheduled && (
                               <span
-                                className="px-2.5 py-1 rounded-full text-[10px] font-bold text-white"
+                                className="px-2.5 py-1 rounded-full text-[10px] font-bold text-white inline-flex items-center gap-1"
                                 style={{ background: color }}
                               >
-                                ⏰ {wf.cron}
+                                <AppIcon symbol="Clock" size={12} />
+                                {wf.cron}
                               </span>
                             )}
                             {/* Participating cat avatars */}
@@ -296,7 +306,7 @@ const CommunityPage = () => {
                                   className="w-6 h-6 rounded-full overflow-hidden border-2 border-surface bg-surface-secondary flex items-center justify-center"
                                   title={cat.name}
                                 >
-                                  <CatSVG colors={cat.catColors} size={18} />
+                                  <CatMiniAvatar colors={cat.catColors} size={18} />
                                 </div>
                               ))}
                             </div>
@@ -328,7 +338,6 @@ const CommunityPage = () => {
                         <div className="space-y-0">
                           {wf.steps.map((step, i) => {
                             const cat = resolveWorkflowAgent(step.agentId);
-                            const cap = stepCapabilityLabel(step.skillId);
                             return (
                               <div key={i} className="flex gap-4">
                                 {/* Timeline line */}
@@ -354,7 +363,7 @@ const CommunityPage = () => {
                                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                                       <div className="flex items-center gap-1.5">
                                         <div className="w-6 h-6 rounded-full overflow-hidden border border-border bg-surface flex items-center justify-center">
-                                          <CatSVG
+                                          <CatMiniAvatar
                                             colors={
                                               cat?.catColors ??
                                               OFFICIAL_BRAND_CAT_COLORS
@@ -372,12 +381,12 @@ const CommunityPage = () => {
                                             step.agentId}
                                         </span>
                                       </div>
-                                      <span className="text-text-tertiary text-xs">
+                                      {/* <span className="text-text-tertiary text-xs">
                                         ·
                                       </span>
                                       <span className="text-[11px] font-bold text-text-secondary">
                                         {cap}
-                                      </span>
+                                      </span> */}
                                       {step.inputFrom &&
                                         (() => {
                                           // 优先用 stepId 找来源步骤的猫咪名

@@ -180,7 +180,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           accent: a.accent,
           systemPrompt: a.systemPrompt,
           skills: a.skills,
-          item: a.item,
           catColors: a.catColors,
           messages: a.messages,
         }));
@@ -407,6 +406,10 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           agentId: step.agentId,
           input: skillInput,
           timestamp: new Date().toISOString(),
+          catTemplateId: (agent as { templateId?: string } | undefined)?.templateId,
+          catName: agent?.name,
+          catRole: agent?.role,
+          workflowName: activeWorkflow?.name,
         })
       : Promise.resolve<SkillResult>({
           success: true,

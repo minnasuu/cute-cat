@@ -1,51 +1,32 @@
-import type { SkillHandler } from '../skills/types';
 import type { CatColors } from '../components/CatSVG';
 
 // ─────────────────────────────────────────────────
-// 技能原型 (Skill Primitive) — 底层能力，不对用户暴露
+// 技能原型 ID — 底层能力标识，技能层通过它匹配执行引擎
 // ─────────────────────────────────────────────────
 
 /**
- * 技能原型 ID 枚举
- * 所有用户可见的技能（Skill）都基于某个原型实现
+ * 技能原型 ID
+ * 当前仅 text-to-text；后续可扩展 text-to-image 等
  */
 export type PrimitiveId =
   | 'text-to-text'        // AI 文生文：文本 → 文本
-  | 'text-to-image'       // AI 文生图：文本 → 图片
-  | 'structured-output'   // 结构化输出：文本 → JSON
-  | 'api-call'            // API 调用：HTTP 请求外部服务
-  | 'db-query'            // 数据库查询：SQL → 结果集
-  | 'email-send'          // 邮件发送 (SMTP)
-  | 'web-push'            // Web 推送通知
-  | 'html-render'         // HTML 渲染：生成并渲染页面/组件
-  | 'chart-render'        // 图表渲染：数据 → 可视化图表
-  | 'browser-action'      // 浏览器操作：Puppeteer 自动化
-  | 'file-io'             // 文件读写：本地文件系统操作
-  | 'workflow-engine'     // 工作流引擎：编排多步协作流程
-  | 'js-execute'          // JS 执行
+  // 扩展示例：
+  // | 'text-to-image'     // AI 文生图
+  // | 'structured-output' // 结构化输出
 
-/** 技能原型定义 */
-export interface SkillPrimitive {
-  /** 原型唯一 ID */
-  id: PrimitiveId;
-  /** 原型名称（内部可读） */
-  name: string;
-  /** 原型描述 */
-  description: string;
-  /** 输入类型 */
-  input: SkillInputType;
-  /** 输出类型 */
-  output: SkillOutputType;
-  /** 底层服务提供方 */
-  provider: string;
-}
+// ─────────────────────────────────────────────────
+// 技能 IO 类型
+// ─────────────────────────────────────────────────
+
+/** 技能输入类型（当前以 text 为主，保留常见类型便于扩展） */
+export type SkillInputType = 'text' | 'image' | 'json' | 'html' | 'url' | 'file' | 'none';
+
+/** 技能输出类型 */
+export type SkillOutputType = 'text' | 'image' | 'json' | 'html' | 'file';
 
 // ─────────────────────────────────────────────────
 // 技能 (Skill) — 用户可见，基于原型封装
 // ─────────────────────────────────────────────────
-
-export type SkillOutputType = 'text' | 'image' | 'audio' | 'json' | 'html' | 'email' | 'chart' | 'file';
-export type SkillInputType = 'text' | 'image' | 'audio' | 'json' | 'html' |'url' | 'file' | 'none';
 
 export interface Skill {
   id: string;
@@ -54,18 +35,19 @@ export interface Skill {
   description: string;
   input: SkillInputType;
   output: SkillOutputType;
-  /** 该技能基于哪个技能原型实现（运行时通过 skillId 在技能池中查找） */
+  /** 该技能基于哪个技能原型实现 */
   primitiveId?: PrimitiveId;
-  /** 传给原型的预设配置（如 system prompt、API endpoint 等） */
-  primitiveConfig?: Record<string, unknown>;
-  /** 该技能需要用户配置的参数定义（如邮箱地址、API Key 等） */
+  /** 该技能需要用户配置的参数定义 */
   paramDefs?: StepParam[];
+  /** 底层服务提供方（如 Dify），展示在 UI 中 */
   provider?: string;
+  /** 模拟结果：开发/演示时用于展示 */
   mockResult?: string;
-  handler?: SkillHandler;
 }
 
-// --- 参数值来源 ---
+// ─────────────────────────────────────────────────
+// 步骤参数 (StepParam) — 工作流步骤的用户输入/配置
+// ─────────────────────────────────────────────────
 
 /** 参数值来源类型 */
 export type ParamValueSource = 'static' | 'upstream' | 'system';
@@ -80,9 +62,10 @@ export const SYSTEM_KEYS = {
 
 export type SystemKey = keyof typeof SYSTEM_KEYS;
 
-// --- 用户输入/配置项定义 ---
+/** 参数控件类型 */
 export type StepParamType = 'text' | 'textarea' | 'number' | 'select' | 'toggle' | 'url' | 'tags';
 
+/** 步骤参数定义 */
 export interface StepParam {
   /** 参数唯一标识，传入 skill handler 时作为 key */
   key: string;
@@ -99,7 +82,6 @@ export interface StepParam {
   /**
    * type 为 select 时，动态加载选项的 API 路径（相对于 backendUrl）
    * 例如 '/api/workflows/team/:teamId'，其中 :teamId 会被当前团队 ID 替换。
-   * API 应返回数组，每个元素需包含 `id` 和 `name` 字段。
    */
   asyncOptionsFrom?: string;
   /** asyncOptionsFrom 返回数据中用作选项 value 的字段，默认 'id' */
@@ -118,7 +100,10 @@ export interface StepParam {
   systemKey?: SystemKey;
 }
 
-// --- 协作工作流定义 ---
+// ─────────────────────────────────────────────────
+// 协作工作流定义
+// ─────────────────────────────────────────────────
+
 export interface WorkflowStep {
   /** 步骤唯一标识，创建后不变，用于连线引用 */
   stepId?: string;
@@ -152,10 +137,8 @@ export function resolveInputFromIndex(
   inputFrom: string | undefined,
 ): number {
   if (!inputFrom) return currentIndex - 1;
-  // 优先匹配 stepId
   const byStepId = steps.findIndex((s, si) => si < currentIndex && s.stepId === inputFrom);
   if (byStepId >= 0) return byStepId;
-  // fallback: 匹配 agentId（兼容旧数据）
   const byAgentId = steps.findIndex((s, si) => si < currentIndex && s.agentId === inputFrom);
   if (byAgentId >= 0) return byAgentId;
   return currentIndex - 1;
@@ -166,17 +149,23 @@ export interface Workflow {
   name: string;
   description: string;
   steps: WorkflowStep[];
+  /** 定时任务：时间范围 */
   startTime?: string;
   endTime?: string;
+  /** 是否为定时工作流 */
   scheduled?: boolean;
+  /** 定时开关状态 */
   scheduledEnabled?: boolean;
+  /** 定时规则（自然语言，如"每天 09:00"） */
   cron?: string;
+  /** 是否常驻（区别于一次性执行） */
   persistent?: boolean;
-  /** 工作流级别的用户配置（每次运行前可调整） */
-  userConfig?: StepParam[];
 }
 
-// --- 历史工作记录 ---
+// ─────────────────────────────────────────────────
+// 历史工作记录
+// ─────────────────────────────────────────────────
+
 export interface HistoryItem {
   id: string;
   agentId: string;
@@ -188,18 +177,25 @@ export interface HistoryItem {
   status: 'success' | 'warning' | 'error';
 }
 
-// --- 猫猫助手定义 ---
+// ─────────────────────────────────────────────────
+// 猫猫助手定义
+// ─────────────────────────────────────────────────
+
 export interface Assistant {
   id: string;
   name: string;
+  /** 猫猫职位/角色（如"产品策划"） */
   role: string;
   description: string;
+  /** 主题色（用于 UI 着色） */
   accent: string;
+  /** AI 对话时的系统提示词（性格设定） */
   systemPrompt: string;
-  /** 社区展示可为空；团队内猫猫仍可能含内置 AIGC 元数据 */
+  /** 猫猫装配的技能列表 */
   skills?: Skill[];
-  item: string;
+  /** 猫猫外观配色 */
   catColors: CatColors;
+  /** 猫猫招呼语/状态文案 */
   messages: string[];
 }
 

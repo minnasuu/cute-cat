@@ -389,24 +389,29 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
   }
 
   try {
-    // ─── 官方统一 AIGC（占位：不接真实生成模型，后续聚合多模态）───
+    // ─── 官方统一 AIGC：按 TeamCat.templateId 分发到 lib/cat-step-scripts（当前为框架 + 空输出）───
     if (skillId === 'aigc') {
-      const role = context.catRole || '协作猫';
-      const task = action ? String(action) : '';
-      let upstreamHint = '';
-      if (merged.text) upstreamHint = String(merged.text).slice(0, 500);
-      else if (merged.summary) upstreamHint = String(merged.summary).slice(0, 500);
-      const text =
-        `【AIGC 占位】岗位：「${role}」\n\n` +
-        '后续将在此统一接入生成式能力（文案、图像等）。当前不调用外部模型，仅用于联调工作流链路。\n\n' +
-        (task ? `任务：${task}\n\n` : '') +
-        (upstreamHint ? `上游参考：${upstreamHint}${upstreamHint.length >= 500 ? '…' : ''}` : '');
-      return {
-        success: true,
-        data: { text },
-        summary: 'AIGC 占位完成（未调用生成模型）',
-        status: 'success',
-      };
+      const tid = context.catTemplateId && String(context.catTemplateId).trim();
+      if (!tid) {
+        const role = context.catRole || '协作猫';
+        const task = action ? String(action) : '';
+        let upstreamHint = '';
+        if (merged.text) upstreamHint = String(merged.text).slice(0, 500);
+        else if (merged.summary) upstreamHint = String(merged.summary).slice(0, 500);
+        const text =
+          `【AIGC 占位】岗位：「${role}」\n\n` +
+          '后续将在此统一接入生成式能力（文案、图像等）。当前不调用外部模型，仅用于联调工作流链路。\n\n' +
+          (task ? `任务：${task}\n\n` : '') +
+          (upstreamHint ? `上游参考：${upstreamHint}${upstreamHint.length >= 500 ? '…' : ''}` : '');
+        return {
+          success: true,
+          data: { text },
+          summary: 'AIGC 占位完成（未调用生成模型）',
+          status: 'success',
+        };
+      }
+      const { runOfficialCatAigcStep } = require('./lib/cat-step-scripts');
+      return runOfficialCatAigcStep({ step, merged, userEmail, catSystemPrompt, context });
     }
 
     // ─── 爬取类技能 ───
@@ -665,11 +670,15 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
         ? { ...stepResults[pi].data }
         : {};
 
-      // 查询猫猫的性格 systemPrompt
+      // 查询猫猫的性格 systemPrompt / 官方 templateId（供 AIGC 按猫分发脚本）
       let catSystemPrompt = '';
       let catRole = '';
+      let cat = null;
       if (step.agentId) {
-        const cat = await prisma.teamCat.findUnique({ where: { id: step.agentId }, select: { systemPrompt: true, role: true } }).catch(() => null);
+        cat = await prisma.teamCat.findUnique({
+          where: { id: step.agentId },
+          select: { systemPrompt: true, role: true, templateId: true, name: true },
+        }).catch(() => null);
         if (cat?.systemPrompt) catSystemPrompt = cat.systemPrompt;
         if (cat?.role) catRole = cat.role;
       }
@@ -677,7 +686,12 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       // 带超时保护（60 秒）
       let result;
       try {
-        const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt, { ...executionContext, catRole });
+        const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt, {
+          ...executionContext,
+          catRole,
+          catTemplateId: cat?.templateId || '',
+          catName: cat?.name || '',
+        });
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (60s)')), 60000));
         result = await Promise.race([executePromise, timeoutPromise]);
       } catch (err) {
@@ -691,10 +705,17 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
     const layerResults = await Promise.all(layerPromises);
 
     for (const { index: i, result } of layerResults) {
-      stepsData.push({
+      const stepEntry = {
         index: i, skillId: steps[i].skillId, action: steps[i].action,
         success: result.success, status: result.status, summary: result.summary,
-      });
+      };
+      // 提取结果类型和数据（供前端 ResultCanvas 渲染）
+      if (result.data && typeof result.data === 'object') {
+        const d = result.data;
+        if (d._resultType) stepEntry.resultType = d._resultType;
+        if (d._resultType && d.text) stepEntry.resultData = String(d.text);
+      }
+      stepsData.push(stepEntry);
 
       if (!result.success) {
         hasFailed = true;
@@ -721,4 +742,4 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
   return { runId: run.id, status: hasFailed ? 'failed' : 'success', steps: stepsData };
 }
 
-module.exports = { executeWorkflow, executeStep };
+module.exports = { executeWorkflow, executeStep, callAI };

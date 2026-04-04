@@ -2,7 +2,12 @@ import type { WorkflowRow } from "./workbenchTypes";
 
 export function parseSteps(
   steps: unknown,
-): Array<{ agentId?: string; skillId?: string; stepId?: string }> {
+): Array<{
+  agentId?: string;
+  skillId?: string;
+  stepId?: string;
+  action?: string;
+}> {
   if (Array.isArray(steps)) return steps;
   if (typeof steps === "string") {
     try {

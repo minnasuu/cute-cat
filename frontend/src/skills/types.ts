@@ -6,6 +6,11 @@ export interface SkillContext {
   input: unknown;
   /** 当前时间戳 */
   timestamp: string;
+  /** 官方猫 TeamCat.templateId，用于 skillId aigc 按猫分发前端脚本 */
+  catTemplateId?: string;
+  catName?: string;
+  catRole?: string;
+  workflowName?: string;
 }
 
 /** Skill 事件执行结果 */
