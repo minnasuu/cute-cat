@@ -53,10 +53,16 @@ function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+function normalizeEmail(email) {
+  if (typeof email !== 'string') return '';
+  return email.trim().toLowerCase();
+}
+
 // ======================== 发送验证码 ========================
 router.post('/send-code', async (req, res) => {
   try {
-    const { email, type = 'register' } = req.body;
+    const { type = 'register' } = req.body;
+    const email = normalizeEmail(req.body.email);
     if (!email) return res.status(400).json({ error: '请输入邮箱' });
 
     const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
@@ -68,11 +74,15 @@ router.post('/send-code', async (req, res) => {
     }
 
     if (type === 'register') {
-      const existing = await prisma.user.findUnique({ where: { email } });
+      const existing = await prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
+      });
       if (existing) return res.status(400).json({ error: '该邮箱已注册' });
     }
     if (type === 'reset_password') {
-      const existing = await prisma.user.findUnique({ where: { email } });
+      const existing = await prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
+      });
       if (!existing) return res.status(400).json({ error: '该邮箱未注册' });
     }
 
@@ -117,7 +127,8 @@ router.post('/send-code', async (req, res) => {
 // ======================== 注册 ========================
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, nickname, code, betaCode } = req.body;
+    const { password, nickname, code, betaCode } = req.body;
+    const email = normalizeEmail(req.body.email);
     if (!email || !password || !nickname || !code) {
       return res.status(400).json({ error: '请填写所有必填项' });
     }
@@ -142,8 +153,10 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: '验证码无效或已过期' });
     }
 
-    // Check duplicate
-    const existing = await prisma.user.findUnique({ where: { email } });
+    // Check duplicate (case-insensitive; new rows store lowercase)
+    const existing = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
     if (existing) return res.status(400).json({ error: '该邮箱已注册' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -173,7 +186,8 @@ router.post('/register', async (req, res) => {
 // ======================== 登录 ========================
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { password } = req.body;
     if (!email || !password) return res.status(400).json({ error: '请输入邮箱和密码' });
 
     const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
@@ -184,7 +198,9 @@ router.post('/login', async (req, res) => {
       return res.status(429).json({ error: '登录尝试过于频繁，请 15 分钟后再试' });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
     if (!user) {
       console.warn('[auth] login: user not found |', email);
       return res.status(401).json({ error: '邮箱或密码错误' });
@@ -217,7 +233,8 @@ router.post('/login', async (req, res) => {
 // ======================== 忘记密码 ========================
 router.post('/reset-password', async (req, res) => {
   try {
-    const { email, password, code } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { password, code } = req.body;
     if (!email || !password || !code) return res.status(400).json({ error: '请填写所有字段' });
 
     const verification = await prisma.emailVerification.findFirst({
@@ -226,8 +243,13 @@ router.post('/reset-password', async (req, res) => {
     });
     if (!verification) return res.status(400).json({ error: '验证码无效或已过期' });
 
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
+    if (!user) return res.status(400).json({ error: '该邮箱未注册' });
+
     const hashedPassword = await bcrypt.hash(password, 10);
-    await prisma.user.update({ where: { email }, data: { password: hashedPassword } });
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashedPassword } });
     await prisma.emailVerification.update({ where: { id: verification.id }, data: { used: true } });
 
     res.json({ success: true, message: '密码重置成功' });

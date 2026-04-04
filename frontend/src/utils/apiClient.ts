@@ -25,11 +25,17 @@ class ApiClient {
       throw new Error('网络连接失败');
     }
 
-    // Auth endpoints (login/register etc.) should not trigger token refresh or redirect,
-    // let their 401 fall through to the generic !response.ok handler below.
-    const isAuthEndpoint = url.startsWith('/api/auth/');
+    // Only credential / anonymous auth routes skip refresh — not /me or /profile, or a
+    // stale access token on startup can never be renewed even when refreshToken is valid.
+    const path = url.split('?')[0];
+    const skipRefreshOn401 =
+      path === '/api/auth/login' ||
+      path === '/api/auth/register' ||
+      path === '/api/auth/send-code' ||
+      path === '/api/auth/reset-password' ||
+      path === '/api/auth/refresh-token';
 
-    if (response.status === 401 && !isAuthEndpoint) {
+    if (response.status === 401 && !skipRefreshOn401) {
       // Try refresh token
       const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken) {
