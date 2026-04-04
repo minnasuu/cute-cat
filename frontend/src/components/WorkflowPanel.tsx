@@ -1099,9 +1099,12 @@ const WorkflowEditModal: React.FC<EditModalProps> = ({ workflow, onSave, onClose
                   </select>
                   <select value={step.skillId} onChange={(e) => updateStep(i, 'skillId', e.target.value)}>
                     <option value="">选择技能</option>
-                    {step.agentId && assistants.find((a) => a.id === step.agentId)?.skills.map((s) => (
-                      <option key={s.id} value={s.id}>{(s as Skill).icon} {s.name}</option>
-                    ))}
+                    {step.agentId &&
+                      (assistants.find((a) => a.id === step.agentId)?.skills ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {(s as Skill).icon} {s.name}
+                        </option>
+                      ))}
                   </select>
                   <input
                     type="text"
