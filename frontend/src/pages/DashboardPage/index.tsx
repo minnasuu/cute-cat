@@ -250,17 +250,17 @@ const DashboardPage: React.FC = () => {
       />
 
       <main
-        className={`w-full mx-auto px-6 flex-1 h-px flex flex-col ${
+        className={`w-full mx-auto flex-1 h-px flex flex-col ${
           splitMode
-            ? "max-w-[min(100%,1440px)] lg:flex-row lg:items-stretch lg:justify-start"
-            : "max-w-4xl justify-center"
+            ? "lg:flex-row lg:items-stretch lg:justify-start"
+            : "max-w-4xl justify-center px-6"
         }`}
         style={{ minHeight: "calc(100vh - 133px)" }}
       >
         <div
           className={
             splitMode
-              ? "flex flex-col shrink-0 lg:w-[min(100%,22rem)] xl:w-[26rem] h-full lg:border-r border-border lg:pr-8"
+              ? "flex flex-col shrink-0 lg:w-[min(100%,22rem)] xl:w-[26rem] h-full lg:border-r border-border px-8"
               : "w-full h-full flex flex-col justify-center items-center"
           }
         >

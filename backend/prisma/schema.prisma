@@ -143,3 +143,20 @@ model AICallLog {
   @@index([userId])
   @@index([teamId])
 }
+
+// ==================== Vibe Style 灵感库 ====================
+
+model VibeStyleItem {
+  id             String   @id @default(uuid())
+  userId         String?
+  imageUrl       String
+  tags           Json     // string[]
+  colors         Json     // string[]
+  summary        String   @db.Text
+  designSummary  Json     // VibeSnapDesignSummary 对象
+  designPrompt   String   @db.Text
+  ownerName      String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+}

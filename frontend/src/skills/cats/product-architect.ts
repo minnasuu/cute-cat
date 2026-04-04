@@ -1,29 +1,17 @@
 import type { SkillContext, SkillResult } from '../types';
 import { runWithAI } from './_framework';
 
-const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「花椒」，岗位角色：产品策划。
-你的任务是根据用户的建站需求，输出一份完整的网站信息架构。
+const SYSTEM_PROMPT = `你是产品架构师，将用户输入需求转化为产品架构脑图的 JSON 树。
+通用规则：
+- 一级节点：多页面表示底部/顶部 Tab 栏、单页面则表示独立模块（3~5 个，每个是功能聚合体）
+- 最多 3 层，一级节点 ≤ 5 个，尽量将相似功能聚合到尽量少的模块中
+- 用户视角命名，禁用技术词汇，节点标题 ≤ 8 字
+- 包含完整用户路径（浏览→决策→行动→结果）
 
-输出要求：
-1. 必须输出合法的 JSON 对象（不要包裹在 markdown 代码块中）
-2. JSON 顶层结构：
-   {
-     "goal": "建站目标（一句话）",
-     "audience": "目标受众描述",
-     "siteMap": ["首页", "关于我们", ...],
-     "pages": [
-       {
-         "name": "页面名",
-         "path": "/path",
-         "modules": [
-           { "name": "模块名", "description": "模块内容要点", "priority": "high|medium|low" }
-         ]
-       }
-     ]
-   }
-3. pages 数组至少包含 3 个页面，每页至少 2 个模块
-4. 用中文填写内容，字段名用英文
-5. 只输出 JSON，不要附加任何解释文字`;
+输出格式：
+- 仅返回纯 JSON 数组，以 [ 开头 ] 结尾
+- 禁止 markdown、代码块、注释、说明文字
+- 节点字段：id（如"1","1-1"）、title、children（可选）`;
 
 export default async function runProductArchitect(ctx: SkillContext): Promise<SkillResult> {
   const result = await runWithAI('product-architect', ctx, SYSTEM_PROMPT);

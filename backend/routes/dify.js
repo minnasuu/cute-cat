@@ -570,4 +570,207 @@ function parseRSSItems(xml, source, limit) {
   return items;
 }
 
+// =====================================================================
+// Vibe Style Lib — 图片上传 + AI 视觉风格分析 + 灵感库 CRUD
+// =====================================================================
+
+const multer = require('multer');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+
+// multer 配置：存储到 uploads/vibe-snap/
+const vibeSnapStorage = multer.diskStorage({
+  destination: path.join(__dirname, '..', 'uploads', 'vibe-snap'),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, `${uuidv4()}-${Date.now()}${ext}`);
+  },
+});
+const vibeSnapUpload = multer({
+  storage: vibeSnapStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('仅支持 PNG/JPG/WEBP/GIF 图片'));
+  },
+});
+
+// POST /api/dify/vibe-snap-upload — 上传图片文件
+router.post('/vibe-snap-upload', optionalAuth, (req, res) => {
+  vibeSnapUpload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, error: '图片文件过大（最大 10MB）' });
+      return res.status(400).json({ success: false, error: err.message || '上传失败' });
+    }
+    if (!req.file) return res.status(400).json({ success: false, error: '请选择图片文件' });
+    const url = `/uploads/vibe-snap/${req.file.filename}`;
+    res.json({ success: true, data: { url, filename: req.file.filename } });
+  });
+});
+
+// POST /api/dify/vibe-snap-extract — AI 视觉风格分析
+router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
+  try {
+    const { imageBase64, mimeType } = req.body;
+    if (!imageBase64) return res.status(400).json({ success: false, error: '缺少图片数据' });
+
+    const apiKey = process.env.QWEN_API_KEY;
+    if (!apiKey) return res.status(500).json({ success: false, error: 'QWEN_API_KEY 未配置' });
+
+    const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const model = 'qwen-vl-plus'; // 使用支持视觉的模型
+
+    const systemPrompt = `你是一位资深 UI/UX 设计顾问。请仔细分析用户提供的界面截图，提取其设计风格元素。
+
+必须返回严格的 JSON 格式（不要用 markdown 代码块包裹），结构如下：
+{
+  "designSummary": {
+    "styleDescription": "一段 100-200 字的设计风格总结",
+    "styleTags": ["标签1", "标签2", "标签3", "标签4", "标签5"],
+    "colors": [
+      { "name": "颜色名称", "hex": "#XXXXXX", "usage": "用途说明" }
+    ],
+    "typography": [
+      { "family": "字体名称", "note": "使用场景" }
+    ],
+    "visualAttributes": {
+      "borderRadius": "圆角描述",
+      "shadow": "阴影描述",
+      "border": "边框描述",
+      "spacing": "间距描述"
+    }
+  },
+  "designPrompt": "一段完整的设计提示词（500-800字），可用于指导 AI 重现该设计风格",
+  "libraryBlurb": "一句话摘要（30字以内）"
+}
+
+分析要细致准确，颜色必须用真实色值，字体尽量识别准确。只返回 JSON，不要附加任何其他文字。`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 120s 超时（视觉分析耗时更长）
+
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${mimeType || 'image/jpeg'};base64,${imageBase64}`,
+                  },
+                },
+                {
+                  type: 'text',
+                  text: '请分析这张界面截图的设计风格。',
+                },
+              ],
+            },
+          ],
+          max_tokens: 4096,
+          temperature: 0.3,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Qwen API ${response.status}: ${errText}`);
+      }
+
+      const data = await response.json();
+      let answer = data.choices?.[0]?.message?.content || '';
+
+      // 清理 markdown 代码块包裹
+      const codeMatch = answer.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+      if (codeMatch) answer = codeMatch[1].trim();
+
+      let parsed;
+      try {
+        parsed = JSON.parse(answer);
+      } catch {
+        console.error('[vibe-snap-extract] JSON parse failed:', answer.slice(0, 500));
+        return res.status(500).json({ success: false, error: 'AI 返回了无效的 JSON 数据' });
+      }
+
+      if (!parsed.designSummary || !parsed.designPrompt) {
+        return res.status(500).json({ success: false, error: 'AI 返回的数据缺少必要字段' });
+      }
+
+      // 记录 AI 用量
+      await recordAiUsage(req.userId, { taskId: 'vibe-snap-extract', model: 'qwen' });
+
+      res.json({ success: true, data: parsed });
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err) {
+    console.error('[vibe-snap-extract] error:', err);
+    res.status(500).json({ success: false, error: err.message || 'AI 分析失败' });
+  }
+});
+
+// GET /api/dify/vibe-snap-library — 获取灵感库列表
+router.get('/vibe-snap-library', optionalAuth, async (req, res) => {
+  try {
+    const items = await prisma.vibeStyleItem.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data: { items } });
+  } catch (err) {
+    console.error('[vibe-snap-library] list error:', err);
+    res.status(500).json({ success: false, error: '获取灵感库失败' });
+  }
+});
+
+// POST /api/dify/vibe-snap-library — 保存灵感卡片
+router.post('/vibe-snap-library', optionalAuth, async (req, res) => {
+  try {
+    const { imageUrl, tags, colors, summary, designSummary, designPrompt, ownerName } = req.body;
+    if (!imageUrl || !designSummary || !designPrompt) {
+      return res.status(400).json({ success: false, error: '缺少必要字段' });
+    }
+    const item = await prisma.vibeStyleItem.create({
+      data: {
+        userId: req.userId || null,
+        imageUrl,
+        tags: tags || [],
+        colors: colors || [],
+        summary: summary || '',
+        designSummary,
+        designPrompt,
+        ownerName: ownerName || '',
+      },
+    });
+    res.json({ success: true, data: item });
+  } catch (err) {
+    console.error('[vibe-snap-library] save error:', err);
+    res.status(500).json({ success: false, error: '保存失败' });
+  }
+});
+
+// DELETE /api/dify/vibe-snap-library/:id — 删除灵感卡片
+router.delete('/vibe-snap-library/:id', optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const item = await prisma.vibeStyleItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ success: false, error: '卡片不存在' });
+
+    await prisma.vibeStyleItem.delete({ where: { id } });
+    res.json({ success: true, data: { id } });
+  } catch (err) {
+    console.error('[vibe-snap-library] delete error:', err);
+    res.status(500).json({ success: false, error: '删除失败' });
+  }
+});
+
 module.exports = router;

@@ -35,15 +35,17 @@ function labelForPlanStep(
   return `步骤 ${i + 1}`;
 }
 
-/** 执行中：可视化猫咪接力流水线（按工作流定义步骤） */
+/** 执行中：可视化猫咪接力流水线（WorkflowPanel 风格） */
 function CatExecutionFlow({
   planSteps,
   catNameById,
   running,
+  steps,
 }: {
   planSteps: PlanStep[];
   catNameById: Record<string, string>;
   running: boolean;
+  steps: WorkflowRunStep[];
 }) {
   const [pulseIdx, setPulseIdx] = useState(0);
 
@@ -77,66 +79,105 @@ function CatExecutionFlow({
     );
   }
 
+  // 计算每个步骤的完成状态
+  const completedSteps = steps.filter(s => s.success !== false && s.status !== 'error').map(s => s.index ?? 0);
+
   return (
-    <div className="rounded-2xl border border-primary-200/70 bg-primary-50/40 px-3 py-5 sm:px-5">
-      <p className="text-center text-[10px] font-black uppercase tracking-wider text-primary-800 mb-4">
+    <div className="rounded-2xl border border-primary-200/70 bg-primary-50/40 px-4 py-6">
+      <p className="text-center text-[10px] font-black uppercase tracking-wider text-primary-800 mb-6">
         猫咪执行流程
       </p>
-      <div
-        className="flex flex-wrap items-center justify-center gap-y-3 gap-x-0"
-        role="list"
-        aria-label="执行流程"
-      >
+      
+      {/* 流水线视图 */}
+      <div className="flex items-start justify-center gap-3 overflow-x-auto pb-2">
         {planSteps.map((step, i) => {
           const label = labelForPlanStep(step, i, catNameById);
-          const active = running && pulseIdx === i;
+          const isCompleted = completedSteps.includes(i);
+          const isCurrent = running && pulseIdx === i;
+          const isPending = !isCompleted && !isCurrent;
+          
           return (
             <React.Fragment key={`${step.stepId ?? step.agentId ?? "s"}-${i}`}>
-              {i > 0 ? (
-                <ChevronRight
-                  className="w-4 h-4 text-primary-400 shrink-0 mx-0.5 sm:mx-1"
-                  strokeWidth={2.5}
-                  aria-hidden
-                />
-              ) : null}
-              <div
-                role="listitem"
-                className={`relative flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-2xl border min-w-[4.75rem] max-w-[7.5rem] transition-all duration-500 ${
-                  active
-                    ? "border-primary-500 bg-white shadow-md scale-[1.03] ring-2 ring-primary-400/50"
-                    : "border-border bg-surface/90 opacity-80"
-                }`}
-              >
-                <span
-                  className="text-2xl leading-none"
-                  aria-hidden
-                >
-                  {active ? "🐾" : "🐱"}
-                </span>
-                <span className="text-[10px] sm:text-[11px] font-black text-text-primary text-center leading-tight line-clamp-2">
-                  {label}
-                </span>
-                {active ? (
-                  <span className="flex items-center gap-0.5 text-[9px] font-bold text-primary-600">
-                    <Loader2
-                      className="w-3 h-3 animate-spin shrink-0"
-                      strokeWidth={2.5}
-                    />
-                    执行中
-                  </span>
-                ) : (
-                  <span className="text-[9px] font-semibold text-text-tertiary">
-                    待命
-                  </span>
+              {/* 单个节点 */}
+              <div className="flex flex-col items-center gap-2 min-w-[90px]">
+                {/* 对话气泡 - 仅在执行中显示 */}
+                {isCurrent && (
+                  <div className="relative mb-1 px-3 py-1.5 rounded-lg bg-white border border-primary-200 shadow-sm animate-pulse">
+                    <span className="text-[10px] font-bold text-primary-700">执行中...</span>
+                    {/* 气泡尖角 */}
+                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white border-b border-r border-primary-200 rotate-45" />
+                  </div>
                 )}
+                
+                {/* 猫猫节点 */}
+                <div
+                  className={`relative flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all duration-300 ${
+                    isCurrent
+                      ? "border-primary-500 bg-white shadow-lg scale-105"
+                      : isCompleted
+                        ? "border-primary-300 bg-white/90"
+                        : "border-border bg-surface/60 opacity-70"
+                  }`}
+                >
+                  {/* 猫猫图标 */}
+                  <div className={`text-3xl transition-transform ${isCurrent ? "animate-bounce" : ""}`}>
+                    {isCurrent ? "🐾" : isCompleted ? "✅" : "🐱"}
+                  </div>
+                  
+                  {/* 名字 */}
+                  <span className="text-[11px] font-black text-text-primary text-center leading-tight">
+                    {label}
+                  </span>
+                  
+                  {/* 状态指示 */}
+                  {isCurrent && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <Loader2 className="w-3 h-3 text-primary-600 animate-spin" strokeWidth={2.5} />
+                      <span className="text-[9px] font-bold text-primary-600">运行中</span>
+                    </div>
+                  )}
+                  {isCompleted && (
+                    <span className="text-[9px] font-semibold text-primary-600 mt-1">已完成</span>
+                  )}
+                  {isPending && (
+                    <span className="text-[9px] font-semibold text-text-tertiary mt-1">等待中</span>
+                  )}
+                  
+                  {/* 进度条 - 仅当前执行步骤显示 */}
+                  {isCurrent && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary-100 rounded-b-2xl overflow-hidden">
+                      <div className="h-full bg-primary-500 animate-[progress_2s_ease-in-out_infinite]" />
+                    </div>
+                  )}
+                </div>
               </div>
+              
+              {/* 箭头连线 */}
+              {i < planSteps.length - 1 && (
+                <div className="flex items-center pt-8">
+                  <ChevronRight
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      isCompleted ? "text-primary-500" : "text-border"
+                    }`}
+                    strokeWidth={3}
+                  />
+                </div>
+              )}
             </React.Fragment>
           );
         })}
       </div>
-      <p className="text-center text-[11px] text-text-secondary font-medium mt-4">
+      
+      <p className="text-center text-[11px] text-text-secondary font-medium mt-6">
         流程按顺序接力，完成后将展示生成结果
       </p>
+      
+      <style>{`
+        @keyframes progress {
+          0% { width: 0%; }
+          100% { width: 100%; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -249,6 +290,7 @@ export default function ResultCanvas({
               planSteps={planSteps}
               catNameById={catNameById}
               running
+              steps={[]}
             />
           </div>
         ) : null}
@@ -261,6 +303,7 @@ export default function ResultCanvas({
             planSteps={planSteps}
             catNameById={catNameById}
             running
+            steps={steps}
           />
         ) : null}
 
