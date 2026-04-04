@@ -2,7 +2,7 @@ import { xianluoColors } from '../themes';
 import type { Assistant, Skill } from '../types';
 
 export const huangjinSkills: Skill[] = [
-  { id: 'fix-bug', name: 'Bug 修复', icon: '🐛', description: '排查并修复前后端 bug', input: 'text', output: 'text', provider: 'Code Analysis', mockResult: '已修复 3 个 bug，回归测试通过' },
+  { id: 'fix-bug', name: 'Bug 修复', icon: 'Bug', description: '排查并修复前后端 bug', input: 'text', output: 'text', provider: 'Code Analysis', mockResult: '已修复 3 个 bug，回归测试通过' },
 ];
 
 export const huangjinMessages = [

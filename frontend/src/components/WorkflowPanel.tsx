@@ -23,6 +23,7 @@ import {
   type WorkflowRunDB,
 } from '../utils/backendClient';
 import { assistants } from '../data/cats';
+import { AppIcon } from './icons';
 
 const STEP_DURATION = 3000;
 
@@ -68,7 +69,6 @@ const formatTime = (iso: string) => {
   return `${month}/${day} ${h}:${m}`;
 };
 
-const statusIcon = (s: string) => s === 'success' ?'✅': s === 'warning' ? '⚠️' : '❌';
 
 interface WorkflowPanelProps {
   editorMode?: boolean;
@@ -331,7 +331,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
       agentName: agent?.name ?? step.agentId,
       skillId: step.skillId,
       skillName: skill?.name ?? step.skillId,
-      skillIcon: skill?.icon ?? '⚙️',
+      skillIcon: skill?.icon ?? 'Settings',
       status: 'running',
       timestamp: new Date().toISOString(),
     };
@@ -569,8 +569,8 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                   <span className="model-name">{m.name}</span>
                   <span className="model-provider">{m.provider}</span>
                   {m.id === selectedModel && (
-                    <span className="model-check">
-                      ✅
+                    <span className="model-check inline-flex text-green-600">
+                      <AppIcon symbol="CheckCircle" size={16} />
                     </span>
                   )}
                   {!m.available && <span className="model-unavailable">未配置</span>}
@@ -635,7 +635,12 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                 return (
                   <div key={item.id} className={`global-history-item status-${item.status}`}>
                     <div className="ghi-left">
-                      <span className="ghi-status">{statusIcon(item.status)}</span>
+                      <span className="ghi-status inline-flex">
+                        <AppIcon
+                          symbol={item.status === 'success' ? 'CheckCircle' : item.status === 'warning' ? 'AlertTriangle' : 'XCircle'}
+                          size={14}
+                        />
+                      </span>
                       <span className="ghi-time">{formatTime(item.timestamp).split(' ')[1]}</span>
                     </div>
                     <div className="ghi-body">
@@ -644,8 +649,18 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                           {agent && <CatMiniAvatar colors={agent.catColors} size={14} />}
                           {agent?.name ?? item.agentId}
                         </span>
-                        {skill && <span className="ghi-skill">{skill.icon} {skill.name}</span>}
-                        {item.workflowName && <span className="ghi-wf">📋 {item.workflowName}</span>}
+                        {skill && (
+                          <span className="ghi-skill inline-flex items-center gap-1">
+                            <AppIcon symbol={skill.icon} size={12} />
+                            {skill.name}
+                          </span>
+                        )}
+                        {item.workflowName && (
+                          <span className="ghi-wf inline-flex items-center gap-1">
+                            <AppIcon symbol="ClipboardList" size={12} />
+                            {item.workflowName}
+                          </span>
+                        )}
                       </div>
                       <div className="ghi-summary">{item.summary}</div>
                       <div className="ghi-result">{item.result}</div>
@@ -664,8 +679,8 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           <h3 className="panel-title">协作工作流</h3>
           <div className="panel-header-actions">
             {editorMode && (
-              <button className="add-workflow-btn" onClick={handleAddWorkflow} title="新增工作流">
-                ➕
+              <button className="add-workflow-btn inline-flex items-center justify-center" onClick={handleAddWorkflow} title="新增工作流">
+                <AppIcon symbol="Plus" size={18} />
               </button>
             )}
             <button className="close-btn" onClick={handleClose}>
@@ -749,7 +764,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                         {agent && <CatMiniAvatar colors={agent.catColors} size={16} />}
                         {agent?.name ?? step.agentId}
                         <div className='w-px h-3 bg-black/5 mx-1'></div>
-                        {skill?.icon ?? '⚙️'}
+                        <AppIcon symbol={skill?.icon ?? 'Settings'} size={14} />
                       </span>
                     );
                   })}
@@ -825,8 +840,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                             {agent?.name ?? step.agentId}
                           </span>
                           {skill && (
-                            <span className="node-skill">
-                              {skill.icon} {skill.name}
+                            <span className="node-skill inline-flex items-center gap-1">
+                              <AppIcon symbol={skill.icon} size={12} />
+                              {skill.name}
                             </span>
                           )}
                         </div>
@@ -841,10 +857,10 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                         {/* 真实执行结果 - 完成后展示在猫猫下方 */}
                         {isCompleted && result && (
                           <div className={`node-result status-${resultStatus}`}>
-                            <div className="node-result-header">
-                              {resultStatus === 'success' && '✅'}
-                              {resultStatus === 'warning' && '⚠️'}
-                              {resultStatus === 'error' && '❌'}
+                            <div className="node-result-header inline-flex items-center gap-1">
+                              {resultStatus === 'success' && <AppIcon symbol="CheckCircle" size={14} />}
+                              {resultStatus === 'warning' && <AppIcon symbol="AlertTriangle" size={14} />}
+                              {resultStatus === 'error' && <AppIcon symbol="XCircle" size={14} />}
                               <span className="node-result-status">
                                 {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
                               </span>
@@ -935,7 +951,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
               )}
               {allDone && (
                 <div className="exec-done">
-                  <span className="done-icon">🎉</span>
+                  <span className="done-icon inline-flex text-primary-600">
+                    <AppIcon symbol="PartyPopper" size={22} />
+                  </span>
                   <span className="done-text">
                     {activeWorkflow.persistent
                       ? '全部完成！常驻任务已保留～'
@@ -1102,7 +1120,10 @@ const WorkflowEditModal: React.FC<EditModalProps> = ({ workflow, onSave, onClose
                     {step.agentId &&
                       (assistants.find((a) => a.id === step.agentId)?.skills ?? []).map((s) => (
                         <option key={s.id} value={s.id}>
-                          {(s as Skill).icon} {s.name}
+                          <span className="inline-flex items-center gap-1">
+                        <AppIcon symbol={(s as Skill).icon} size={14} />
+                        {s.name}
+                      </span>
                         </option>
                       ))}
                   </select>

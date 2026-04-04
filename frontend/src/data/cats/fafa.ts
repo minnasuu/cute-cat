@@ -2,9 +2,9 @@ import { meiduanColors } from '../themes';
 import type { Assistant, Skill } from '../types';
 
 export const fafaSkills: Skill[] = [
-  { id: 'mece-analysis', name: 'MECE 问题拆解', icon: '🧩', description: '按 MECE 原则（相互独立、完全穷尽）将复杂问题拆解为多层子问题树', input: 'text', output: 'json', provider: 'Qwen', mockResult: '输出 MECE 子问题树 JSON' },
-  { id: 'scamper-creative', name: 'SCAMPER 创意改造', icon: '🔀', description: '用 SCAMPER 七维度对产品或方案进行创意发散', input: 'text', output: 'json', provider: 'Qwen', mockResult: '输出七维度创意报告 JSON' },
-  { id: 'six-hats', name: '六顶思考帽', icon: '🎩', description: '用六顶思考帽从六种思维视角全面分析问题', input: 'text', output: 'json', provider: 'Qwen', mockResult: '输出六帽分析报告 JSON' },
+  { id: 'mece-analysis', name: 'MECE 问题拆解', icon: 'Puzzle', description: '按 MECE 原则（相互独立、完全穷尽）将复杂问题拆解为多层子问题树', input: 'text', output: 'json', provider: 'Qwen', mockResult: '输出 MECE 子问题树 JSON' },
+  { id: 'scamper-creative', name: 'SCAMPER 创意改造', icon: 'Shuffle', description: '用 SCAMPER 七维度对产品或方案进行创意发散', input: 'text', output: 'json', provider: 'Qwen', mockResult: '输出七维度创意报告 JSON' },
+  { id: 'six-hats', name: '六顶思考帽', icon: 'Layers', description: '用六顶思考帽从六种思维视角全面分析问题', input: 'text', output: 'json', provider: 'Qwen', mockResult: '输出六帽分析报告 JSON' },
 ];
 
 export const fafaMessages = [

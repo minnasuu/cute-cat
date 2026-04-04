@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import CatMiniAvatar from '../../../components/CatMiniAvatar';
+import { AppIcon } from '../../../components/icons';
 import { NODE_WIDTH, PORT_SIZE } from './canvas-utils';
 
 interface StepNodeProps {
@@ -194,7 +195,11 @@ const StepNode: React.FC<StepNodeProps> = ({
             {cat?.name || '未选择猫猫'}
           </div>
           <div className="text-[10px] text-gray-500 truncate mt-0.5 flex items-center gap-1">
-            {skillIcon && <span>{skillIcon}</span>}
+            {skillIcon && (
+              <span className="inline-flex text-gray-500">
+                <AppIcon symbol={skillIcon} size={12} />
+              </span>
+            )}
             <span>{skillName || '未选择执行能力'}</span>
           </div>
           {action && (

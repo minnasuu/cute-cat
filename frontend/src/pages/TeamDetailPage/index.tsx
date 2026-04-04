@@ -15,6 +15,8 @@ import Navbar from '../../components/Navbar';
 import UserProfileDropdown from '../DashboardPage/UserProfileDropdown';
 import '../../styles/WorkflowPanel.scss';
 import { injectAdminSkillsToCats } from '../../data/skills';
+import { AppIcon } from '../../components/icons';
+import { Clock } from 'lucide-react';
 
 const STEP_DURATION = 3000;
 
@@ -738,8 +740,8 @@ const TeamDetailPage: React.FC = () => {
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-surface-secondary border border-border flex items-center justify-center text-2xl shrink-0">
-                        {wf.icon}
+                      <div className="w-12 h-12 rounded-2xl bg-surface-secondary border border-border flex items-center justify-center text-primary-600 shrink-0">
+                        <AppIcon symbol={wf.icon} size={26} />
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-black text-text-primary group-hover:text-primary-600 transition-colors">{wf.name}</h4>
@@ -750,8 +752,9 @@ const TeamDetailPage: React.FC = () => {
                             {wf.steps.length} 步骤
                           </span>
                           {wf.trigger === 'cron' && wf.cron && (
-                            <span className="px-2.5 py-1 rounded-full bg-accent-50 border border-accent-200 text-[10px] font-bold text-accent-600">
-                              ⏰ {wf.cron}
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent-50 border border-accent-200 text-[10px] font-bold text-accent-600">
+                              <Clock size={12} strokeWidth={2.5} aria-hidden />
+                              {wf.cron}
                             </span>
                           )}
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${wf.enabled ? 'bg-green-50 border border-green-200 text-green-600' : 'bg-surface-secondary border border-border text-text-tertiary'}`}>
@@ -838,11 +841,11 @@ const TeamDetailPage: React.FC = () => {
                       <div className="space-y-3">
                         {grouped[dateKey].map(run => {
                           const wf = team.workflows.find(w => w.id === run.workflowId);
-                          const statusConfig: Record<string, { icon: string; color: string; bg: string; label: string }> = {
-                            success: { icon: '✅', color: 'text-green-600', bg: 'bg-green-50 border-green-200', label: '成功' },
-                            failed: { icon: '❌', color: 'text-red-600', bg: 'bg-red-50 border-red-200', label: '失败' },
-                            running: { icon: '⏳', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', label: '执行中' },
-                            cancelled: { icon: '⏹', color: 'text-gray-500', bg: 'bg-gray-50 border-gray-200', label: '已取消' },
+                          const statusConfig: Record<string, { symbol: string; color: string; bg: string; label: string }> = {
+                            success: { symbol: 'CheckCircle', color: 'text-green-600', bg: 'bg-green-50 border-green-200', label: '成功' },
+                            failed: { symbol: 'XCircle', color: 'text-red-600', bg: 'bg-red-50 border-red-200', label: '失败' },
+                            running: { symbol: 'Loader2', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', label: '执行中' },
+                            cancelled: { symbol: 'Square', color: 'text-gray-500', bg: 'bg-gray-50 border-gray-200', label: '已取消' },
                           };
                           const sc = statusConfig[run.status] || statusConfig.running;
                           const startTime = new Date(run.startedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -852,7 +855,9 @@ const TeamDetailPage: React.FC = () => {
                             <div key={run.id} className="bg-surface rounded-[20px] border border-border p-5 hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleViewRunDetail(run)}>
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-3">
-                                  <span className="text-2xl">{wf?.icon || '📋'}</span>
+                                  <span className="text-primary-600 inline-flex">
+                                    <AppIcon symbol={wf?.icon || 'ClipboardList'} size={24} />
+                                  </span>
                                   <div>
                                     <h4 className="font-bold text-text-primary">{run.workflowName}</h4>
                                     <div className="flex items-center gap-2 mt-1">
@@ -863,8 +868,11 @@ const TeamDetailPage: React.FC = () => {
                                     </div>
                                   </div>
                                 </div>
-                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${sc.bg} ${sc.color}`}>
-                                  {sc.icon} {sc.label}
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border ${sc.bg} ${sc.color}`}>
+                                  <span className={run.status === 'running' ? 'inline-flex animate-spin' : 'inline-flex'}>
+                                    <AppIcon symbol={sc.symbol} size={12} />
+                                  </span>
+                                  {sc.label}
                                 </span>
                               </div>
 
@@ -877,8 +885,8 @@ const TeamDetailPage: React.FC = () => {
                                       : null;
                                     return (
                                       <div key={idx} className="flex items-start gap-2 pl-2 py-1.5 rounded-lg bg-surface-secondary/60">
-                                        <span className="text-xs mt-0.5 shrink-0">
-                                          {step.success ? '✅' : '❌'}
+                                        <span className="text-xs mt-0.5 shrink-0 inline-flex text-primary-600">
+                                          <AppIcon symbol={step.success ? 'CheckCircle' : 'XCircle'} size={14} />
                                         </span>
                                         <div className="min-w-0 flex-1">
                                           <div className="flex items-center gap-1.5">
@@ -974,11 +982,11 @@ const TeamDetailPage: React.FC = () => {
       {executingWorkflow && (() => {
         const isViewingHistory = !!viewingRun;
         const closeHandler = isViewingHistory ? handleCloseRunDetail : handleCloseExecution;
-        const statusConfig: Record<string, { icon: string; label: string; color: string }> = {
-          success: { icon: '✅', label: '执行成功', color: 'text-green-600' },
-          failed: { icon: '❌', label: '执行失败', color: 'text-red-600' },
-          cancelled: { icon: '⏹', label: '已取消', color: 'text-gray-500' },
-          running: { icon: '⏳', label: '执行中', color: 'text-blue-600' },
+        const statusConfig: Record<string, { symbol: string; label: string; color: string }> = {
+          success: { symbol: 'CheckCircle', label: '执行成功', color: 'text-green-600' },
+          failed: { symbol: 'XCircle', label: '执行失败', color: 'text-red-600' },
+          cancelled: { symbol: 'Square', label: '已取消', color: 'text-gray-500' },
+          running: { symbol: 'Loader2', label: '执行中', color: 'text-blue-600' },
         };
         const runStatus = isViewingHistory ? (statusConfig[viewingRun!.status] || statusConfig.running) : null;
 
@@ -988,15 +996,22 @@ const TeamDetailPage: React.FC = () => {
           <div className="execution-stage">
             <div className="stage-header">
               <div className="stage-title">
-                <span className="stage-name">{executingWorkflow.icon} {executingWorkflow.name}</span>
+                <span className="stage-name inline-flex items-center gap-2">
+                  <AppIcon symbol={executingWorkflow.icon} size={18} className="text-primary-600" />
+                  {executingWorkflow.name}
+                </span>
                 {isPreparing && (
-                  <span className="ml-3 text-xs font-bold text-amber-600">
-                    📋 确认参数
+                  <span className="ml-3 inline-flex items-center gap-1 text-xs font-bold text-amber-600">
+                    <AppIcon symbol="ClipboardList" size={14} />
+                    确认参数
                   </span>
                 )}
                 {isViewingHistory && (
-                  <span className={`ml-3 text-xs font-bold ${runStatus!.color}`}>
-                    {runStatus!.icon} {runStatus!.label}
+                  <span className={`ml-3 inline-flex items-center gap-1 text-xs font-bold ${runStatus!.color}`}>
+                    <span className={viewingRun!.status === 'running' ? 'inline-flex animate-spin' : 'inline-flex'}>
+                      <AppIcon symbol={runStatus!.symbol} size={14} />
+                    </span>
+                    {runStatus!.label}
                   </span>
                 )}
               </div>
@@ -1049,8 +1064,9 @@ const TeamDetailPage: React.FC = () => {
                                 {cat?.name ?? step.agentId}
                               </span>
                               {skill && (
-                                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#8D6E63', background: '#F5F0EB', padding: '2px 8px', borderRadius: 6 }}>
-                                  {skill.icon} {skill.name}
+                                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#8D6E63', background: '#F5F0EB', padding: '2px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <AppIcon symbol={skill.icon} size={12} />
+                                  {skill.name}
                                 </span>
                               )}
                               {step.action && (
@@ -1333,8 +1349,9 @@ const TeamDetailPage: React.FC = () => {
                                     {cat?.name ?? step.agentId}
                                   </span>
                                   {skill && (
-                                    <span className="node-skill">
-                                      {skill.icon} {skill.name}
+                                    <span className="node-skill inline-flex items-center gap-1">
+                                      <AppIcon symbol={skill.icon} size={12} />
+                                      {skill.name}
                                     </span>
                                   )}
                                   {!skill && step.action && (
@@ -1362,10 +1379,10 @@ const TeamDetailPage: React.FC = () => {
 
                                 {isCompleted && result && (
                                   <div className={`node-result status-${resultStatus}`}>
-                                    <div className="node-result-header">
-                                      {resultStatus === 'success' && '✅'}
-                                      {resultStatus === 'warning' && '⚠️'}
-                                      {resultStatus === 'error' && '❌'}
+                                    <div className="node-result-header inline-flex items-center gap-1">
+                                      {resultStatus === 'success' && <AppIcon symbol="CheckCircle" size={14} />}
+                                      {resultStatus === 'warning' && <AppIcon symbol="AlertTriangle" size={14} />}
+                                      {resultStatus === 'error' && <AppIcon symbol="XCircle" size={14} />}
                                       <span className="node-result-status">
                                         {resultStatus === 'success' ? '完成' : resultStatus === 'warning' ? '警告' : '失败'}
                                       </span>
@@ -1459,7 +1476,9 @@ const TeamDetailPage: React.FC = () => {
                   )}
                   {allDone && (
                     <div className="exec-done">
-                      <span className="done-icon">🎉</span>
+                      <span className="done-icon inline-flex text-primary-600">
+                        <AppIcon symbol="PartyPopper" size={22} />
+                      </span>
                       <span className="done-text">全部完成！</span>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
                         耗时 {totalElapsed}s

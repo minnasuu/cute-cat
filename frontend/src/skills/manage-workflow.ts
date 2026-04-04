@@ -111,7 +111,7 @@ async function handleCreate(teamId: string, prompt: string): Promise<SkillResult
 
   const workflowData = {
     name: String(aiResult.name || prompt.slice(0, 30) || '自动生成工作流'),
-    icon: String(aiResult.icon || '🤖'),
+    icon: String(aiResult.icon || 'Bot'),
     description: String(aiResult.description || `由 AI 根据需求自动生成: ${prompt.slice(0, 100)}`),
     steps: aiResult.steps || [],
     scheduled: !!aiResult.scheduled,

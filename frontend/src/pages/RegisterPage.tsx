@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../utils/apiClient';
 import CatLogo from '../components/CatLogo';
 import { showToast } from '../components/Toast';
+import { AppIcon } from '../components/icons';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -86,7 +87,10 @@ const RegisterPage: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <label className="block text-sm font-semibold text-amber-700 mb-1">🔑 内测码</label>
+              <label className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 mb-1">
+                <AppIcon symbol="Key" size={16} className="text-amber-600" />
+                内测码
+              </label>
               <input
                 type="text"
                 value={betaCode}
@@ -209,7 +213,10 @@ const RegisterPage: React.FC = () => {
           </div>
         </div>
 
-        <p className="text-center text-xs text-text-tertiary mt-6">🧪 内测阶段 · 免费体验全部功能</p>
+        <p className="text-center text-xs text-text-tertiary mt-6 flex items-center justify-center gap-1.5">
+          <AppIcon symbol="FlaskConical" size={14} className="text-text-tertiary shrink-0" />
+          内测阶段 · 免费体验全部功能
+        </p>
       </div>
     </div>
   );

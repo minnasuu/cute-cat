@@ -2,9 +2,9 @@ import { sanhuaColors } from '../themes';
 import type { Assistant, Skill } from '../types';
 
 export const xiaohuSkills: Skill[] = [
-  { id: 'generate-image', name: 'AI 绘图', icon: '🖼️', description: '根据文字描述生成高质量图片', input: 'text', output: 'image', provider: 'Qwen', mockResult: '生成 1024x1024 PNG 图片' },
-  { id: 'generate-chart', name: '图表生成', icon: '📊', description: '将 JSON 数据转化为可视化图表', input: 'json', output: 'image', provider: 'Chart.js', mockResult: '生成折线图/柱状图 PNG' },
-  { id: 'image-enhance', name: '图片增强', icon: '🔆', description: '对图片进行超分辨率放大和降噪', input: 'image', output: 'image', provider: 'Real-ESRGAN', mockResult: '输出 4x 超分辨率图片' },
+  { id: 'generate-image', name: 'AI 绘图', icon: 'Image', description: '根据文字描述生成高质量图片', input: 'text', output: 'image', provider: 'Qwen', mockResult: '生成 1024x1024 PNG 图片' },
+  { id: 'generate-chart', name: '图表生成', icon: 'BarChart3', description: '将 JSON 数据转化为可视化图表', input: 'json', output: 'image', provider: 'Chart.js', mockResult: '生成折线图/柱状图 PNG' },
+  { id: 'image-enhance', name: '图片增强', icon: 'SunMedium', description: '对图片进行超分辨率放大和降噪', input: 'image', output: 'image', provider: 'Real-ESRGAN', mockResult: '输出 4x 超分辨率图片' },
 ];
 
 export const xiaohuMessages = [

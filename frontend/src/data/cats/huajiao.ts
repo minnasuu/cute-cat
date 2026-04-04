@@ -2,10 +2,10 @@ import type { Assistant, Skill } from '../types';
 import { lihuajiabaiTheme } from '../themes';
 
 export const huajiaoSkills: Skill[] = [
-  { id: 'assign-task', name: '任务分配', icon: '📌', description: '将任务拆解并分配给指定猫猫', input: 'text', output: 'json', provider: 'TaskQueue', mockResult: '输出 JSON 任务卡片 (状态/负责人)' },
-  { id: 'manage-workflow', name: '工作流管理', icon: '🔧', description: '新增、修改或删除协作工作流', input: 'json', output: 'json', provider: 'Workflow Engine', mockResult: '工作流已更新' },
-  { id: 'run-workflow', name: '执行工作流', icon: '▶️', description: '触发指定工作流立即执行', input: 'text', output: 'json', provider: 'Workflow Engine', mockResult: '工作流已触发执行' },
-  { id: 'recruit-cat', name: '招募新猫', icon: '🐱', description: '根据团队需求招募新猫并定义角色', input: 'json', output: 'json', provider: 'Qwen', mockResult: '新猫已招募' },
+  { id: 'assign-task', name: '任务分配', icon: 'Pin', description: '将任务拆解并分配给指定猫猫', input: 'text', output: 'json', provider: 'TaskQueue', mockResult: '输出 JSON 任务卡片 (状态/负责人)' },
+  { id: 'manage-workflow', name: '工作流管理', icon: 'Wrench', description: '新增、修改或删除协作工作流', input: 'json', output: 'json', provider: 'Workflow Engine', mockResult: '工作流已更新' },
+  { id: 'run-workflow', name: '执行工作流', icon: 'Play', description: '触发指定工作流立即执行', input: 'text', output: 'json', provider: 'Workflow Engine', mockResult: '工作流已触发执行' },
+  { id: 'recruit-cat', name: '招募新猫', icon: 'Cat', description: '根据团队需求招募新猫并定义角色', input: 'json', output: 'json', provider: 'Qwen', mockResult: '新猫已招募' },
 ];
 
 export const huajiaoMessages = [

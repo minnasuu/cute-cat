@@ -42,7 +42,7 @@ router.post('/team/:teamId', async (req, res) => {
       data: {
         teamId: req.params.teamId,
         name,
-        icon: icon || '📋',
+        icon: icon || 'ClipboardList',
         description: description || '',
         steps,
         trigger: resolvedTrigger,

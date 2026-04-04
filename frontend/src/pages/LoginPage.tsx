@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import CatLogo from '../components/CatLogo';
 import { showToast } from '../components/Toast';
+import { AppIcon } from '../components/icons';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -97,7 +98,10 @@ const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        <p className="text-center text-xs text-text-tertiary mt-6">让可爱的猫猫帮你工作 🐱</p>
+        <p className="text-center text-xs text-text-tertiary mt-6 flex items-center justify-center gap-1.5">
+          让可爱的猫猫帮你工作
+          <AppIcon symbol="Cat" size={14} className="text-text-tertiary shrink-0" />
+        </p>
       </div>
     </div>
   );

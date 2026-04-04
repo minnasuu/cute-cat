@@ -3,6 +3,7 @@ import CatSVG from '../../components/CatSVG'
 import { assistants } from '../../data/cats'
 import { workflows } from '../../data/workflows'
 import { Skill } from '../../data/types'
+import { AppIcon } from '../../components/icons'
 
 const catMap = Object.fromEntries(assistants.map(c => [c.id, c]))
 
@@ -247,7 +248,7 @@ export const LandFeatureWorkflows = () => {
               )}
               {allDone && (
                 <div className="flex items-center gap-2 animate-in fade-in">
-                  <span className="text-sm">🎉</span>
+                  <span className="text-primary-600 inline-flex"><AppIcon symbol="PartyPopper" size={18} /></span>
                   <span className="text-xs font-bold text-primary-600">
                     工作流执行完成 · {DEMO_WORKFLOW.steps.length} 步全部成功
                   </span>

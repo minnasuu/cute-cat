@@ -2,9 +2,9 @@ import type { Assistant, Skill } from '../types';
 import { lanmaoTheme } from '../themes';
 
 export const alanSkills: Skill[] = [
-  { id: 'generate-article', name: '文章生成', icon: '📝', description: '根据主题和素材生成完整文章', input: 'text', output: 'text', provider: 'Qwen', mockResult: '生成 1200 字文章 (Markdown)' },
-  { id: 'generate-outline', name: '大纲生成', icon: '📑', description: '根据主题快速生成结构化大纲', input: 'text', output: 'json', provider: 'Qwen', mockResult: '返回 JSON 大纲 (3级标题结构)' },
-  { id: 'meeting-notes', name: '会议纪要', icon: '📋', description: '根据会议内容生成结构化纪要', input: 'text', output: 'text', provider: 'Qwen', mockResult: '输出会议纪要 (议题/结论/待办)' },
+  { id: 'generate-article', name: '文章生成', icon: 'FileText', description: '根据主题和素材生成完整文章', input: 'text', output: 'text', provider: 'Qwen', mockResult: '生成 1200 字文章 (Markdown)' },
+  { id: 'generate-outline', name: '大纲生成', icon: 'LayoutList', description: '根据主题快速生成结构化大纲', input: 'text', output: 'json', provider: 'Qwen', mockResult: '返回 JSON 大纲 (3级标题结构)' },
+  { id: 'meeting-notes', name: '会议纪要', icon: 'ClipboardList', description: '根据会议内容生成结构化纪要', input: 'text', output: 'text', provider: 'Qwen', mockResult: '输出会议纪要 (议题/结论/待办)' },
 ];
 
 export const alanMessages = [

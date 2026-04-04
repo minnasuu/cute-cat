@@ -3,6 +3,7 @@ import type { WorkflowStep, StepParam, ParamValueSource, SystemKey } from '../..
 import { SYSTEM_KEYS } from '../../../data/types';
 import { skillPool } from '../../../data/skills';
 import CatMiniAvatar from '../../../components/CatMiniAvatar';
+import { AppIcon } from '../../../components/icons';
 
 interface TeamCat {
   id: string; name: string; role: string; catColors: any; skills: any[]; accent: string; systemPrompt?: string;
@@ -179,9 +180,9 @@ const ParamInput: React.FC<{
 
 /* ────── 值来源选择器 ────── */
 const VALUE_SOURCE_OPTIONS: { value: ParamValueSource; label: string; icon: string; desc: string }[] = [
-  { value: 'static',   label: '手动填写', icon: '✏️', desc: '直接配置固定值' },
-  { value: 'upstream', label: '上游输出', icon: '⬆️', desc: '取上一步的输出字段' },
-  { value: 'system',   label: '系统注入', icon: '⚙️', desc: '运行时自动填充' },
+  { value: 'static',   label: '手动填写', icon: 'Pencil', desc: '直接配置固定值' },
+  { value: 'upstream', label: '上游输出', icon: 'ArrowUp', desc: '取上一步的输出字段' },
+  { value: 'system',   label: '系统注入', icon: 'Settings', desc: '运行时自动填充' },
 ];
 
 const ValueSourceSelector: React.FC<{
@@ -201,7 +202,7 @@ const ValueSourceSelector: React.FC<{
         }`}
         title={opt.desc}
       >
-        <span className="text-[10px]">{opt.icon}</span>
+        <AppIcon symbol={opt.icon} size={12} className="text-gray-600" />
         {opt.label}
       </button>
     ))}
@@ -212,7 +213,7 @@ const ValueSourceSelector: React.FC<{
 const UpstreamHint: React.FC = () => (
   <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
     <div className="flex items-center gap-1.5">
-      <span className="text-xs">⬆️</span>
+      <AppIcon symbol="ArrowUp" size={14} className="text-blue-600" />
       <span className="text-[11px] font-bold text-blue-600">来自上游步骤</span>
     </div>
     <p className="mt-1 text-[10px] text-blue-500/80">
@@ -563,7 +564,7 @@ const StepConfigPanel: React.FC<StepConfigPanelProps> = ({
             <div className="pt-2">
               <div className="rounded-xl border border-primary-100 bg-primary-50/50 p-3">
                 <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="text-xs">🧠</span>
+                  <AppIcon symbol="Brain" size={14} className="text-violet-600" />
                   <span className="text-[10px] font-bold text-primary-700">自动注入性格 Prompt</span>
                 </div>
                 <p className="text-[10px] text-primary-600/80 leading-relaxed line-clamp-3">

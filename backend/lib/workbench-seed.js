@@ -92,7 +92,7 @@ function buildSeedWorkflowSteps(catByTemplateId) {
   return [
     {
       name: '网页制作流水线',
-      icon: '🌐',
+      icon: 'Globe',
       description:
         '产品策划 → 交互设计 → 视觉设计 → 前端实现，根据你的建站需求串联产出（AIGC 占位执行）。',
       trigger: 'manual',

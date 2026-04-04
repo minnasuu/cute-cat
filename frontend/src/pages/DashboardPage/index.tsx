@@ -6,6 +6,8 @@ import CatLogo from "../../components/CatLogo";
 import Navbar from "../../components/Navbar";
 import UserProfileDropdown from "./UserProfileDropdown";
 import { showToast } from "../../components/Toast";
+import { AppIcon } from "../../components/icons";
+import { X } from "lucide-react";
 import type { WorkflowRow, WorkbenchPayload } from "./workbenchTypes";
 import {
   featureBlurb,
@@ -65,8 +67,8 @@ function FeatureCard({
           : "border-border bg-surface hover:border-border-strong hover:shadow-sm"
       }`}
     >
-      <span className="text-2xl leading-none mb-1" aria-hidden>
-        {icon}
+      <span className="mb-1 text-primary-600">
+        <AppIcon symbol={icon} size={22} strokeWidth={2} />
       </span>
       <span className="text-[11px] sm:text-xs font-black text-text-primary leading-tight">
         {title}
@@ -177,15 +179,12 @@ const DashboardPage: React.FC = () => {
       />
 
       <main
-        className="w-full max-w-4xl mx-auto px-6 pb-16 flex flex-col items-stretch"
+        className="w-full max-w-4xl mx-auto px-6 pb-16 flex flex-col justify-center"
         style={{ minHeight: "calc(100vh - 133px)" }}
       >
         <section className="relative py-8 md:py-11 text-center max-w-2xl mx-auto">
           <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
           <div className="absolute top-8 right-1/4 w-72 h-72 bg-accent-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary-600 mb-2">
-            开始创作
-          </p>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight text-text-primary mb-3 leading-tight">
             选好方向，写下需求，
             <span className="text-primary-600"> 一键开跑</span>
@@ -232,41 +231,51 @@ const DashboardPage: React.FC = () => {
 
               <div className="flex-1 flex flex-col min-w-0 border-t border-border lg:border-t-0 lg:border-l lg:pl-4 pt-3 lg:pt-0 lg:min-w-[12rem]">
                 <div className="flex gap-2 items-start min-h-[6.5rem] sm:min-h-[7.5rem]">
-                  {selectedFeature ? (
-                    <div
-                      className="shrink-0 pt-1"
-                      role="status"
-                      aria-label="当前模式"
-                    >
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-primary-300/80 bg-primary-50 px-2.5 py-1.5 text-xs font-bold text-primary-900 shadow-sm">
-                        <span className="text-base leading-none" aria-hidden>
-                          {selectedFeature.icon}
-                        </span>
-                        {featureLabel(selectedFeature)}
-                      </span>
-                    </div>
-                  ) : null}
                   <textarea
                     value={userInput}
                     onChange={(e) => setUserInput(e.target.value)}
                     placeholder={inputPlaceholder}
                     rows={4}
                     disabled={!selectedFeature}
-                    className="flex-1 min-h-[6.5rem] sm:min-h-[7.5rem] px-3 py-2 rounded-2xl bg-transparent border-0 outline-none resize-y text-sm font-medium placeholder:text-text-tertiary disabled:opacity-50"
+                    className="flex-1 min-h-[6.5rem] sm:min-h-[7.5rem] px-3 py-2 rounded-2xl bg-gray-100 border-0 outline-none resize-none text-sm font-medium placeholder:text-text-tertiary disabled:opacity-50"
                   />
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 px-1 pt-2">
-                  <span className="text-xs text-text-tertiary font-medium max-w-[20rem]">
+                  {/* <span className="text-xs text-text-tertiary font-medium max-w-[20rem]">
                     {selectedFeature
                       ? "内容会作为第一步的主题描述提交给当前模式。"
                       : "选择左侧或上方的能力后再输入。"}
-                  </span>
+                  </span> */}
+                  {selectedFeature ? (
+                    <div
+                      className="shrink-0 pt-1"
+                      role="status"
+                      aria-label="当前模式"
+                    >
+                      <span className="inline-flex items-center gap-1 rounded-full border border-primary-300/80 bg-primary-50 pl-2 pr-1 py-1 text-xs font-bold text-primary-900 shadow-sm">
+                        <AppIcon
+                          symbol={selectedFeature.icon}
+                          size={14}
+                          className="text-primary-700"
+                        />
+                        {featureLabel(selectedFeature)}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWorkflowId(null)}
+                          className="p-0.5 rounded-full hover:bg-primary-200/60 text-primary-700 cursor-pointer"
+                          aria-label="清除所选能力"
+                        >
+                          <X size={14} strokeWidth={2.5} />
+                        </button>
+                      </span>
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     disabled={!selectedWorkflowId || !!executingId}
                     onClick={runSelected}
-                    className="px-7 py-2.5 rounded-2xl bg-text-primary text-text-inverse text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                    className="ml-auto px-7 py-2.5 rounded-2xl bg-text-primary text-text-inverse text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
                   >
                     {executingId ? "处理中…" : "开始创作"}
                   </button>

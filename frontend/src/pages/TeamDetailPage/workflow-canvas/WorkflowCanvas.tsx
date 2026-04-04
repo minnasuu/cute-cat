@@ -111,7 +111,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   // 获取技能信息的辅助函数
   const getSkillInfo = (cat: TeamCat | undefined, skillId: string) => {
     if (!cat || !skillId) return { name: '', icon: '' };
-    if (skillId === 'aigc') return { name: 'AIGC', icon: '✨' };
+    if (skillId === 'aigc') return { name: 'AIGC', icon: 'Sparkles' };
     const skill = cat.skills?.find((s: any) => s.id === skillId);
     return { name: skill?.name || skillId, icon: skill?.icon || '' };
   };

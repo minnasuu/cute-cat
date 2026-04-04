@@ -9,6 +9,7 @@ import {
   legacyWorkflowAgentLabels,
 } from "../../data/officialCatsCommunity";
 import { OFFICIAL_BRAND_CAT_COLORS } from "../../data/officialBrandCat";
+import { AppIcon } from "../../components/icons";
 
 const allCats: Assistant[] = officialCatsCommunity;
 
@@ -55,12 +56,12 @@ const CommunityPage = () => {
   const [selectedCat, setSelectedCat] = useState<Assistant | null>(null);
   const [expandedWf, setExpandedWf] = useState<string | null>(null);
 
-  const tabs: { id: Tab; label: string; icon: string; count: number }[] = [
-    { id: "cats", label: "官方猫猫", icon: "🐱", count: allCats.length },
+  const tabs: { id: Tab; label: string; iconSymbol: string; count: number }[] = [
+    { id: "cats", label: "官方猫猫", iconSymbol: "Cat", count: allCats.length },
     {
       id: "workflows",
       label: "官方工作流",
-      icon: "🔄",
+      iconSymbol: "RefreshCw",
       count: workflows.length,
     },
   ];
@@ -106,7 +107,7 @@ const CommunityPage = () => {
             COMMUNITY
           </p>
           <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-4">
-            猫猫专家阵容 🐾
+            猫猫专家阵容
           </h1>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
             17 只官方猫猫各有岗位角色，统一围绕 AIGC 协作；执行管道当前为占位，便于后续接入真实生成能力。
@@ -128,7 +129,7 @@ const CommunityPage = () => {
                     : "border-transparent text-text-tertiary hover:text-text-primary"
                 }`}
               >
-                <span>{t.icon}</span>
+                <AppIcon symbol={t.iconSymbol} size={18} className="text-primary-600" />
                 <span>{t.label}</span>
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -258,7 +259,11 @@ const CommunityPage = () => {
                           className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 text-white"
                           style={{ background: color }}
                         >
-                          {wf.id === "web-page-builder" ? "🌐" : "📋"}
+                          <AppIcon
+                            symbol={wf.id === "web-page-builder" ? "Globe" : "ClipboardList"}
+                            size={24}
+                            className="text-white"
+                          />
                         </div>
                         <div className="flex-1 min-w-0">
                           <h4 className="text-base font-black text-text-primary mb-1">

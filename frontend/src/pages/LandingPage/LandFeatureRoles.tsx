@@ -4,6 +4,7 @@ import { appearanceTemplates } from '../../data/themes'
 import { presetCombos } from '../../data/cats'
 import { personalityTemplates } from '../../data/personality'
 import { getVisibleSkillGroups } from '../../data/skills'
+import { AppIcon } from '../../components/icons'
 
 export const LandFeatureRoles = () => {
   const skillGroups = getVisibleSkillGroups(false)
@@ -30,7 +31,7 @@ export const LandFeatureRoles = () => {
         {/* Formula Bar */}
         <div className="flex items-center justify-center gap-3 mb-14 flex-wrap">
           <div className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-surface-secondary border border-border">
-            <span className="text-lg">🎨</span>
+            <span className="text-primary-600 inline-flex"><AppIcon symbol="Palette" size={22} /></span>
             <div>
               <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">外形模版</p>
               <p className="text-sm font-black">{appearanceTemplates.length} 种配色</p>
@@ -38,7 +39,7 @@ export const LandFeatureRoles = () => {
           </div>
           <span className="text-2xl font-black text-text-tertiary">×</span>
           <div className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-surface-secondary border border-border">
-            <span className="text-lg">💬</span>
+            <span className="text-primary-600 inline-flex"><AppIcon symbol="MessageCircle" size={22} /></span>
             <div>
               <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">性格模版</p>
               <p className="text-sm font-black">{personalityTemplates.length} 种性格</p>
@@ -46,7 +47,7 @@ export const LandFeatureRoles = () => {
           </div>
           <span className="text-2xl font-black text-text-tertiary">×</span>
           <div className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-surface-secondary border border-border">
-            <span className="text-lg">⚡</span>
+            <span className="text-primary-600 inline-flex"><AppIcon symbol="Zap" size={22} /></span>
             <div>
               <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">技能组</p>
               <p className="text-sm font-black">{skillGroups.length} 个预设组</p>
@@ -54,7 +55,7 @@ export const LandFeatureRoles = () => {
           </div>
           <span className="text-2xl font-black text-text-tertiary">=</span>
           <div className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-primary-50 border border-primary-200">
-            <span className="text-lg">🐱</span>
+            <span className="text-primary-600 inline-flex"><AppIcon symbol="Cat" size={22} /></span>
             <div>
               <p className="text-[10px] font-bold text-primary-400 uppercase tracking-widest">你的专属猫猫</p>
               <p className="text-sm font-black text-primary-600">无限可能</p>
@@ -83,7 +84,10 @@ export const LandFeatureRoles = () => {
                     {personality?.emoji} {personality?.name}
                   </span>
                   <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: group.color }}>
-                    {group.icon} {group.name}
+                    <span className="inline-flex items-center gap-1.5">
+                      <AppIcon symbol={group.icon} size={16} />
+                      {group.name}
+                    </span>
                   </span>
                 </div>
                 <p className="text-sm text-text-secondary font-medium leading-relaxed">
@@ -136,7 +140,10 @@ export const LandFeatureRoles = () => {
                 <div className="flex items-center gap-2 mb-3">
                   <p className="text-xs font-bold text-text-tertiary uppercase tracking-widest">技能组</p>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: group.color }}>
-                    {group.icon} {group.name}
+                    <span className="inline-flex items-center gap-1.5">
+                      <AppIcon symbol={group.icon} size={16} />
+                      {group.name}
+                    </span>
                   </span>
                 </div>
                 <p className="text-xs text-text-secondary font-medium mb-3">{group.description}</p>

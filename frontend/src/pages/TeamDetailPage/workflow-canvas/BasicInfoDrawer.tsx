@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from 'react';
+import { AppIcon, WORKFLOW_ICON_PRESETS } from '../../../components/icons';
+import { Clock, MousePointer2 } from 'lucide-react';
 
 interface BasicInfoDrawerProps {
   open: boolean;
@@ -53,7 +55,9 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
-          <div className="text-2xl">{icon}</div>
+          <div className="text-primary-600 inline-flex">
+            <AppIcon symbol={icon} size={28} />
+          </div>
           <span className="text-sm font-bold text-gray-900">基本信息</span>
           <button
             onClick={onClose}
@@ -68,12 +72,26 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div>
-            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">图标</label>
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">图标（Lucide 名称）</label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {WORKFLOW_ICON_PRESETS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onChangeIcon(key)}
+                  title={key}
+                  className={`w-9 h-9 rounded-lg border flex items-center justify-center text-gray-600 hover:bg-gray-50 cursor-pointer ${icon === key ? 'border-primary-400 bg-primary-50 ring-2 ring-primary-200' : 'border-gray-200'}`}
+                >
+                  <AppIcon symbol={key} size={18} />
+                </button>
+              ))}
+            </div>
             <input
               type="text"
               value={icon}
               onChange={(e) => onChangeIcon(e.target.value)}
-              className="w-16 px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-center text-xl outline-none focus:ring-2 focus:ring-primary-400"
+              placeholder="如 Globe、ClipboardList"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium outline-none focus:ring-2 focus:ring-primary-400"
             />
           </div>
           <div>
@@ -109,7 +127,10 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
                     : 'border-gray-200 hover:border-gray-300 text-gray-500'
                 }`}
               >
-                🖱️ 手动
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  <MousePointer2 size={16} strokeWidth={2.25} />
+                  手动
+                </span>
               </button>
               <button
                 onClick={() => { onChangeTrigger('cron'); onSetScheduled(true); }}
@@ -119,7 +140,10 @@ const BasicInfoDrawer: React.FC<BasicInfoDrawerProps> = ({
                     : 'border-gray-200 hover:border-gray-300 text-gray-500'
                 }`}
               >
-                ⏰ 定时
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  <Clock size={16} strokeWidth={2.25} />
+                  定时
+                </span>
               </button>
             </div>
           </div>

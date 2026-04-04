@@ -1,4 +1,5 @@
 import { getVisibleSkillPool, getVisibleSkillGroups } from "../../data/skills"
+import { AppIcon } from "../../components/icons"
 
 export const LandFeatureSkills = () => {
   const visibleSkills = getVisibleSkillPool(false)
@@ -32,7 +33,7 @@ export const LandFeatureSkills = () => {
                     className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
                     style={{ background: `${group.color}15` }}
                   >
-                    {group.icon}
+                    <AppIcon symbol={group.icon} size={22} style={{ color: group.color }} />
                   </div>
                   <div>
                     <h4 className="text-base font-black">{group.name}</h4>

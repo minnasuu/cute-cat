@@ -134,7 +134,7 @@ export const skillPool: SkillTemplate[] = [
   { id: 'assign-task',       name: '任务分配',   category: 'manage', description: '将任务拆解并分配给指定猫猫',              input: 'text', output: 'json', primitiveId: 'structured-output', provider: 'Dify' },
   { id: 'manage-workflow',   name: '工作流管理', category: 'manage', description: '管理当前团队工作流：新增（AI 自动生成）、修改、删除', input: 'text', output: 'json', primitiveId: 'workflow-engine',   provider: 'Workflow',
     paramDefs: [
-      { key: 'action', label: '操作类型', type: 'select', required: true, description: '选择对工作流进行的操作', options: [{ label: '🆕 新增工作流', value: 'create' }, { label: '✏️ 修改工作流', value: 'update' }, { label: '🗑️ 删除工作流', value: 'delete' }], defaultValue: 'create' },
+      { key: 'action', label: '操作类型', type: 'select', required: true, description: '选择对工作流进行的操作', options: [{ label: '新增工作流', value: 'create' }, { label: '修改工作流', value: 'update' }, { label: '删除工作流', value: 'delete' }], defaultValue: 'create' },
       { key: 'workflowId', label: '目标工作流', type: 'select', required: false, description: '修改或删除时必须选择目标工作流，新增时无需选择', asyncOptionsFrom: '/api/workflows/team/:teamId', asyncOptionsValueKey: 'id', asyncOptionsLabelKey: 'name' },
       { key: 'prompt', label: '工作流需求描述', type: 'textarea', placeholder: '描述你想要自动化的任务，如：每天自动爬取行业资讯并生成日报发送邮件', required: false, description: '新增时作为 AI 生成依据；修改时描述要修改的内容；留空则使用上游步骤的输出', valueSource: 'upstream' },
     ],
@@ -227,7 +227,7 @@ export const skillGroups: SkillGroup[] = [
   {
     id: 'default',
     name: '默认助手',
-    icon: '💬',
+    icon: 'MessageCircle',
     color: '#A0A0A0',
     description: '全能猫猫，装备所有 13 个原型技能',
     skillIds: [
@@ -250,7 +250,7 @@ export const skillGroups: SkillGroup[] = [
   {
     id: 'pm',
     name: '项目经理',
-    icon: '👔',
+    icon: 'Briefcase',
     color: '#8DB889',
     description: '任务规划、分配、审批、工作流管理、团队扩编等全局管理能力',
     skillIds: ['assign-task', 'manage-workflow', 'run-workflow', 'recruit-cat'],
@@ -259,7 +259,7 @@ export const skillGroups: SkillGroup[] = [
   {
     id: 'editor',
     name: '内容编辑',
-    icon: '✍️',
+    icon: 'PenLine',
     color: '#FF6B6B',
     description: '文章撰写、内容润色、大纲规划、资讯整理、会议纪要等文字创作能力',
     skillIds: ['generate-article', 'generate-outline', 'meeting-notes'],
@@ -268,7 +268,7 @@ export const skillGroups: SkillGroup[] = [
   {
     id: 'analyst',
     name: '数据分析师',
-    icon: '📊',
+    icon: 'BarChart3',
     color: '#96BAFF',
     description: '资讯爬取、资讯摘要、数据查询、趋势分析、网站诊断等数据洞察能力',
     skillIds: ['crawl-news'],
@@ -277,7 +277,7 @@ export const skillGroups: SkillGroup[] = [
   {
     id: 'designer',
     name: '视觉设计师',
-    icon: '🎨',
+    icon: 'Palette',
     color: '#B39DDB',
     description: 'AI 绘图、图表生成、组件设计、排版布局、图片增强、样式生成等视觉创作能力',
     skillIds: ['generate-image', 'generate-chart', 'image-enhance'],
@@ -286,7 +286,7 @@ export const skillGroups: SkillGroup[] = [
   {
     id: 'creative',
     name: '创意策划师',
-    icon: '💡',
+    icon: 'Lightbulb',
     color: '#FFB74D',
     description: 'MECE 拆解、SCAMPER 改造、六顶思考帽等 AI 驱动的头脑风暴方法论',
     skillIds: ['mece-analysis', 'scamper-creative', 'six-hats'],
@@ -295,7 +295,7 @@ export const skillGroups: SkillGroup[] = [
   {
     id: 'ops',
     name: '运营助理',
-    icon: '📮',
+    icon: 'Inbox',
     color: '#F2A5B9',
     description: '邮件发送、消息推送、任务日志等沟通运营能力',
     skillIds: ['send-email', 'task-log'],
@@ -304,7 +304,7 @@ export const skillGroups: SkillGroup[] = [
   {
     id: 'engineer',
     name: '开发工程师',
-    icon: '💻',
+    icon: 'Laptop',
     color: '#90CAF9',
     description: 'Bug 修复、功能开发、性能优化、Crafts 更新等全栈开发能力',
     skillIds: ['fix-bug'],

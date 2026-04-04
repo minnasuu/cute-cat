@@ -9,6 +9,7 @@ import { appearanceTemplates } from '../../data/themes';
 import { personalityTemplates } from '../../data/personality';
 import { getVisibleSkillPool } from '../../data/skills';
 import { useAuth } from '../../contexts/AuthContext';
+import { AppIcon } from '../../components/icons';
 
 interface CatTemplate {
   id: string; name: string; role: string; description: string; accent: string;
@@ -18,23 +19,23 @@ interface CatTemplate {
 
 
 const COLOR_GROUPS: { id: string; label: string; icon: string; fields: { key: keyof CatColors; label: string }[] }[] = [
-  { id: 'g-body', label: '身体', icon: '🐱', fields: [
+  { id: 'g-body', label: '身体', icon: 'Cat', fields: [
     { key: 'body', label: '身体' }, { key: 'bodyDark', label: '身体斑纹' }, { key: 'bodyDarkBottom', label: '身体底斑' }, { key: 'stroke', label: '描边' },
   ]},
-  { id: 'g-head', label: '头部', icon: '😺', fields: [
+  { id: 'g-head', label: '头部', icon: 'Smile', fields: [
     { key: 'head', label: '头部' }, { key: 'headTopLeft', label: '头顶左' }, { key: 'headTopRight', label: '头顶右' },
     { key: 'belly', label: '脸部' }, { key: 'faceDark', label: '脸部深色' }, { key: 'earInner', label: '耳朵内侧' },
   ]},
-  { id: 'g-face', label: '五官', icon: '👀', fields: [
+  { id: 'g-face', label: '五官', icon: 'Eye', fields: [
     { key: 'eyes', label: '眼睛' }, { key: 'nose', label: '鼻子' }, { key: 'month', label: '嘴巴' }, { key: 'blush', label: '腮红' },
   ]},
-  { id: 'g-limb', label: '四肢', icon: '🐾', fields: [
+  { id: 'g-limb', label: '四肢', icon: 'Footprints', fields: [
     { key: 'paw', label: '爪子' }, { key: 'leg', label: '四肢' },
   ]},
-  { id: 'g-apron', label: '书籍', icon: '📖', fields: [
+  { id: 'g-apron', label: '书籍', icon: 'BookOpen', fields: [
     { key: 'apron', label: '书籍' }, { key: 'apronLight', label: '书籍浅色' }, { key: 'apronLine', label: '书籍线条' },
   ]},
-  { id: 'g-desk', label: '桌面', icon: '🪑', fields: [
+  { id: 'g-desk', label: '桌面', icon: 'Armchair', fields: [
     { key: 'desk', label: '桌面' }, { key: 'deskDark', label: '桌面深色' }, { key: 'deskLeg', label: '桌腿' },
   ]},
 ];
@@ -164,17 +165,17 @@ const CatEditorPage: React.FC = () => {
 
   const NAV_ITEMS = isEditing
     ? [
-        { id: 's-basic', icon: '📋', label: '基本信息' },
-        { id: 's-ai', icon: '🐾', label: 'Prompt' },
-        { id: 's-skills', icon: '✨', label: 'AIGC' },
-        { id: 's-messages', icon: '💬', label: '猫猫语录' },
+        { id: 's-basic', icon: 'ClipboardList', label: '基本信息' },
+        { id: 's-ai', icon: 'Footprints', label: 'Prompt' },
+        { id: 's-skills', icon: 'Sparkles', label: 'AIGC' },
+        { id: 's-messages', icon: 'MessageCircle', label: '猫猫语录' },
       ]
     : [
-        { id: 's-basic', icon: '📋', label: '基本信息' },
-        { id: 'g-colors', icon: '🐈', label: '外观配色' },
-        { id: 's-ai', icon: '🐾', label: '性格' },
-        { id: 's-skills', icon: '✨', label: 'AIGC' },
-        { id: 's-messages', icon: '💬', label: '猫猫语录' },
+        { id: 's-basic', icon: 'ClipboardList', label: '基本信息' },
+        { id: 'g-colors', icon: 'Palette', label: '外观配色' },
+        { id: 's-ai', icon: 'Footprints', label: '性格' },
+        { id: 's-skills', icon: 'Sparkles', label: 'AIGC' },
+        { id: 's-messages', icon: 'MessageCircle', label: '猫猫语录' },
       ];
 
   const applyPreset = (preset: any) => {
@@ -266,7 +267,9 @@ const CatEditorPage: React.FC = () => {
 
             {templates.length === 0 && (
               <div className="text-center py-20 rounded-[32px] border border-border bg-surface-secondary/50">
-                <div className="text-5xl mb-4">🐱</div>
+                <div className="mb-4 flex justify-center text-primary-600">
+                  <AppIcon symbol="Cat" size={56} strokeWidth={1.75} />
+                </div>
                 <h3 className="text-xl font-black text-text-primary mb-2">暂无猫猫模版</h3>
                 <p className="text-text-secondary font-medium">请联系管理员检查后端模版配置</p>
               </div>
@@ -366,7 +369,8 @@ const CatEditorPage: React.FC = () => {
                       {COLOR_GROUPS.map(group => (
                         <div key={group.id} className="mb-5">
                           <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                            <span>{group.icon}</span>{group.label}
+                            <AppIcon symbol={group.icon} size={16} className="text-primary-600 shrink-0" />
+                            {group.label}
                           </p>
                           <div className="grid grid-cols-2">
                             {group.fields.map(f => {
@@ -403,7 +407,7 @@ const CatEditorPage: React.FC = () => {
                       {/* Tail with switch */}
                       <div className="mb-2">
                         <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                          <span>🐈</span>尾巴
+                          <span className="inline-flex items-center gap-1"><AppIcon symbol="Palette" size={14} />尾巴</span>
                         </p>
                         <div className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-secondary/60 transition-colors">
                           <input
@@ -485,7 +489,10 @@ const CatEditorPage: React.FC = () => {
                       <div className="flex flex-wrap gap-2">
                         {lockedSkills.map((s: any) => (
                           <span key={s.id} className="px-3 py-1.5 rounded-full bg-primary-50 border border-primary-200 text-xs font-bold text-primary-800">
-                            {s.icon ? `${s.icon} ` : ''}{s.name || s.id}
+                            <span className="inline-flex items-center gap-1.5">
+                              {s.icon ? <AppIcon symbol={s.icon} size={16} className="text-primary-600" /> : null}
+                              {s.name || s.id}
+                            </span>
                           </span>
                         ))}
                       </div>

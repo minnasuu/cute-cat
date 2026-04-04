@@ -11,7 +11,7 @@ const OFFICIAL_BRAND_CAT_COLORS = APPEARANCE_PALETTE[0];
 const OFFICIAL_AIGC_SKILL = {
   id: 'aigc',
   name: 'AIGC',
-  icon: '✨',
+  icon: 'Sparkles',
   description: '统一生成式能力入口（文本/图像等多模态将在此聚合；当前为占位）',
   input: 'text',
   output: 'text',

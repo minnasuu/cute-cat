@@ -5,6 +5,7 @@ import WorkflowPanel from '../components/WorkflowPanel';
 import '../styles/AssistantPage.scss';
 import {  type HistoryItem, type Skill } from '../data/types';
 import { assistants } from '../data/cats';
+import { AppIcon } from '../components/icons';
 
 const formatTime = (iso: string) => {
   const d = new Date(iso);
@@ -14,8 +15,6 @@ const formatTime = (iso: string) => {
   const m = String(d.getMinutes()).padStart(2, '0');
   return `${month}/${day} ${h}:${m}`;
 };
-
-const statusIcon = (s: string) => s === 'success' ? '✅' : s === 'warning' ? '⚠️' : '❌';
 
 interface AssistantPageProps {
   editorMode?: boolean;
@@ -167,7 +166,9 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
                   ) : (
                     <div className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
                       <div className="skill-detail-head">
-                        <span className="sd-name">✨ AIGC</span>
+                        <span className="sd-name inline-flex items-center gap-1">
+                          <AppIcon symbol="Sparkles" size={14} /> AIGC
+                        </span>
                         <div className="sd-io">
                           <span className="sd-io-tag sd-in">text</span>
                           <span className="sd-arrow">→</span>
@@ -208,18 +209,33 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
                     selectedHistory.map((item) => {
                       const skillsList = selectedAssistant.skills ?? [];
                       const skill = item.skillId === 'aigc'
-                        ? { icon: '✨', name: 'AIGC' }
+                        ? { icon: 'Sparkles', name: 'AIGC' }
                         : (skillsList as Skill[]).find((s) => s.id === item.skillId);
                       return (
                         <div key={item.id} className={`history-item status-${item.status}`}>
                           <div className="hi-top">
-                            <span className="hi-status">{statusIcon(item.status)}</span>
+                            <span className="hi-status inline-flex">
+                              <AppIcon
+                                symbol={item.status === 'success' ? 'CheckCircle' : item.status === 'warning' ? 'AlertTriangle' : 'XCircle'}
+                                size={14}
+                              />
+                            </span>
                             <span className="hi-summary">{item.summary}</span>
                             <span className="hi-time">{formatTime(item.timestamp)}</span>
                           </div>
                           <div className="hi-bottom">
-                            {skill && <span className="hi-skill">{skill.icon} {skill.name}</span>}
-                            {item.workflowName && <span className="hi-wf">📋 {item.workflowName}</span>}
+                            {skill && (
+                              <span className="hi-skill inline-flex items-center gap-1">
+                                <AppIcon symbol={skill.icon} size={12} />
+                                {skill.name}
+                              </span>
+                            )}
+                            {item.workflowName && (
+                              <span className="hi-wf inline-flex items-center gap-1">
+                                <AppIcon symbol="ClipboardList" size={12} />
+                                {item.workflowName}
+                              </span>
+                            )}
                           </div>
                           <div className="hi-result">{item.result}</div>
                         </div>

@@ -2,7 +2,7 @@ import type { Assistant, Skill } from '../types';
 import { heimaotaxueTheme } from '../themes';
 
 export const xueSkills: Skill[] = [
-  { id: 'crawl-news', name: '资讯爬取', icon: '🕸️', description: '定时爬取指定网站/RSS，获取最新资讯', input: 'url', output: 'json', provider: 'Crawler/RSS', mockResult: '返回 JSON 资讯列表 (标题/摘要/链接)' },
+  { id: 'crawl-news', name: '资讯爬取', icon: 'Network', description: '定时爬取指定网站/RSS，获取最新资讯', input: 'url', output: 'json', provider: 'Crawler/RSS', mockResult: '返回 JSON 资讯列表 (标题/摘要/链接)' },
 ];
 
 export const xueMessages = [

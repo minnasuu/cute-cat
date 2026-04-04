@@ -19,6 +19,8 @@ import AiGenerateDialog from './workflow-canvas/AiGenerateDialog';
 import Minimap from './workflow-canvas/Minimap';
 import { autoLayout, type NodePositions } from './workflow-canvas/canvas-utils';
 import { useCanvasViewport } from './workflow-canvas/useCanvasViewport';
+import { AppIcon } from '../../components/icons';
+import { Clock, MousePointer2 } from 'lucide-react';
 
 interface TeamCat {
   id: string; name: string; role: string; catColors: any; skills: any[]; accent: string; systemPrompt?: string;
@@ -34,7 +36,7 @@ const WorkflowEditorPage: React.FC = () => {
   // ── 核心数据状态（保留原有逻辑） ──
   const [cats, setCats] = useState<TeamCat[]>([]);
   const [name, setName] = useState('');
-  const [icon, setIcon] = useState('📋');
+  const [icon, setIcon] = useState('ClipboardList');
   const [description, setDescription] = useState('');
   const [steps, setSteps] = useState<WorkflowStep[]>([{ stepId: generateStepId(), agentId: '', skillId: '', action: '' }]);
   const [trigger, setTrigger] = useState('manual');
@@ -83,7 +85,7 @@ const WorkflowEditorPage: React.FC = () => {
     if (isEditing) {
       apiClient.get(`/api/workflows/${workflowId}`).then(wf => {
         setName(wf.name);
-        setIcon(wf.icon || '📋');
+        setIcon(wf.icon || 'ClipboardList');
         setDescription(wf.description);
         setSteps(ensureStepIds(wf.steps || []));
         const isCron = wf.trigger === 'cron' || !!wf.scheduled;
@@ -291,7 +293,9 @@ const WorkflowEditorPage: React.FC = () => {
           </button>
           <div className="w-px h-4 bg-gray-200" />
           <div className="flex items-center gap-2">
-            <span className="text-lg">{icon}</span>
+            <span className="text-primary-600 inline-flex">
+              <AppIcon symbol={icon} size={22} />
+            </span>
             <h1 className="text-base font-black tracking-tight">
               {name || (isEditing ? '编辑工作流' : '新工作流')}
             </h1>
@@ -303,7 +307,17 @@ const WorkflowEditorPage: React.FC = () => {
                 ? 'bg-blue-50 text-blue-600 border-blue-200'
                 : 'bg-gray-50 text-gray-400 border-gray-200'
             }`}>
-              {trigger === 'cron' ? `⏰ ${cron || '定时'}` : '🖱️ 手动'}
+              {trigger === 'cron' ? (
+                <span className="inline-flex items-center gap-1">
+                  <Clock size={12} strokeWidth={2.5} />
+                  {cron || '定时'}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1">
+                  <MousePointer2 size={12} strokeWidth={2.5} />
+                  手动
+                </span>
+              )}
             </span>
             <span className="px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-[10px] font-bold text-gray-400">
               {steps.length} 步
