@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { type Workflow, type Skill, HistoryItem } from '../data/types';
-import { getSkillHandler } from '../skills';
-import type { SkillResult } from '../skills/types';
+import { type Workflow, HistoryItem } from '../data/types';
+import { getAgentHandler } from '../agents';
+import type { AgentResult } from '../agents/types';
 import CatSVG from './CatSVG';
 import CatMiniAvatar from './CatMiniAvatar';
 import '../styles/WorkflowPanel.scss';
@@ -32,9 +32,6 @@ interface ExecutionLog {
   stepIndex: number;
   agentId: string;
   agentName: string;
-  skillId: string;
-  skillName: string;
-  skillIcon: string;
   status: 'running' | 'success' | 'warning' | 'error';
   summary?: string;
   timestamp: string;
@@ -53,12 +50,6 @@ const workingDialogs: Record<string, string[]> = {
 };
 
 const getAgent = (agentId: string) => assistants.find((a) => a.id === agentId);
-
-const getAgentSkill = (agentId: string, skillId: string): Skill | undefined => {
-  const agent = getAgent(agentId);
-  if (!agent?.skills) return undefined;
-  return (agent.skills as Skill[]).find((s) => s.id === skillId);
-};
 
 const formatTime = (iso: string) => {
   const d = new Date(iso);
@@ -83,8 +74,8 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
   const [isRunning, setIsRunning] = useState(false);
   const [currentDialog, setCurrentDialog] = useState('');
   const [, setExecutionLogs] = useState<ExecutionLog[]>([]);
-  const [stepResults, setStepResults] = useState<Map<number, SkillResult>>(new Map());
-  const stepResultsRef = useRef<Map<number, SkillResult>>(new Map());
+  const [stepResults, setStepResults] = useState<Map<number, AgentResult>>(new Map());
+  const stepResultsRef = useRef<Map<number, AgentResult>>(new Map());
   const [workflowList, setWorkflowList] = useState<Workflow[]>(() => []);
   const [isBackendLoaded, setIsBackendLoaded] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
@@ -134,7 +125,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           const mapped: HistoryItem[] = runs.map((r: WorkflowRunDB) => ({
             id: r.id,
             agentId: r.agentId,
-            skillId: r.skillId,
             timestamp: r.executedAt,
             summary: r.summary,
             result: r.result,
@@ -179,7 +169,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           description: a.description,
           accent: a.accent,
           systemPrompt: a.systemPrompt,
-          skills: a.skills,
           catColors: a.catColors,
           messages: a.messages,
         }));
@@ -301,7 +290,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     setIsRunning(true);
     setCurrentDialog('');
     setExecutionLogs([]);
-    const emptyMap = new Map<number, SkillResult>();
+    const emptyMap = new Map<number, AgentResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
   }, []);
@@ -319,7 +308,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
 
     const step = activeWorkflow.steps[runningStepIndex];
     const agent = getAgent(step.agentId);
-    const skill = getAgentSkill(step.agentId, step.skillId);
     const dialogs = workingDialogs[step.agentId] ?? ['工作中...'];
     const startTime = Date.now();
 
@@ -328,9 +316,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
       stepIndex: runningStepIndex,
       agentId: step.agentId,
       agentName: agent?.name ?? step.agentId,
-      skillId: step.skillId,
-      skillName: skill?.name ?? step.skillId,
-      skillIcon: skill?.icon ?? 'Settings',
       status: 'running',
       timestamp: new Date().toISOString(),
     };
@@ -340,7 +325,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     setCurrentDialog(dialogs[0]);
 
     // 调用 skill handler
-    const handler = getSkillHandler(step.skillId);
+    const handler = getAgentHandler(step.agentId);
     // 构建 input：合并所有前序步骤的结果，让下游 skill 能访问完整上下文
     let skillInput: unknown = undefined;
     {
@@ -404,17 +389,16 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     const executePromise = handler
       ? handler.execute({
           agentId: step.agentId,
-          input: skillInput,
+          input: typeof skillInput === 'string' ? skillInput : JSON.stringify(skillInput ?? ''),
           timestamp: new Date().toISOString(),
-          catTemplateId: (agent as { templateId?: string } | undefined)?.templateId,
           catName: agent?.name,
           catRole: agent?.role,
           workflowName: activeWorkflow?.name,
         })
-      : Promise.resolve<SkillResult>({
+      : Promise.resolve<AgentResult>({
           success: true,
-          data: null,
-          summary: skill?.mockResult ?? '执行完成',
+          data: { text: '执行完成' },
+          summary: '执行完成',
           status: 'success',
         });
 
@@ -450,7 +434,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           workflowId: activeWorkflow?.id,
           workflowName: activeWorkflow?.name ?? '',
           agentId: step.agentId,
-          skillId: step.skillId,
           stepIndex: runningStepIndex,
           summary: result.summary || '',
           result: typeof result.data === 'string' ? result.data : JSON.stringify(result.data ?? ''),
@@ -462,7 +445,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
             setWorkHistory((prev) => [{
               id: saved.id,
               agentId: saved.agentId,
-              skillId: saved.skillId,
               timestamp: saved.executedAt,
               summary: saved.summary,
               result: saved.result,
@@ -492,7 +474,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           workflowId: activeWorkflow?.id,
           workflowName: activeWorkflow?.name ?? '',
           agentId: step.agentId,
-          skillId: step.skillId,
           stepIndex: runningStepIndex,
           summary: `执行出错: ${err.message}`,
           result: '',
@@ -521,7 +502,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     setIsRunning(false);
     setCurrentDialog('');
     setExecutionLogs([]);
-    const emptyMap: Map<number, SkillResult> = new Map();
+    const emptyMap: Map<number, AgentResult> = new Map();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
   };
@@ -634,7 +615,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
               <div className="history-day-label">{dateKey}</div>
               {items.map((item) => {
                 const agent = getAgent(item.agentId);
-                const skill = getAgentSkill(item.agentId, item.skillId);
                 return (
                   <div key={item.id} className={`global-history-item status-${item.status}`}>
                     <div className="ghi-left">
@@ -652,12 +632,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                           {agent && <CatMiniAvatar colors={agent.catColors} size={14} />}
                           {agent?.name ?? item.agentId}
                         </span>
-                        {skill && (
-                          <span className="ghi-skill inline-flex items-center gap-1">
-                            <AppIcon symbol={skill.icon} size={12} />
-                            {skill.name}
-                          </span>
-                        )}
                         {item.workflowName && (
                           <span className="ghi-wf inline-flex items-center gap-1">
                             <AppIcon symbol="ClipboardList" size={12} />
@@ -757,7 +731,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                 <div className="wf-agents">
                   {wf.steps.map((step, i) => {
                     const agent = getAgent(step.agentId);
-                    const skill = getAgentSkill(step.agentId, step.skillId);
                     return (
                       <span
                         key={i}
@@ -767,7 +740,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                         {agent && <CatMiniAvatar colors={agent.catColors} size={16} />}
                         {agent?.name ?? step.agentId}
                         <div className='w-px h-3 bg-black/5 mx-1'></div>
-                        <AppIcon symbol={skill?.icon ?? 'Settings'} size={14} />
+                        <AppIcon symbol="Settings" size={14} />
                       </span>
                     );
                   })}
@@ -810,7 +783,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
               <div className="pipeline">
                 {activeWorkflow.steps.map((step, i) => {
                   const agent = getAgent(step.agentId);
-                  const skill = getAgentSkill(step.agentId, step.skillId);
                   const isCompleted = completedSteps.includes(i);
                   const isCurrent = runningStepIndex === i;
                   const isPending = !isCompleted && !isCurrent;
@@ -837,17 +809,11 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                           )}
                         </div>
 
-                        {/* 名字 + skill */}
+                        {/* 名字 */}
                         <div className="node-info">
                           <span className="node-name" style={{ color: agent?.accent }}>
                             {agent?.name ?? step.agentId}
                           </span>
-                          {skill && (
-                            <span className="node-skill inline-flex items-center gap-1">
-                              <AppIcon symbol={skill.icon} size={12} />
-                              {skill.name}
-                            </span>
-                          )}
                         </div>
 
                         {/* 进度条 */}
@@ -878,20 +844,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                           </div>
                         )}
 
-                        {/* IO 信息 - 未执行时展示 */}
-                        {!isCompleted && skill && (
-                          <div className="node-io">
-                            <span className="io-tag io-in">{skill.input}</span>
-                            <span className="io-arrow">→</span>
-                            <span className="io-tag io-out">{skill.output}</span>
-                          </div>
-                        )}
-
-                        {/* provider */}
-                        {!isCompleted && skill?.provider && (
-                          <span className="node-provider">via {skill.provider}</span>
-                        )}
-
                         {/* pending遮罩 */}
                         {isPending && <div className="node-dim" />}
                       </div>
@@ -905,14 +857,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                               <path d="M8 5v14l11-7z" />
                             </svg>
                           </div>
-                          {/* 数据传递标签 */}
-                          {isCompleted && (
-                            <div className="arrow-data-tag">
-                              <span className="data-type">
-                                {getAgentSkill(step.agentId, step.skillId)?.output ?? ''}
-                              </span>
-                            </div>
-                          )}
                         </div>
                       )}
                     </React.Fragment>
@@ -1014,7 +958,7 @@ const WorkflowEditModal: React.FC<EditModalProps> = ({ workflow, onSave, onClose
   const addStep = () => {
     setForm((prev) => ({
       ...prev,
-      steps: [...prev.steps, { agentId: '', skillId: '', action: '' }],
+      steps: [...prev.steps, { agentId: '' }],
     }));
   };
 
@@ -1117,18 +1061,6 @@ const WorkflowEditModal: React.FC<EditModalProps> = ({ workflow, onSave, onClose
                     {assistants.map((a) => (
                       <option key={a.id} value={a.id}>{a.name} ({a.role})</option>
                     ))}
-                  </select>
-                  <select value={step.skillId} onChange={(e) => updateStep(i, 'skillId', e.target.value)}>
-                    <option value="">选择技能</option>
-                    {step.agentId &&
-                      (assistants.find((a) => a.id === step.agentId)?.skills ?? []).map((s) => (
-                        <option key={s.id} value={s.id}>
-                          <span className="inline-flex items-center gap-1">
-                        <AppIcon symbol={(s as Skill).icon} size={14} />
-                        {s.name}
-                      </span>
-                        </option>
-                      ))}
                   </select>
                   <input
                     type="text"

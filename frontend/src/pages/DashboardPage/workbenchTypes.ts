@@ -3,8 +3,6 @@
 /** 工作流计划中的一步（与 workflow JSON steps 对齐） */
 export type PlanStep = {
   agentId?: string;
-  skillId?: string;
-  action?: string;
   stepId?: string;
 };
 
@@ -33,8 +31,7 @@ export interface WorkbenchPayload {
 
 export interface WorkflowRunStep {
   index: number;
-  skillId?: string;
-  action?: string;
+  agentId?: string;
   success?: boolean;
   status?: string;
   summary?: string;

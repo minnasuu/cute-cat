@@ -3,7 +3,7 @@ import CatSVG from '../components/CatSVG';
 import CatMiniAvatar from '../components/CatMiniAvatar';
 import WorkflowPanel from '../components/WorkflowPanel';
 import '../styles/AssistantPage.scss';
-import {  type HistoryItem, type Skill } from '../data/types';
+import {  type HistoryItem } from '../data/types';
 import { assistants } from '../data/cats';
 import { AppIcon } from '../components/icons';
 
@@ -83,26 +83,13 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
               <div className="name-plate">
                 <span className="name-text">{assistant.name}</span>
               </div>
-              {assistant.skills && (
-                <div className='flex flex-col items-center'>
-                    <div className="skill-tags">
-                  {(assistant.skills as Skill[]).slice(0,4).map((skill,index) => (
-                    <span key={skill.id} className="skill-tag" style={{ color: assistant.accent, borderColor: assistant.accent + '60' }}>
-                      {index >0 && <span className='text-base'>·</span>}
-                      <span className="skill-name">{skill.name}</span>
-                    </span>
-                  ))}
-                </div>
+              <div className='flex flex-col items-center'>
                 <div className="skill-tags">
-                  {(assistant.skills as Skill[]).slice(4).map((skill,index) => (
-                    <span key={skill.id} className="skill-tag" style={{ color: assistant.accent, borderColor: assistant.accent + '60' }}>
-                      {index >0 && <span className='text-base'>·</span>}
-                      <span className="skill-name">{skill.name}</span>
-                    </span>
-                  ))}
+                  <span className="skill-tag" style={{ color: assistant.accent, borderColor: assistant.accent + '60' }}>
+                    <span className="skill-name">{assistant.role}</span>
+                  </span>
                 </div>
-                </div>
-              )}
+              </div>
             </div>
           );
         })}
@@ -141,43 +128,23 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
                   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                 </svg>
                 AIGC 协作
-                <span className="col-count">{(selectedAssistant.skills ?? []).length || 1}</span>
+                <span className="col-count">1</span>
               </h3>
               <div className="col-scroll">
                 <div className="skill-detail-list">
-                  {(selectedAssistant.skills ?? []).length > 0 ? (
-                    (selectedAssistant.skills as Skill[]).map((skill) => (
-                      <div key={skill.id} className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
-                        <div className="skill-detail-head">
-                          <span className="sd-name">{skill.name}</span>
-                          <div className="sd-io">
-                            <span className="sd-io-tag sd-in">{skill.input}</span>
-                            <span className="sd-arrow">→</span>
-                            <span className="sd-io-tag sd-out">{skill.output}</span>
-                          </div>
-                        </div>
-                        <p className="sd-desc">{skill.description}</p>
-                        <div className="sd-meta">
-                          {skill.provider && <span className="sd-provider">via {skill.provider}</span>}
-                          {skill.mockResult && <span className="sd-mock">{skill.mockResult}</span>}
-                        </div>
+                  <div className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
+                    <div className="skill-detail-head">
+                      <span className="sd-name inline-flex items-center gap-1">
+                        <AppIcon symbol="Sparkles" size={14} /> {selectedAssistant.role}
+                      </span>
+                      <div className="sd-io">
+                        <span className="sd-io-tag sd-in">text</span>
+                        <span className="sd-arrow">→</span>
+                        <span className="sd-io-tag sd-out">text</span>
                       </div>
-                    ))
-                  ) : (
-                    <div className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
-                      <div className="skill-detail-head">
-                        <span className="sd-name inline-flex items-center gap-1">
-                          <AppIcon symbol="Sparkles" size={14} /> AIGC
-                        </span>
-                        <div className="sd-io">
-                          <span className="sd-io-tag sd-in">text</span>
-                          <span className="sd-arrow">→</span>
-                          <span className="sd-io-tag sd-out">text</span>
-                        </div>
-                      </div>
-                      <p className="sd-desc">按岗位角色参与生成式协作；执行管道占位，后续统一接入模型。</p>
                     </div>
-                  )}
+                    <p className="sd-desc">{selectedAssistant.description}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -207,10 +174,7 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
                     </div>
                   ) : (
                     selectedHistory.map((item) => {
-                      const skillsList = selectedAssistant.skills ?? [];
-                      const skill = item.skillId === 'aigc'
-                        ? { icon: 'Sparkles', name: 'AIGC' }
-                        : (skillsList as Skill[]).find((s) => s.id === item.skillId);
+                      const skill = { icon: 'Sparkles', name: selectedAssistant.role };
                       return (
                         <div key={item.id} className={`history-item status-${item.status}`}>
                           <div className="hi-top">

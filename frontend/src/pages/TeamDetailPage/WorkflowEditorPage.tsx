@@ -21,7 +21,7 @@ import { AppIcon } from '../../components/icons';
 import { Clock, MousePointer2 } from 'lucide-react';
 
 interface TeamCat {
-  id: string; name: string; role: string; catColors: any; skills: any[]; accent: string; systemPrompt?: string;
+  id: string; name: string; role: string; catColors: any; accent: string; systemPrompt?: string;
 }
 
 const WorkflowEditorPage: React.FC = () => {
@@ -34,7 +34,7 @@ const WorkflowEditorPage: React.FC = () => {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('ClipboardList');
   const [description, setDescription] = useState('');
-  const [steps, setSteps] = useState<WorkflowStep[]>([{ stepId: generateStepId(), agentId: '', skillId: '', action: '' }]);
+  const [steps, setSteps] = useState<WorkflowStep[]>([{ stepId: generateStepId(), agentId: '' }]);
   const [trigger, setTrigger] = useState('manual');
   const [cron, setCron] = useState('');
   const [, setScheduled] = useState(false);
@@ -103,7 +103,7 @@ const WorkflowEditorPage: React.FC = () => {
 
   // ── 步骤操作函数（保留原有逻辑） ──
   const addStep = useCallback(() => {
-    setSteps(prev => [...prev, { stepId: generateStepId(), agentId: '', skillId: '', action: '' }]);
+    setSteps(prev => [...prev, { stepId: generateStepId(), agentId: '' }]);
   }, []);
 
   const removeStep = useCallback((index: number) => {
@@ -126,24 +126,9 @@ const WorkflowEditorPage: React.FC = () => {
   const updateStep = useCallback((index: number, field: keyof WorkflowStep, value: any) => {
     setSteps(prev => prev.map((s, i) => {
       if (i !== index) return s;
-      const updated = { ...s, [field]: value };
-      if (field === 'agentId') {
-        updated.skillId = '';
-        updated.params = [];
-      }
-      if (field === 'skillId' && value) {
-        const cat = cats.find(c => c.id === s.agentId);
-        const skill = cat?.skills?.find((sk: any) => sk.id === value);
-        const paramDefs = skill?.paramDefs;
-        if (paramDefs?.length) {
-          updated.params = paramDefs.map((p: any) => ({ ...p }));
-        } else if (!updated.params?.length) {
-          updated.params = [];
-        }
-      }
-      return updated;
+      return { ...s, [field]: value };
     }));
-  }, [cats]);
+  }, []);
 
   // ── 保存（保留原有逻辑） ──
   const handleSave = async () => {
@@ -200,7 +185,7 @@ const WorkflowEditorPage: React.FC = () => {
         const defaultCat = cats.find(c => c.role === 'Default');
         const finalSteps = ensureStepIds(result.steps.map(s => {
           if (!s.agentId && defaultCat) {
-            return { ...s, agentId: defaultCat.id, skillId: s.skillId || 'ai-chat' };
+            return { ...s, agentId: defaultCat.id };
           }
           return s;
         }));

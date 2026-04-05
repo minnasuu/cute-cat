@@ -1,13 +1,13 @@
-import type { SkillContext, SkillResult } from '../types';
+import type { AgentContext, AgentResult } from './types';
 import { extractUpstreamText } from './_framework';
-import { executePrimitive } from '../primitives';
-import { listVibeStyleLibLibrary } from '../../pages/VibeStyleLib/vibeStyleLibApi';
+import { callDifySkill } from '../utils/backendClient';
+import { listVibeStyleLibLibrary } from '../pages/VibeStyleLib/vibeStyleLibApi';
 
 /**
  * 视觉设计师：从 VibeStyleLib 灵感库中匹配最合适的设计风格
  * 优化策略：仅传 styleDescription 给 AI 匹配（节省 token），匹配成功后拼接完整 designPrompt
  */
-export default async function runVisualDesigner(ctx: SkillContext): Promise<SkillResult> {
+export default async function runVisualDesigner(ctx: AgentContext): Promise<AgentResult> {
   try {
     // 1. 获取灵感库数据
     const libraryItems = await listVibeStyleLibLibrary();
@@ -81,21 +81,26 @@ ${styleCatalog}
 
     console.log(`[visual-designer] 灵感库条目数: ${libraryItems.length}, 上游输入长度: ${upstreamText.length}`);
 
-    // 4. 调用 AI 进行风格匹配
-    const matchResult = await executePrimitive('text-to-text', {
-      ...ctx,
-      input: upstreamText || ctx.input,
-    }, {
-      difySkillId: 'ai-chat',
-      model: 'qwen',
-      systemPrompt,
-    });
+    // 4. 调用 AI 进行风格匹配（直接调用 callDifySkill，不经过 primitive）
+    const prompt = `${systemPrompt}\n\n---\n\n${upstreamText || '请为一个通用企业官网选择合适的视觉风格'}`;
 
-    if (!matchResult.success) {
-      return matchResult;
+    const TIMEOUT_MS = 60_000;
+    const resultPromise = callDifySkill('ai-chat', prompt, 'qwen');
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('请求超时')), TIMEOUT_MS)
+    );
+    const resp = await Promise.race([resultPromise, timeoutPromise]);
+
+    if (resp.error) {
+      return {
+        success: false,
+        data: { text: '' },
+        summary: `视觉设计匹配失败: ${resp.error}`,
+        status: 'error',
+      };
     }
 
-    const aiResponse = (matchResult.data as Record<string, unknown>)?.text as string || matchResult.summary || '';
+    const aiResponse = resp.answer || '';
 
     // 5. 解析 AI 返回的风格编号
     const styleMatch = aiResponse.match(/风格\s*(\d+)/);

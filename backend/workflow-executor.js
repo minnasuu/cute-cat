@@ -300,256 +300,22 @@ function buildCatEmailHtml(subject, bodyHtml) {
   `;
 }
 
-// ─── Skill → 系统提示词 映射 ───
-const SKILL_PROMPTS = {
-  'ai-chat': '你是一只友善的猫猫助手 CAT，团队的万能基础成员。请根据用户输入完成对应的文本任务。用简洁清晰的中文回答。',
-  'generate-article': '你是一位专业的内容创作者。请根据提供的素材和要求，撰写一篇高质量的文章。用中文回复，内容详实、逻辑清晰。',
-  'generate-outline': '你是一位大纲规划专家。请根据主题生成详细的文章大纲，包含标题、各段要点。用中文回复。',
-  'assign-task': '你是一位项目任务拆解助手。从前序输出中提取最重要、最可执行的任务。返回 JSON 数组。',
-  'manage-workflow': '你是工作流编排助手。根据用户需求说明如何调整或管理工作流步骤。用中文、结构化输出。',
-  'run-workflow': '你是工作流执行助手。说明当前应触发的工作流与预期结果。用中文、简洁 JSON 或列表。',
-  'meeting-notes': '你是一位会议纪要撰写助手。根据提供的内容生成结构化的会议纪要。用中文回复。',
-  'task-log': '你是一位工作日志助手。根据提供的任务信息，生成结构化的工作日志。用中文回复。',
-  'content-review': '你是一位内容审核专家。请审核内容的准确性和合规性。用中文回复。',
-  'team-review': '你是一位团队绩效分析师。请根据提供的数据给出团队评估报告。用中文回复。',
-  'html-render': '你是前端组件专家。根据需求输出可用的 HTML 片段与简要说明。用中文。',
-  'generate-image': '你是视觉创意助手。根据描述输出画面构图、色彩与风格建议（文字），便于后续生图。用中文。',
-  'generate-chart': '你是数据可视化顾问。根据数据说明合适的图表类型与关键洞察。用中文。',
-  'image-enhance': '你是图像处理顾问。说明如何增强清晰度与降噪的策略。用中文。',
-  'fix-bug': '你是全栈工程师。根据报错与复现步骤给出修复建议与补丁思路。用中文。',
-  'mece-analysis': '你是结构化思维顾问。用 MECE 输出分层 JSON 或树状大纲。用中文。',
-  'scamper-creative': '你是创意发散顾问。按 SCAMPER 七维度输出创意点。用中文、结构化。',
-};
-
-// ─── 系统注入 key 白名单 ───
-const SYSTEM_KEYS = {
-  'user.email': true,
-  'user.name': true,
-  'workflow.name': true,
-  'timestamp': true,
-};
-
-// ─── 单步执行：根据 skillId 分发到对应的后端能力 ───
+// ─── 单步执行：根据 agentId 分发到对应的猫脚本 ───
 async function executeStep(step, prevResults, userEmail, catSystemPrompt, context = {}) {
-  const { skillId, action, params } = step;
+  const { agentId } = step;
 
-  // 合并上游结果 + 当前步骤参数
+  // 合并上游结果
   const merged = { ...prevResults };
-  if (action) merged._action = action;
-  if (params && params.length > 0) {
-    const pv = {};
-    for (const p of params) {
-      const source = p.valueSource || 'static';
 
-      if (source === 'upstream') {
-        // 从上游步骤输出中自动提取主体内容（无需指定字段名）
-        let found = undefined;
-        if (prevResults != null) {
-          if (typeof prevResults === 'string') {
-            found = prevResults;
-          } else if (typeof prevResults === 'object') {
-            found = prevResults.text ?? prevResults.summary ?? prevResults.notes ?? prevResults.content ?? prevResults.result ?? prevResults.html ?? prevResults.body ?? prevResults.data;
-            // 如果没有匹配到已知字段，将整个对象 JSON 序列化
-            if (found === undefined) found = JSON.stringify(prevResults);
-          }
-        }
-        // 回退到 static value 或 defaultValue
-        pv[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
-        if (found === undefined) {
-          console.warn(`[executor] param "${p.key}" upstream: no content found in prevResults, falling back to static value`);
-        }
-      } else if (source === 'system') {
-        // 从系统上下文注入
-        const sysKey = p.systemKey || '';
-        if (!SYSTEM_KEYS[sysKey]) {
-          console.warn(`[executor] param "${p.key}" unknown systemKey "${sysKey}", falling back to static value`);
-          pv[p.key] = p.value ?? p.defaultValue;
-        } else if (sysKey === 'user.email') {
-          pv[p.key] = userEmail || p.value || p.defaultValue || '';
-        } else if (sysKey === 'user.name') {
-          pv[p.key] = context.userName || p.value || p.defaultValue || '';
-        } else if (sysKey === 'workflow.name') {
-          pv[p.key] = context.workflowName || p.value || p.defaultValue || '';
-        } else if (sysKey === 'timestamp') {
-          pv[p.key] = new Date().toISOString();
-        } else {
-          pv[p.key] = p.value ?? p.defaultValue;
-        }
-      } else {
-        // static：取用户填写的值或默认值
-        if (p.value !== undefined) pv[p.key] = p.value;
-        else if (p.defaultValue !== undefined) pv[p.key] = p.defaultValue;
-      }
-    }
-    if (Object.keys(pv).length > 0) {
-      merged._params = pv;
-      // 同时将 _params 中的值平铺到 merged 顶层（用于邮件等技能的兼容读取）
-      Object.assign(merged, pv);
-    }
+  // 注入用户输入（如果是第一步）
+  if (context.userInput && !merged.text) {
+    merged.text = context.userInput;
   }
 
   try {
-    // ─── 官方统一 AIGC：按 TeamCat.templateId 分发到 lib/cat-step-scripts（当前为框架 + 空输出）───
-    if (skillId === 'aigc') {
-      const tid = context.catTemplateId && String(context.catTemplateId).trim();
-      if (!tid) {
-        const role = context.catRole || '协作猫';
-        const task = action ? String(action) : '';
-        let upstreamHint = '';
-        if (merged.text) upstreamHint = String(merged.text).slice(0, 500);
-        else if (merged.summary) upstreamHint = String(merged.summary).slice(0, 500);
-        const text =
-          `【AIGC 占位】岗位：「${role}」\n\n` +
-          '后续将在此统一接入生成式能力（文案、图像等）。当前不调用外部模型，仅用于联调工作流链路。\n\n' +
-          (task ? `任务：${task}\n\n` : '') +
-          (upstreamHint ? `上游参考：${upstreamHint}${upstreamHint.length >= 500 ? '…' : ''}` : '');
-        return {
-          success: true,
-          data: { text },
-          summary: 'AIGC 占位完成（未调用生成模型）',
-          status: 'success',
-        };
-      }
-      const { runOfficialCatAigcStep } = require('./lib/cat-step-scripts');
-      return runOfficialCatAigcStep({ step, merged, userEmail, catSystemPrompt, context });
-    }
-
-    // ─── 爬取类技能 ───
-    if (skillId === 'crawl-news') {
-      const p = merged._params || merged;
-      let sources = [];
-      if (Array.isArray(p.sources)) sources = p.sources.map(String).filter(Boolean);
-      else if (typeof p.sources === 'string' && p.sources.trim()) sources = p.sources.split(/[,，\s]+/).filter(Boolean);
-      if (sources.length === 0) return { success: false, data: null, summary: '未提供 RSS / URL 源', status: 'error' };
-      const data = await crawlSources(sources, String(p.keyword || ''), Number(p.maxItems) || 20);
-      const errorItems = (data.items || []).filter(i => i.error);
-      const successCount = (data.total || 0) - errorItems.length;
-      return { success: true, data, summary: `成功爬取 ${successCount} 条资讯`, status: 'success' };
-    }
-
-    // ─── Craft 类技能（直接传递数据，不走 AI 通道） ───
-    if (skillId === 'create-craft' || skillId === 'view-crafts') {
-      // create-craft / view-crafts 是前端技能，后端无 /api/crafts 路由
-      // 在工作流中作为数据传递节点：直接将上游 craft 数据原样输出
-      // 这样下游步骤可以获取到完整的 craft 对象
-      const p = merged._params || {};
-
-      // 尝试从上游结果中提取 craft 数据
-      let craftData = null;
-      if (merged.name && merged.htmlCode) {
-        // 上游直接传递了 craft 对象字段
-        const { _action, _params, ...rest } = merged;
-        craftData = rest;
-      } else if (typeof p.jsonData === 'string' || typeof p.content === 'string' || typeof p.text === 'string' || typeof merged.text === 'string') {
-        // 上游传递了 JSON 字符串
-        const raw = String(p.jsonData || p.content || p.text || merged.text || '');
-        try {
-          // 尝试从文本中提取 JSON
-          let jsonStr = raw.trim();
-          // 去掉 markdown 代码块包裹
-          const codeMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-          if (codeMatch) jsonStr = codeMatch[1].trim();
-          // 尝试找到 JSON 对象/数组
-          const start = Math.min(
-            jsonStr.indexOf('{') >= 0 ? jsonStr.indexOf('{') : Infinity,
-            jsonStr.indexOf('[') >= 0 ? jsonStr.indexOf('[') : Infinity
-          );
-          if (start < Infinity) {
-            const openChar = jsonStr[start];
-            const closeChar = openChar === '{' ? '}' : ']';
-            const end = jsonStr.lastIndexOf(closeChar);
-            if (end > start) jsonStr = jsonStr.substring(start, end + 1);
-          }
-          craftData = JSON.parse(jsonStr);
-        } catch {
-          // JSON 解析失败，将原始文本作为 summary 传递
-          return { success: true, data: { text: raw }, summary: `Craft 数据（待解析）: ${raw.substring(0, 200)}...`, status: 'success' };
-        }
-      }
-
-      if (craftData) {
-        const items = Array.isArray(craftData) ? craftData : [craftData];
-        const names = items.map(i => i.name || '未命名').join(', ');
-        return { success: true, data: craftData, summary: `Craft 数据已准备: ${names}`, status: 'success' };
-      }
-
-      return { success: true, data: merged, summary: 'Craft 数据传递完成', status: 'success' };
-    }
-
-    // ─── 邮件类技能 ───
-    if (skillId === 'send-email') {
-      const p = merged._params || {};
-      // 收件人：_params.to > merged.to > userEmail
-      const to = p.to || merged.to || userEmail || '';
-      // 主题（初始值）
-      let subject = p.subject || merged.subject || '【猫猫邮件】';
-      // 正文（原始 Markdown）
-      let text = p.body || merged.notes || merged.text || merged.summary || '这是一封来自猫猫团队的邮件 🐱';
-
-      // ── 预处理：统一换行符 ──
-      text = text.replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-
-      // ── 从正文中提取并移除 Subject 行（AI 可能把 Subject 混在正文里） ──
-      const subjectLineMatch = text.match(/^Subject\s*[:：]\s*(.+)/im);
-      if (subjectLineMatch) {
-        // 如果 subject 还是默认值，则用提取的 Subject
-        if (subject === '【猫猫邮件】') {
-          subject = subjectLineMatch[1].trim();
-        }
-        // 从正文中移除 Subject 行
-        text = text.replace(/^Subject\s*[:：]\s*.+\n?/im, '').trim();
-      }
-
-      // ── 移除称呼开头语（如「你好~嗯~」等寒暄，已在模板中有「老大！」） ──
-      text = text.replace(/^(你好[~～！!]*|嗨[~～！!]*|Hi[~～！!]*)\s*\n*/i, '').trim();
-
-      if (!to) return { success: false, data: null, summary: '未配置收件人邮箱', status: 'error' };
-      try {
-        // 将 Markdown 正文转为带内联样式的 HTML 邮件
-        const bodyHtml = simpleMarkdownToHtml(text);
-        const html = buildCatEmailHtml(subject, bodyHtml);
-        const result = await sendEmailDirect({ to, subject, html, text });
-        return { success: true, data: { messageId: result.messageId, to, subject }, summary: `邮件已发送至 ${to}`, status: 'success' };
-      } catch (err) {
-        return { success: false, data: null, summary: `邮件发送失败: ${err.message}`, status: 'error' };
-      }
-    }
-
-    // ─── AI 类技能（大部分技能走这里）───
-    // 优先注入猫猫的性格 prompt，再叠加技能专用 prompt
-    const skillPrompt = SKILL_PROMPTS[skillId] || '你是一位专业的 AI 助手，请用中文回复。';
-    const systemPrompt = catSystemPrompt
-      ? `${catSystemPrompt}\n\n${skillPrompt}`
-      : skillPrompt;
-    let taskPrompt = action ? `当前任务：${action}\n请围绕以上任务要求完成工作。` : '';
-    let inputText = '';
-
-    // 收集上游文本数据
-    const parts = [];
-    if (merged.text) parts.push(String(merged.text));
-    if (merged.summary) parts.push(String(merged.summary));
-    if (merged.analysis) parts.push(String(merged.analysis));
-    if (merged.notes) parts.push(String(merged.notes));
-    // 爬取结果特殊处理
-    if (merged.items && Array.isArray(merged.items)) {
-      parts.push(merged.items.filter(it => !it.error).map((it, i) => `[${i + 1}] ${it.title}\n${it.summary || ''}\n${it.link || ''}`).join('\n\n'));
-    }
-    if (parts.length === 0) {
-      const rest = Object.entries(merged).filter(([k]) => !['_action', '_params', 'text', 'summary', 'analysis', 'notes', 'items', 'to', 'subject'].includes(k));
-      if (rest.length > 0) parts.push(JSON.stringify(Object.fromEntries(rest), null, 2));
-    }
-    inputText = parts.join('\n\n');
-
-    const fullPrompt = `${systemPrompt}\n${taskPrompt}`;
-    const userText = inputText || action || '请执行任务';
-
-    const answer = await callAI(fullPrompt, userText, 'qwen');
-    return {
-      success: true,
-      data: { text: answer },
-      summary: answer,
-      status: 'success',
-    };
+    // 所有步骤统一通过 agentId 分发到 cat-step-scripts
+    const { runAgentStep } = require('./lib/cat-step-scripts');
+    return runAgentStep({ step, merged, userEmail, catSystemPrompt, context });
   } catch (err) {
     return { success: false, data: null, summary: `步骤执行异常: ${err.message}`, status: 'error' };
   }
@@ -706,7 +472,7 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
 
     for (const { index: i, result } of layerResults) {
       const stepEntry = {
-        index: i, skillId: steps[i].skillId, action: steps[i].action,
+        index: i, agentId: steps[i].agentId,
         success: result.success, status: result.status, summary: result.summary,
       };
       // 提取结果类型和数据（供前端 ResultCanvas 渲染）
@@ -722,6 +488,13 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
         console.warn(`[executor] ${workflow.name} 步骤 ${i + 1} 失败: ${result.summary}`);
       }
     }
+
+    // ── 每层执行完后增量更新 stepsData，让前端轮询可实时看到 ──
+    const sortedSnapshot = [...stepsData].sort((a, b) => a.index - b.index);
+    await prisma.workflowRun.update({
+      where: { id: run.id },
+      data: { steps: sortedSnapshot },
+    }).catch(err => console.error('[executor] incremental step update error:', err.message));
   }
 
   // 按步骤索引排序 stepsData

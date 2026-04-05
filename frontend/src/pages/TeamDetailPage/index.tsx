@@ -4,8 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiClient } from '../../utils/apiClient';
-import { getSkillHandler } from '../../skills';
-import type { SkillResult } from '../../skills/types';
+import { getAgentHandler } from '../../agents';
+import type { AgentResult } from '../../agents/types';
 import type { WorkflowStep } from '../../data/types';
 import { resolveInputFromIndex } from '../../data/types';
 import CatSVG, { CatColors } from '../../components/CatSVG';
@@ -89,8 +89,8 @@ const TeamDetailPage: React.FC = () => {
   const completedStepsRef = useRef<number[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [currentDialog, setCurrentDialog] = useState('');
-  const [stepResults, setStepResults] = useState<Map<number, SkillResult>>(new Map());
-  const stepResultsRef = useRef<Map<number, SkillResult>>(new Map());
+  const [stepResults, setStepResults] = useState<Map<number, AgentResult>>(new Map());
+  const stepResultsRef = useRef<Map<number, AgentResult>>(new Map());
   const currentRunIdRef = useRef<string | null>(null); // 当前手动执行的 run 记录 ID
   const runStartTimeRef = useRef<number>(0);
   // 每步耗时: { start: 开始时间戳ms, duration: 耗时ms(完成后填入) }
@@ -121,7 +121,7 @@ const TeamDetailPage: React.FC = () => {
       // 有步骤数据 → 用 run.steps 中的 index 映射到 wf.steps
       const completed = runSteps.map((s: any) => s.index ?? 0);
       setCompletedSteps(completed);
-      const resultsMap = new Map<number, SkillResult>();
+      const resultsMap = new Map<number, AgentResult>();
       const timingsMap = new Map<number, { start: number; duration?: number }>();
       runSteps.forEach((step: any) => {
         const idx = step.index ?? 0;
@@ -149,7 +149,7 @@ const TeamDetailPage: React.FC = () => {
         // failed / cancelled / success 但没有 steps 数据：将所有步骤标记为完成，用 run.status 推断结果
         const completed = wf.steps.map((_: any, i: number) => i);
         setCompletedSteps(completed);
-        const resultsMap = new Map<number, SkillResult>();
+        const resultsMap = new Map<number, AgentResult>();
         const isFailed = run.status === 'failed';
         wf.steps.forEach((_: any, i: number) => {
           resultsMap.set(i, {
@@ -162,7 +162,7 @@ const TeamDetailPage: React.FC = () => {
         setStepResults(resultsMap);
         stepResultsRef.current = resultsMap;
       }
-      const emptyMap = new Map<number, SkillResult>();
+      const emptyMap = new Map<number, AgentResult>();
       if (run.status === 'running') {
         setStepResults(emptyMap);
         stepResultsRef.current = emptyMap;
@@ -180,7 +180,7 @@ const TeamDetailPage: React.FC = () => {
     setCompletedSteps([]);
     setIsRunning(false);
     setCurrentDialog('');
-    const emptyMap = new Map<number, SkillResult>();
+    const emptyMap = new Map<number, AgentResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
     const emptyTimings = new Map<number, { start: number; duration?: number }>();
@@ -256,7 +256,7 @@ const TeamDetailPage: React.FC = () => {
     const paramsMap = new Map<number, Record<string, unknown>>();
     wf.steps.forEach((step: any, i: number) => {
       const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-      const skill = cat?.skills?.find((s: any) => s.id === step.skillId);
+      const skill = cat?.skills?.find((s: any) => s.id === step.agentId);
       const paramDefs = step.params || skill?.paramDefs || [];
       if (paramDefs.length > 0) {
         const values: Record<string, unknown> = {};
@@ -277,7 +277,7 @@ const TeamDetailPage: React.FC = () => {
     setCompletedSteps([]);
     setIsRunning(false);
     setCurrentDialog('');
-    const emptyMap = new Map<number, SkillResult>();
+    const emptyMap = new Map<number, AgentResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
     const emptyTimings = new Map<number, { start: number; duration?: number }>();
@@ -307,7 +307,7 @@ const TeamDetailPage: React.FC = () => {
       const editedParams = editableStepParams.get(i);
       if (!editedParams) return step;
       const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-      const skill = cat?.skills?.find((s: any) => s.id === step.skillId);
+      const skill = cat?.skills?.find((s: any) => s.id === step.agentId);
       const paramDefs = step.params || skill?.paramDefs || [];
       const mergedParams = paramDefs.map((p: any) => ({
         ...p,
@@ -378,7 +378,7 @@ const TeamDetailPage: React.FC = () => {
     setCompletedSteps([]);
     setIsRunning(false);
     setCurrentDialog('');
-    const emptyMap = new Map<number, SkillResult>();
+    const emptyMap = new Map<number, AgentResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
     const emptyTimings = new Map<number, { start: number; duration?: number }>();
@@ -400,8 +400,7 @@ const TeamDetailPage: React.FC = () => {
     const totalDuration = Math.round((Date.now() - runStartTimeRef.current) / 1000);
     const stepsData = allResults.map(([idx, r]) => ({
       index: idx,
-      skillId: executingWorkflow.steps[idx]?.skillId,
-      action: executingWorkflow.steps[idx]?.action,
+      agentId: executingWorkflow.steps[idx]?.agentId,
       success: r.success,
       status: r.status,
       summary: r.summary,
@@ -429,7 +428,7 @@ const TeamDetailPage: React.FC = () => {
     const layerPromises = Array.from(runningStepIndices).map(async (stepIdx) => {
       const step = steps[stepIdx];
       const cat = team?.cats.find(c => c.id === step.agentId || c.templateId === step.agentId);
-      const skill = cat?.skills?.find((s: any) => s.id === step.skillId);
+      const skill = cat?.skills?.find((s: any) => s.id === step.agentId);
 
       // 记录步骤开始时间
       const stepStartTime = Date.now();
@@ -440,7 +439,7 @@ const TeamDetailPage: React.FC = () => {
         return next;
       });
 
-      const handler = getSkillHandler(step.skillId);
+      const handler = getAgentHandler(step.agentId);
 
       // 构建 skillInput：合并上游步骤输出 + action + params
       let skillInput: unknown = undefined;
@@ -505,7 +504,7 @@ const TeamDetailPage: React.FC = () => {
             catRole: cat?.role,
             workflowName: executingWorkflow?.name,
           })
-        : Promise.resolve<SkillResult>({
+        : Promise.resolve<AgentResult>({
             success: true,
             data: null,
             summary: skill?.mockResult ?? step.action ?? "执行完成",
@@ -542,7 +541,7 @@ const TeamDetailPage: React.FC = () => {
           stepTimingsRef.current = next;
           return next;
         });
-        const errResult: SkillResult = { success: false, data: null, summary: '执行出错', status: 'error' };
+        const errResult: AgentResult = { success: false, data: null, summary: '执行出错', status: 'error' };
         setStepResults(prev => {
           const next = new Map(prev);
           next.set(stepIdx, errResult);
@@ -897,7 +896,7 @@ const TeamDetailPage: React.FC = () => {
                               </div>
                             )}
                             <span className="text-xs font-bold text-text-secondary">
-                              {step.action?.substring(0, 15) || step.skillId}
+                              {step.action?.substring(0, 15) || step.agentId}
                             </span>
                           </div>
                         </React.Fragment>
@@ -1096,7 +1095,7 @@ const TeamDetailPage: React.FC = () => {
                                                 </div>
                                               )}
                                               <span className="text-xs font-bold text-text-secondary">
-                                                {step.action || step.skillId}
+                                                {step.action || step.agentId}
                                               </span>
                                             </div>
                                             {step.summary && (
@@ -1352,7 +1351,7 @@ const TeamDetailPage: React.FC = () => {
                             c.templateId === step.agentId,
                         );
                         const skill = cat?.skills?.find(
-                          (s: any) => s.id === step.skillId,
+                          (s: any) => s.id === step.agentId,
                         );
                         const paramDefs = step.params || skill?.paramDefs || [];
                         const editedValues = editableStepParams.get(i) || {};
@@ -1995,7 +1994,7 @@ const TeamDetailPage: React.FC = () => {
                                     c.templateId === step.agentId,
                                 );
                                 const skill = cat?.skills?.find(
-                                  (s: any) => s.id === step.skillId,
+                                  (s: any) => s.id === step.agentId,
                                 );
                                 const isCompleted = completedSteps.includes(i);
                                 const isCurrent = runningStepIndices.has(i);

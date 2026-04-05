@@ -1,4 +1,4 @@
-import type { SkillContext, SkillResult } from '../types';
+import type { AgentContext, AgentResult } from './types';
 import { runWithAI } from './_framework';
 
 const SYSTEM_PROMPT = `你是产品架构师，将用户输入需求转化为产品架构脑图的 JSON 树。
@@ -13,16 +13,15 @@ const SYSTEM_PROMPT = `你是产品架构师，将用户输入需求转化为产
 - 禁止 markdown、代码块、注释、说明文字
 - 节点字段：id（如"1","1-1"）、title、children（可选）`;
 
-export default async function runProductArchitect(ctx: SkillContext): Promise<SkillResult> {
+export default async function runProductArchitect(ctx: AgentContext): Promise<AgentResult> {
   const result = await runWithAI('product-architect', ctx, SYSTEM_PROMPT);
 
   // 清理 markdown 包裹
-  if (result.success && result.data && typeof result.data === 'object') {
-    const data = result.data as Record<string, unknown>;
-    let text = String(data.text || '').trim();
+  if (result.success && result.data) {
+    let text = result.data.text.trim();
     const codeMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
     if (codeMatch) text = codeMatch[1].trim();
-    data.text = text;
+    result.data.text = text;
     result.summary = `产品架构已生成（${text.length} 字符）`;
   }
 

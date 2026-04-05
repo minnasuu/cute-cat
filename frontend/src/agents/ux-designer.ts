@@ -1,4 +1,4 @@
-import type { SkillContext, SkillResult } from '../types';
+import type { AgentContext, AgentResult } from './types';
 import { runWithAI } from './_framework';
 
 const SYSTEM_PROMPT = `你是世界顶尖的交互设计师。
@@ -13,6 +13,6 @@ const SYSTEM_PROMPT = `你是世界顶尖的交互设计师。
 
 用简洁清晰的中文输出 Markdown，结构化呈现。`;
 
-export default async function runUxDesigner(ctx: SkillContext): Promise<SkillResult> {
+export default async function runUxDesigner(ctx: AgentContext): Promise<AgentResult> {
   return runWithAI('ux-designer', ctx, SYSTEM_PROMPT);
 }

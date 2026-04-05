@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Skill } from "../data/types";
 import type { PlanStep, WorkflowRunStep } from "../pages/DashboardPage/workbenchTypes";
 import { assistants } from "../data/cats";
 import CatSVG from "./CatSVG";
@@ -21,12 +20,6 @@ function dialogsForAgent(agentId: string): string[] {
     agent?.messages?.map((s) => s.trim()).filter(Boolean) ?? [];
   return lines.length > 0 ? lines : FALLBACK_WORKING_DIALOGS;
 }
-
-const getAgentSkill = (agentId: string, skillId: string): Skill | undefined => {
-  const agent = getAgent(agentId);
-  if (!agent?.skills) return undefined;
-  return (agent.skills as Skill[]).find((s) => s.id === skillId);
-};
 
 function sortedRunSteps(steps: WorkflowRunStep[]): WorkflowRunStep[] {
   return [...steps].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
@@ -67,6 +60,59 @@ function derivePipelineState(
   return { completedOk, currentIndex };
 }
 
+/* ─── 流式打字组件：把 summary 文本逐字打出并自动滚动 ─── */
+function StreamingText({
+  text,
+  speed = 18,
+  onDone,
+}: {
+  text: string;
+  speed?: number;
+  onDone?: () => void;
+}) {
+  const [displayed, setDisplayed] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const idxRef = useRef(0);
+
+  useEffect(() => {
+    setDisplayed("");
+    idxRef.current = 0;
+
+    if (!text) return;
+
+    const t = window.setInterval(() => {
+      idxRef.current += 1;
+      const nextLen = idxRef.current;
+      if (nextLen >= text.length) {
+        setDisplayed(text);
+        window.clearInterval(t);
+        onDone?.();
+      } else {
+        setDisplayed(text.slice(0, nextLen));
+      }
+    }, speed);
+
+    return () => window.clearInterval(t);
+  }, [text, speed]);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [displayed]);
+
+  return (
+    <div ref={containerRef} className="streaming-text-container">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {displayed}
+      </ReactMarkdown>
+      {displayed.length < text.length && (
+        <span className="streaming-cursor" />
+      )}
+    </div>
+  );
+}
+
 export default function DashboardWorkflowPipeline({
   workflowName,
   planSteps,
@@ -84,6 +130,8 @@ export default function DashboardWorkflowPipeline({
   footerHint?: string;
 }) {
   const [currentDialog, setCurrentDialog] = useState("");
+  /** 跟踪哪些步骤的打字已完成，直接展示全文 */
+  const [typedDone, setTypedDone] = useState<Set<number>>(new Set());
 
   const { completedOk, currentIndex } = useMemo(
     () => derivePipelineState(planSteps.length, runSteps, running),
@@ -117,19 +165,9 @@ export default function DashboardWorkflowPipeline({
 
   if (planSteps.length === 0) {
     return (
-      <div className="execution-stage dashboard-workflow-pipeline-embed rounded-2xl border border-primary-200/80 overflow-hidden shadow-sm">
+      <div className="execution-stage dashboard-workflow-pipeline-embed overflow-hidden">
         <div className="stage-body flex flex-col items-center justify-center gap-4 min-h-[200px] py-10">
-          <div className="flex gap-3 text-3xl" aria-hidden>
-            <span className="animate-bounce" style={{ animationDelay: "0ms" }}>
-              🐱
-            </span>
-            <span className="animate-bounce" style={{ animationDelay: "150ms" }}>
-              🐱
-            </span>
-            <span className="animate-bounce" style={{ animationDelay: "300ms" }}>
-              🐱
-            </span>
-          </div>
+          加载中...
           <p className="text-sm font-bold text-text-secondary text-center px-4">
             {footerHint || "猫猫正在执行任务，请稍候…"}
           </p>
@@ -141,7 +179,7 @@ export default function DashboardWorkflowPipeline({
   const showWaitingFooter = runSteps.length === 0 && running;
 
   return (
-    <div className="execution-stage dashboard-workflow-pipeline-embed rounded-2xl border border-primary-200/80 overflow-hidden shadow-sm">
+    <div className="execution-stage dashboard-workflow-pipeline-embed">
       <div className="stage-header">
         <div className="stage-title">
           <span className="stage-name">
@@ -154,11 +192,11 @@ export default function DashboardWorkflowPipeline({
         <div className="pipeline">
           {planSteps.map((step, i) => {
             const agent = step.agentId ? getAgent(step.agentId) : undefined;
-            const skill = step.agentId && step.skillId
-              ? getAgentSkill(step.agentId, step.skillId)
-              : undefined;
             const row = stepByIndex.get(i);
-            const failed = !!(row && (row.success === false || row.status === "error"));
+            const failed = !!(
+              row &&
+              (row.success === false || row.status === "error")
+            );
             const okDone = !!(row && !failed);
             const isCurrent = running && i === currentIndex && !failed;
             const isPending = !okDone && !isCurrent && !failed;
@@ -180,6 +218,7 @@ export default function DashboardWorkflowPipeline({
 
             const resultStatus = failed ? "error" : "success";
             const showResult = (okDone || failed) && row?.summary;
+            const isAlreadyTyped = typedDone.has(i);
 
             return (
               <React.Fragment
@@ -196,7 +235,10 @@ export default function DashboardWorkflowPipeline({
                     className={`cat-avatar ${isCurrent && !failed ? "working" : ""}`}
                   >
                     {agent ? (
-                      <CatSVG colors={agent.catColors} className="pipeline-cat" />
+                      <CatSVG
+                        colors={agent.catColors}
+                        className="pipeline-cat"
+                      />
                     ) : (
                       <div
                         className="pipeline-cat flex items-center justify-center text-4xl opacity-80"
@@ -214,15 +256,9 @@ export default function DashboardWorkflowPipeline({
                     >
                       {displayName}
                     </span>
-                    {skill ? (
+                    {agent?.role ? (
                       <span className="node-skill inline-flex items-center gap-1">
-                        <AppIcon symbol={skill.icon} size={12} />
-                        {skill.name}
-                      </span>
-                    ) : step.skillId ? (
-                      <span className="node-skill inline-flex items-center gap-1">
-                        <AppIcon symbol="Settings" size={12} />
-                        {step.skillId}
+                        {agent.role}
                       </span>
                     ) : null}
                   </div>
@@ -249,23 +285,29 @@ export default function DashboardWorkflowPipeline({
                         </span>
                       </div>
                       <div className="node-result-summary markdown-body">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {row.summary ?? ""}
-                        </ReactMarkdown>
+                        {isAlreadyTyped ? (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {row.summary ?? ""}
+                          </ReactMarkdown>
+                        ) : (
+                          <StreamingText
+                            text={row.summary ?? ""}
+                            speed={16}
+                            onDone={() =>
+                              setTypedDone((prev) => new Set(prev).add(i))
+                            }
+                          />
+                        )}
                       </div>
                     </div>
                   ) : null}
 
-                  {!okDone && !failed && skill ? (
+                  {!okDone && !failed && agent ? (
                     <div className="node-io">
-                      <span className="io-tag io-in">{skill.input}</span>
+                      <span className="io-tag io-in">text</span>
                       <span className="io-arrow">→</span>
-                      <span className="io-tag io-out">{skill.output}</span>
+                      <span className="io-tag io-out">text</span>
                     </div>
-                  ) : null}
-
-                  {!okDone && !failed && skill?.provider ? (
-                    <span className="node-provider">via {skill.provider}</span>
                   ) : null}
 
                   {isPending ? <div className="node-dim" /> : null}
@@ -277,18 +319,18 @@ export default function DashboardWorkflowPipeline({
                   >
                     <div className="arrow-line" />
                     <div className="arrow-head">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
                         <path d="M8 5v14l11-7z" />
                       </svg>
                     </div>
                     {completedOk.includes(i) ? (
                       <div className="arrow-data-tag">
-                        <span className="data-type">
-                          {getAgentSkill(
-                            planSteps[i].agentId ?? "",
-                            planSteps[i].skillId ?? "",
-                          )?.output ?? ""}
-                        </span>
+                        <span className="data-type">text</span>
                       </div>
                     ) : null}
                   </div>

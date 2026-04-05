@@ -6,22 +6,11 @@ export interface TeamCat {
   id: string;
   name: string;
   role: string;
-  skills: { id: string; name: string; [key: string]: any }[];
 }
 
 /** AI 建议添加的猫猫 */
 export interface SuggestedCat {
   role: string;
-  reason: string;
-  suggestedSkills: string[];
-}
-
-/** AI 建议添加的技能（给已有猫猫） */
-export interface SuggestedSkill {
-  agentId: string;
-  agentName: string;
-  skillId: string;
-  skillName: string;
   reason: string;
 }
 
@@ -39,8 +28,6 @@ export interface AiGenerateResult {
   suggestionMode?: boolean;
   /** 建议添加的新猫猫 */
   suggestedCats?: SuggestedCat[];
-  /** 建议给已有猫猫添加的技能 */
-  suggestedSkills?: SuggestedSkill[];
   /** 建议模式下的说明文字 */
   suggestionSummary?: string;
 }
@@ -62,7 +49,7 @@ export async function aiGenerateWorkflow(
     ? cats
         .map(
           (c) =>
-            `- id: "${c.id}", name: "${c.name}", role: "${c.role}", skills: [${c.skills.map((s) => `{id:"${s.id}",name:"${s.name}"}`).join(', ')}]`,
+            `- id: "${c.id}", name: "${c.name}", role: "${c.role}"`,
         )
         .join('\n')
     : '（当前团队暂无猫猫）';

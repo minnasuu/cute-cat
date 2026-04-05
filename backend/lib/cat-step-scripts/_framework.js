@@ -22,7 +22,6 @@ function runPlaceholder(templateId, ctx) {
     catName: name,
     role,
     stepId,
-    skillId: step?.skillId,
     hasUpstreamText: Boolean(merged?.text),
     hasUpstreamSummary: Boolean(merged?.summary),
     workflowName: context?.workflowName || '',

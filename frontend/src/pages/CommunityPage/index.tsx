@@ -31,7 +31,6 @@ function resolveWorkflowAgent(agentId: string): Assistant | null {
     description: "",
     accent: "#8DB889",
     systemPrompt: "",
-    skills: [],
     catColors: OFFICIAL_BRAND_CAT_COLORS,
     messages: [],
   };
@@ -42,11 +41,6 @@ const WORKFLOW_THEME_COLOR = '#8DB889';
 
 /* ── Tab types ── */
 type Tab = "cats" | "workflows";
-
-function stepCapabilityLabel(skillId?: string): string {
-  if (skillId === "aigc") return "AIGC";
-  return skillId ? `${skillId}` : "—";
-}
 
 const CommunityPage = () => {
   const navigate = useNavigate();
@@ -289,15 +283,6 @@ const CommunityPage = () => {
                             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-surface-secondary border border-border text-text-tertiary">
                               {involvedCats.length} 只猫协作
                             </span>
-                            {wf.scheduled && (
-                              <span
-                                className="px-2.5 py-1 rounded-full text-[10px] font-bold text-white inline-flex items-center gap-1"
-                                style={{ background: color }}
-                              >
-                                <AppIcon symbol="Clock" size={12} />
-                                {wf.cron}
-                              </span>
-                            )}
                             {/* Participating cat avatars */}
                             <div className="flex -space-x-1.5 ml-1">
                               {involvedCats.map((cat) => (
@@ -387,42 +372,7 @@ const CommunityPage = () => {
                                       <span className="text-[11px] font-bold text-text-secondary">
                                         {cap}
                                       </span> */}
-                                      {step.inputFrom &&
-                                        (() => {
-                                          // 优先用 stepId 找来源步骤的猫咪名
-                                          const sourceStep = wf.steps.find(
-                                            (s) => s.stepId === step.inputFrom,
-                                          );
-                                          const label = sourceStep
-                                            ? (agentNameMap[
-                                                sourceStep.agentId
-                                              ] ?? sourceStep.agentId)
-                                            : (agentNameMap[step.inputFrom] ??
-                                              step.inputFrom);
-                                          return (
-                                            <span className="text-[9px] font-bold uppercase bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded ml-auto">
-                                              ← {label}
-                                            </span>
-                                          );
-                                        })()}
                                     </div>
-                                    <p className="text-sm text-text-primary font-medium">
-                                      {step.action}
-                                    </p>
-                                    {/* Step params preview */}
-                                    {step.params && step.params.length > 0 && (
-                                      <div className="flex flex-wrap gap-1.5 mt-2">
-                                        {step.params.map((p) => (
-                                          <span
-                                            key={p.key}
-                                            className="px-2 py-0.5 rounded text-[9px] font-bold bg-surface-tertiary text-text-tertiary border border-border"
-                                          >
-                                            {p.label}
-                                            {p.required ? " *" : ""}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                               </div>

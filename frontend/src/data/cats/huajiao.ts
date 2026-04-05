@@ -10,7 +10,6 @@ export const huajiao: Assistant = {
   description: '根据用户需求生成符合产品逻辑的结构树型架构图',
   accent: '#8DB889',
   systemPrompt: '',
-  skills: [],
   catColors: JSON.parse(JSON.stringify(appearanceTemplates.find(t => t.id === 'lihuajiabai')!.colors)) as CatColors,
   messages: ['架构中', '让我思考最重要的结构'],
 };

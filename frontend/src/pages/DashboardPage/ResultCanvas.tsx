@@ -220,17 +220,12 @@ export default function ResultCanvas({
                                   </span>
                                 ) : null}
                               </span>
-                              {s.skillId ? (
+                              {s.agentId ? (
                                 <span className="text-[10px] font-bold text-text-tertiary">
-                                  {s.skillId}
+                                  {s.agentId}
                                 </span>
                               ) : null}
                             </div>
-                            {s.action ? (
-                              <p className="text-[11px] text-text-secondary font-medium mt-1 line-clamp-4">
-                                {s.action}
-                              </p>
-                            ) : null}
                             {s.summary ? (
                               <p className="text-xs text-text-tertiary font-medium mt-1.5 leading-snug">
                                 {s.summary}
