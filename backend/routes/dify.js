@@ -577,6 +577,49 @@ function parseRSSItems(xml, source, limit) {
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
+
+/** 图片 base64 字符数上限（约 10MB 文件 → ~13.3M 字符） */
+const MAX_STYLE_REF_IMAGE_BASE64_CHARS = 14_000_000;
+
+/** MOCK 数据：MOCK_AI=true 或未配置密钥时返回，供前端联调 */
+const VIBE_SNAP_MOCK_EXTRACT = {
+  designSummary: {
+    styleDescription:
+      '现代金融科技落地页风格：高饱和紫绿渐变、玻璃拟态卡片、3D 插画与粗体标题结合，整体年轻、可信赖且富有活力。',
+    styleTags: ['现代科技感', '活力渐变', '亲和易用', '动效流畅'],
+    colors: [
+      { name: '主色紫', hex: '#6633FF', usage: '主按钮、品牌强调、关键 CTA' },
+      { name: '荧光绿', hex: '#B2FF00', usage: '点缀、数据高亮、次要按钮' },
+      { name: '深海军蓝', hex: '#1C1E32', usage: '深色背景、页脚、对比区块' },
+      { name: '米白背景', hex: '#F8F8FA', usage: '主背景、卡片底' },
+      { name: '石板灰', hex: '#64748B', usage: '次级正文、说明文案' },
+      { name: '纯白', hex: '#FFFFFF', usage: '卡片表面、留白' },
+    ],
+    typography: [
+      { family: 'Inter', note: '正文、按钮与界面标注' },
+      { family: 'Plus Jakarta Sans', note: '大标题与数字展示' },
+    ],
+    visualAttributes: {
+      borderRadius: '通用圆角约 0.75rem（12px）；胶囊标签与头像可用 99px / full',
+      shadow: '卡片 resting：0 4px 12px rgba(0,0,0,0.08)；悬停可升至 0 8px 24px rgba(0,0,0,0.12)',
+      border: '低对比 1px solid 分割线；玻璃卡片可用半透明白边',
+      spacing: '8px 网格，常用 16 / 24 / 32 / 40px 作为区块与组件间距',
+    },
+  },
+  designPrompt: `请生成与参考图一致的响应式网页落地页（信用卡 / 金融科技主题）。
+
+Tailwind 主题扩展建议：
+colors: { primary: "#6633FF", accent: "#B2FF00", background: { light: "#F8F8FA", dark: "#1C1E32" } }
+fontFamily: { sans: ["Inter", "Plus Jakarta Sans", "system-ui", "sans-serif"] }
+圆角：rounded-lg ≈ 0.75rem；药丸用 rounded-full。
+阴影：shadow-md / shadow-lg 表现卡片层级；hover 时略加深。
+动效：可用 Framer Motion，spring stiffness 约 250、damping 25、时长 0.4s 以内。
+
+结构：顶栏导航 + Hero（主标题、副文案、主 CTA、产品/mockup 图）+ 信任区 logo + 功能特性栅格 + App 下载区 + 卡片展示 + 用户评价 + 页脚。保持渐变背景与玻璃卡片层次，文案为中文。`,
+  libraryBlurb:
+    '紫绿渐变与玻璃拟态结合的金融科技落地页，Inter + Plus Jakarta Sans 排版，强调圆角卡片与轻阴影层次。',
+};
 
 // multer 配置：存储到 uploads/vibe-snap/
 const vibeSnapStorage = multer.diskStorage({
@@ -636,14 +679,62 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
   req.on('close', () => clearInterval(heartbeat));
 
   try {
-    const { imageBase64, mimeType } = req.body;
-    if (!imageBase64) return sendResult({ success: false, error: '缺少图片数据' });
+    const { imageBase64: rawBase64, mimeType: rawMime, imageUrl } = req.body;
+
+    // 优先使用 imageUrl（从磁盘读取，避免前端传大体积 base64）
+    let imageBase64 = rawBase64;
+    let mimeType = rawMime;
+
+    if (imageUrl && !imageBase64) {
+      // imageUrl 格式如 /uploads/vibe-snap/xxx.jpg，映射到本地文件路径
+      const relativePath = imageUrl.replace(/^\//, '');
+      const filePath = path.join(__dirname, '..', relativePath);
+
+      // 安全检查：确保路径在 uploads 目录内
+      const uploadsDir = path.resolve(path.join(__dirname, '..', 'uploads'));
+      const resolvedPath = path.resolve(filePath);
+      if (!resolvedPath.startsWith(uploadsDir)) {
+        return sendResult({ success: false, error: '无效的图片路径' });
+      }
+
+      if (!fs.existsSync(resolvedPath)) {
+        return sendResult({ success: false, error: '图片文件不存在，请重新上传' });
+      }
+
+      const fileBuffer = fs.readFileSync(resolvedPath);
+      imageBase64 = fileBuffer.toString('base64');
+
+      // 从文件扩展名推断 mimeType
+      const ext = path.extname(resolvedPath).toLowerCase();
+      const extMimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
+      mimeType = extMimeMap[ext] || 'image/jpeg';
+
+      console.log(`[vibe-snap-extract] 从磁盘读取图片: ${resolvedPath} (${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB)`);
+    }
+
+    if (!imageBase64) {
+      return sendResult({ success: false, error: '缺少图片数据（请提供 imageBase64 或 imageUrl）' });
+    }
+
+    // 检查 base64 字符数上限
+    if (imageBase64.length > MAX_STYLE_REF_IMAGE_BASE64_CHARS) {
+      return sendResult({ success: false, error: '图片过大，请压缩后重试' });
+    }
+
+    // MOCK_AI 模式：返回 mock 数据供前端联调
+    if (process.env.MOCK_AI === 'true') {
+      return sendResult({ success: true, data: VIBE_SNAP_MOCK_EXTRACT, meta: { mock: true } });
+    }
 
     const apiKey = process.env.QWEN_API_KEY;
-    if (!apiKey) return sendResult({ success: false, error: 'QWEN_API_KEY 未配置' });
+    // 未配置密钥时，fallback 返回 mock 数据（而非报错）
+    if (!apiKey) {
+      console.warn('[vibe-snap-extract] QWEN_API_KEY 未配置，返回 mock 数据');
+      return sendResult({ success: true, data: VIBE_SNAP_MOCK_EXTRACT, meta: { fallback: 'no-ai-key' } });
+    }
 
     const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-    const model = 'qwen3.5-plus'; // 使用支持视觉的模型
+    const model = 'qwen-vl-plus'; // 视觉模型，支持 image_url 输入
 
     const systemPrompt = `你是资深 UI/视觉设计分析助手。用户上传的是**网页或 App 界面截图**（可能为长图）。
 
@@ -768,10 +859,18 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
       clearTimeout(timeout);
     }
   } catch (err) {
-    console.error('[vibe-snap-extract] error:', err);
-    const errMsg = err.name === 'AbortError'
-      ? 'AI 分析超时（120s），请使用更小的图片或稍后重试'
-      : (err.message || 'AI 分析失败');
+    console.error('[vibe-snap-extract] error:', err.name, err.message, err.cause || '');
+    let errMsg;
+    if (err.name === 'AbortError') {
+      errMsg = 'AI 分析超时（120s），请使用更小的图片或稍后重试';
+    } else if (err.message === 'fetch failed' || err.message?.includes('fetch')) {
+      // Node.js 原生 fetch 在网络层面失败时抛出 "fetch failed"
+      const causeMsg = err.cause?.message || err.cause?.code || '';
+      console.error('[vibe-snap-extract] fetch cause:', err.cause);
+      errMsg = `AI 服务请求失败（${causeMsg || '网络异常'}），请稍后重试`;
+    } else {
+      errMsg = err.message || 'AI 分析失败';
+    }
     sendResult({ success: false, error: errMsg });
   }
 });

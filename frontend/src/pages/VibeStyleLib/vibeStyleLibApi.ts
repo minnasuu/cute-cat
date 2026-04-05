@@ -50,7 +50,9 @@ interface ApiResponse<T> {
 
 /**
  * 将界面截图送视觉模型，返回设计总结 + 设计提示词。
- * imageBase64 为纯 base64，不含 data: 前缀。
+ *
+ * 优先使用 imageUrl（后端从磁盘读文件，避免前端传大体积 base64）。
+ * 也兼容旧的 imageBase64 方式（纯 base64，不含 data: 前缀）。
  *
  * 后端使用 SSE (Server-Sent Events) 心跳机制防止 nginx 504 超时：
  * - 响应头为 text/event-stream
@@ -58,7 +60,8 @@ interface ApiResponse<T> {
  * - 最终结果通过 `data: {...}` 帧发送
  */
 export async function vibeSnapExtract(body: {
-  imageBase64: string;
+  imageUrl?: string;
+  imageBase64?: string;
   mimeType?: string;
 }): Promise<VibeSnapExtractResult> {
   const controller = new AbortController();

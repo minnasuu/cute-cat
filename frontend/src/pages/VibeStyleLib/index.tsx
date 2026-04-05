@@ -483,29 +483,36 @@ export const VibeStyleLib = () => {
     if (detailItem) setDetailTab("summary");
   }, [detailItem?.id]);
 
-  const runExtract = useCallback(async (file: File) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { imageBase64, mimeType } = await fileToBase64Parts(file);
-      return await vibeSnapExtract({ imageBase64, mimeType });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "分析失败";
-      setError(msg);
-      throw e;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  /** 调用 AI 分析。优先使用 imageUrl（后端从磁盘读文件），省去前端传大 base64 */
+  const runExtract = useCallback(
+    async (file: File, imageUrl?: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (imageUrl) {
+          // 优先走 URL 模式：后端从磁盘读文件转 base64，请求体只有几十字节
+          return await vibeSnapExtract({ imageUrl });
+        }
+        // fallback：没有 imageUrl 时仍用 base64（例如提取器尚未上传时）
+        const { imageBase64, mimeType } = await fileToBase64Parts(file);
+        return await vibeSnapExtract({ imageBase64, mimeType });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "分析失败";
+        setError(msg);
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
   const addToLibrary = useCallback(
     async (file: File) => {
       const dataUrl = await dataUrlFromFile(file);
-      // 并行：上传图片文件 + AI 分析
-      const [imageUrl, data] = await Promise.all([
-        uploadVibeStyleLibImage(file),
-        runExtract(file),
-      ]);
+      // 先上传图片获取 URL，再用 URL 调 AI 分析（后端从磁盘读文件，不传 base64）
+      const imageUrl = await uploadVibeStyleLibImage(file);
+      const data = await runExtract(file, imageUrl);
       const draft = libraryItemFromExtract(imageUrl, data, user);
       try {
         const saved = await saveVibeStyleLibLibraryItem(draft);
@@ -531,7 +538,9 @@ export const VibeStyleLib = () => {
       const dataUrl = await dataUrlFromFile(file);
       setExtractorImage(dataUrl);
       setLastSavedExtractorKey(null);
-      const data = await runExtract(file);
+      // 先上传获取 URL，再用 URL 调 AI 分析
+      const imageUrl = await uploadVibeStyleLibImage(file);
+      const data = await runExtract(file, imageUrl);
       setExtractorResult(data);
       setResultTab("summary");
     },
@@ -876,7 +885,7 @@ export const VibeStyleLib = () => {
                     </div>
                   )}
                   {loading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-surface/85 backdrop-blur-sm">
+                    <div className="absolute inset-0 flex items-center justify-center bg-surface/10 backdrop-blur-xs">
                       <Spinner label="分析中…" />
                     </div>
                   )}
