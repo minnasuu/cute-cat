@@ -39,7 +39,7 @@ services:
       QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-qwen}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
-      BETA_CODES: ${BETA_CODES:-}
+      BETA_CODES: ${BETA_CODES:-CAT2026}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_USER: ${SMTP_USER:-}
