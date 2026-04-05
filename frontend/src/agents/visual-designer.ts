@@ -75,15 +75,28 @@ export default async function runVisualDesigner(ctx: AgentContext): Promise<Agen
 
 ${styleCatalog}
 
-## 输出要求
+## 🚨🚨🚨 最高优先级规则：只输出风格选择结果 🚨🚨🚨
 
-1. 先分析上游内容的行业属性、目标受众和产品气质
-2. 从上方风格库中选择 1 个最匹配的风格（说明选择理由）
-3. **只需输出风格编号（如"风格 1"）和选择理由，不要输出完整的设计规范**
+你的回复必须**严格遵守以下固定格式**，只输出两行，不多不少：
 
-用中文输出，简洁明了。格式示例：
+选择：风格 N
+理由：一句话说明为什么选这个风格
+
+- 第一行必须以"选择：风格"开头，N 是风格编号数字
+- 第二行必须以"理由："开头，用一句话（≤50字）简要说明匹配原因
+- **绝对禁止**在这两行之前写任何文字（包括"好的"、"分析如下"等）
+- **绝对禁止**在这两行之后写任何文字（包括总结、补充说明、设计建议等）
+- **绝对禁止**输出完整的设计规范、配色方案、CSS 代码等
+- **绝对禁止**逐个分析每个风格的优劣
+
+正确示例：
 选择：风格 3
-理由：该风格的现代简约设计与产品的轻量化定位高度契合...`;
+理由：产品定位为年轻潮流电商，该风格的活力配色和圆角卡片最贴合目标用户审美。
+
+错误示例：
+❌ 好的，我来分析一下各个风格...（废话）
+❌ 选择：风格 3\n理由：...\n\n以下是完整设计规范...（多余内容）
+❌ 让我逐一分析：风格1适合...风格2适合...（逐个分析）`;
 
     const upstreamText = extractUpstreamText(ctx);
 
@@ -108,9 +121,27 @@ ${styleCatalog}
       };
     }
 
-    const aiResponse = resp.answer || '';
+    const rawResponse = resp.answer || '';
 
-    // 5. 解析 AI 返回的风格编号
+    // 5. 清理 AI 返回，只提取"选择"和"理由"
+    let aiResponse = rawResponse.trim();
+
+    // 去除 markdown 代码块包裹
+    const codeMatch = aiResponse.match(/```(?:markdown|md)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (codeMatch) aiResponse = codeMatch[1].trim();
+
+    // 提取"选择：风格 N"行
+    const selectLine = aiResponse.match(/选择[：:]\s*风格\s*(\d+)/);
+    // 提取"理由：xxx"行
+    const reasonLine = aiResponse.match(/理由[：:]\s*(.+)/);
+
+    // 重新拼装干净的两行结果
+    if (selectLine) {
+      const cleanReason = reasonLine ? reasonLine[1].trim() : '该风格最匹配产品定位';
+      aiResponse = `选择：风格 ${selectLine[1]}\n理由：${cleanReason}`;
+    }
+
+    // 6. 解析 AI 返回的风格编号
     const styleMatch = aiResponse.match(/风格\s*(\d+)/);
     const selectedIndex = styleMatch ? parseInt(styleMatch[1], 10) - 1 : 0;
 

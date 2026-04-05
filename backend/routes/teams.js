@@ -32,7 +32,7 @@ async function buildWorkbenchJson(userId) {
     prisma.workflowRun.count({ where: { teamId: tid } }),
     prisma.teamCat.findMany({
       where: { teamId: tid },
-      select: { id: true, name: true },
+      select: { id: true, name: true, role: true, catColors: true, accent: true, messages: true, templateId: true },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.workflowRun.findMany({

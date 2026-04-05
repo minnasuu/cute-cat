@@ -5,8 +5,6 @@ import { showToast } from '../../components/Toast';
 import CatSVG from '../../components/CatSVG';
 import type { CatColors } from '../../components/CatSVG';
 import CatLogo from '../../components/CatLogo';
-import { appearanceTemplates } from '../../data/themes';
-import { personalityTemplates } from '../../data/personality';
 import { useAuth } from '../../contexts/AuthContext';
 import { AppIcon } from '../../components/icons';
 
@@ -548,42 +546,6 @@ const CatEditorPage: React.FC = () => {
                   {/* AI Settings */}
                   {configTab === "s-ai" && (
                     <div className="p-6 space-y-6">
-                      {!isEditing && (
-                        <div>
-                          <p className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">
-                            官方性格模版
-                          </p>
-                          <div className="grid grid-cols-3 gap-2">
-                            {personalityTemplates.map((p) => {
-                              const isActive = systemPrompt === p.prompt;
-                              return (
-                                <button
-                                  key={p.id}
-                                  onClick={() => setSystemPrompt(p.prompt)}
-                                  className={`text-left p-3 rounded-2xl border transition-all cursor-pointer ${
-                                    isActive
-                                      ? "border-primary-400 bg-primary-50 shadow-sm"
-                                      : "border-border hover:border-border-strong hover:shadow-sm"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-1.5 mb-1">
-                                    <span>{p.emoji}</span>
-                                    <span
-                                      className={`font-bold text-xs ${isActive ? "text-primary-700" : "text-text-primary"}`}
-                                    >
-                                      {p.name}
-                                    </span>
-                                  </div>
-                                  <p className="text-[10px] text-text-tertiary line-clamp-1">
-                                    {p.tone}
-                                  </p>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
                       {/* Custom prompt */}
                       <div>
                         <div className="flex items-center justify-between mb-2">
@@ -607,7 +569,7 @@ const CatEditorPage: React.FC = () => {
                           className="w-full px-4 py-3 rounded-2xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all outline-none text-sm font-medium resize-none"
                         />
                         <p className="text-[10px] text-text-tertiary mt-1.5">
-                          选择模版会自动填入，也可直接编辑自定义
+                          选择模版会自动填入，也可直接编辑自定义（暂未启用）
                         </p>
                       </div>
                     </div>

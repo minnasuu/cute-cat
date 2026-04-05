@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { CheckCircle2, ChevronRight, Loader2, XCircle } from "lucide-react";
 import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
-import type { PlanStep, WorkflowRun, WorkflowRunStep } from "./workbenchTypes";
+import type { PlanStep, TeamCat, WorkflowRun, WorkflowRunStep } from "./workbenchTypes";
 
 export type { PlanStep } from "./workbenchTypes";
 
@@ -37,6 +37,7 @@ export default function ResultCanvas({
   waitingForRunRecord,
   planSteps,
   catNameById,
+  cats,
 }: {
   workflowName: string;
   userPrompt: string;
@@ -46,6 +47,7 @@ export default function ResultCanvas({
   waitingForRunRecord: boolean;
   planSteps: PlanStep[];
   catNameById: Record<string, string>;
+  cats: TeamCat[];
 }) {
   const steps = useMemo(
     () => sortedRunSteps(normalizeSteps(displayRun?.steps)),
@@ -117,6 +119,7 @@ export default function ResultCanvas({
             workflowName={workflowName}
             planSteps={planSteps}
             catNameById={catNameById}
+            cats={cats}
             running
             runSteps={[]}
             footerHint="正在创建运行记录…"
@@ -129,6 +132,7 @@ export default function ResultCanvas({
             workflowName={workflowName || displayRun.workflowName}
             planSteps={planSteps}
             catNameById={catNameById}
+            cats={cats}
             running
             runSteps={steps}
           />

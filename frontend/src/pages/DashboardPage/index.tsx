@@ -578,6 +578,7 @@ const DashboardPage: React.FC = () => {
               }
               planSteps={planSteps}
               catNameById={catNameById}
+              cats={workbench?.cats ?? []}
             />
           </div>
         ) : null}

@@ -9,6 +9,11 @@ export type PlanStep = {
 export interface TeamCat {
   id: string;
   name: string;
+  role?: string;
+  catColors?: Record<string, string>;
+  accent?: string;
+  messages?: string[];
+  templateId?: string;
 }
 
 export interface WorkflowRow {

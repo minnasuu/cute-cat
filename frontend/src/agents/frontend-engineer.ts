@@ -4,18 +4,34 @@ import { runWithAI } from './_framework';
 const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「琥珀」，岗位角色：前端工程师。
 你的任务是综合前面产品策划、交互设计师、视觉设计师三个步骤的输出，生成一个完整可运行的 HTML 单页网站。
 
-## 输出格式要求（极其重要，必须严格遵守）
+## 🚨🚨🚨 最高优先级规则：只输出 HTML 代码 🚨🚨🚨
+
+你的回复必须**只包含 HTML 代码本身**，不允许包含任何其他内容：
+- 回复的第一个字符必须是 \`<\`（即 \`<!DOCTYPE html>\` 的开头）
+- 回复的最后一个字符必须是 \`>\`（即 \`</html>\` 的结尾）
+- **绝对禁止**在 HTML 代码前面写任何文字（包括"好的"、"以下是"、"根据需求"等）
+- **绝对禁止**在 HTML 代码后面写任何文字（包括"希望你喜欢"、"如需修改"等）
+- **绝对禁止**使用 markdown 代码块 \`\`\`html ... \`\`\` 包裹
+- **绝对禁止**输出任何非 HTML 的解释、说明、总结
+
+正确示例（你应该这样输出）：
+<!DOCTYPE html><html lang="zh-CN"><head>...</head><body>...</body></html>
+
+错误示例（绝对不要这样输出）：
+❌ 好的，以下是生成的网页：<!DOCTYPE html>...
+❌ \`\`\`html\n<!DOCTYPE html>...\n\`\`\`
+❌ <!DOCTYPE html>...</html>\n\n希望这个页面符合你的需求！
+
+## 输出格式要求
 
 1. **直接输出纯 HTML 代码**，以 <!DOCTYPE html> 开头，以 </html> 结尾
-2. **禁止**使用 markdown 代码块包裹（不要写 \`\`\`html）
-3. **禁止**在 HTML 之前或之后添加任何解释文字
-4. HTML 必须包含完整的 <head>（含 meta charset, viewport, title）和 <body>
-5. 所有 CSS 必须内联在 <style> 标签中（不引用外部 CSS 文件）
-6. 可以使用 Tailwind CSS CDN（推荐）或 Google Fonts CDN
-7. 页面必须是响应式的（支持移动端）
-8. 使用语义化 HTML 标签（header, nav, main, section, footer）
-9. 中文内容，代码注释用中文
-10. 严格遵循上游视觉设计师给出的配色、字体和组件风格
+2. HTML 必须包含完整的 <head>（含 meta charset, viewport, title）和 <body>
+3. 所有 CSS 必须内联在 <style> 标签中（不引用外部 CSS 文件）
+4. 可以使用 Tailwind CSS CDN（推荐）或 Google Fonts CDN
+5. 页面必须是响应式的（支持移动端）
+6. 使用语义化 HTML 标签（header, nav, main, section, footer）
+7. 中文内容，代码注释用中文
+8. 严格遵循上游视觉设计师给出的配色、字体和组件风格
 
 ## ⚡ 生成策略（优先级最高，优于完整度）
 
@@ -154,21 +170,44 @@ export default async function runFrontendEngineer(ctx: AgentContext): Promise<Ag
     onChunk: ctx.onChunk,
   });
 
-  // 清理 markdown 包裹
+  // 多重清理：确保最终结果只包含纯 HTML 代码
   if (result.success && result.data) {
     let html = result.data.text.trim();
-    const codeMatch = html.match(/```(?:html)?\s*\n?([\s\S]*?)\n?\s*```/);
-    if (codeMatch) html = codeMatch[1].trim();
-    // 确保以 <!DOCTYPE 或 <html 开头
+
+    // 1. 去除 markdown 代码块包裹（支持多种格式：```html、```HTML、``` 等）
+    const codeBlockMatch = html.match(/```(?:html|HTML)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (codeBlockMatch) {
+      html = codeBlockMatch[1].trim();
+    }
+
+    // 2. 截取从 <!DOCTYPE 或 <html 开始的内容（去除 AI 前缀废话）
     const docIdx = html.indexOf('<!DOCTYPE');
-    const htmlIdx = html.indexOf('<html');
+    const docLowerIdx = html.indexOf('<!doctype');
+    const htmlTagIdx = html.indexOf('<html');
     const startIdx = Math.min(
       docIdx >= 0 ? docIdx : Infinity,
-      htmlIdx >= 0 ? htmlIdx : Infinity
+      docLowerIdx >= 0 ? docLowerIdx : Infinity,
+      htmlTagIdx >= 0 ? htmlTagIdx : Infinity,
     );
     if (startIdx < Infinity && startIdx > 0) {
       html = html.substring(startIdx);
     }
+
+    // 3. 截断 </html> 之后的所有内容（去除 AI 后缀废话）
+    const closingHtmlIdx = html.lastIndexOf('</html>');
+    if (closingHtmlIdx >= 0) {
+      html = html.substring(0, closingHtmlIdx + '</html>'.length);
+    }
+
+    // 4. 再次检查：如果结果仍然被 markdown 代码块包裹（嵌套情况），再清理一次
+    const secondPassMatch = html.match(/```(?:html|HTML)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (secondPassMatch && secondPassMatch[1].includes('<!DOCTYPE')) {
+      html = secondPassMatch[1].trim();
+      const idx2 = html.lastIndexOf('</html>');
+      if (idx2 >= 0) html = html.substring(0, idx2 + '</html>'.length);
+    }
+
+    html = html.trim();
     result.data.text = html;
     result.data._resultType = 'html-page';
     result.summary = `HTML 页面已生成（${html.length} 字符）`;

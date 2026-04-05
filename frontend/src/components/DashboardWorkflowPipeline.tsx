@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { PlanStep, WorkflowRunStep } from "../pages/DashboardPage/workbenchTypes";
-import { assistants } from "../data/cats";
+import type { PlanStep, TeamCat, WorkflowRunStep } from "../pages/DashboardPage/workbenchTypes";
 import CatSVG from "./CatSVG";
+import type { CatColors } from "./CatSVG";
 import { AppIcon } from "./icons";
 import "../styles/WorkflowPanel.scss";
 
@@ -11,13 +11,17 @@ const STEP_DURATION = 3000;
 
 const FALLBACK_WORKING_DIALOGS = ["执行中...", "努力处理中~", "快好了!"];
 
-const getAgent = (agentId: string) => assistants.find((a) => a.id === agentId);
+/** 从传入的 cats 列表中按 id 查找猫猫 */
+function getCatById(cats: TeamCat[], catId: string): TeamCat | undefined {
+  return cats.find((c) => c.id === catId);
+}
 
 /** 使用猫咪数据里的 messages（招呼语/状态文案）作为执行气泡 */
-function dialogsForAgent(agentId: string): string[] {
-  const agent = getAgent(agentId);
-  const lines =
-    agent?.messages?.map((s) => s.trim()).filter(Boolean) ?? [];
+function dialogsForCat(cats: TeamCat[], agentId: string): string[] {
+  const cat = getCatById(cats, agentId);
+  const raw = cat?.messages;
+  const arr = Array.isArray(raw) ? raw : [];
+  const lines = arr.map((s: string) => s.trim()).filter(Boolean);
   return lines.length > 0 ? lines : FALLBACK_WORKING_DIALOGS;
 }
 
@@ -117,6 +121,7 @@ export default function DashboardWorkflowPipeline({
   workflowName,
   planSteps,
   catNameById,
+  cats = [],
   running,
   runSteps,
   footerHint,
@@ -124,6 +129,7 @@ export default function DashboardWorkflowPipeline({
   workflowName: string;
   planSteps: PlanStep[];
   catNameById: Record<string, string>;
+  cats?: TeamCat[];
   running: boolean;
   runSteps: WorkflowRunStep[];
   /** 等待 run 记录时的副文案 */
@@ -153,7 +159,7 @@ export default function DashboardWorkflowPipeline({
       setCurrentDialog("");
       return;
     }
-    const dialogs = dialogsForAgent(activeAgentId);
+    const dialogs = dialogsForCat(cats, activeAgentId);
     let i = 0;
     setCurrentDialog(dialogs[0] ?? "执行中...");
     const t = window.setInterval(() => {
@@ -161,7 +167,7 @@ export default function DashboardWorkflowPipeline({
       setCurrentDialog(dialogs[i] ?? "执行中...");
     }, 1500);
     return () => window.clearInterval(t);
-  }, [running, currentIndex, activeAgentId]);
+  }, [running, currentIndex, activeAgentId, cats]);
 
   if (planSteps.length === 0) {
     return (
@@ -184,7 +190,8 @@ export default function DashboardWorkflowPipeline({
       <div className="stage-body scrollbar-hide">
         <div className="pipeline">
           {planSteps.map((step, i) => {
-            const agent = step.agentId ? getAgent(step.agentId) : undefined;
+            const cat = step.agentId ? getCatById(cats, step.agentId) : undefined;
+            const catColors = cat?.catColors as CatColors | undefined;
             const row = stepByIndex.get(i);
             const failed = !!(
               row &&
@@ -196,7 +203,7 @@ export default function DashboardWorkflowPipeline({
 
             const displayName =
               (step.agentId && catNameById[step.agentId]) ||
-              agent?.name ||
+              cat?.name ||
               (step.agentId
                 ? step.agentId.replace(/-/g, " ")
                 : `步骤 ${i + 1}`);
@@ -227,9 +234,9 @@ export default function DashboardWorkflowPipeline({
                   <div
                     className={`cat-avatar ${isCurrent && !failed ? "working" : ""}`}
                   >
-                    {agent ? (
+                    {catColors ? (
                       <CatSVG
-                        colors={agent.catColors}
+                        colors={catColors}
                         className="pipeline-cat"
                       />
                     ) : (
@@ -245,13 +252,13 @@ export default function DashboardWorkflowPipeline({
                   <div className="node-info">
                     <span
                       className="node-name"
-                      style={{ color: agent?.accent ?? "#5D4037" }}
+                      style={{ color: cat?.accent ?? "#5D4037" }}
                     >
                       {displayName}
                     </span>
-                    {agent?.role ? (
+                    {cat?.role ? (
                       <span className="node-skill inline-flex items-center gap-1">
-                        {agent.role}
+                        {cat.role}
                       </span>
                     ) : null}
                   </div>
@@ -295,7 +302,7 @@ export default function DashboardWorkflowPipeline({
                     </div>
                   ) : null}
 
-                  {!okDone && !failed && agent ? (
+                  {!okDone && !failed && cat ? (
                     <div className="node-io">
                       <span className="io-tag io-in">text</span>
                       <span className="io-arrow">→</span>
