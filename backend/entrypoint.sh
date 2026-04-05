@@ -76,9 +76,17 @@ if [ $MIGRATE_EXIT -ne 0 ]; then
   npx prisma migrate deploy 2>&1
   MIGRATE_EXIT2=$?
   if [ $MIGRATE_EXIT2 -ne 0 ]; then
-    echo "⚠️  prisma migrate deploy still failed, attempting db push as last resort..."
-    npx prisma db push --accept-data-loss 2>&1 || true
-    echo "⚠️  Database schema synced via db push (migration history may be inconsistent)"
+    echo "🔴 prisma migrate deploy still failed after baseline!"
+    echo "🔴 NOT running 'db push --accept-data-loss' to protect user data."
+    echo "🔴 Attempting safe 'db push' without data loss flag..."
+    npx prisma db push 2>&1
+    PUSH_EXIT=$?
+    if [ $PUSH_EXIT -ne 0 ]; then
+      echo "🔴 db push also failed. Starting server anyway — schema may be outdated."
+      echo "🔴 Please manually run: npx prisma migrate deploy"
+    else
+      echo "✅ Database schema synced via safe db push"
+    fi
   else
     echo "✅ Database migrations complete (after baseline)"
   fi
