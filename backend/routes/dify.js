@@ -346,6 +346,194 @@ router.get('/models', (_req, res) => {
   res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'qwen' });
 });
 
+// =====================================================================
+// POST /api/dify/skill/stream — 流式 SSE 版 AI Skill 调用
+// =====================================================================
+router.post('/skill/stream', optionalAuth, async (req, res) => {
+  // SSE 头
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const heartbeat = setInterval(() => {
+    try { res.write(':heartbeat\n\n'); } catch { /* closed */ }
+  }, 8000);
+
+  req.on('close', () => clearInterval(heartbeat));
+
+  function sendSSE(event, data) {
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch { /* closed */ }
+  }
+
+  function endSSE() {
+    clearInterval(heartbeat);
+    try { res.end(); } catch { /* closed */ }
+  }
+
+  try {
+    const { taskId, text, model, teamId, catId } = req.body;
+    if (!taskId || !text) {
+      sendSSE('error', { error: 'taskId and text are required' });
+      return endSSE();
+    }
+
+    // 配额检查
+    if (req.userId) {
+      const u = await prisma.user.findUnique({ where: { id: req.userId }, select: { aiUsed: true, aiQuota: true } });
+      if (u && u.aiUsed >= u.aiQuota) {
+        sendSSE('error', { error: 'AI 额度已用完', aiUsed: u.aiUsed, aiQuota: u.aiQuota });
+        return endSSE();
+      }
+    }
+
+    const systemPrompt = SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
+    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
+
+    const TASK_MAX_TOKENS = {
+      'workflow-gen': 8192, 'mece-analysis': 8192, 'scamper-creative': 8192,
+      'six-hats': 8192, 'generate-outline': 8192, 'content-review': 8192,
+      'recruit-cat': 8192, 'team-review': 8192, 'cat-training': 8192,
+    };
+    const maxTokens = TASK_MAX_TOKENS[taskId] || 4096;
+
+    console.log(`[ai/skill/stream] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}`);
+
+    if (selectedModel === 'qwen') {
+      // --- Qwen Streaming ---
+      const apiKey = process.env.QWEN_API_KEY;
+      if (!apiKey) {
+        sendSSE('error', { error: 'QWEN_API_KEY not set' });
+        return endSSE();
+      }
+      const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+      const qwenModel = process.env.QWEN_MODEL || 'qwen-plus';
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120000);
+
+      try {
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: qwenModel,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: text },
+            ],
+            max_tokens: maxTokens,
+            temperature: 0.7,
+            stream: true,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          sendSSE('error', { error: `Qwen API ${response.status}: ${errText.slice(0, 200)}` });
+          return endSSE();
+        }
+
+        let fullAnswer = '';
+        const reader = response.body;
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        for await (const chunk of reader) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (!trimmed.startsWith('data: ')) continue;
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json.choices?.[0]?.delta?.content || '';
+              if (delta) {
+                fullAnswer += delta;
+                sendSSE('chunk', { text: delta });
+              }
+            } catch { /* skip malformed */ }
+          }
+        }
+
+        clearTimeout(timeout);
+
+        // 记录 AI 用量
+        const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
+        sendSSE('done', {
+          answer: fullAnswer,
+          model: selectedModel,
+          ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+        });
+      } catch (err) {
+        clearTimeout(timeout);
+        const msg = err.name === 'AbortError' ? '请求超时' : (err.message || String(err));
+        sendSSE('error', { error: msg });
+      }
+    } else {
+      // --- Gemini Streaming ---
+      const GoogleGenAI = await getGoogleGenAI();
+      if (!GoogleGenAI) {
+        sendSSE('error', { error: '@google/genai module not available' });
+        return endSSE();
+      }
+      const geminiApiKey = process.env.GEMINI_API_KEY;
+      if (!geminiApiKey) {
+        sendSSE('error', { error: 'GEMINI_API_KEY not set' });
+        return endSSE();
+      }
+
+      try {
+        const ai = await createGeminiClient(geminiApiKey);
+        const stream = await ai.models.generateContentStream({
+          model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+          contents: text,
+          config: {
+            systemInstruction: systemPrompt,
+            maxOutputTokens: maxTokens,
+            temperature: 0.7,
+          },
+        });
+
+        let fullAnswer = '';
+        for await (const chunk of stream) {
+          const delta = chunk.text || '';
+          if (delta) {
+            fullAnswer += delta;
+            sendSSE('chunk', { text: delta });
+          }
+        }
+
+        const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
+        sendSSE('done', {
+          answer: fullAnswer,
+          model: selectedModel,
+          ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+        });
+      } catch (err) {
+        const msg = err.message || String(err);
+        sendSSE('error', { error: msg });
+      }
+    }
+
+    endSSE();
+  } catch (err) {
+    console.error('[ai/skill/stream] Error:', err);
+    sendSSE('error', { error: err.message || 'Stream error' });
+    endSSE();
+  }
+});
+
 router.post('/skill', optionalAuth, async (req, res) => {
   try {
     const { taskId, text, model, teamId, catId } = req.body;

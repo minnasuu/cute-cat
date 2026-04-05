@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { apiClient } from "../../utils/apiClient";
 import CatLogo from "../../components/CatLogo";
@@ -118,6 +118,8 @@ function FeatureCard({
 
 const DashboardPage: React.FC = () => {
   const { user, logout } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialRunId = searchParams.get("runId");
   const [teamId, setTeamId] = useState<string | null>(null);
   const [workbench, setWorkbench] = useState<WorkbenchPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,6 +137,8 @@ const DashboardPage: React.FC = () => {
   const [splitLeftPct, setSplitLeftPct] = useState(SPLIT_LEFT_DEFAULT_PCT);
   /** 递增以使本轮 run 匹配 useMemo 刷新 */
   const [sessionEpoch, setSessionEpoch] = useState(0);
+  /** 从历史记录跳转过来时指定的 runId */
+  const [historyRunId, setHistoryRunId] = useState<string | null>(initialRunId);
   const sessionStartedAtRef = useRef(0);
   const mainRef = useRef<HTMLElement | null>(null);
   const splitDragActiveRef = useRef(false);
@@ -210,6 +214,20 @@ const DashboardPage: React.FC = () => {
     loadWorkbench();
   }, [loadWorkbench]);
 
+  // 从历史记录跳转过来：workbench 就绪后，自动选中对应工作流并进入分栏模式
+  useEffect(() => {
+    if (!historyRunId || !workbench?.runs?.length) return;
+    const targetRun = workbench.runs.find((r) => r.id === historyRunId);
+    if (!targetRun) return;
+    // 选中该 run 所属的工作流
+    if (targetRun.workflowId) {
+      setSelectedWorkflowId(targetRun.workflowId);
+    }
+    setSplitMode(true);
+    // 清除 URL 参数，避免刷新后重复触发
+    setSearchParams({}, { replace: true });
+  }, [historyRunId, workbench, setSearchParams]);
+
   useEffect(() => {
     if (!splitMode) return;
 
@@ -241,7 +259,12 @@ const DashboardPage: React.FC = () => {
   }, [splitMode]);
 
   const displayRun: WorkflowRun | null = useMemo(() => {
-    if (!workbench?.runs?.length || !selectedWorkflowId) return null;
+    if (!workbench?.runs?.length) return null;
+    // 从历史记录跳转进来：按 runId 精确匹配
+    if (historyRunId) {
+      return workbench.runs.find((r) => r.id === historyRunId) ?? null;
+    }
+    if (!selectedWorkflowId) return null;
     const list = workbench.runs.filter(
       (r) => r.workflowId === selectedWorkflowId,
     );
@@ -252,11 +275,12 @@ const DashboardPage: React.FC = () => {
     return (
       list.find((r) => new Date(r.startedAt).getTime() >= t0 - 15_000) ?? null
     );
-  }, [workbench, selectedWorkflowId, splitMode, sessionEpoch]);
+  }, [workbench, selectedWorkflowId, splitMode, sessionEpoch, historyRunId]);
 
   const runSelected = async () => {
     const wfId = selectedWorkflowId;
     if (!wfId) return;
+    setHistoryRunId(null); // 清除历史查看态
     sessionStartedAtRef.current = Date.now();
     setSessionEpoch((e) => e + 1);
     setSplitMode(true);
@@ -546,7 +570,7 @@ const DashboardPage: React.FC = () => {
                       (w) => w.id === selectedWorkflowId,
                     )?.name ?? "")
               }
-              userPrompt={userInput}
+              userPrompt={userInput.trim() || displayRun?.workflowName || ""}
               displayRun={displayRun}
               isSubmitting={isSubmitting}
               waitingForRunRecord={

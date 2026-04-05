@@ -394,6 +394,13 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
           catName: agent?.name,
           catRole: agent?.role,
           workflowName: activeWorkflow?.name,
+          onChunk: (_chunk, accumulated) => {
+            // 流式更新当前步骤的对话气泡
+            const preview = accumulated.length > 60
+              ? accumulated.slice(accumulated.length - 60)
+              : accumulated;
+            setCurrentDialog(preview + '▍');
+          },
         })
       : Promise.resolve<AgentResult>({
           success: true,

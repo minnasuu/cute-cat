@@ -1,10 +1,10 @@
 import type { AgentContext, AgentResult } from './types';
-import { callDifySkill } from '../utils/backendClient';
+import { callDifySkillStream } from '../utils/backendClient';
 
 /**
  * Agent 执行框架：
  * - extractUpstreamText: 从 ctx.input 提取上游文本
- * - runWithAI: 真实 AI 调用（直调 callDifySkill + 重试 + 超时）
+ * - runWithAI: 真实 AI 流式调用（callDifySkillStream + 重试 + 超时）
  */
 
 /**
@@ -15,7 +15,7 @@ export function extractUpstreamText(ctx: AgentContext): string {
 }
 
 /**
- * 真实 AI 调用辅助
+ * 真实 AI 流式调用辅助
  * @param agentId 猫咪 agentId
  * @param ctx AgentContext
  * @param systemPrompt 系统提示词
@@ -25,7 +25,10 @@ export async function runWithAI(
   agentId: string,
   ctx: AgentContext,
   systemPrompt: string,
-  options: { _resultType?: string } = {},
+  options: {
+    _resultType?: string;
+    onChunk?: (chunk: string, accumulated: string) => void;
+  } = {},
 ): Promise<AgentResult> {
   const upstreamText = extractUpstreamText(ctx);
 
@@ -37,13 +40,18 @@ export async function runWithAI(
     : upstreamText || '请执行任务';
 
   const MAX_RETRIES = 2;
-  const TIMEOUT_MS = 60_000;
+  const TIMEOUT_MS = 120_000;
 
   let lastResult!: AgentResult;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const resultPromise = callDifySkill('ai-chat', prompt, 'qwen');
+      const resultPromise = callDifySkillStream(
+        'ai-chat',
+        prompt,
+        'qwen',
+        options.onChunk,
+      );
 
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('请求超时')), TIMEOUT_MS)

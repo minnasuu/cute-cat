@@ -1,6 +1,6 @@
 import type { AgentContext, AgentResult } from './types';
 import { extractUpstreamText } from './_framework';
-import { callDifySkill } from '../utils/backendClient';
+import { callDifySkillStream } from '../utils/backendClient';
 import { listVibeStyleLibLibrary } from '../pages/VibeStyleLib/vibeStyleLibApi';
 
 /**
@@ -92,8 +92,8 @@ ${styleCatalog}
     // 4. 调用 AI 进行风格匹配（直接调用 callDifySkill，不经过 primitive）
     const prompt = `${systemPrompt}\n\n---\n\n${upstreamText || '请为一个通用企业官网选择合适的视觉风格'}`;
 
-    const TIMEOUT_MS = 60_000;
-    const resultPromise = callDifySkill('ai-chat', prompt, 'qwen');
+    const TIMEOUT_MS = 120_000;
+    const resultPromise = callDifySkillStream('ai-chat', prompt, 'qwen', ctx.onChunk);
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('请求超时')), TIMEOUT_MS)
     );

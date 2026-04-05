@@ -12,6 +12,8 @@ export interface AgentContext {
   catRole?: string;
   /** 工作流名称 */
   workflowName?: string;
+  /** 流式回调：每收到一块文本时触发 */
+  onChunk?: (chunk: string, accumulated: string) => void;
 }
 
 /** Agent 执行结果 */

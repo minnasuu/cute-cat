@@ -14,5 +14,7 @@ const SYSTEM_PROMPT = `你是世界顶尖的交互设计师。
 用简洁清晰的中文输出 Markdown，结构化呈现。`;
 
 export default async function runUxDesigner(ctx: AgentContext): Promise<AgentResult> {
-  return runWithAI('ux-designer', ctx, SYSTEM_PROMPT);
+  return runWithAI('ux-designer', ctx, SYSTEM_PROMPT, {
+    onChunk: ctx.onChunk,
+  });
 }

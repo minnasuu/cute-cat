@@ -502,6 +502,12 @@ const TeamDetailPage: React.FC = () => {
             catName: cat?.name,
             catRole: cat?.role,
             workflowName: executingWorkflow?.name,
+            onChunk: (_chunk, accumulated) => {
+              const preview = accumulated.length > 60
+                ? accumulated.slice(accumulated.length - 60)
+                : accumulated;
+              setCurrentDialog(preview + '▍');
+            },
           })
         : Promise.resolve<AgentResult>({
             success: true,

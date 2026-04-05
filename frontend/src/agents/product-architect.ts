@@ -14,7 +14,9 @@ const SYSTEM_PROMPT = `你是产品架构师，将用户输入需求转化为产
 - 节点字段：id（如"1","1-1"）、title、children（可选）`;
 
 export default async function runProductArchitect(ctx: AgentContext): Promise<AgentResult> {
-  const result = await runWithAI('product-architect', ctx, SYSTEM_PROMPT);
+  const result = await runWithAI('product-architect', ctx, SYSTEM_PROMPT, {
+    onChunk: ctx.onChunk,
+  });
 
   // 清理 markdown 包裹
   if (result.success && result.data) {

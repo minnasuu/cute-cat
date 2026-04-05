@@ -272,6 +272,97 @@ export const fetchAIModels = async (): Promise<{ models: AIModelInfo[]; default:
   }
 };
 
+/**
+ * 流式 AI 调用：通过 SSE 逐块返回 AI 生成内容
+ * @param onChunk 每收到一块文本时的回调
+ * @returns 最终完整结果
+ */
+export const callDifySkillStream = async (
+  taskId: string,
+  text: string,
+  model?: string,
+  onChunk?: (chunk: string, accumulated: string) => void,
+): Promise<DifySkillResponse> => {
+  const backendUrl = getBackendUrl();
+  const url = `${backendUrl}/api/dify/skill/stream`;
+  const selectedModel = model || _currentAIModel;
+
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('accessToken');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ taskId, text, model: selectedModel }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      return { answer: '', error: `HTTP ${response.status}: ${errText.slice(0, 200)}` };
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { answer: '', error: 'ReadableStream not supported' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullAnswer = '';
+    let finalData: DifySkillResponse | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      let currentEvent = '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          currentEvent = '';
+          continue;
+        }
+        if (trimmed.startsWith(':')) continue; // heartbeat
+        if (trimmed.startsWith('event: ')) {
+          currentEvent = trimmed.slice(7).trim();
+          continue;
+        }
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            if (currentEvent === 'chunk' && data.text) {
+              fullAnswer += data.text;
+              onChunk?.(data.text, fullAnswer);
+            } else if (currentEvent === 'done') {
+              finalData = {
+                answer: data.answer || fullAnswer,
+                aiUsed: data.aiUsed,
+                aiQuota: data.aiQuota,
+              };
+              if (finalData.aiUsed !== undefined && _onAiUsageUpdate) {
+                _onAiUsageUpdate(finalData.aiUsed, finalData.aiQuota);
+              }
+            } else if (currentEvent === 'error') {
+              return { answer: fullAnswer, error: data.error, aiUsed: data.aiUsed, aiQuota: data.aiQuota };
+            }
+          } catch { /* skip malformed JSON */ }
+        }
+      }
+    }
+
+    return finalData || { answer: fullAnswer };
+  } catch (error) {
+    console.error(`Error streaming AI skill [${taskId}] (model=${selectedModel}):`, error);
+    return { answer: '', error: String(error) };
+  }
+};
+
 export const callDifySkill = async (taskId: string, text: string, model?: string): Promise<DifySkillResponse> => {
   const backendUrl = getBackendUrl();
   const url = `${backendUrl}/api/dify/skill`;

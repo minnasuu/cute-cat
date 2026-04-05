@@ -189,6 +189,22 @@ router.get('/team/:teamId/runs', async (req, res) => {
   }
 });
 
+// ======================== 删除执行记录 ========================
+router.delete('/runs/:runId', async (req, res) => {
+  try {
+    const run = await prisma.workflowRun.findUnique({ where: { id: req.params.runId } });
+    if (!run) return res.status(404).json({ error: '记录不存在' });
+    const team = await verifyTeamOwner(run.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '无权访问' });
+
+    await prisma.workflowRun.delete({ where: { id: req.params.runId } });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[workflows] delete run error:', err);
+    res.status(500).json({ error: '删除执行记录失败' });
+  }
+});
+
 // ======================== 更新执行记录 ========================
 router.put('/runs/:runId', async (req, res) => {
   try {
