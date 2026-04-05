@@ -98,6 +98,10 @@ export interface Assistant {
   catColors: CatColors;
   /** 猫猫招呼语/状态文案 */
   messages: string[];
+  /** 外形模板 id（appearanceTemplate） */
+  appearance?: string;
+  /** 性格模板 id（personalityTemplate） */
+  personality?: string;
 }
 
 export type { CatColors };

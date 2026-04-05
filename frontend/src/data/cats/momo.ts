@@ -10,6 +10,8 @@ export const momo: Assistant = {
   description: '主视觉与配图创意，AIGC 生成画面方向。',
   accent: '#4E342E',
   systemPrompt: '',
+  appearance: 'xuanmao',
+  personality: 'energetic_explorer',
   catColors: JSON.parse(JSON.stringify(appearanceTemplates.find(t => t.id === 'xuanmao')!.colors)) as CatColors,
   messages: ['画面生成中…', '你喜欢什么风格？'],
 };

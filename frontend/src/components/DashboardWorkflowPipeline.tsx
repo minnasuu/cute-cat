@@ -179,16 +179,9 @@ export default function DashboardWorkflowPipeline({
   const showWaitingFooter = runSteps.length === 0 && running;
 
   return (
-    <div className="execution-stage dashboard-workflow-pipeline-embed">
-      <div className="stage-header">
-        <div className="stage-title">
-          <span className="stage-name">
-            {workflowName?.trim() || "工作流执行"}
-          </span>
-        </div>
-      </div>
+    <div className="h-full flex flex-col items-center justify-center">
 
-      <div className="stage-body">
+      <div className="stage-body scrollbar-hide">
         <div className="pipeline">
           {planSteps.map((step, i) => {
             const agent = step.agentId ? getAgent(step.agentId) : undefined;

@@ -9,6 +9,8 @@ export const alan: Assistant = {
   role: '交互设计师',
   description: '根据用户需求生成符合产品逻辑的交互流程图',
   accent: '#8DB889',
+  appearance: 'lanmao',
+  personality: 'classic_companion',
   catColors: JSON.parse(JSON.stringify(appearanceTemplates.find(t => t.id === 'lanmao')!.colors)) as CatColors,
   messages: ['交互中', '让我思考最重要的交互流程'],
 };

@@ -9,8 +9,17 @@ import { listVibeStyleLibLibrary } from '../pages/VibeStyleLib/vibeStyleLibApi';
  */
 export default async function runVisualDesigner(ctx: AgentContext): Promise<AgentResult> {
   try {
-    // 1. 获取灵感库数据
-    const libraryItems = await listVibeStyleLibLibrary();
+    // 1. 获取灵感库数据（加超时保护，避免 API 不可用时永久卡住）
+    let libraryItems: Awaited<ReturnType<typeof listVibeStyleLibLibrary>> = [];
+    try {
+      const libPromise = listVibeStyleLibLibrary();
+      const libTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('灵感库 API 超时')), 10_000)
+      );
+      libraryItems = await Promise.race([libPromise, libTimeout]);
+    } catch (libErr) {
+      console.warn('[visual-designer] 灵感库获取失败，使用空列表:', libErr instanceof Error ? libErr.message : libErr);
+    }
     
     // 灵感库为空时，使用默认风格（而不是中断流程）
     if (libraryItems.length === 0) {
@@ -54,8 +63,7 @@ export default async function runVisualDesigner(ctx: AgentContext): Promise<Agen
     const styleCatalog = libraryItems
       .map((item, idx) => {
         const desc = item.designSummary.styleDescription;
-        const tags = item.tags.join('、');
-        return `### 风格 ${idx + 1}${tags ? ` [${tags}]` : ''}\n${desc}`;
+        return `### 风格 ${idx + 1}\n${desc}`;
       })
       .join('\n\n');
 

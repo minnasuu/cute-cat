@@ -458,7 +458,7 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
           catTemplateId: cat?.templateId || '',
           catName: cat?.name || '',
         });
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (60s)')), 60000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (120s)')), 120000));
         result = await Promise.race([executePromise, timeoutPromise]);
       } catch (err) {
         result = { success: false, data: null, summary: err.message || '步骤执行异常', status: 'error' };

@@ -18,14 +18,17 @@ export const workflows: Workflow[] = [
       {
         stepId: 'wpb_ix',
         agentId: 'ux-designer',
+        inputFrom: 'wpb_arch',
       },
       {
         stepId: 'wpb_visual',
         agentId: 'visual-designer',
+        inputFrom: 'wpb_ix',
       },
       {
         stepId: 'wpb_fe',
         agentId: 'frontend-engineer',
+        inputFrom: 'wpb_visual',
       },
     ],
   },

@@ -57,11 +57,11 @@ const VISUAL_STYLES = [
 ];
 
 /**
- * 将所有风格拼成一个供 AI 选择的文本
+ * 将所有风格拼成一个供 AI 选择的文本（仅包含 styleDescription 级别的精简描述）
  */
 function getStyleCatalog() {
   return VISUAL_STYLES.map((s, i) =>
-    `[${i + 1}] ${s.name} (${s.id})\n关键词: ${s.keywords.join(', ')}\n视觉定义: ${s.prompt}`
+    `### 风格 ${i + 1}: ${s.name}\n${s.keywords.join('、')}风格。${s.prompt.split('。')[0]}。`
   ).join('\n\n');
 }
 

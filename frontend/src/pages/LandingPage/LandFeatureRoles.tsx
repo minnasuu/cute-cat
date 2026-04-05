@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import CatSVG from '../../components/CatSVG'
 import { appearanceTemplates } from '../../data/themes'
-import { presetCombos } from '../../data/cats'
+import { assistants } from '../../data/cats'
 import { personalityTemplates } from '../../data/personality'
 import { AppIcon } from '../../components/icons'
 
 export const LandFeatureRoles = () => {
   const [activePreset, setActivePreset] = useState(0)
-  const combo = presetCombos[activePreset]
+  const combo = assistants[activePreset]
   const appearance = appearanceTemplates.find(a => a.id === combo.appearance)!
   const personality = personalityTemplates.find(p => p.id === combo.personality)!
 
@@ -84,7 +84,7 @@ export const LandFeatureRoles = () => {
           <div className="flex-1 min-w-0">
             {/* Preset Tabs */}
             <div className="flex gap-3 mb-8">
-              {presetCombos.map((p, i) => {
+              {assistants.map((p, i) => {
                 const app = appearanceTemplates.find(a => a.id === p.appearance)!
                 return (
                   <button
