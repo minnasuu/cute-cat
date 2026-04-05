@@ -16,8 +16,6 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    networks:
-      - minna-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -56,8 +54,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - cucatopia-network
 
   frontend:
     build:
@@ -70,12 +66,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    networks:
-      - cucatopia-network
-
-networks:
-  minna-network:
-    driver: bridge
 
 volumes:
   postgres_data:
