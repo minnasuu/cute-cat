@@ -125,7 +125,10 @@ const DashboardPage: React.FC = () => {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
     null,
   );
-  const [executingId, setExecutingId] = useState<string | null>(null);
+  /** 提交 API 中（尚未返回）→ 显示"正在提交任务…" */
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  /** 提交后轮询执行进度中 → 显示流水线动画 */
+  const [pollingWfId, setPollingWfId] = useState<string | null>(null);
   /** 点击「开始创作」后进入左右分栏：左工作台、右画布 */
   const [splitMode, setSplitMode] = useState(false);
   /** lg+ 分栏时左侧宽度占主区域比例（%），最大 40% */
@@ -257,12 +260,17 @@ const DashboardPage: React.FC = () => {
     sessionStartedAtRef.current = Date.now();
     setSessionEpoch((e) => e + 1);
     setSplitMode(true);
-    setExecutingId(wfId);
+    setIsSubmitting(true);
     try {
+      // 1. 提交执行请求（后端异步执行，立即返回）
       await apiClient.post(`/api/workflows/${wfId}/execute`, {
         userInput: userInput.trim(),
       });
-      showToast("已收到，猫猫们开始接力啦");
+      // 提交成功 → 关闭"正在提交任务…"，进入轮询态显示流水线进度
+      setIsSubmitting(false);
+      setPollingWfId(wfId);
+
+      // 2. 轮询执行进度
       for (let i = 0; i < 48; i++) {
         const wb = await loadWorkbench({ quiet: true });
         if (!wb) break;
@@ -278,7 +286,8 @@ const DashboardPage: React.FC = () => {
     } catch {
       /* toast via apiClient */
     } finally {
-      setExecutingId(null);
+      setIsSubmitting(false);
+      setPollingWfId(null);
     }
   };
 
@@ -445,11 +454,11 @@ const DashboardPage: React.FC = () => {
                     ) : null}
                     <button
                       type="button"
-                      disabled={!selectedWorkflowId || !!executingId || loading || !userInput}
+                      disabled={!selectedWorkflowId || isSubmitting || !!pollingWfId || loading || !userInput}
                       onClick={runSelected}
                       className="ml-auto px-7 py-2.5 rounded-2xl bg-text-primary text-text-inverse text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
                     >
-                      {executingId ? "处理中…" : "开始创作"}
+                      {isSubmitting ? "提交中…" : pollingWfId ? "执行中…" : "开始创作"}
                     </button>
                   </div>
                 </div>
@@ -539,9 +548,9 @@ const DashboardPage: React.FC = () => {
               }
               userPrompt={userInput}
               displayRun={displayRun}
-              isSubmitting={!!executingId}
+              isSubmitting={isSubmitting}
               waitingForRunRecord={
-                splitMode && !displayRun && executingId === null
+                splitMode && !displayRun && !isSubmitting && !!pollingWfId
               }
               planSteps={planSteps}
               catNameById={catNameById}
