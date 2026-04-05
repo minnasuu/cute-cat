@@ -127,7 +127,7 @@ const TeamDetailPage: React.FC = () => {
         const idx = step.index ?? 0;
         resultsMap.set(idx, {
           success: step.success ?? true,
-          data: null,
+          data: { text: step.summary || '' },
           summary: step.summary || '',
           status: step.status || (step.success ? 'success' : 'error'),
         });
@@ -154,7 +154,7 @@ const TeamDetailPage: React.FC = () => {
         wf.steps.forEach((_: any, i: number) => {
           resultsMap.set(i, {
             success: !isFailed,
-            data: null,
+            data: { text: isFailed ? '执行失败（无详细记录）' : '执行完成（无详细记录）' },
             summary: isFailed ? '执行失败（无详细记录）' : '执行完成（无详细记录）',
             status: isFailed ? 'error' : 'success',
           });
@@ -497,16 +497,15 @@ const TeamDetailPage: React.FC = () => {
       const executePromise = handler
         ? handler.execute({
             agentId: step.agentId,
-            input: skillInput,
+            input: typeof skillInput === 'string' ? skillInput : JSON.stringify(skillInput ?? ''),
             timestamp: new Date().toISOString(),
-            catTemplateId: cat?.templateId,
             catName: cat?.name,
             catRole: cat?.role,
             workflowName: executingWorkflow?.name,
           })
         : Promise.resolve<AgentResult>({
             success: true,
-            data: null,
+            data: { text: skill?.mockResult ?? step.action ?? '执行完成' },
             summary: skill?.mockResult ?? step.action ?? "执行完成",
             status: "success",
           });
@@ -541,7 +540,7 @@ const TeamDetailPage: React.FC = () => {
           stepTimingsRef.current = next;
           return next;
         });
-        const errResult: AgentResult = { success: false, data: null, summary: '执行出错', status: 'error' };
+        const errResult: AgentResult = { success: false, data: { text: '执行出错' }, summary: '执行出错', status: 'error' };
         setStepResults(prev => {
           const next = new Map(prev);
           next.set(stepIdx, errResult);

@@ -20,6 +20,8 @@ export interface WorkflowStep {
   action?: string;
   /** 步骤参数配置 */
   params?: WorkflowStepParam[];
+  /** 数据来源：引用上游步骤的 stepId 或 agentId */
+  inputFrom?: string;
 }
 
 /** 生成步骤唯一 ID */

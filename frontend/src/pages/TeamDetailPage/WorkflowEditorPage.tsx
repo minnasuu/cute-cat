@@ -21,7 +21,7 @@ import { AppIcon } from '../../components/icons';
 import { Clock, MousePointer2 } from 'lucide-react';
 
 interface TeamCat {
-  id: string; name: string; role: string; catColors: any; accent: string; systemPrompt?: string;
+  id: string; name: string; role: string; catColors: any; accent: string; systemPrompt?: string; skills?: any[];
 }
 
 const WorkflowEditorPage: React.FC = () => {
