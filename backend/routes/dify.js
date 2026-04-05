@@ -576,14 +576,14 @@ function parseRSSItems(xml, source, limit) {
 
 const multer = require('multer');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 // multer 配置：存储到 uploads/vibe-snap/
 const vibeSnapStorage = multer.diskStorage({
   destination: path.join(__dirname, '..', 'uploads', 'vibe-snap'),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${uuidv4()}-${Date.now()}${ext}`);
+    cb(null, `${crypto.randomUUID()}-${Date.now()}${ext}`);
   },
 });
 const vibeSnapUpload = multer({

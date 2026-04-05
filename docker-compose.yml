@@ -6,15 +6,18 @@ name: cucatopiacom
 services:
   db:
     image: postgres:15
+    container_name: cucatopia-db
     restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: cute_cat
+      POSTGRES_DB: cucatopiacom
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    networks:
+      - minna-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -25,9 +28,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: cucatopia-backend
     restart: always
     ports:
       - "8002:8002"
+    volumes:
+      # 持久化上传的图片文件
+      - ./backend/uploads:/uploads
     environment:
       PORT: 8002
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/cute_cat
@@ -49,16 +56,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - cucatopia-network
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    container_name: cucatopia-frontend
     restart: always
     ports:
       - "4000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    networks:
+      - cucatopia-network
+
+networks:
+  minna-network:
+    driver: bridge
 
 volumes:
   postgres_data:

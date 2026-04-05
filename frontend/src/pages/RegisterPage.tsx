@@ -4,7 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../utils/apiClient';
 import CatLogo from '../components/CatLogo';
 import { showToast } from '../components/Toast';
-import { AppIcon } from '../components/icons';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -71,26 +70,20 @@ const RegisterPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-secondary-50 via-surface to-primary-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-xl">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-surface shadow-lg mb-4">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-secondary-100 mb-3">
             <CatLogo size={48} />
           </div>
-          <h1 className="text-3xl font-bold text-text-primary">加入 CuCaTopia</h1>
-          <p className="text-text-secondary mt-1">创建你的 AI 猫猫团队</p>
         </div>
 
         {/* Form */}
-        <div className="bg-surface rounded-2xl shadow-xl p-8 border border-border">
-          <h2 className="text-xl font-semibold text-text-primary mb-6">注册</h2>
+        <div className="bg-surface rounded-2xl p-8 border border-border-strong">
+          <h2 className="text-xl text-center font-semibold text-text-primary mb-6">注册</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <label className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 mb-1">
-                <AppIcon symbol="Key" size={16} className="text-amber-600" />
-                内测码
-              </label>
               <input
                 type="text"
                 value={betaCode}
@@ -99,7 +92,6 @@ const RegisterPage: React.FC = () => {
                 required
                 className="w-full px-4 py-3 rounded-xl border border-amber-300 bg-white focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all outline-none font-mono tracking-widest text-center text-lg"
               />
-              <p className="text-xs text-amber-600 mt-1.5">当前为内测阶段，需要邀请码才能注册</p>
             </div>
 
             <div>
@@ -114,7 +106,8 @@ const RegisterPage: React.FC = () => {
               />
             </div>
 
-            <div>
+            <div className="flex gap-2">
+              <div className='flex-1'>
               <label className="block text-sm font-medium text-text-secondary mb-1">邮箱</label>
               <input
                 type="email"
@@ -126,9 +119,9 @@ const RegisterPage: React.FC = () => {
               />
             </div>
 
-            <div>
+            <div className='flex-1'>
               <label className="block text-sm font-medium text-text-secondary mb-1">验证码</label>
-              <div className="flex gap-2">
+              <div className="relative flex gap-2">
                 <input
                   type="text"
                   value={code}
@@ -142,14 +135,16 @@ const RegisterPage: React.FC = () => {
                   type="button"
                   onClick={handleSendCode}
                   disabled={codeLoading || countdown > 0}
-                  className="px-4 py-3 bg-secondary-100 text-secondary-700 font-medium rounded-xl hover:bg-secondary-200 transition-all disabled:opacity-50 whitespace-nowrap text-sm"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-secondary-100 text-secondary-700 font-medium rounded-lg cursor-pointer hover:bg-secondary-200 transition-all disabled:opacity-50 whitespace-nowrap text-sm"
                 >
                   {codeLoading ? '...' : countdown > 0 ? `${countdown}s` : codeSent ? '重发' : '获取验证码'}
                 </button>
               </div>
             </div>
+            </div>
 
-            <div>
+            <div className="flex gap-2">
+              <div className='flex-1'>
               <label className="block text-sm font-medium text-text-secondary mb-1">密码</label>
               <div className="relative">
                 <input
@@ -171,7 +166,7 @@ const RegisterPage: React.FC = () => {
               </div>
             </div>
 
-            <div>
+            <div className='flex-1'>
               <label className="block text-sm font-medium text-text-secondary mb-1">确认密码</label>
               <div className="relative">
                 <input
@@ -195,11 +190,12 @@ const RegisterPage: React.FC = () => {
                 <p className="text-xs text-red-500 mt-1">两次输入的密码不一致</p>
               )}
             </div>
+            </div>
 
             <button
               type="submit"
               disabled={loading || (!!confirmPassword && confirmPassword !== password)}
-              className="w-full py-3 bg-gradient-to-r from-secondary-500 to-secondary-600 text-text-inverse font-medium rounded-xl hover:from-secondary-600 hover:to-secondary-700 transition-all shadow-lg shadow-secondary-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              className="w-full py-3 bg-gradient-to-r from-secondary-500 to-secondary-600 text-text-inverse font-medium rounded-xl hover:from-secondary-600 hover:to-secondary-700 transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               {loading ? '注册中...' : '加入内测'}
             </button>
@@ -212,11 +208,6 @@ const RegisterPage: React.FC = () => {
             </div>
           </div>
         </div>
-
-        <p className="text-center text-xs text-text-tertiary mt-6 flex items-center justify-center gap-1.5">
-          <AppIcon symbol="FlaskConical" size={14} className="text-text-tertiary shrink-0" />
-          内测阶段 · 免费体验全部功能
-        </p>
       </div>
     </div>
   );
