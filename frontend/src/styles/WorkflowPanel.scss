@@ -1653,3 +1653,35 @@
   }
 }
 
+// --- Dashboard ResultCanvas 内嵌：复用执行舞台样式，避免 80vh 全屏尺寸 ---
+.dashboard-workflow-pipeline-embed.execution-stage {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  animation: none;
+  background: #fffcf9;
+
+  .stage-header {
+    padding: 12px 16px;
+  }
+
+  .stage-body {
+    padding: 20px 16px;
+    padding-top: 64px;
+    min-height: 260px;
+    align-items: flex-start;
+  }
+
+  .stage-footer {
+    padding: 12px 16px;
+    min-height: 52px;
+  }
+
+  .pipeline-node {
+    height: auto;
+    min-height: 0;
+  }
+}
+

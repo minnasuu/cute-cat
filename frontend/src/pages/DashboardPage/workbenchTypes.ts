@@ -1,5 +1,13 @@
 /** 与 GET /api/teams/workbench 对齐的片段类型，供工作台与子页复用 */
 
+/** 工作流计划中的一步（与 workflow JSON steps 对齐） */
+export type PlanStep = {
+  agentId?: string;
+  skillId?: string;
+  action?: string;
+  stepId?: string;
+};
+
 export interface TeamCat {
   id: string;
   name: string;

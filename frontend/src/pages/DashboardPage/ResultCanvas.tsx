@@ -1,13 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { CheckCircle2, ChevronRight, Loader2, XCircle } from "lucide-react";
-import type { WorkflowRun, WorkflowRunStep } from "./workbenchTypes";
+import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
+import type { PlanStep, WorkflowRun, WorkflowRunStep } from "./workbenchTypes";
 
-export type PlanStep = {
-  agentId?: string;
-  skillId?: string;
-  action?: string;
-  stepId?: string;
-};
+export type { PlanStep } from "./workbenchTypes";
 
 function normalizeSteps(raw: unknown): WorkflowRunStep[] {
   if (!raw) return [];
@@ -16,9 +12,7 @@ function normalizeSteps(raw: unknown): WorkflowRunStep[] {
 }
 
 function sortedRunSteps(steps: WorkflowRunStep[]): WorkflowRunStep[] {
-  return [...steps].sort(
-    (a, b) => (a.index ?? 0) - (b.index ?? 0),
-  );
+  return [...steps].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
 }
 
 function labelForPlanStep(
@@ -33,153 +27,6 @@ function labelForPlanStep(
     return step.agentId.replace(/-/g, " ");
   }
   return `步骤 ${i + 1}`;
-}
-
-/** 执行中：可视化猫咪接力流水线（WorkflowPanel 风格） */
-function CatExecutionFlow({
-  planSteps,
-  catNameById,
-  running,
-  steps,
-}: {
-  planSteps: PlanStep[];
-  catNameById: Record<string, string>;
-  running: boolean;
-  steps: WorkflowRunStep[];
-}) {
-  const [pulseIdx, setPulseIdx] = useState(0);
-
-  useEffect(() => {
-    if (!running || planSteps.length === 0) return;
-    setPulseIdx(0);
-    const t = window.setInterval(() => {
-      setPulseIdx((i) => (i + 1) % planSteps.length);
-    }, 2000);
-    return () => window.clearInterval(t);
-  }, [running, planSteps.length]);
-
-  if (planSteps.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 py-10">
-        <div className="flex gap-3 text-3xl" aria-hidden>
-          <span className="animate-bounce" style={{ animationDelay: "0ms" }}>
-            🐱
-          </span>
-          <span className="animate-bounce" style={{ animationDelay: "150ms" }}>
-            🐱
-          </span>
-          <span className="animate-bounce" style={{ animationDelay: "300ms" }}>
-            🐱
-          </span>
-        </div>
-        <p className="text-sm font-bold text-text-secondary text-center px-4">
-          猫猫正在执行任务，请稍候…
-        </p>
-      </div>
-    );
-  }
-
-  // 计算每个步骤的完成状态
-  const completedSteps = steps.filter(s => s.success !== false && s.status !== 'error').map(s => s.index ?? 0);
-
-  return (
-    <div className="rounded-2xl border border-primary-200/70 bg-primary-50/40 px-4 py-6">
-      <p className="text-center text-[10px] font-black uppercase tracking-wider text-primary-800 mb-6">
-        猫咪执行流程
-      </p>
-      
-      {/* 流水线视图 */}
-      <div className="flex items-start justify-center gap-3 overflow-x-auto pb-2">
-        {planSteps.map((step, i) => {
-          const label = labelForPlanStep(step, i, catNameById);
-          const isCompleted = completedSteps.includes(i);
-          const isCurrent = running && pulseIdx === i;
-          const isPending = !isCompleted && !isCurrent;
-          
-          return (
-            <React.Fragment key={`${step.stepId ?? step.agentId ?? "s"}-${i}`}>
-              {/* 单个节点 */}
-              <div className="flex flex-col items-center gap-2 min-w-[90px]">
-                {/* 对话气泡 - 仅在执行中显示 */}
-                {isCurrent && (
-                  <div className="relative mb-1 px-3 py-1.5 rounded-lg bg-white border border-primary-200 shadow-sm animate-pulse">
-                    <span className="text-[10px] font-bold text-primary-700">执行中...</span>
-                    {/* 气泡尖角 */}
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white border-b border-r border-primary-200 rotate-45" />
-                  </div>
-                )}
-                
-                {/* 猫猫节点 */}
-                <div
-                  className={`relative flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all duration-300 ${
-                    isCurrent
-                      ? "border-primary-500 bg-white shadow-lg scale-105"
-                      : isCompleted
-                        ? "border-primary-300 bg-white/90"
-                        : "border-border bg-surface/60 opacity-70"
-                  }`}
-                >
-                  {/* 猫猫图标 */}
-                  <div className={`text-3xl transition-transform ${isCurrent ? "animate-bounce" : ""}`}>
-                    {isCurrent ? "🐾" : isCompleted ? "✅" : "🐱"}
-                  </div>
-                  
-                  {/* 名字 */}
-                  <span className="text-[11px] font-black text-text-primary text-center leading-tight">
-                    {label}
-                  </span>
-                  
-                  {/* 状态指示 */}
-                  {isCurrent && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <Loader2 className="w-3 h-3 text-primary-600 animate-spin" strokeWidth={2.5} />
-                      <span className="text-[9px] font-bold text-primary-600">运行中</span>
-                    </div>
-                  )}
-                  {isCompleted && (
-                    <span className="text-[9px] font-semibold text-primary-600 mt-1">已完成</span>
-                  )}
-                  {isPending && (
-                    <span className="text-[9px] font-semibold text-text-tertiary mt-1">等待中</span>
-                  )}
-                  
-                  {/* 进度条 - 仅当前执行步骤显示 */}
-                  {isCurrent && (
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary-100 rounded-b-2xl overflow-hidden">
-                      <div className="h-full bg-primary-500 animate-[progress_2s_ease-in-out_infinite]" />
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              {/* 箭头连线 */}
-              {i < planSteps.length - 1 && (
-                <div className="flex items-center pt-8">
-                  <ChevronRight
-                    className={`w-5 h-5 shrink-0 transition-colors ${
-                      isCompleted ? "text-primary-500" : "text-border"
-                    }`}
-                    strokeWidth={3}
-                  />
-                </div>
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
-      
-      <p className="text-center text-[11px] text-text-secondary font-medium mt-6">
-        流程按顺序接力，完成后将展示生成结果
-      </p>
-      
-      <style>{`
-        @keyframes progress {
-          0% { width: 0%; }
-          100% { width: 100%; }
-        }
-      `}</style>
-    </div>
-  );
 }
 
 export default function ResultCanvas({
@@ -214,18 +61,17 @@ export default function ResultCanvas({
 
   const resultHeadline = failed
     ? failedStep?.summary || "执行未全部成功"
-    : lastStep?.summary ||
-      (steps.length ? "已完成全部步骤" : "");
+    : lastStep?.summary || (steps.length ? "已完成全部步骤" : "");
 
   /** 检测最后一步是否为 HTML 页面类型 */
   const htmlPageData = useMemo(() => {
     if (!lastStep || failed) return null;
-    if (lastStep.resultType === 'html-page' && lastStep.resultData) {
+    if (lastStep.resultType === "html-page" && lastStep.resultData) {
       return lastStep.resultData;
     }
     // 兼容：summary 以 <!DOCTYPE 或 <html 开头
-    const s = (lastStep.summary || '').trim();
-    if (s.startsWith('<!DOCTYPE') || s.startsWith('<html')) return s;
+    const s = (lastStep.summary || "").trim();
+    if (s.startsWith("<!DOCTYPE") || s.startsWith("<html")) return s;
     return null;
   }, [lastStep, failed]);
 
@@ -246,7 +92,7 @@ export default function ResultCanvas({
 
       <header className="relative z-10 px-5 pt-5 pb-3 border-b border-border/80 bg-surface/80 backdrop-blur-sm">
         <h2 className="text-sm font-black tracking-tight text-text-primary">
-          创作画布
+          {userPrompt.trim()}
         </h2>
         <p className="text-[11px] text-text-tertiary font-semibold mt-0.5">
           {workflowName || "当前能力"}
@@ -254,56 +100,37 @@ export default function ResultCanvas({
       </header>
 
       <div className="relative z-10 flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        {userPrompt.trim() ? (
-          <section className="rounded-2xl border border-primary-200/80 bg-primary-50/50 px-3 py-2.5">
-            <p className="text-[10px] font-bold text-primary-800 uppercase tracking-wide mb-1">
-              本次需求
-            </p>
-            <p className="text-sm font-medium text-text-primary leading-relaxed whitespace-pre-wrap">
-              {userPrompt.trim()}
-            </p>
-          </section>
-        ) : null}
-
         {isSubmitting ? (
           <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
             <Loader2
               className="w-9 h-9 text-primary-500 animate-spin"
               strokeWidth={2}
             />
-            <p className="text-sm font-bold text-text-secondary">正在提交任务…</p>
+            <p className="text-sm font-bold text-text-secondary">
+              正在提交任务…
+            </p>
           </div>
         ) : null}
 
         {!isSubmitting && waitingForRunRecord && !displayRun ? (
-          <div className="space-y-4">
-            <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
-              <Loader2
-                className="w-10 h-10 text-primary-500 animate-spin"
-                strokeWidth={2}
-              />
-              <p className="text-sm font-bold text-text-secondary">
-                正在创建运行记录…
-              </p>
-            </div>
-            <CatExecutionFlow
-              planSteps={planSteps}
-              catNameById={catNameById}
-              running
-              steps={[]}
-            />
-          </div>
-        ) : null}
-
-        {/* 执行中：主区域只展示可视化流程，不展示步骤列表 */}
-        {!isSubmitting &&
-        displayRun &&
-        inProgress ? (
-          <CatExecutionFlow
+          <DashboardWorkflowPipeline
+            workflowName={workflowName}
             planSteps={planSteps}
             catNameById={catNameById}
             running
-            steps={steps}
+            runSteps={[]}
+            footerHint="正在创建运行记录…"
+          />
+        ) : null}
+
+        {/* 执行中：主区域只展示 WorkflowPanel 同款流水线动画 */}
+        {!isSubmitting && displayRun && inProgress ? (
+          <DashboardWorkflowPipeline
+            workflowName={workflowName || displayRun.workflowName}
+            planSteps={planSteps}
+            catNameById={catNameById}
+            running
+            runSteps={steps}
           />
         ) : null}
 
@@ -367,14 +194,9 @@ export default function ResultCanvas({
                     {steps.map((s, i) => {
                       const plan = planSteps[s.index ?? i];
                       const catLabel = plan
-                        ? labelForPlanStep(
-                            plan,
-                            s.index ?? i,
-                            catNameById,
-                          )
+                        ? labelForPlanStep(plan, s.index ?? i, catNameById)
                         : null;
-                      const ok =
-                        s.success !== false && s.status !== "error";
+                      const ok = s.success !== false && s.status !== "error";
                       const Icon = ok ? CheckCircle2 : XCircle;
                       return (
                         <li

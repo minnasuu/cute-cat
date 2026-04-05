@@ -40,14 +40,6 @@ export const workflows: Workflow[] = [
         inputFrom: 'wpb_arch',
         action:
           '（交互设计师·阿蓝）基于上一步网站架构，输出核心用户路径与交互说明：主要任务流、页面间跳转、关键页面上的组件级交互与空态/加载建议。Markdown。',
-        params: [
-          {
-            key: 'topic',
-            label: '补充说明',
-            type: 'text',
-            valueSource: 'upstream',
-          },
-        ],
       },
       {
         stepId: 'wpb_visual',
@@ -56,14 +48,6 @@ export const workflows: Workflow[] = [
         inputFrom: 'wpb_ix',
         action:
           '（视觉设计师·墨墨）基于架构与交互稿，从视觉 prompt 库中匹配最符合的视觉方向，输出：主色/辅色、字体气质、圆角与间距倾向、组件风格关键词。',
-        params: [
-          {
-            key: 'topic',
-            label: '补充说明',
-            type: 'text',
-            valueSource: 'upstream',
-          },
-        ],
       },
       {
         stepId: 'wpb_fe',
@@ -72,14 +56,6 @@ export const workflows: Workflow[] = [
         inputFrom: 'wpb_visual',
         action:
           '（前端工程师·琥珀）综合信息架构、交互与视觉方向，输出完整可运行的 HTML 单页代码（含内联 CSS），标注与架构各模块的对应关系。',
-        params: [
-          {
-            key: 'topic',
-            label: '补充说明',
-            type: 'text',
-            valueSource: 'upstream',
-          },
-        ],
       },
     ],
   },

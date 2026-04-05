@@ -186,6 +186,34 @@ export async function uploadVibeStyleLibImage(file: File): Promise<string> {
   return result.data.url;
 }
 
+/** 删除临时上传文件（解析失败、未保存离开提取器等）；静默忽略非 vibe-snap 路径 */
+export async function deleteVibeStyleLibUploadedImage(url: string): Promise<void> {
+  const u = url?.trim() ?? "";
+  if (!u.startsWith("/uploads/vibe-snap/")) return;
+
+  const response = await fetch(
+    `${API_BASE}/vibe-snap-upload?url=${encodeURIComponent(u)}`,
+    {
+      method: "DELETE",
+      headers: { ...getAuthHeaders() },
+    },
+  );
+
+  if (response.status === 400 || response.status === 404) {
+    return;
+  }
+
+  let result: ApiResponse<{ deleted?: boolean }>;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`删除临时文件失败（${response.status}）`);
+  }
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `删除临时文件失败（${response.status}）`);
+  }
+}
+
 export async function saveVibeStyleLibLibraryItem(
   draft: VibeStyleLibLibraryItem | Omit<VibeStyleLibLibraryItem, "id" | "createdAt">,
 ): Promise<VibeStyleLibLibraryItem> {

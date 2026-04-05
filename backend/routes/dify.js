@@ -651,6 +651,36 @@ router.post('/vibe-snap-upload', optionalAuth, (req, res) => {
   });
 });
 
+// DELETE /api/dify/vibe-snap-upload?url=/uploads/vibe-snap/xxx — 删除临时上传（解析失败或未保存离开提取器时由前端调用）
+router.delete('/vibe-snap-upload', optionalAuth, (req, res) => {
+  try {
+    const raw = req.query.url;
+    if (!raw || typeof raw !== 'string') {
+      return res.status(400).json({ success: false, error: '缺少 url 参数' });
+    }
+    const imageUrl = decodeURIComponent(raw.trim());
+    const rel = imageUrl.replace(/^\//, '');
+    if (!rel.startsWith('uploads/vibe-snap/')) {
+      return res.status(400).json({ success: false, error: '仅允许删除 vibe-snap 目录下的文件' });
+    }
+    const vibeDir = path.resolve(path.join(__dirname, '..', 'uploads', 'vibe-snap'));
+    const resolved = path.resolve(path.join(__dirname, '..', rel));
+    const vibeDirWithSep = vibeDir.endsWith(path.sep) ? vibeDir : `${vibeDir}${path.sep}`;
+    if (resolved !== vibeDir && !resolved.startsWith(vibeDirWithSep)) {
+      return res.status(400).json({ success: false, error: '非法路径' });
+    }
+    fs.unlink(resolved, (err) => {
+      if (err && err.code !== 'ENOENT') {
+        console.warn('[vibe-snap-upload] delete failed:', resolved, err.message);
+        return res.status(500).json({ success: false, error: '删除失败' });
+      }
+      res.json({ success: true, data: { deleted: true } });
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message || '删除失败' });
+  }
+});
+
 // POST /api/dify/vibe-snap-extract — AI 视觉风格分析
 // 使用 SSE 心跳防止 nginx 等反向代理 504 Gateway Timeout
 router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {

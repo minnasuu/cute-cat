@@ -9,6 +9,7 @@ import {
 import clsx from "clsx";
 import {
   deleteVibeStyleLibLibraryItem,
+  deleteVibeStyleLibUploadedImage,
   listVibeStyleLibLibrary,
   saveVibeStyleLibLibraryItem,
   uploadVibeStyleLibImage,
@@ -34,8 +35,8 @@ const ui = {
   page: "h-screen flex flex-col bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900",
   header: "shrink-0 border-b border-border bg-surface",
   navBtn:
-    "inline-flex items-center gap-2 rounded-none px-3 py-2 text-sm font-medium border border-transparent transition-colors",
-  navActive: "bg-primary-600 text-white border-primary-600",
+    "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium border border-transparent transition-colors",
+  navActive: "text-primary-600 bg-primary-100 border-primary-600",
   navIdle:
     "text-text-secondary hover:bg-primary-50/80 hover:text-primary-800 border-border",
   card: "border border-border bg-surface",
@@ -448,6 +449,8 @@ export const VibeStyleLib = () => {
   const [savingToLibrary, setSavingToLibrary] = useState(false);
   const [deletingDetail, setDeletingDetail] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 提取器内：已成功上传且解析完成、但尚未写入灵感库的服务端 URL；离开/失败时需删盘文件 */
+  const pendingExtractUploadUrlRef = useRef<string | null>(null);
 
   const extractorSaveKey = useMemo(() => {
     if (!extractorImage || !extractorResult) return "";
@@ -483,6 +486,29 @@ export const VibeStyleLib = () => {
     if (detailItem) setDetailTab("summary");
   }, [detailItem?.id]);
 
+  /** 离开「提取器」标签时：未保存到灵感库的临时上传从服务端删除 */
+  useEffect(() => {
+    if (mainTab === "extractor") return;
+    const url = pendingExtractUploadUrlRef.current;
+    pendingExtractUploadUrlRef.current = null;
+    if (url) {
+      void deleteVibeStyleLibUploadedImage(url).catch(() => {
+        /* 尽力清理，忽略网络错误 */
+      });
+    }
+  }, [mainTab]);
+
+  /** 页面卸载时清理未提交的临时文件 */
+  useEffect(() => {
+    return () => {
+      const url = pendingExtractUploadUrlRef.current;
+      pendingExtractUploadUrlRef.current = null;
+      if (url) {
+        void deleteVibeStyleLibUploadedImage(url).catch(() => {});
+      }
+    };
+  }, []);
+
   /** 调用 AI 分析。优先使用 imageUrl（后端从磁盘读文件），省去前端传大 base64 */
   const runExtract = useCallback(
     async (file: File, imageUrl?: string) => {
@@ -510,39 +536,66 @@ export const VibeStyleLib = () => {
   const addToLibrary = useCallback(
     async (file: File) => {
       const dataUrl = await dataUrlFromFile(file);
-      // 先上传图片获取 URL，再用 URL 调 AI 分析（后端从磁盘读文件，不传 base64）
-      const imageUrl = await uploadVibeStyleLibImage(file);
-      const data = await runExtract(file, imageUrl);
-      const draft = libraryItemFromExtract(imageUrl, data, user);
+      let serverUrl: string | null = null;
       try {
-        const saved = await saveVibeStyleLibLibraryItem(draft);
-        // 本地展示用原始 dataUrl 保证即时显示
-        setLibrary((prev) => [{ ...saved, imageUrl: dataUrl }, ...prev]);
-        setDetailItem({ ...saved, imageUrl: dataUrl });
-        return saved;
+        serverUrl = await uploadVibeStyleLibImage(file);
+        const data = await runExtract(file, serverUrl);
+        const draft = libraryItemFromExtract(serverUrl, data, user);
+        try {
+          const saved = await saveVibeStyleLibLibraryItem(draft);
+          // 本地展示用原始 dataUrl 保证即时显示
+          setLibrary((prev) => [{ ...saved, imageUrl: dataUrl }, ...prev]);
+          setDetailItem({ ...saved, imageUrl: dataUrl });
+          return saved;
+        } catch (e) {
+          await deleteVibeStyleLibUploadedImage(serverUrl);
+          const msg = e instanceof Error ? e.message : "云端保存失败";
+          setError(msg);
+          // 降级：本地用 dataUrl 展示（服务端临时文件已删，避免堆积）
+          const fallback = { ...draft, imageUrl: dataUrl };
+          setLibrary((prev) => [fallback, ...prev]);
+          setDetailItem(fallback);
+          return fallback;
+        }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "云端保存失败";
-        setError(msg);
-        // 降级：本地用 dataUrl 展示
-        const fallback = { ...draft, imageUrl: dataUrl };
-        setLibrary((prev) => [fallback, ...prev]);
-        setDetailItem(fallback);
-        return fallback;
+        if (serverUrl) {
+          await deleteVibeStyleLibUploadedImage(serverUrl).catch(() => {});
+        }
+        throw e;
       }
     },
-    [runExtract],
+    [runExtract, user],
   );
 
   const analyzeInExtractor = useCallback(
     async (file: File) => {
+      const prevPending = pendingExtractUploadUrlRef.current;
+      pendingExtractUploadUrlRef.current = null;
+      if (prevPending) {
+        await deleteVibeStyleLibUploadedImage(prevPending).catch(() => {});
+      }
+
       const dataUrl = await dataUrlFromFile(file);
       setExtractorImage(dataUrl);
+      setExtractorResult(null);
       setLastSavedExtractorKey(null);
-      // 先上传获取 URL，再用 URL 调 AI 分析
-      const imageUrl = await uploadVibeStyleLibImage(file);
-      const data = await runExtract(file, imageUrl);
-      setExtractorResult(data);
-      setResultTab("summary");
+      setError(null);
+
+      let uploadedUrl: string | null = null;
+      try {
+        uploadedUrl = await uploadVibeStyleLibImage(file);
+        const data = await runExtract(file, uploadedUrl);
+        pendingExtractUploadUrlRef.current = uploadedUrl;
+        setExtractorResult(data);
+        setResultTab("summary");
+      } catch {
+        if (uploadedUrl) {
+          await deleteVibeStyleLibUploadedImage(uploadedUrl).catch(() => {});
+        }
+        pendingExtractUploadUrlRef.current = null;
+        setExtractorImage(null);
+        setExtractorResult(null);
+      }
     },
     [runExtract],
   );
@@ -551,16 +604,22 @@ export const VibeStyleLib = () => {
     if (!extractorImage || !extractorResult) return;
     setSavingToLibrary(true);
     setError(null);
+    let imageUrlForAttempt: string | null = null;
     try {
-      // extractorImage 是 data URL，需要转成 File 上传
-      const resp = await fetch(extractorImage);
-      const blob = await resp.blob();
-      const ext = blob.type === "image/png" ? ".png" : ".jpg";
-      const file = new File([blob], `extractor${ext}`, { type: blob.type });
+      const pendingUrl = pendingExtractUploadUrlRef.current;
+      if (pendingUrl?.startsWith("/uploads/vibe-snap/")) {
+        imageUrlForAttempt = pendingUrl;
+      } else {
+        const resp = await fetch(extractorImage);
+        const blob = await resp.blob();
+        const ext = blob.type === "image/png" ? ".png" : ".jpg";
+        const file = new File([blob], `extractor${ext}`, { type: blob.type });
+        imageUrlForAttempt = await uploadVibeStyleLibImage(file);
+      }
 
-      const imageUrl = await uploadVibeStyleLibImage(file);
-      const draft = libraryItemFromExtract(imageUrl, extractorResult, user);
+      const draft = libraryItemFromExtract(imageUrlForAttempt, extractorResult, user);
       const saved = await saveVibeStyleLibLibraryItem(draft);
+      pendingExtractUploadUrlRef.current = null;
       setLibrary((prev) => [saved, ...prev]);
       setLastSavedExtractorKey(
         extractorSessionKey(saved.imageUrl, {
@@ -569,11 +628,15 @@ export const VibeStyleLib = () => {
         }),
       );
     } catch (e) {
+      if (imageUrlForAttempt?.startsWith("/uploads/vibe-snap/")) {
+        await deleteVibeStyleLibUploadedImage(imageUrlForAttempt).catch(() => {});
+      }
+      pendingExtractUploadUrlRef.current = null;
       setError(e instanceof Error ? e.message : "保存到服务器失败");
     } finally {
       setSavingToLibrary(false);
     }
-  }, [extractorImage, extractorResult]);
+  }, [extractorImage, extractorResult, user]);
 
   const handleFileChosen = useCallback(
     async (file: File | null) => {
@@ -647,6 +710,7 @@ export const VibeStyleLib = () => {
   }, [detailItem, deletingDetail, deleteLibraryItemById]);
 
   const openInExtractor = useCallback((item: VibeStyleLibLibraryItem) => {
+    pendingExtractUploadUrlRef.current = null;
     setExtractorImage(item.imageUrl);
     setExtractorResult({
       designSummary: item.designSummary,
@@ -681,7 +745,7 @@ export const VibeStyleLib = () => {
     <div className={ui.page}>
       <Navbar variant="sticky" />
       <div className="w-full mx-auto mt-4 flex justify-center">
-        <nav className="flex items-center gap-px sm:gap-0 sm:border sm:border-primary-200 sm:rounded-xl sm:overflow-hidden sm:bg-primary-50/40">
+        <nav className="flex items-center gap-px sm:gap-0 sm:rounded-xl sm:overflow-hidden overflow-hidden rounded-xl bg-gray-50 p-1">
           <button
             type="button"
             onClick={() => setMainTab("library")}
@@ -695,7 +759,7 @@ export const VibeStyleLib = () => {
               className={clsx(
                 "ml-1 flex h-5 min-w-[1.25rem] items-center justify-center border px-1.5 text-xs font-bold rounded-md",
                 mainTab === "library"
-                  ? "border-white/35 bg-white/15 text-white"
+                  ? "border-primary/35 bg-white/15 text-primary-600"
                   : "border-primary-300 bg-primary-100 text-primary-800",
               )}
             >
@@ -717,29 +781,35 @@ export const VibeStyleLib = () => {
 
       {error && (
         <div className="mx-auto w-full max-w-[1600px] px-6 pt-3 sm:px-10">
-          <div className="flex justify-between gap-4 border border-border-strong bg-surface-secondary px-4 py-2 text-sm text-text-primary rounded-lg">
-            <span>{error}</span>
-            <button
-              type="button"
-              className="shrink-0 text-primary-600 hover:text-primary-700 font-medium underline underline-offset-2"
-              onClick={() => setError(null)}
-            >
-              关闭
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 border border-border-strong bg-surface-secondary px-4 py-2 text-sm text-text-primary rounded-lg">
+            <span className="min-w-0 flex-1">{error}</span>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {mainTab === "extractor" ? (
+                <button
+                  type="button"
+                  className="text-primary-600 hover:text-primary-700 font-medium underline underline-offset-2"
+                  onClick={() => {
+                    setError(null);
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  重新上传
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="text-primary-600 hover:text-primary-700 font-medium underline underline-offset-2"
+                onClick={() => setError(null)}
+              >
+                关闭
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {mainTab === "library" && (
         <main className="mx-auto h-px w-full max-w-[1600px] flex-1 overflow-y-auto px-6 py-8 pb-20 sm:px-10">
-          <div className="mb-10">
-            <h1 className="text-2xl font-black tracking-tight text-primary-900">
-              通用灵感库
-            </h1>
-            <p className="mt-1 text-sm text-text-secondary">
-              通用的设计提取结果和提示词模版。新截图请在「提取器」上传；在灵感库也可直接粘贴图片。
-            </p>
-          </div>
 
           {library.length === 0 ? (
             <div

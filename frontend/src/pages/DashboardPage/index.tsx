@@ -29,6 +29,26 @@ const HERO_DESCRIPTION_DEFAULT = (
   <>点选能力卡片后，输入框前会出现当前模式标签；提交后由猫猫接力完成。</>
 );
 
+/** 分栏：左侧占比下限；上限 2/5（40%） */
+const SPLIT_LEFT_MIN_PCT = 22;
+const SPLIT_LEFT_MAX_PCT = 40;
+const SPLIT_LEFT_DEFAULT_PCT = 32;
+
+function useMinWidthLg() {
+  const q = "(min-width: 1024px)";
+  const [ok, setOk] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(q).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(q);
+    const fn = () => setOk(mq.matches);
+    fn();
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, []);
+  return ok;
+}
+
 /** 顶栏 Logo 右侧：聊天气泡式问候 */
 function GreetingBubble({ nickname }: { nickname?: string | null }) {
   const hour = new Date().getHours();
@@ -108,9 +128,14 @@ const DashboardPage: React.FC = () => {
   const [executingId, setExecutingId] = useState<string | null>(null);
   /** 点击「开始创作」后进入左右分栏：左工作台、右画布 */
   const [splitMode, setSplitMode] = useState(false);
+  /** lg+ 分栏时左侧宽度占主区域比例（%），最大 40% */
+  const [splitLeftPct, setSplitLeftPct] = useState(SPLIT_LEFT_DEFAULT_PCT);
   /** 递增以使本轮 run 匹配 useMemo 刷新 */
   const [sessionEpoch, setSessionEpoch] = useState(0);
   const sessionStartedAtRef = useRef(0);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const splitDragActiveRef = useRef(false);
+  const isLg = useMinWidthLg();
 
   /** 仅官方种子工作流，供能力卡片展示（不含团队自建流程） */
   const officialWorkflows = useMemo(
@@ -182,6 +207,36 @@ const DashboardPage: React.FC = () => {
     loadWorkbench();
   }, [loadWorkbench]);
 
+  useEffect(() => {
+    if (!splitMode) return;
+
+    const clampPct = (pct: number) =>
+      Math.min(SPLIT_LEFT_MAX_PCT, Math.max(SPLIT_LEFT_MIN_PCT, pct));
+
+    const onMove = (e: PointerEvent) => {
+      if (!splitDragActiveRef.current || !mainRef.current) return;
+      const rect = mainRef.current.getBoundingClientRect();
+      const raw = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplitLeftPct(clampPct(raw));
+    };
+
+    const endDrag = () => {
+      splitDragActiveRef.current = false;
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
+      endDrag();
+    };
+  }, [splitMode]);
+
   const displayRun: WorkflowRun | null = useMemo(() => {
     if (!workbench?.runs?.length || !selectedWorkflowId) return null;
     const list = workbench.runs.filter(
@@ -250,6 +305,7 @@ const DashboardPage: React.FC = () => {
       />
 
       <main
+        ref={mainRef}
         className={`w-full mx-auto flex-1 h-px flex flex-col ${
           splitMode
             ? "lg:flex-row lg:items-stretch lg:justify-start"
@@ -260,8 +316,17 @@ const DashboardPage: React.FC = () => {
         <div
           className={
             splitMode
-              ? "flex flex-col shrink-0 lg:w-[min(100%,22rem)] xl:w-[26rem] h-full lg:border-r border-border px-8"
+              ? "flex flex-col shrink-0 w-full h-full px-8 lg:min-w-0 lg:shrink-0"
               : "w-full h-full flex flex-col justify-center items-center"
+          }
+          style={
+            splitMode && isLg
+              ? {
+                  width: `${splitLeftPct}%`,
+                  maxWidth: `${SPLIT_LEFT_MAX_PCT}%`,
+                  flexShrink: 0,
+                }
+              : undefined
           }
         >
           <section
@@ -429,6 +494,39 @@ const DashboardPage: React.FC = () => {
           </section>
         </div>
 
+        {splitMode && isLg ? (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin={SPLIT_LEFT_MIN_PCT}
+            aria-valuemax={SPLIT_LEFT_MAX_PCT}
+            aria-valuenow={Math.round(splitLeftPct)}
+            aria-label="拖动调整左右宽度"
+            tabIndex={0}
+            className="flex w-3 shrink-0 cursor-col-resize select-none items-stretch justify-center touch-none py-1 group outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 rounded-sm"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              splitDragActiveRef.current = true;
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                e.preventDefault();
+                const delta = e.key === "ArrowLeft" ? -2 : 2;
+                setSplitLeftPct((p) =>
+                  Math.min(
+                    SPLIT_LEFT_MAX_PCT,
+                    Math.max(SPLIT_LEFT_MIN_PCT, p + delta),
+                  ),
+                );
+              }
+            }}
+          >
+            <div className="w-px flex-1 min-h-[120px] my-auto bg-border group-hover:bg-primary-400/80 group-active:bg-primary-500 transition-colors" />
+          </div>
+        ) : null}
+
         {splitMode ? (
           <div className="flex-1 min-w-0 flex flex-col lg:min-h-0">
             <ResultCanvas
@@ -464,6 +562,6 @@ const DashboardPage: React.FC = () => {
       </footer>}
     </div>
   );
-};;
+};
 
 export default DashboardPage;
