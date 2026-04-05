@@ -49,23 +49,77 @@ interface ApiResponse<T> {
 }
 
 /**
- * 将界面截图送 Gemini 视觉模型，返回设计总结 + 设计提示词。
+ * 将界面截图送视觉模型，返回设计总结 + 设计提示词。
  * imageBase64 为纯 base64，不含 data: 前缀。
+ *
+ * 后端使用 SSE (Server-Sent Events) 心跳机制防止 nginx 504 超时：
+ * - 响应头为 text/event-stream
+ * - 处理期间每 8s 发送 `:heartbeat` 注释行保持连接
+ * - 最终结果通过 `data: {...}` 帧发送
  */
 export async function vibeSnapExtract(body: {
   imageBase64: string;
   mimeType?: string;
 }): Promise<VibeSnapExtractResult> {
-  const response = await fetch(`${API_BASE}/vibe-snap-extract`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  // 前端总超时 150s（后端 AI 120s + 网络余量）
+  const timeoutId = setTimeout(() => controller.abort(), 150_000);
 
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/vibe-snap-extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("分析超时，请使用更小的图片或稍后重试");
+    }
+    throw new Error("网络请求失败，请检查网络连接后重试");
+  }
+
+  clearTimeout(timeoutId);
+
+  // 处理网关级错误（504 / 502 / 413 等，通常返回 HTML 而非 JSON）
   if (response.status === 413) {
     throw new Error("图片数据过大，请使用更小的截图或降低分辨率");
   }
+  if (response.status === 504 || response.status === 502) {
+    throw new Error(
+      `服务网关超时（${response.status}），AI 分析耗时过长，请使用更小的图片或稍后重试`,
+    );
+  }
 
+  const contentType = response.headers.get("content-type") || "";
+
+  // --- SSE 流式响应处理（后端返回 text/event-stream）---
+  if (contentType.includes("text/event-stream")) {
+    const text = await response.text();
+    // 从 SSE 文本中提取最后一个 data: 帧（跳过心跳注释行）
+    const dataLines = text
+      .split("\n")
+      .filter((line) => line.startsWith("data: "));
+    const lastDataLine = dataLines[dataLines.length - 1];
+    if (!lastDataLine) {
+      throw new Error("服务返回了空数据，请稍后重试");
+    }
+    const jsonStr = lastDataLine.slice("data: ".length).trim();
+    let result: ApiResponse<VibeSnapExtractResult>;
+    try {
+      result = JSON.parse(jsonStr);
+    } catch {
+      throw new Error("服务返回了无效数据");
+    }
+    if (!result.success || !result.data) {
+      throw new Error(result.error || "分析失败");
+    }
+    return result.data;
+  }
+
+  // --- 兼容旧格式：普通 JSON 响应 ---
   let result: ApiResponse<VibeSnapExtractResult>;
   try {
     result = await response.json();

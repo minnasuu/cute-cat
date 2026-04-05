@@ -274,35 +274,38 @@ const WorkflowEditorPage: React.FC = () => {
   }, [updateStep]);
 
   return (
-    <div className="h-screen flex flex-col bg-white text-gray-900">
-      {/* ── Header ── */}
-      <header className="relative flex items-center justify-between h-14 px-5 border-b border-gray-100 bg-white/80 backdrop-blur-xl z-30">
-        <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-50/40 rounded-full blur-[100px] -z-10 pointer-events-none" />
+    <div className="h-screen flex flex-col bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900">
+      {/* ── Header（与 CatEditorPage / 项目 surface 主题一致） ── */}
+      <header className="relative z-30 flex items-center justify-between h-20 px-6 shrink-0">
+        <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
+        <div className="absolute top-8 right-1/4 w-72 h-72 bg-accent-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <button
+            type="button"
             onClick={() => navigate(`/teams/${teamId}`)}
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-sm font-medium text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer shrink-0"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
             返回团队
           </button>
-          <div className="w-px h-4 bg-gray-200" />
-          <div className="flex items-center gap-2">
-            <span className="text-primary-600 inline-flex">
+          <div className="w-px h-4 bg-black/10 shrink-0" />
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-primary-600 inline-flex shrink-0">
               <AppIcon symbol={icon} size={22} />
             </span>
-            <h1 className="text-base font-black tracking-tight">
+            <h1 className="text-xl md:text-2xl font-black tracking-tight truncate">
               {name || (isEditing ? '编辑工作流' : '新工作流')}
             </h1>
           </div>
-          {/* 快速信息标签 */}
-          <div className="flex items-center gap-1.5 ml-2">
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              trigger === 'cron'
-                ? 'bg-blue-50 text-blue-600 border-blue-200'
-                : 'bg-gray-50 text-gray-400 border-gray-200'
-            }`}>
+          <div className="hidden sm:flex items-center gap-1.5 ml-1 shrink-0">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                trigger === 'cron'
+                  ? 'bg-primary-50 text-primary-700 border-primary-200'
+                  : 'bg-surface-secondary text-text-tertiary border-border'
+              }`}
+            >
               {trigger === 'cron' ? (
                 <span className="inline-flex items-center gap-1">
                   <Clock size={12} strokeWidth={2.5} />
@@ -315,20 +318,23 @@ const WorkflowEditorPage: React.FC = () => {
                 </span>
               )}
             </span>
-            <span className="px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-[10px] font-bold text-gray-400">
+            <span className="px-2 py-0.5 rounded-full bg-surface-secondary border border-border text-[10px] font-bold text-text-tertiary">
               {steps.length} 步
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {cats.length === 0 && (
-            <span className="text-[10px] font-bold text-red-500 mr-2">团队暂无猫猫，请在工作台重新初始化或联系管理员</span>
+            <span className="text-[10px] font-bold text-red-600 mr-2 text-right max-w-[min(42vw,14rem)] sm:max-w-[16rem] leading-tight">
+              团队暂无猫猫，请在工作台重新初始化或联系管理员
+            </span>
           )}
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-5 py-2 text-sm font-bold bg-gray-900 text-white rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+            className="px-6 py-3 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
           >
             {saving ? '保存中...' : '保存'}
           </button>
@@ -440,13 +446,13 @@ const WorkflowEditorPage: React.FC = () => {
         onGenerate={handleAiGenerate}
       />
 
-      {/* ── Footer ── */}
-      <footer className="py-2.5 border-t border-gray-100 bg-white">
-        <div className="mx-auto px-5 flex items-center justify-between">
+      {/* ── Footer（与 CatEditorPage 一致） ── */}
+      <footer className="py-4 border-t border-border shrink-0">
+        <div className="w-full mx-auto px-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 cursor-pointer">
-            <CatLogo size={28} />
+            <CatLogo size={36} />
           </Link>
-          <p className="text-gray-400 text-[10px] font-medium">&copy; 2026 CuCaTopia.</p>
+          <p className="text-text-tertiary text-xs font-medium">&copy; 2026 CuCaTopia.</p>
         </div>
       </footer>
     </div>

@@ -29,32 +29,33 @@ const COMPRESS_QUALITY = 0.85;
 type MainTab = "library" | "extractor";
 type ResultTab = "summary" | "prompt";
 
-/** 极简黑白灰 */
+/** CuCaTopia 品牌主色为 primary（绿），与 Dashboard / 团队页一致 */
 const ui = {
-  page: "h-screen flex flex-col bg-white text-neutral-900",
-  header: "shrink-0 border-b border-neutral-200 bg-white",
+  page: "h-screen flex flex-col bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900",
+  header: "shrink-0 border-b border-border bg-surface",
   navBtn:
     "inline-flex items-center gap-2 rounded-none px-3 py-2 text-sm font-medium border border-transparent transition-colors",
-  navActive: "bg-neutral-900 text-white border-neutral-900",
-  navIdle: "text-neutral-600 hover:bg-neutral-100 border-neutral-200",
-  card: "border border-neutral-200 bg-white",
+  navActive: "bg-primary-600 text-white border-primary-600",
+  navIdle:
+    "text-text-secondary hover:bg-primary-50/80 hover:text-primary-800 border-border",
+  card: "border border-border bg-surface",
   cardPad: "p-5",
   sectionTitle:
-    "text-xs font-semibold uppercase tracking-wider text-neutral-500",
-  body: "text-sm text-neutral-600 leading-relaxed",
-  mono: "text-xs font-mono text-neutral-800",
-  tag: "text-xs px-2 py-0.5 border border-neutral-200 text-neutral-700",
+    "text-xs font-semibold uppercase tracking-wider text-primary-700",
+  body: "text-sm text-text-secondary leading-relaxed",
+  mono: "text-xs font-mono text-primary-900",
+  tag: "text-xs px-2 py-0.5 rounded-md border border-primary-200 bg-primary-50/90 text-primary-800",
   btnGhost:
-    "text-sm text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 px-2 py-1",
+    "text-sm text-text-secondary hover:text-primary-700 hover:bg-primary-50 px-2 py-1 rounded-md",
   btnPrimary:
-    "text-xs font-medium px-3 py-1.5 bg-neutral-900 text-white hover:bg-neutral-800 disabled:opacity-45 disabled:pointer-events-none",
-  fab: "flex items-center justify-center border border-neutral-900 bg-white text-neutral-900 hover:bg-neutral-900 hover:text-white transition-colors",
+    "text-xs font-medium px-3 py-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-45 disabled:pointer-events-none",
+  fab: "flex items-center justify-center rounded-full border-2 border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-600 hover:text-white hover:border-primary-600 transition-colors",
   modalBackdrop:
     "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50",
   modalPanel:
-    "bg-white border border-neutral-200 max-w-[70vw] w-full p-6 relative",
+    "bg-surface border border-border max-w-[70vw] w-full p-6 relative",
   inputZone:
-    "border border-dashed border-neutral-300 bg-neutral-50 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-neutral-400 hover:bg-neutral-100 transition-colors",
+    "border border-dashed border-border-strong bg-surface-secondary flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary-400 hover:bg-primary-50/60 transition-colors",
 } as const;
 
 function loadStoredLibrary(): VibeStyleLibLibraryItem[] | null {
@@ -231,10 +232,10 @@ function Spinner({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <div
-        className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-900"
+        className="h-8 w-8 animate-spin rounded-full border-2 border-primary-100 border-t-primary-600"
         aria-hidden
       />
-      <span className="text-xs text-neutral-500">{label}</span>
+      <span className="text-xs text-text-tertiary">{label}</span>
     </div>
   );
 }
@@ -294,7 +295,7 @@ function ResultPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 flex shrink-0 border border-neutral-200">
+      <div className="mb-4 flex shrink-0 overflow-hidden rounded-lg border border-primary-200/80 bg-primary-50/30">
         {RESULT_TAB_DEF.map(({ key, label }) => (
           <button
             key={key}
@@ -303,8 +304,8 @@ function ResultPanel({
             className={clsx(
               "flex-1 py-2.5 text-sm font-medium transition-colors",
               tab === key
-                ? "bg-neutral-900 text-white"
-                : "text-neutral-500 hover:bg-neutral-50",
+                ? "bg-primary-600 text-white"
+                : "text-primary-800/80 hover:bg-primary-100/80",
             )}
           >
             {label}
@@ -343,18 +344,18 @@ function ResultPanel({
               {data.designSummary.colors.map((c) => (
                 <div
                   key={c.hex + c.name}
-                  className="flex gap-3 border border-neutral-100 p-3"
+                  className="flex gap-3 border border-border p-3 rounded-lg"
                 >
                   <div
-                    className="h-14 w-14 shrink-0 border border-neutral-200"
+                    className="h-14 w-14 shrink-0 border border-border-strong rounded-md"
                     style={{ backgroundColor: c.hex }}
                   />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-neutral-900">
+                    <p className="text-sm font-medium text-text-primary">
                       {c.name}
                     </p>
                     <p className={ui.mono}>{c.hex}</p>
-                    <p className="mt-0.5 line-clamp-2 text-xs text-neutral-500">
+                    <p className="mt-0.5 line-clamp-2 text-xs text-text-tertiary">
                       {c.usage}
                     </p>
                   </div>
@@ -369,14 +370,14 @@ function ResultPanel({
               {data.designSummary.typography.map((f) => (
                 <li
                   key={f.family}
-                  className="flex items-center justify-between gap-2 border border-neutral-100 px-3 py-2 text-sm text-neutral-700"
+                  className="flex items-center justify-between gap-2 border border-border px-3 py-2 text-sm text-text-secondary rounded-lg"
                 >
                   <span className="font-medium">{f.family}</span>
                   <button
                     type="button"
                     aria-label={`复制 ${f.family}`}
                     onClick={() => void copyText(f.family)}
-                    className="p-1 text-neutral-400 hover:text-neutral-900"
+                    className="p-1 text-text-tertiary hover:text-text-primary"
                   >
                     <IconCopy />
                   </button>
@@ -389,11 +390,11 @@ function ResultPanel({
             <h3 className={clsx(ui.sectionTitle, "mb-4")}>视觉属性</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {VISUAL_ATTR_KEYS.map(([label, k]) => (
-                <div key={k} className="border border-neutral-100 p-4">
-                  <p className="mb-2 text-xs font-semibold text-neutral-400">
+                <div key={k} className="border border-border p-4 rounded-lg">
+                  <p className="mb-2 text-xs font-semibold text-text-tertiary">
                     {label}
                   </p>
-                  <p className="whitespace-pre-wrap text-sm text-neutral-700 leading-relaxed">
+                  <p className="whitespace-pre-wrap text-sm text-text-secondary leading-relaxed">
                     {va[k]}
                   </p>
                 </div>
@@ -402,15 +403,15 @@ function ResultPanel({
           </section>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-neutral-900 bg-neutral-950">
-          <div className="flex shrink-0 items-center justify-between border-b border-neutral-700 px-4 py-3">
-            <span className="text-sm font-medium text-neutral-200">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-primary-800/50 bg-primary-900">
+          <div className="flex shrink-0 items-center justify-between border-b border-primary-700/60 bg-primary-800 px-4 py-3">
+            <span className="text-sm font-medium text-primary-50">
               设计提示词
             </span>
             <button
               type="button"
               onClick={() => void copyText(data.designPrompt)}
-              className={clsx(ui.btnPrimary, "border border-white/20")}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-primary-50 text-primary-900 hover:bg-white disabled:opacity-45 disabled:pointer-events-none"
             >
               <span className="inline-flex items-center gap-1.5">
                 <IconCopy className="h-3.5 w-3.5" />
@@ -418,7 +419,7 @@ function ResultPanel({
               </span>
             </button>
           </div>
-          <pre className="scrollbar-hide flex-1 overflow-auto p-4 font-sans text-sm leading-relaxed text-neutral-300 whitespace-pre-wrap">
+          <pre className="scrollbar-hide flex-1 overflow-auto p-4 font-sans text-sm leading-relaxed text-primary-50/95 whitespace-pre-wrap">
             {data.designPrompt}
           </pre>
         </div>
@@ -670,54 +671,48 @@ export const VibeStyleLib = () => {
   return (
     <div className={ui.page}>
       <Navbar variant="sticky" />
-      <div className="shrink-0 border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-6 py-3 sm:px-10">
-          <span className="text-lg font-semibold tracking-tight">
-            Vibe Seed Lib
-          </span>
-          <nav className="flex items-center gap-px sm:gap-0 sm:border sm:border-neutral-200">
-            <button
-              type="button"
-              onClick={() => setMainTab("library")}
+      <div className="w-full mx-auto mt-4 flex justify-center">
+        <nav className="flex items-center gap-px sm:gap-0 sm:border sm:border-primary-200 sm:rounded-xl sm:overflow-hidden sm:bg-primary-50/40">
+          <button
+            type="button"
+            onClick={() => setMainTab("library")}
+            className={clsx(
+              ui.navBtn,
+              mainTab === "library" ? ui.navActive : ui.navIdle,
+            )}
+          >
+            灵感库
+            <span
               className={clsx(
-                ui.navBtn,
-                mainTab === "library" ? ui.navActive : ui.navIdle,
+                "ml-1 flex h-5 min-w-[1.25rem] items-center justify-center border px-1.5 text-xs font-bold rounded-md",
+                mainTab === "library"
+                  ? "border-white/35 bg-white/15 text-white"
+                  : "border-primary-300 bg-primary-100 text-primary-800",
               )}
             >
-              灵感库
-              <span
-                className={clsx(
-                  "ml-1 flex h-5 min-w-[1.25rem] items-center justify-center border px-1.5 text-xs font-medium",
-                  mainTab === "library"
-                    ? "border-white/30 bg-transparent text-white"
-                    : "border-neutral-900 bg-neutral-900 text-white",
-                )}
-              >
-                {library.length > 99 ? "99+" : library.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMainTab("extractor")}
-              className={clsx(
-                ui.navBtn,
-                mainTab === "extractor" ? ui.navActive : ui.navIdle,
-              )}
-            >
-              提取器
-            </button>
-          </nav>
-          <div />
-        </div>
+              {library.length > 99 ? "99+" : library.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMainTab("extractor")}
+            className={clsx(
+              ui.navBtn,
+              mainTab === "extractor" ? ui.navActive : ui.navIdle,
+            )}
+          >
+            提取器
+          </button>
+        </nav>
       </div>
 
       {error && (
         <div className="mx-auto w-full max-w-[1600px] px-6 pt-3 sm:px-10">
-          <div className="flex justify-between gap-4 border border-neutral-300 bg-neutral-50 px-4 py-2 text-sm text-neutral-800">
+          <div className="flex justify-between gap-4 border border-border-strong bg-surface-secondary px-4 py-2 text-sm text-text-primary rounded-lg">
             <span>{error}</span>
             <button
               type="button"
-              className="shrink-0 underline underline-offset-2"
+              className="shrink-0 text-primary-600 hover:text-primary-700 font-medium underline underline-offset-2"
               onClick={() => setError(null)}
             >
               关闭
@@ -729,10 +724,10 @@ export const VibeStyleLib = () => {
       {mainTab === "library" && (
         <main className="mx-auto h-px w-full max-w-[1600px] flex-1 overflow-y-auto px-6 py-8 pb-20 sm:px-10">
           <div className="mb-10">
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-black tracking-tight text-primary-900">
               通用灵感库
             </h1>
-            <p className="mt-1 text-sm text-neutral-500">
+            <p className="mt-1 text-sm text-text-secondary">
               通用的设计提取结果和提示词模版。新截图请在「提取器」上传；在灵感库也可直接粘贴图片。
             </p>
           </div>
@@ -740,13 +735,13 @@ export const VibeStyleLib = () => {
           {library.length === 0 ? (
             <div
               className={clsx(
-                "w-full flex flex-col items-center gap-4 ursor-default border-neutral-200 py-16",
+                "w-full flex flex-col items-center gap-4 cursor-default border border-dashed border-primary-200 rounded-2xl py-16 bg-primary-50/35",
               )}
             >
-              <p className="text-sm font-medium text-neutral-800">
+              <p className="text-sm font-medium text-text-primary">
                 暂无已保存的提取结果
               </p>
-              <p className="max-w-sm text-center text-xs text-neutral-500">
+              <p className="max-w-sm text-center text-xs text-text-secondary">
                 在「提取器」中上传截图并分析后，点击「保存到灵感库」；或在本页直接粘贴图片，将自动加入此处。
               </p>
               <button
@@ -766,10 +761,10 @@ export const VibeStyleLib = () => {
                   onClick={() => setDetailItem(card)}
                   className={clsx(
                     ui.card,
-                    "flex flex-col overflow-hidden text-left transition-opacity hover:opacity-90",
+                    "flex flex-col overflow-hidden text-left rounded-xl transition-all hover:border-primary-300",
                   )}
                 >
-                  <div className="aspect-[4/5] w-full overflow-hidden bg-neutral-100">
+                  <div className="aspect-[4/5] w-full overflow-hidden bg-surface-secondary">
                     <img
                       src={card.imageUrl}
                       alt=""
@@ -789,16 +784,16 @@ export const VibeStyleLib = () => {
                       {card.colors.map((hex) => (
                         <span
                           key={hex}
-                          className="h-5 w-5 shrink-0 border border-neutral-200"
+                          className="h-5 w-5 shrink-0 border border-border-strong rounded-sm"
                           style={{ backgroundColor: hex }}
                         />
                       ))}
                     </div>
-                    <p className="line-clamp-4 text-sm text-neutral-600 leading-relaxed">
+                    <p className="line-clamp-4 text-sm text-text-secondary leading-relaxed">
                       {card.summary}
                     </p>
                     {card.ownerName && (
-                      <p className="mt-auto pt-1 text-xs text-neutral-400">
+                      <p className="mt-auto pt-1 text-xs text-text-tertiary">
                         by {card.ownerName}
                       </p>
                     )}
@@ -842,32 +837,33 @@ export const VibeStyleLib = () => {
         <main className="mx-auto h-px w-full max-w-[1600px] flex-1 overflow-y-auto px-6 py-8 sm:px-10">
           <div className="flex gap-6 h-full">
             <div className="w-100 flex flex-col gap-4 h-full">
-              <section className="border border-neutral-200 p-4">
-                <h2 className={clsx(ui.sectionTitle, "mb-2 normal-case")}>
-                  输入设计
-                </h2>
+              <section className="border border-border rounded-xl p-4">
                 <div
                   role="presentation"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={onDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  className={clsx(ui.inputZone, "min-h-[200px] p-8")}
+                  className={clsx(ui.inputZone, "min-h-[200px] p-8 rounded-xl")}
                 >
-                  <IconUpload className="text-neutral-400" />
-                  <p className="text-center text-sm font-medium text-neutral-800">
+                  <IconUpload className="text-primary-500" />
+                  <p className="text-center text-sm font-medium text-text-primary">
                     点击、拖拽或粘贴图片
                   </p>
-                  <p className="text-xs text-neutral-400">
+                  <p className="text-xs text-text-tertiary">
                     支持 PNG、JPG、WEBP 格式
                   </p>
                 </div>
               </section>
 
-              <section className="flex-1 h-px flex flex-col border border-neutral-200 p-4">
+              <section className="flex-1 h-px flex flex-col border border-border rounded-xl p-4">
                 <h2 className={clsx(ui.sectionTitle, "mb-2 normal-case")}>
                   原图
                 </h2>
-                <div className={clsx("relative flex-1 h-px overflow-auto")}>
+                <div
+                  className={clsx(
+                    "relative flex-1 h-px overflow-auto rounded-lg bg-surface-secondary/40",
+                  )}
+                >
                   {extractorImage ? (
                     <img
                       src={extractorImage}
@@ -875,12 +871,12 @@ export const VibeStyleLib = () => {
                       className="w-full h-full object-contain object-center"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-neutral-400">
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-tertiary">
                       上传图片后展示原图；也可在页面任意处直接粘贴截图。
                     </div>
                   )}
                   {loading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+                    <div className="absolute inset-0 flex items-center justify-center bg-surface/85 backdrop-blur-sm">
                       <Spinner label="分析中…" />
                     </div>
                   )}
@@ -893,7 +889,7 @@ export const VibeStyleLib = () => {
                 <>
                   <div className="mb-3 flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {extractorAlreadySaved ? (
-                      <span className="text-xs text-neutral-500">
+                      <span className="text-xs text-text-tertiary">
                         已保存到灵感库
                       </span>
                     ) : (
@@ -918,7 +914,7 @@ export const VibeStyleLib = () => {
               ) : (
                 <div
                   className={clsx(
-                    "h-full border border-neutral-200 flex items-center justify-center text-sm text-neutral-400",
+                    "h-full border border-border rounded-xl flex items-center justify-center text-sm text-text-tertiary bg-surface-secondary/30",
                   )}
                 >
                   上传图片后展示分析结果
@@ -933,11 +929,11 @@ export const VibeStyleLib = () => {
 
       {detailItem && (
         <ModalChrome wide onClose={() => setDetailItem(null)}>
-          <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-5 py-3">
+          <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
             <div className="flex items-center gap-3">
-              <h2 className="font-semibold">卡片详情</h2>
+              <h2 className="font-black text-text-primary">卡片详情</h2>
               {detailItem?.ownerName && (
-                <span className="text-xs text-neutral-400">
+                <span className="text-xs text-text-tertiary">
                   by {detailItem?.ownerName}
                 </span>
               )}
@@ -955,7 +951,7 @@ export const VibeStyleLib = () => {
               {detailItem?.userId === user?.id && (
                 <button
                   type="button"
-                  className="border border-neutral-300 px-3 py-1 text-sm text-neutral-700 hover:border-neutral-900 hover:bg-neutral-50 disabled:opacity-45 disabled:pointer-events-none"
+                  className="border border-border-strong px-3 py-1 text-sm rounded-lg text-text-secondary hover:border-danger-300 hover:bg-danger-50 hover:text-danger-700 disabled:opacity-45 disabled:pointer-events-none"
                   disabled={deletingDetail}
                   onClick={confirmDeleteDetailItem}
                 >
@@ -964,7 +960,7 @@ export const VibeStyleLib = () => {
               )}
               <button
                 type="button"
-                className="px-2 text-neutral-400 hover:text-neutral-900"
+                className="px-2 text-text-tertiary hover:text-text-primary"
                 onClick={() => !deletingDetail && setDetailItem(null)}
                 aria-label="关闭"
               >
@@ -973,7 +969,7 @@ export const VibeStyleLib = () => {
             </div>
           </div>
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <div className="max-h-[40vh] overflow-auto border-b border-neutral-200 bg-neutral-50 lg:max-h-none lg:w-[42%] lg:border-b-0 lg:border-r">
+            <div className="max-h-[40vh] overflow-auto border-b border-border bg-surface-secondary lg:max-h-none lg:w-[42%] lg:border-b-0 lg:border-r lg:border-border">
               <img
                 src={detailItem?.imageUrl}
                 alt=""

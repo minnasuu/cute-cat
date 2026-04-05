@@ -609,45 +609,79 @@ router.post('/vibe-snap-upload', optionalAuth, (req, res) => {
 });
 
 // POST /api/dify/vibe-snap-extract — AI 视觉风格分析
+// 使用 SSE 心跳防止 nginx 等反向代理 504 Gateway Timeout
 router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
+  // --- 设置 SSE 流式响应头，让 nginx 不缓存并保持连接 ---
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // nginx 专用：关闭代理缓冲
+  res.flushHeaders();
+
+  // 心跳定时器：每 8 秒发送一个 SSE 注释行，让 nginx 知道连接仍然活跃
+  const heartbeat = setInterval(() => {
+    try { res.write(':heartbeat\n\n'); } catch { /* 连接已关闭 */ }
+  }, 8000);
+
+  // 辅助函数：发送最终 SSE 数据帧并结束响应
+  function sendResult(payload) {
+    clearInterval(heartbeat);
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      res.end();
+    } catch { /* 连接已关闭 */ }
+  }
+
+  // 客户端断开时清理
+  req.on('close', () => clearInterval(heartbeat));
+
   try {
     const { imageBase64, mimeType } = req.body;
-    if (!imageBase64) return res.status(400).json({ success: false, error: '缺少图片数据' });
+    if (!imageBase64) return sendResult({ success: false, error: '缺少图片数据' });
 
     const apiKey = process.env.QWEN_API_KEY;
-    if (!apiKey) return res.status(500).json({ success: false, error: 'QWEN_API_KEY 未配置' });
+    if (!apiKey) return sendResult({ success: false, error: 'QWEN_API_KEY 未配置' });
 
     const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-    const model = 'qwen-vl-plus'; // 使用支持视觉的模型
+    const model = 'qwen3.5-plus'; // 使用支持视觉的模型
 
-    const systemPrompt = `你是一位资深 UI/UX 设计顾问。请仔细分析用户提供的界面截图，提取其设计风格元素。
+    const systemPrompt = `你是资深 UI/视觉设计分析助手。用户上传的是**网页或 App 界面截图**（可能为长图）。
 
-必须返回严格的 JSON 格式（不要用 markdown 代码块包裹），结构如下：
+请仅输出 **一个 JSON 对象**（不要 markdown 代码围栏，不要前后解释文字），字段严格如下：
 {
   "designSummary": {
-    "styleDescription": "一段 100-200 字的设计风格总结",
-    "styleTags": ["标签1", "标签2", "标签3", "标签4", "标签5"],
+    "styleDescription": "string，2-4 句中文，概括整体设计风格与气质",
+    "styleTags": ["3-6 个中文短语标签"],
     "colors": [
-      { "name": "颜色名称", "hex": "#XXXXXX", "usage": "用途说明" }
+      { "name": "string", "hex": "#RRGGBB", "usage": "string 简短说明用途" }
     ],
     "typography": [
-      { "family": "字体名称", "note": "使用场景" }
+      { "family": "字体名", "note": "可选，用途说明" }
     ],
     "visualAttributes": {
-      "borderRadius": "圆角描述",
-      "shadow": "阴影描述",
-      "border": "边框描述",
-      "spacing": "间距描述"
+      "borderRadius": "string，圆角规律与典型值",
+      "shadow": "string，阴影层级与示例 box-shadow 或描述",
+      "border": "string，描边/分割线用法",
+      "spacing": "string，间距体系与基准"
     }
   },
-  "designPrompt": "一段完整的设计提示词（500-800字），可用于指导 AI 重现该设计风格",
-  "libraryBlurb": "一句话摘要（30字以内）"
+  "designPrompt": "string，一段完整的中文提示词，供文生图/代码实现复刻类似页面；可包含 Tailwind/色板/字体/区块结构建议，800-2000 字为宜",
+  "libraryBlurb": "string，80-160 字中文，用于缩略卡片上的设计总结摘要"
 }
 
-分析要细致准确，颜色必须用真实色值，字体尽量识别准确。只返回 JSON，不要附加任何其他文字。`;
+要求：
+- 根据截图**如实推断**配色与风格；无法确认的字体写「无衬线」类描述并列举常见替代。
+- hex 必须合法 6 位。
+- colors 至少 4 项，建议 5-8 项。`;
+
+    // 安全校验 mimeType，非法则 fallback 到 image/jpeg
+    const safeMime = /^image\/(png|jpe?g|webp|gif)$/i.test(mimeType || '')
+      ? mimeType
+      : 'image/jpeg';
+    const dataUrl = `data:${safeMime};base64,${imageBase64}`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000); // 120s 超时（视觉分析耗时更长）
+    const timeout = setTimeout(() => controller.abort(), 120000); // 120s 超时
 
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -664,34 +698,35 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
               role: 'user',
               content: [
                 {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:${mimeType || 'image/jpeg'};base64,${imageBase64}`,
-                  },
+                  type: 'text',
+                  text: '请分析这张界面截图，输出上述 JSON。',
                 },
                 {
-                  type: 'text',
-                  text: '请分析这张界面截图的设计风格。',
+                  type: 'image_url',
+                  image_url: { url: dataUrl },
                 },
               ],
             },
           ],
-          max_tokens: 4096,
-          temperature: 0.3,
+          max_tokens: 8192,
+          temperature: 0.35,
         }),
         signal: controller.signal,
       });
 
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Qwen API ${response.status}: ${errText}`);
+        throw new Error(`Qwen API ${response.status}: ${errText.substring(0, 500)}`);
       }
 
       const data = await response.json();
       let answer = data.choices?.[0]?.message?.content || '';
+      if (!answer.trim()) {
+        return sendResult({ success: false, error: '视觉模型返回内容为空' });
+      }
 
       // 清理 markdown 代码块包裹
-      const codeMatch = answer.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+      const codeMatch = answer.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (codeMatch) answer = codeMatch[1].trim();
 
       let parsed;
@@ -699,23 +734,45 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
         parsed = JSON.parse(answer);
       } catch {
         console.error('[vibe-snap-extract] JSON parse failed:', answer.slice(0, 500));
-        return res.status(500).json({ success: false, error: 'AI 返回了无效的 JSON 数据' });
+        return sendResult({ success: false, error: 'AI 返回了无效的 JSON 数据' });
       }
 
-      if (!parsed.designSummary || !parsed.designPrompt) {
-        return res.status(500).json({ success: false, error: 'AI 返回的数据缺少必要字段' });
+      // 严格校验必要字段
+      const { designSummary, designPrompt, libraryBlurb } = parsed;
+      if (!designSummary || typeof designSummary !== 'object') {
+        return sendResult({ success: false, error: '模型返回缺少 designSummary' });
       }
+      if (!designPrompt || typeof designPrompt !== 'string') {
+        return sendResult({ success: false, error: '模型返回缺少 designPrompt' });
+      }
+
+      // libraryBlurb 缺失时，从 styleDescription 自动 fallback
+      const finalBlurb = (typeof libraryBlurb === 'string' && libraryBlurb.trim())
+        ? libraryBlurb.trim()
+        : (typeof designSummary.styleDescription === 'string'
+            ? designSummary.styleDescription.slice(0, 200)
+            : '');
 
       // 记录 AI 用量
       await recordAiUsage(req.userId, { taskId: 'vibe-snap-extract', model: 'qwen' });
 
-      res.json({ success: true, data: parsed });
+      sendResult({
+        success: true,
+        data: {
+          designSummary,
+          designPrompt: designPrompt.trim(),
+          libraryBlurb: finalBlurb,
+        },
+      });
     } finally {
       clearTimeout(timeout);
     }
   } catch (err) {
     console.error('[vibe-snap-extract] error:', err);
-    res.status(500).json({ success: false, error: err.message || 'AI 分析失败' });
+    const errMsg = err.name === 'AbortError'
+      ? 'AI 分析超时（120s），请使用更小的图片或稍后重试'
+      : (err.message || 'AI 分析失败');
+    sendResult({ success: false, error: errMsg });
   }
 });
 
