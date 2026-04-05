@@ -1,5 +1,8 @@
 version: '3.8'
 
+# 固定项目名称，避免 volume 名称变化
+name: cucatopiacom
+
 services:
   db:
     image: postgres:15
