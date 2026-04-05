@@ -27,17 +27,16 @@ export async function runWithAI(
   systemPrompt: string,
   options: {
     _resultType?: string;
+    maxTokens?: number;
     onChunk?: (chunk: string, accumulated: string) => void;
   } = {},
 ): Promise<AgentResult> {
   const upstreamText = extractUpstreamText(ctx);
 
-  console.log(`[agent:ai] ${agentId} inputLen=${upstreamText.length}`);
+  console.log(`[agent:ai] ${agentId} inputLen=${upstreamText.length}${options.maxTokens ? ` maxTokens=${options.maxTokens}` : ''}`);
 
-  // 拼装 prompt：systemPrompt + 上游文本
-  const prompt = systemPrompt
-    ? `${systemPrompt}\n\n---\n\n${upstreamText || '请执行任务'}`
-    : upstreamText || '请执行任务';
+  // user text 只包含上游输入，systemPrompt 作为独立参数传递给后端
+  const userText = upstreamText || '请执行任务';
 
   const MAX_RETRIES = 2;
   const TIMEOUT_MS = 120_000;
@@ -48,9 +47,10 @@ export async function runWithAI(
     try {
       const resultPromise = callDifySkillStream(
         'ai-chat',
-        prompt,
+        userText,
         'qwen',
         options.onChunk,
+        { systemPrompt, maxTokens: options.maxTokens },
       );
 
       const timeoutPromise = new Promise<never>((_, reject) =>

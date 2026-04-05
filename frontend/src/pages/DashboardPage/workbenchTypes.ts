@@ -50,6 +50,8 @@ export interface WorkflowRun {
   id: string;
   workflowId: string | null;
   workflowName: string;
+  /** 用户输入的 prompt */
+  userInput?: string | null;
   status: string;
   startedAt: string;
   completedAt: string | null;

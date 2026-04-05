@@ -282,6 +282,7 @@ export const callDifySkillStream = async (
   text: string,
   model?: string,
   onChunk?: (chunk: string, accumulated: string) => void,
+  options?: { systemPrompt?: string; maxTokens?: number },
 ): Promise<DifySkillResponse> => {
   const backendUrl = getBackendUrl();
   const url = `${backendUrl}/api/dify/skill/stream`;
@@ -292,10 +293,14 @@ export const callDifySkillStream = async (
     const token = localStorage.getItem('accessToken');
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
+    const body: Record<string, unknown> = { taskId, text, model: selectedModel };
+    if (options?.systemPrompt) body.systemPrompt = options.systemPrompt;
+    if (options?.maxTokens) body.maxTokens = options.maxTokens;
+
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ taskId, text, model: selectedModel }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {

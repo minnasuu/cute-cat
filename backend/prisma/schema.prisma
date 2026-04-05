@@ -115,6 +115,7 @@ model WorkflowRun {
   team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
   triggeredBy   String?
   workflowName  String
+  userInput     String?   @db.Text  // 用户输入的 prompt
   status        String    @default("running") // running / success / failed / cancelled
   steps         Json?
   startedAt     DateTime  @default(now())

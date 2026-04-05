@@ -103,10 +103,10 @@ ${styleCatalog}
     console.log(`[visual-designer] 灵感库条目数: ${libraryItems.length}, 上游输入长度: ${upstreamText.length}`);
 
     // 4. 调用 AI 进行风格匹配（直接调用 callDifySkill，不经过 primitive）
-    const prompt = `${systemPrompt}\n\n---\n\n${upstreamText || '请为一个通用企业官网选择合适的视觉风格'}`;
+    const userText = upstreamText || '请为一个通用企业官网选择合适的视觉风格';
 
     const TIMEOUT_MS = 120_000;
-    const resultPromise = callDifySkillStream('ai-chat', prompt, 'qwen', ctx.onChunk);
+    const resultPromise = callDifySkillStream('ai-chat', userText, 'qwen', ctx.onChunk, { systemPrompt, maxTokens: 4096 });
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('请求超时')), TIMEOUT_MS)
     );

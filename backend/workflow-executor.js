@@ -115,6 +115,7 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       teamId: workflow.teamId,
       triggeredBy: triggeredBy || 'scheduler',
       workflowName: workflow.name,
+      userInput: userInput || null,
       status: 'running',
     },
   });

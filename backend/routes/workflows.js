@@ -157,12 +157,14 @@ router.post('/:id/run', async (req, res) => {
       await prisma.workflowRun.deleteMany({ where: { teamId: workflow.teamId } });
     }
 
+    const userInput = typeof req.body?.userInput === 'string' ? req.body.userInput.trim() : '';
     const run = await prisma.workflowRun.create({
       data: {
         workflowId: workflow.id,
         teamId: workflow.teamId,
         triggeredBy: req.userId,
         workflowName: workflow.name,
+        userInput: userInput || null,
         status: 'running',
       },
     });

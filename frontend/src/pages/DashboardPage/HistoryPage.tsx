@@ -3,6 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiClient } from "../../utils/apiClient";
 import type { WorkbenchPayload, WorkflowRun } from "./workbenchTypes";
 
+/** 对用户展示的友好工作流名称（去掉"流水线"后缀） */
+function friendlyName(name: string): string {
+  if (name === "网页制作流水线") return "网页制作";
+  const n = name.replace(/流水线\s*$/u, "").trim();
+  return n || "创作";
+}
+
 const HistoryPage: React.FC = () => {
   const navigate = useNavigate();
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
@@ -82,9 +89,14 @@ const HistoryPage: React.FC = () => {
                   }
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-bold text-text-primary truncate">
-                      {r.workflowName}
-                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      <span className="text-[11px] font-bold text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded-md shrink-0">
+                        {friendlyName(r.workflowName)}
+                      </span>
+                      <span className="text-sm font-bold text-text-primary truncate">
+                        {r.userInput || r.workflowName}
+                      </span>
+                    </div>
                     <div
                       className="flex items-center gap-2 shrink-0"
                       onClick={(e) => e.stopPropagation()}

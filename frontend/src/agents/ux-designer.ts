@@ -25,6 +25,7 @@ const SYSTEM_PROMPT = `你是世界顶尖的交互设计师。
 
 export default async function runUxDesigner(ctx: AgentContext): Promise<AgentResult> {
   const result = await runWithAI('ux-designer', ctx, SYSTEM_PROMPT, {
+    maxTokens: 8192,
     onChunk: ctx.onChunk,
   });
 

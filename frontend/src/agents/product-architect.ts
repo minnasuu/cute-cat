@@ -31,6 +31,7 @@ const SYSTEM_PROMPT = `你是产品架构师，将用户输入需求转化为产
 
 export default async function runProductArchitect(ctx: AgentContext): Promise<AgentResult> {
   const result = await runWithAI('product-architect', ctx, SYSTEM_PROMPT, {
+    maxTokens: 8192,
     onChunk: ctx.onChunk,
   });
 

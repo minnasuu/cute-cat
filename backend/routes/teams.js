@@ -43,6 +43,7 @@ async function buildWorkbenchJson(userId) {
         id: true,
         workflowId: true,
         workflowName: true,
+        userInput: true,
         status: true,
         startedAt: true,
         completedAt: true,

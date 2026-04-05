@@ -536,7 +536,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
 
 router.post('/skill', optionalAuth, async (req, res) => {
   try {
-    const { taskId, text, model, teamId, catId } = req.body;
+    const { taskId, text, model, teamId, catId, systemPrompt: customSystemPrompt, maxTokens: customMaxTokens } = req.body;
 
     if (!taskId || !text) {
       return res.status(400).json({ error: 'taskId and text are required' });
@@ -550,7 +550,8 @@ router.post('/skill', optionalAuth, async (req, res) => {
       }
     }
 
-    const systemPrompt = SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
+    // 优先使用前端传入的 systemPrompt，否则 fallback 到 taskId 对应的默认值
+    const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
     const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
 
     // 根据 taskId 动态调整 token 限制
@@ -566,9 +567,10 @@ router.post('/skill', optionalAuth, async (req, res) => {
       'team-review': 8192,
       'cat-training': 8192,
     };
-    const maxTokens = TASK_MAX_TOKENS[taskId] || 4096;
+    // 优先使用前端传入的 maxTokens（上限 32768），否则 fallback 到 taskId 默认值
+    const maxTokens = customMaxTokens ? Math.min(Number(customMaxTokens), 32768) : (TASK_MAX_TOKENS[taskId] || 4096);
 
-    console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}`);
+    console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}${customSystemPrompt ? ', customPrompt=true' : ''}`);
 
     let answer = '';
 
