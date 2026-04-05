@@ -31,8 +31,8 @@ services:
     ports:
       - "8002:8002"
     volumes:
-      # 持久化上传的图片文件
-      - ./backend/uploads:/uploads
+      # 持久化上传的图片文件（容器内工作目录为 /app，multer 写入 /app/uploads/）
+      - ./backend/uploads:/app/uploads
     environment:
       PORT: 8002
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/cute_cat
