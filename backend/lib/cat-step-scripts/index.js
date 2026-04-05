@@ -25,7 +25,7 @@ for (const id of OFFICIAL_TEMPLATE_IDS) {
  * 按 agentId 分发执行（新版统一入口）
  */
 async function runAgentStep(args) {
-  const { step, merged, userEmail, catSystemPrompt, context } = args;
+  const { step, merged, userEmail, context } = args;
   const agentId = step?.agentId || context?.catTemplateId || '';
 
   // 优先查找已注册的猫脚本
@@ -34,13 +34,12 @@ async function runAgentStep(args) {
     return run(args);
   }
 
-  // 未注册的 agentId：使用通用 AI 调用
+  // 未注册的 agentId：使用通用 AI 调用（不注入外部 prompt）
   const upstreamText = extractUpstreamText(merged);
-  const systemPrompt = catSystemPrompt || '你是一位专业的 AI 助手，请用中文回复。';
   const userText = upstreamText || '请执行任务';
 
   try {
-    const answer = await callAI(systemPrompt, userText, null, 4096);
+    const answer = await callAI('你是一位专业的 AI 助手，请用中文回复。', userText, null, 4096);
     return {
       success: true,
       data: { text: answer },

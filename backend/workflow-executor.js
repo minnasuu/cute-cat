@@ -1,8 +1,8 @@
 /**
  * 后端工作流执行引擎
  *
- * 在服务器端执行工作流步骤，替代前端浏览器中的执行逻辑。
- * 每个 skill 最终映射到后端已有的能力（AI 调用、RSS 爬取、邮件发送等）。
+ * 纯流水线调度器：负责连接各步骤、传递上游输出，不注入额外 prompt。
+ * 每个步骤完全由对应猫猫的 agent 脚本自行控制输入输出。
  */
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
@@ -77,237 +77,13 @@ async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
   return callGemini(systemPrompt, userText, maxTokens);
 }
 
-// ─── RSS/URL 爬取 ───
-async function crawlSources(sources, keyword, maxItems) {
-  const limit = Math.min(Number(maxItems) || 20, 100);
-  const keywords = keyword ? keyword.split(/[,，、\s]+/).filter(Boolean).map(k => k.toLowerCase()) : [];
-  const allItems = [];
-
-  for (const src of sources.slice(0, 10)) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15000);
-      const resp = await fetch(src, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'CuteCat-Crawler/1.0', 'Accept': 'application/rss+xml, application/xml, application/atom+xml, text/xml, text/html, */*' },
-      });
-      clearTimeout(timer);
-      if (!resp.ok) { allItems.push({ source: src, error: `HTTP ${resp.status}` }); continue; }
-      const contentType = resp.headers.get('content-type') || '';
-      const body = await resp.text();
-
-      if (contentType.includes('xml') || contentType.includes('rss') || body.trimStart().startsWith('<?xml') || body.trimStart().startsWith('<rss') || body.trimStart().startsWith('<feed')) {
-        allItems.push(...parseRSSItems(body, src, limit));
-      } else if (contentType.includes('json')) {
-        try {
-          const json = JSON.parse(body);
-          const arr = Array.isArray(json) ? json : (json.items || json.data || json.results || json.articles || [json]);
-          for (const item of arr.slice(0, limit)) {
-            allItems.push({ title: item.title || '(无标题)', summary: item.summary || item.description || item.content || '', link: item.link || item.url || src, pubDate: item.pubDate || item.published || item.date || '', source: src });
-          }
-        } catch { allItems.push({ source: src, error: 'JSON 解析失败' }); }
-      } else {
-        const titleMatch = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-        const descMatch = body.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) || body.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i);
-        allItems.push({ title: titleMatch ? titleMatch[1].trim() : '(无标题)', summary: descMatch ? descMatch[1].trim() : body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500), link: src, pubDate: '', source: src });
-      }
-    } catch (err) {
-      allItems.push({ source: src, error: err.name === 'AbortError' ? '请求超时 (15s)' : (err.message || String(err)) });
-    }
-  }
-
-  let filtered = allItems;
-  if (keywords.length > 0) {
-    filtered = allItems.filter(item => { if (item.error) return true; const text = `${item.title || ''} ${item.summary || ''}`.toLowerCase(); return keywords.some(k => text.includes(k)); });
-  }
-  return { items: filtered.slice(0, limit), total: filtered.length, sourcesCount: sources.length, keyword: keyword || null };
-}
-
-function parseRSSItems(xml, source, limit) {
-  const items = [];
-  const rssItems = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) || [];
-  const atomEntries = xml.match(/<entry[\s>][\s\S]*?<\/entry>/gi) || [];
-  const entries = rssItems.length > 0 ? rssItems : atomEntries;
-  for (const entry of entries.slice(0, limit)) {
-    const getTag = (tag) => { const m = entry.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i')); return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : ''; };
-    const getLinkHref = () => { const m = entry.match(/<link[^>]+href=["']([^"']*)["']/i); return m ? m[1] : getTag('link'); };
-    items.push({ title: getTag('title') || '(无标题)', summary: getTag('description') || getTag('summary') || getTag('content') || '', link: getLinkHref() || getTag('link') || '', pubDate: getTag('pubDate') || getTag('published') || getTag('updated') || '', source });
-  }
-  return items;
-}
-
-// ─── 邮件发送 ───
-let _transporter = null;
-function getTransporter() {
-  if (!_transporter) {
-    const nodemailer = require('nodemailer');
-    const host = process.env.SMTP_HOST;
-    const port = Number(process.env.SMTP_PORT) || 465;
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-    if (!host || !user || !pass) throw new Error('SMTP 环境变量未配置');
-    _transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
-  }
-  return _transporter;
-}
-
-async function sendEmailDirect({ to, subject, html, text }) {
-  const transport = getTransporter();
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-  const info = await transport.sendMail({ from: `"猫猫团队 🐱" <${from}>`, to, subject, text: text || '', html: html || '' });
-  return { success: true, messageId: info.messageId, to, subject };
-}
-
-// ─── Markdown → HTML 轻量转换（后端邮件用，不依赖外部库） ───
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function simpleMarkdownToHtml(md) {
-  if (!md) return '';
-
-  // ── 0. 预处理：统一换行符，确保正则能正确匹配行首/行尾 ──
-  let text = md
-    .replace(/\r\n/g, '\n')   // Windows → Unix
-    .replace(/\r/g, '\n')     // old Mac → Unix
-    .replace(/\\n/g, '\n');   // JSON 转义的 \n 也还原
-
-  // ── 1. 代码块 ```...``` ──
-  text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_m, code) => {
-    return `\n<pre style="background:#3E2723;color:#FFCCBC;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.5;margin:10px 0"><code>${escapeHtml(code.trim())}</code></pre>\n`;
-  });
-
-  // ── 2. 行内代码 `...` ──
-  text = text.replace(/`([^`]+)`/g, '<code style="background:#F5F0EB;padding:2px 6px;border-radius:4px;font-size:13px;color:#D84315;font-family:Menlo,Consolas,monospace">$1</code>');
-
-  // ── 3. 逐行处理（标题、列表、分隔线） ──
-  const lines = text.split('\n');
-  const outputLines = [];
-  let inUl = false;
-  let inOl = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // 已经是 HTML 标签的行直接输出
-    if (trimmed.startsWith('<pre') || trimmed.startsWith('<code') || trimmed.startsWith('</')) {
-      if (inUl) { outputLines.push('</ul>'); inUl = false; }
-      if (inOl) { outputLines.push('</ol>'); inOl = false; }
-      outputLines.push(trimmed);
-      continue;
-    }
-
-    // 分隔线 --- 或 ___
-    if (/^[-_]{3,}\s*$/.test(trimmed)) {
-      if (inUl) { outputLines.push('</ul>'); inUl = false; }
-      if (inOl) { outputLines.push('</ol>'); inOl = false; }
-      outputLines.push('<hr style="border:none;border-top:1px dashed #E0D6CC;margin:16px 0">');
-      continue;
-    }
-
-    // 标题 ### / ## / #
-    const h3 = trimmed.match(/^###\s+(.+)/);
-    if (h3) {
-      if (inUl) { outputLines.push('</ul>'); inUl = false; }
-      if (inOl) { outputLines.push('</ol>'); inOl = false; }
-      outputLines.push(`<h3 style="font-size:15px;font-weight:600;color:#6D4C41;margin:16px 0 6px;line-height:1.4">${applyInlineStyles(h3[1])}</h3>`);
-      continue;
-    }
-    const h2 = trimmed.match(/^##\s+(.+)/);
-    if (h2) {
-      if (inUl) { outputLines.push('</ul>'); inUl = false; }
-      if (inOl) { outputLines.push('</ol>'); inOl = false; }
-      outputLines.push(`<h2 style="font-size:17px;font-weight:700;color:#5D4037;margin:18px 0 8px;line-height:1.4">${applyInlineStyles(h2[1])}</h2>`);
-      continue;
-    }
-    const h1 = trimmed.match(/^#\s+(.+)/);
-    if (h1) {
-      if (inUl) { outputLines.push('</ul>'); inUl = false; }
-      if (inOl) { outputLines.push('</ol>'); inOl = false; }
-      outputLines.push(`<h1 style="font-size:20px;font-weight:700;color:#4E342E;margin:20px 0 10px;line-height:1.4">${applyInlineStyles(h1[1])}</h1>`);
-      continue;
-    }
-
-    // 无序列表 - item  或  * item
-    const ulMatch = trimmed.match(/^[-*]\s+(.+)/);
-    if (ulMatch) {
-      if (inOl) { outputLines.push('</ol>'); inOl = false; }
-      if (!inUl) { outputLines.push('<ul style="margin:8px 0;padding-left:20px">'); inUl = true; }
-      outputLines.push(`<li style="margin:4px 0;line-height:1.7">${applyInlineStyles(ulMatch[1])}</li>`);
-      continue;
-    }
-
-    // 有序列表 1. item
-    const olMatch = trimmed.match(/^\d+[.)]\s+(.+)/);
-    if (olMatch) {
-      if (inUl) { outputLines.push('</ul>'); inUl = false; }
-      if (!inOl) { outputLines.push('<ol style="margin:8px 0;padding-left:20px">'); inOl = true; }
-      outputLines.push(`<li style="margin:4px 0;line-height:1.7">${applyInlineStyles(olMatch[1])}</li>`);
-      continue;
-    }
-
-    // 空行
-    if (!trimmed) {
-      if (inUl) { outputLines.push('</ul>'); inUl = false; }
-      if (inOl) { outputLines.push('</ol>'); inOl = false; }
-      continue;
-    }
-
-    // 普通段落
-    if (inUl) { outputLines.push('</ul>'); inUl = false; }
-    if (inOl) { outputLines.push('</ol>'); inOl = false; }
-    outputLines.push(`<p style="margin:8px 0;line-height:1.8">${applyInlineStyles(trimmed)}</p>`);
-  }
-
-  // 闭合未关闭的列表
-  if (inUl) outputLines.push('</ul>');
-  if (inOl) outputLines.push('</ol>');
-
-  return outputLines.join('\n');
-}
-
-/** 处理行内 Markdown 样式：粗体、斜体、链接 */
-function applyInlineStyles(text) {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a style="color:#E65100;text-decoration:underline" href="$2">$1</a>');
-}
-
-function buildCatEmailHtml(subject, bodyHtml) {
-  const now = new Date().toLocaleString('zh-CN');
-  return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0 auto; padding: 24px; background: #FFF9F0;">
-      <div style="background: linear-gradient(135deg, #FFE0B2, #FFCCBC); border-radius: 16px; padding: 24px 28px; margin-bottom: 20px;">
-        <h2 style="margin: 0 0 6px; color: #4E342E; font-size: 20px;">${subject}</h2>
-        <p style="margin: 0; color: #8D6E63; font-size: 13px;">${now}</p>
-      </div>
-      <div style="padding: 0 4px; margin-bottom: 4px;">
-        <p style="color: #5D4037; font-size: 15px; margin: 0;">老大！</p>
-      </div>
-      <div style="background: #fff; border: 1px solid #E0D6CC; border-radius: 12px; padding: 24px; line-height: 1.9; color: #333; font-size: 14px;">
-        ${bodyHtml}
-      </div>
-      <div style="text-align: right; padding: 16px 8px 0; color: #8D6E63; font-size: 13px; line-height: 1.6;">
-        <p style="margin: 0;">🐾 喵~</p>
-        <p style="margin: 4px 0 0;">你的猫咪军团 发出</p>
-      </div>
-      <div style="text-align: center; margin-top: 20px; padding-top: 12px; border-top: 1px dashed #E0D6CC;">
-        <p style="color: #BCAAA4; font-size: 11px; margin: 0;">🏠 来自 CuCaTopia.com ✨</p>
-      </div>
-    </div>
-  `;
-}
-
 // ─── 单步执行：根据 agentId 分发到对应的猫脚本 ───
-async function executeStep(step, prevResults, userEmail, catSystemPrompt, context = {}) {
-  const { agentId } = step;
-
+// 工作流仅负责连接步骤、传递上游输出，不注入额外 prompt，每步完全由 agent 脚本自控。
+async function executeStep(step, prevResults, userEmail, context = {}) {
   // 合并上游结果
   const merged = { ...prevResults };
 
-  // 注入用户输入（如果是第一步）
+  // 注入用户输入（如果是第一步且上游无文本）
   if (context.userInput && !merged.text) {
     merged.text = context.userInput;
   }
@@ -315,7 +91,7 @@ async function executeStep(step, prevResults, userEmail, catSystemPrompt, contex
   try {
     // 所有步骤统一通过 agentId 分发到 cat-step-scripts
     const { runAgentStep } = require('./lib/cat-step-scripts');
-    return runAgentStep({ step, merged, userEmail, catSystemPrompt, context });
+    return runAgentStep({ step, merged, userEmail, context });
   } catch (err) {
     return { success: false, data: null, summary: `步骤执行异常: ${err.message}`, status: 'error' };
   }
@@ -362,7 +138,7 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
     }
   }
 
-  // 构建系统上下文（传给 executeStep 供 system key 解析使用）
+  // 构建执行上下文（仅传递必要的运行时信息）
   const executionContext = {
     userName,
     workflowName: workflow.name,
@@ -371,18 +147,6 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
 
   let steps = Array.isArray(workflow.steps) ? workflow.steps : (typeof workflow.steps === 'string' ? JSON.parse(workflow.steps) : []);
   steps = JSON.parse(JSON.stringify(steps));
-
-  if (userInput && steps.length > 0) {
-    const first = steps[0];
-    if (!Array.isArray(first.params)) first.params = [];
-    const topicParam = first.params.find((p) => p.key === 'topic');
-    if (topicParam) topicParam.value = userInput;
-    else {
-      const kw = first.params.find((p) => p.key === 'keyword');
-      if (kw) kw.value = userInput;
-      else first.params.push({ key: 'topic', label: '用户输入', type: 'text', value: userInput });
-    }
-  }
 
   // ── 构建 DAG：解析每个步骤的上游依赖索引 ──
   const parentIndex = [];
@@ -436,27 +200,25 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
         ? { ...stepResults[pi].data }
         : {};
 
-      // 查询猫猫的性格 systemPrompt / 官方 templateId（供 AIGC 按猫分发脚本）
-      let catSystemPrompt = '';
-      let catRole = '';
-      let cat = null;
+      // 查询猫猫的 templateId（供 cat-step-scripts 按猫分发脚本）
+      let catTemplateId = '';
+      let catName = '';
       if (step.agentId) {
-        cat = await prisma.teamCat.findUnique({
+        const cat = await prisma.teamCat.findUnique({
           where: { id: step.agentId },
-          select: { systemPrompt: true, role: true, templateId: true, name: true },
+          select: { templateId: true, name: true },
         }).catch(() => null);
-        if (cat?.systemPrompt) catSystemPrompt = cat.systemPrompt;
-        if (cat?.role) catRole = cat.role;
+        if (cat?.templateId) catTemplateId = cat.templateId;
+        if (cat?.name) catName = cat.name;
       }
 
-      // 带超时保护（60 秒）
+      // 带超时保护（120 秒）
       let result;
       try {
-        const executePromise = executeStep(step, prevResults, userEmail, catSystemPrompt, {
+        const executePromise = executeStep(step, prevResults, userEmail, {
           ...executionContext,
-          catRole,
-          catTemplateId: cat?.templateId || '',
-          catName: cat?.name || '',
+          catTemplateId,
+          catName,
         });
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (120s)')), 120000));
         result = await Promise.race([executePromise, timeoutPromise]);
