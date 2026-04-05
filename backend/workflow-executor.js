@@ -29,7 +29,7 @@ async function createGeminiClient(apiKey) {
 async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
-  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
   const model = process.env.QWEN_MODEL || 'qwen-plus';
 
   const controller = new AbortController();

@@ -292,7 +292,7 @@ async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
 
-  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
   const model = process.env.QWEN_MODEL || 'qwen-plus';
 
   const controller = new AbortController();
@@ -733,7 +733,7 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
       return sendResult({ success: true, data: VIBE_SNAP_MOCK_EXTRACT, meta: { fallback: 'no-ai-key' } });
     }
 
-    const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
     const model = 'qwen-vl-plus'; // 视觉模型，支持 image_url 输入
 
     const systemPrompt = `你是资深 UI/视觉设计分析助手。用户上传的是**网页或 App 界面截图**（可能为长图）。
@@ -860,18 +860,28 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
     }
   } catch (err) {
     console.error('[vibe-snap-extract] error:', err.name, err.message, err.cause || '');
-    let errMsg;
-    if (err.name === 'AbortError') {
-      errMsg = 'AI 分析超时（120s），请使用更小的图片或稍后重试';
-    } else if (err.message === 'fetch failed' || err.message?.includes('fetch')) {
-      // Node.js 原生 fetch 在网络层面失败时抛出 "fetch failed"
-      const causeMsg = err.cause?.message || err.cause?.code || '';
-      console.error('[vibe-snap-extract] fetch cause:', err.cause);
-      errMsg = `AI 服务请求失败（${causeMsg || '网络异常'}），请稍后重试`;
-    } else {
-      errMsg = err.message || 'AI 分析失败';
+    const causeMsg = err.cause?.message || err.cause?.code || '';
+
+    // 网络层面失败（Connect Timeout / DNS / fetch failed）→ fallback mock 数据
+    const isNetworkError =
+      err.name === 'AbortError' ||
+      err.message === 'fetch failed' ||
+      err.message?.includes('fetch') ||
+      causeMsg.includes('Timeout') ||
+      causeMsg.includes('ECONNREFUSED') ||
+      causeMsg.includes('ENOTFOUND');
+
+    if (isNetworkError) {
+      console.warn(`[vibe-snap-extract] AI 网络不可达（${causeMsg || err.name}），返回 mock 数据`);
+      return sendResult({
+        success: true,
+        data: VIBE_SNAP_MOCK_EXTRACT,
+        meta: { fallback: 'ai-network-error', detail: causeMsg || err.message },
+      });
     }
-    sendResult({ success: false, error: errMsg });
+
+    // 其他错误：仍然返回错误信息
+    sendResult({ success: false, error: err.message || 'AI 分析失败' });
   }
 });
 
