@@ -53,8 +53,14 @@ class ApiClient {
             headers['Authorization'] = `Bearer ${data.accessToken}`;
             const retryRes = await fetch(`${BASE_URL}${url}`, { ...options, headers });
             if (!retryRes.ok) {
-              const err = await retryRes.json().catch(() => ({ error: '请求失败' }));
-              const msg = err.error || '请求失败';
+              let msg = '请求失败';
+              try {
+                const ct = retryRes.headers.get('content-type') || '';
+                if (ct.includes('application/json')) {
+                  const err = await retryRes.json();
+                  msg = err.error || msg;
+                }
+              } catch { /* ignore parse error */ }
               showToast(msg);
               throw new Error(msg);
             }
@@ -72,8 +78,26 @@ class ApiClient {
     }
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: '请求失败' }));
-      const msg = err.error || '请求失败';
+      // 针对常见 HTTP 状态码给出友好提示
+      let msg = '请求失败';
+      if (response.status === 502) {
+        msg = '服务暂时不可用（502），请稍后再试';
+      } else if (response.status === 503) {
+        msg = '服务维护中（503），请稍后再试';
+      } else if (response.status === 504) {
+        msg = '服务响应超时（504），请稍后再试';
+      } else {
+        // 尝试解析 JSON 错误信息，非 JSON 响应（如 nginx HTML 错误页）不会崩溃
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const err = await response.json();
+            msg = err.error || msg;
+          }
+        } catch {
+          // JSON 解析失败，保持默认 msg
+        }
+      }
       showToast(msg);
       throw new Error(msg);
     }

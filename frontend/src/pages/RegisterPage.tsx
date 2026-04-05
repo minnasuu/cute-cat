@@ -51,12 +51,12 @@ const RegisterPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!betaCode.trim()) { showToast('请输入邀请码', 'warning'); return; }
     if (!nickname.trim()) { showToast('请输入昵称', 'warning'); return; }
     if (!EMAIL_REGEX.test(email)) { showToast('请输入有效的邮箱地址', 'warning'); return; }
     if (!code.trim()) { showToast('请输入验证码', 'warning'); return; }
     if (password.length < 6) { showToast('密码至少 6 位', 'warning'); return; }
     if (password !== confirmPassword) { showToast('两次输入的密码不一致', 'warning'); return; }
-    if (!betaCode.trim()) { showToast('请输入邀请码', 'warning'); return; }
     setLoading(true);
     try {
       await register(email, password, nickname.trim(), code.trim(), betaCode.trim());
