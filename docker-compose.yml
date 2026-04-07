@@ -44,7 +44,7 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
-      QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3.5-plus}
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-qwen}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
       BETA_CODES: ${BETA_CODES:-CAT2026}

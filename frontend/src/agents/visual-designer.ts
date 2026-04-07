@@ -4,8 +4,8 @@ import { callDifySkillStream } from '../utils/backendClient';
 import { listVibeStyleLibLibrary } from '../pages/VibeStyleLib/vibeStyleLibApi';
 
 /**
- * 视觉设计师：从 VibeStyleLib 灵感库中匹配最合适的设计风格
- * 优化策略：仅传 styleDescription 给 AI 匹配（节省 token），匹配成功后拼接完整 designPrompt
+ * 视觉设计师：从 VibeStyleLib（vibe-snap-library）灵感库中匹配最合适的设计风格
+ * 优化策略：仅传 styleDescription 给 AI 匹配（节省 token）；对外输出仅为选中条目的 designPrompt 字段
  */
 export default async function runVisualDesigner(ctx: AgentContext): Promise<AgentResult> {
   try {
@@ -49,12 +49,13 @@ export default async function runVisualDesigner(ctx: AgentContext): Promise<Agen
 
       return {
         success: true,
-        data: { 
-          text: `选择：默认现代简约风格\n理由：灵感库暂无数据，使用通用的现代简约设计风格，适合大多数 Web 应用场景。\n\n---\n\n${defaultPrompt}`,
+        data: {
+          text: defaultPrompt,
           selectedStyleId: null,
           selectedStyleTags: ['现代', '简约', '专业'],
         },
-        summary: '已使用默认现代简约风格（灵感库暂无数据）',
+        summary:
+          defaultPrompt.length > 300 ? defaultPrompt.slice(0, 300) + '…' : defaultPrompt,
         status: 'success',
       };
     }
@@ -151,29 +152,16 @@ ${styleCatalog}
 
     const selectedStyle = libraryItems[Math.max(0, Math.min(selectedIndex, libraryItems.length - 1))];
 
-    // 6. 拼接完整输出：AI 分析 + 完整 designPrompt
-    const fullOutput = `${aiResponse}
-
----
-
-## 完整视觉设计规范
-
-${selectedStyle.designPrompt}
-
----
-
-**设计摘要**: ${selectedStyle.summary}
-**色板**: ${selectedStyle.colors.join(', ')}
-**标签**: ${selectedStyle.tags.join(', ')}`;
+    const designPrompt = selectedStyle.designPrompt;
 
     return {
       success: true,
-      data: { 
-        text: fullOutput,
+      data: {
+        text: designPrompt,
         selectedStyleId: selectedStyle.id,
         selectedStyleTags: selectedStyle.tags,
       },
-      summary: fullOutput.length > 300 ? fullOutput.slice(0, 300) + '…' : fullOutput,
+      summary: designPrompt.length > 300 ? designPrompt.slice(0, 300) + '…' : designPrompt,
       status: 'success',
     };
 

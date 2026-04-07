@@ -15,11 +15,11 @@ export const workflows: Workflow[] = [
         stepId: 'wpb_arch',
         agentId: 'product-architect',
       },
-      {
-        stepId: 'wpb_ix',
-        agentId: 'ux-designer',
-        inputFrom: 'wpb_arch',
-      },
+      // {
+      //   stepId: 'wpb_ix',
+      //   agentId: 'ux-designer',
+      //   inputFrom: 'wpb_arch',
+      // },
       {
         stepId: 'wpb_visual',
         agentId: 'visual-designer',

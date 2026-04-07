@@ -11,7 +11,6 @@ import { apiClient } from "../../utils/apiClient";
 import CatLogo from "../../components/CatLogo";
 import Navbar from "../../components/Navbar";
 import UserProfileDropdown from "./UserProfileDropdown";
-import { showToast } from "../../components/Toast";
 import { AppIcon } from "../../components/icons";
 import { X } from "lucide-react";
 import type { WorkflowRow, WorkbenchPayload } from "./workbenchTypes";

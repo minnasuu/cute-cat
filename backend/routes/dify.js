@@ -293,7 +293,7 @@ async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
 
   const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-  const model = process.env.QWEN_MODEL || 'qwen-plus';
+  const model = process.env.QWEN_MODEL || 'qwen3.5-plus';
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90000); // 90s 超时
@@ -410,7 +410,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
         return endSSE();
       }
       const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-      const qwenModel = process.env.QWEN_MODEL || 'qwen-plus';
+      const qwenModel = process.env.QWEN_MODEL || 'qwen3.5-plus';
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 120000);
@@ -954,7 +954,7 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
     }
 
     const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-    const model = 'qwen-vl-plus'; // 视觉模型，支持 image_url 输入
+    const model = 'qwen3.5-plus'; // 视觉模型，支持 image_url 输入
 
     const systemPrompt = `你是资深 UI/视觉设计分析助手。用户上传的是**网页或 App 界面截图**（可能为长图）。
 
