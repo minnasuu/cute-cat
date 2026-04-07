@@ -8,6 +8,24 @@
 
 const { callAI } = require('./ai-bridge');
 
+// 延迟加载 Google GenAI（ESM-only 包）
+let _GoogleGenAI = null;
+async function getGoogleGenAI() {
+  if (!_GoogleGenAI) {
+    const mod = await import('@google/genai');
+    _GoogleGenAI = mod.GoogleGenAI;
+  }
+  return _GoogleGenAI;
+}
+
+async function createGeminiClient(apiKey) {
+  const GoogleGenAI = await getGoogleGenAI();
+  const baseUrl = process.env.GEMINI_BASE_URL;
+  const opts = { apiKey };
+  if (baseUrl) opts.httpOptions = { baseUrl };
+  return new GoogleGenAI(opts);
+}
+
 /**
  * 占位框架：不调用任何模型，仅打日志+返回空结果
  */
@@ -94,6 +112,145 @@ async function runWithAI(templateId, ctx, systemPrompt, userText, options = {}) 
 }
 
 /**
+ * 真实 AI 流式调用辅助（将 token chunk 回调给 ctx.onChunk / options.onChunk）
+ * - Qwen：OpenAI 兼容 SSE（data: {...}\n\n）
+ * - Gemini：@google/genai generateContentStream
+ */
+async function runWithAIStream(templateId, ctx, systemPrompt, userText, options = {}) {
+  const { step, context, onChunk: ctxOnChunk } = ctx;
+  const maxTokens = options.maxTokens || 4096;
+  const _resultType = options._resultType || undefined;
+  const selectedModel = options.model || process.env.DEFAULT_AI_MODEL || 'qwen';
+  const onChunk = options.onChunk || ctxOnChunk;
+
+  console.log('[cat-step:ai:stream]', JSON.stringify({
+    templateId,
+    catName: context?.catName || '',
+    stepId: step?.stepId || '',
+    workflowName: context?.workflowName || '',
+    model: selectedModel,
+    maxTokens,
+    inputLength: userText?.length || 0,
+  }));
+
+  try {
+    if (selectedModel === 'qwen') {
+      const apiKey = process.env.QWEN_API_KEY;
+      if (!apiKey) throw new Error('QWEN_API_KEY not set');
+      const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+      const model = process.env.QWEN_MODEL || 'qwen3.5-plus';
+
+      const controller = new AbortController();
+      const timeoutMs = Number.parseInt(process.env.QWEN_STREAM_TIMEOUT_MS || '', 10);
+      const timeout = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 180000);
+
+      try {
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+            max_tokens: maxTokens,
+            temperature: 0.7,
+            stream: true,
+          }),
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Qwen API ${response.status}: ${errText}`);
+        }
+
+        let fullAnswer = '';
+        const reader = response.body;
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        for await (const chunk of reader) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (!trimmed.startsWith('data: ')) continue;
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json.choices?.[0]?.delta?.content || '';
+              if (delta) {
+                fullAnswer += delta;
+                try { onChunk?.(delta, fullAnswer); } catch { /* ignore */ }
+              }
+            } catch { /* skip malformed */ }
+          }
+        }
+
+        if (!fullAnswer.trim()) {
+          return { success: false, data: { text: '' }, summary: `[${templateId}] AI 返回空内容`, status: 'error' };
+        }
+
+        const data = { text: fullAnswer };
+        if (_resultType) data._resultType = _resultType;
+        return {
+          success: true,
+          data,
+          summary: fullAnswer.length > 300 ? fullAnswer.slice(0, 300) + '…' : fullAnswer,
+          status: 'success',
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    // --- Gemini streaming ---
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+    const ai = await createGeminiClient(apiKey);
+    const stream = await ai.models.generateContentStream({
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+      contents: userText,
+      config: {
+        systemInstruction: systemPrompt,
+        maxOutputTokens: maxTokens,
+        temperature: 0.7,
+      },
+    });
+
+    let fullAnswer = '';
+    for await (const chunk of stream) {
+      const delta = chunk.text || '';
+      if (delta) {
+        fullAnswer += delta;
+        try { onChunk?.(delta, fullAnswer); } catch { /* ignore */ }
+      }
+    }
+
+    if (!fullAnswer.trim()) {
+      return { success: false, data: { text: '' }, summary: `[${templateId}] AI 返回空内容`, status: 'error' };
+    }
+
+    const data = { text: fullAnswer };
+    if (_resultType) data._resultType = _resultType;
+    return {
+      success: true,
+      data,
+      summary: fullAnswer.length > 300 ? fullAnswer.slice(0, 300) + '…' : fullAnswer,
+      status: 'success',
+    };
+  } catch (err) {
+    console.error(`[cat-step:ai:stream] ${templateId} error:`, err.message);
+    return {
+      success: false,
+      data: { text: '' },
+      summary: `[${templateId}] AI 调用失败: ${err.message}`,
+      status: 'error',
+    };
+  }
+}
+
+/**
  * 从 ctx.merged 中提取上游文本
  */
 function extractUpstreamText(merged) {
@@ -104,4 +261,4 @@ function extractUpstreamText(merged) {
   );
 }
 
-module.exports = { runPlaceholder, runWithAI, extractUpstreamText };
+module.exports = { runPlaceholder, runWithAI, runWithAIStream, extractUpstreamText };

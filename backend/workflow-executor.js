@@ -82,10 +82,22 @@ async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
 async function executeStep(step, merged, userEmail, context = {}) {
   try {
     const { runAgentStep } = require('./lib/cat-step-scripts');
-    return runAgentStep({ step, merged, userEmail, context });
+    return runAgentStep({ step, merged, userEmail, context, onChunk: context?.onChunk });
   } catch (err) {
     return { success: false, data: null, summary: `步骤执行异常: ${err.message}`, status: 'error' };
   }
+}
+
+function stepTimeoutMsFor(step) {
+  const base = Number.parseInt(process.env.WORKFLOW_STEP_TIMEOUT_MS || '', 10);
+  const defaultMs = Number.isFinite(base) && base > 0 ? base : 120_000;
+
+  // 网页制作流水线：前端工程师输出长代码，通常需要更长时间
+  const feMsRaw = Number.parseInt(process.env.WORKFLOW_FE_STEP_TIMEOUT_MS || '', 10);
+  const feMs = Number.isFinite(feMsRaw) && feMsRaw > 0 ? feMsRaw : 300_000;
+  if (step?.agentId === 'frontend-engineer' || step?.stepId === 'wpb_fe') return feMs;
+
+  return defaultMs;
 }
 
 // ─── 执行整个工作流（拓扑序串行） ───
@@ -93,6 +105,7 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
   const startTime = Date.now();
   const stepsData = [];
   const userInput = typeof options.userInput === 'string' ? options.userInput.trim() : '';
+  const hooks = options.hooks || {};
 
   // 检查日志上限并创建 run 记录
   const runCount = await prisma.workflowRun.count({ where: { teamId: workflow.teamId } });
@@ -110,6 +123,9 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       status: 'running',
     },
   });
+  try {
+    await hooks.onRunCreated?.({ runId: run.id, workflowId: workflow.id });
+  } catch { /* ignore hooks */ }
 
   // 获取触发用户的邮箱和名称（用于 system key 注入）
   let userEmail = '';
@@ -195,14 +211,66 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       if (cat?.name) catName = cat.name;
     }
 
+    try {
+      await hooks.onStepStart?.({ index: i, stepId: step.stepId, agentId: step.agentId });
+    } catch { /* ignore hooks */ }
+
+    // 先插入一个“运行中”的 step 记录，便于前端/历史能看到增量
+    const preEntry = {
+      index: i,
+      agentId: steps[i].agentId,
+      success: undefined,
+      status: 'running',
+      summary: '',
+    };
+    const preAt = stepsData.findIndex((x) => x.index === i);
+    if (preAt >= 0) stepsData[preAt] = preEntry;
+    else stepsData.push(preEntry);
+    const preSnapshot = [...stepsData].sort((a, b) => a.index - b.index);
+    prisma.workflowRun.update({
+      where: { id: run.id },
+      data: { steps: preSnapshot },
+    }).catch((err) => console.error('[executor] incremental step(pre) update error:', err.message));
+
+    let accumulated = '';
+    let lastFlushAt = 0;
+    const onChunk = (delta) => {
+      if (!delta) return;
+      accumulated += String(delta);
+      try {
+        hooks.onStepChunk?.({ index: i, textDelta: String(delta), accumulated });
+      } catch { /* ignore hooks */ }
+
+      const now = Date.now();
+      if (now - lastFlushAt < 1200) return;
+      lastFlushAt = now;
+
+      // 将 partial 写入 steps（用 summary 承载，最终 stepDone 会覆盖为最终 summary/resultData）
+      const at = stepsData.findIndex((x) => x.index === i);
+      if (at >= 0) {
+        stepsData[at] = { ...stepsData[at], status: 'running', summary: accumulated };
+      } else {
+        stepsData.push({ index: i, agentId: steps[i].agentId, status: 'running', summary: accumulated });
+      }
+      const snap = [...stepsData].sort((a, b) => a.index - b.index);
+      prisma.workflowRun.update({
+        where: { id: run.id },
+        data: { steps: snap },
+      }).catch((err) => console.error('[executor] incremental step(chunk) update error:', err.message));
+    };
+
     let result;
     try {
       const executePromise = executeStep(step, merged, userEmail, {
         ...executionContext,
         catTemplateId,
         catName,
+        onChunk,
       });
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (120s)')), 120000));
+      const timeoutMs = stepTimeoutMsFor(step);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`执行超时 (${Math.round(timeoutMs / 1000)}s)`)), timeoutMs),
+      );
       result = await Promise.race([executePromise, timeoutPromise]);
     } catch (err) {
       result = { success: false, data: null, summary: err.message || '步骤执行异常', status: 'error' };
@@ -223,6 +291,17 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       if (d._resultType && d.text) stepEntry.resultData = String(d.text);
     }
     stepsData.push(stepEntry);
+
+    try {
+      await hooks.onStepDone?.({
+        index: i,
+        success: result.success,
+        status: result.status,
+        summary: result.summary,
+        resultType: stepEntry.resultType,
+        resultData: stepEntry.resultData,
+      });
+    } catch { /* ignore hooks */ }
 
     if (!result.success) {
       hasFailed = true;
@@ -247,6 +326,10 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       totalDuration: Math.round((Date.now() - startTime) / 1000),
     },
   }).catch((err) => console.error('[executor] update run error:', err.message));
+
+  try {
+    await hooks.onRunDone?.({ runId: run.id, status: hasFailed ? 'failed' : 'success' });
+  } catch { /* ignore hooks */ }
 
   console.log(`[executor] 工作流 "${workflow.name}" 执行完成 → ${hasFailed ? 'failed' : 'success'} (${Math.round((Date.now() - startTime) / 1000)}s)`);
   return { runId: run.id, status: hasFailed ? 'failed' : 'success', steps: stepsData };

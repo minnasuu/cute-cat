@@ -125,6 +125,7 @@ export default function DashboardWorkflowPipeline({
   running,
   runSteps,
   footerHint,
+  disableTypewriter,
 }: {
   workflowName: string;
   planSteps: PlanStep[];
@@ -134,6 +135,8 @@ export default function DashboardWorkflowPipeline({
   runSteps: WorkflowRunStep[];
   /** 等待 run 记录时的副文案 */
   footerHint?: string;
+  /** SSE 真流式时禁用“逐字打字”的假流式动画 */
+  disableTypewriter?: boolean;
 }) {
   const [currentDialog, setCurrentDialog] = useState("");
   /** 跟踪哪些步骤的打字已完成，直接展示全文 */
@@ -227,7 +230,7 @@ export default function DashboardWorkflowPipeline({
               row?.resultType === "visual-design-output" && row?.resultData
                 ? row.resultData
                 : (row?.summary ?? "");
-            const showResult = (okDone || failed) && outcomeText;
+            const showResult = (okDone || failed || isCurrent) && outcomeText;
             const isAlreadyTyped = typedDone.has(i);
 
             return (
@@ -295,7 +298,11 @@ export default function DashboardWorkflowPipeline({
                         </span>
                       </div>
                       <div className="node-result-summary markdown-body">
-                        {isAlreadyTyped ? (
+                        {disableTypewriter || isCurrent ? (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {outcomeText}
+                          </ReactMarkdown>
+                        ) : isAlreadyTyped ? (
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {outcomeText}
                           </ReactMarkdown>

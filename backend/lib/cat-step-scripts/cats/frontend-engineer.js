@@ -1,6 +1,6 @@
 'use strict';
 
-const { runWithAI, extractUpstreamText } = require('../_framework');
+const { runWithAIStream, extractUpstreamText } = require('../_framework');
 
 function healIncompleteJsx(raw) {
   let s = raw.trim();
@@ -68,7 +68,7 @@ module.exports = async function runFrontendEngineer(ctx) {
     ? upstreamText
     : '请生成一个通用企业官网风格的 React 单页（JSX），包含 App 根组件。';
 
-  const result = await runWithAI('frontend-engineer', ctx, SYSTEM_PROMPT, userText, {
+  const result = await runWithAIStream('frontend-engineer', ctx, SYSTEM_PROMPT, userText, {
     maxTokens: 16384,
     _resultType: 'react-sandbox',
   });

@@ -153,6 +153,74 @@ router.post('/:id/execute', async (req, res) => {
   }
 });
 
+// ======================== 后端执行工作流（SSE 流式返回步骤输出）========================
+router.post('/:id/execute/stream', async (req, res) => {
+  // --- SSE headers ---
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const heartbeat = setInterval(() => {
+    try { res.write(':heartbeat\n\n'); } catch { /* closed */ }
+  }, 8000);
+  req.on('close', () => clearInterval(heartbeat));
+
+  function sendSSE(event, data) {
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch { /* closed */ }
+  }
+
+  function endSSE() {
+    clearInterval(heartbeat);
+    try { res.end(); } catch { /* closed */ }
+  }
+
+  try {
+    const workflow = await prisma.workflow.findUnique({ where: { id: req.params.id } });
+    if (!workflow) {
+      sendSSE('error', { message: '工作流不存在' });
+      return endSSE();
+    }
+    const team = await verifyTeamOwner(workflow.teamId, req.userId);
+    if (!team) {
+      sendSSE('error', { message: '无权访问' });
+      return endSSE();
+    }
+
+    const { executeWorkflow } = require('../workflow-executor');
+    const userInput = typeof req.body?.userInput === 'string' ? req.body.userInput : '';
+
+    await executeWorkflow(workflow, req.userId, {
+      userInput,
+      hooks: {
+        onRunCreated: ({ runId, workflowId }) => sendSSE('runCreated', { runId, workflowId }),
+        onStepStart: ({ index, stepId, agentId }) => sendSSE('stepStart', { index, stepId, agentId }),
+        onStepChunk: ({ index, textDelta, accumulated }) =>
+          sendSSE('stepChunk', { index, textDelta, accumulatedLen: (accumulated || '').length }),
+        onStepDone: ({ index, success, status, summary, resultType, resultData }) =>
+          sendSSE('stepDone', {
+            index,
+            success,
+            status,
+            summary,
+            resultType: resultType || null,
+            resultDataLen: (resultData || '').length,
+          }),
+        onRunDone: ({ runId, status }) => sendSSE('runDone', { runId, status }),
+      },
+    });
+
+    endSSE();
+  } catch (err) {
+    console.error('[workflows] execute/stream error:', err);
+    sendSSE('error', { message: err.message || '执行工作流失败' });
+    endSSE();
+  }
+});
+
 // ======================== 执行工作流（创建 Run 记录）========================
 router.post('/:id/run', async (req, res) => {
   try {

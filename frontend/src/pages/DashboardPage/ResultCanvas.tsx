@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Loader2, Lock } from "lucide-react";
 import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
 import ReactSandboxPreview from "./ReactSandboxPreview";
-import type { PlanStep, TeamCat, WorkflowRun } from "./workbenchTypes";
+import type { PlanStep, TeamCat, WorkflowRun, WorkflowRunStep } from "./workbenchTypes";
 import {
   normalizeRunSteps,
   sortedRunSteps,
@@ -15,6 +15,9 @@ export default function ResultCanvas({
   workflowName,
   userPrompt,
   displayRun,
+  streamingRunId,
+  streamingStatus,
+  streamingSteps,
   isSubmitting,
   waitingForRunRecord,
   planSteps,
@@ -24,6 +27,12 @@ export default function ResultCanvas({
   workflowName: string;
   userPrompt: string;
   displayRun: WorkflowRun | null;
+  /** SSE 流式执行中：后端创建的 runId */
+  streamingRunId?: string | null;
+  /** SSE 流式执行中：当前状态（running/failed/success） */
+  streamingStatus?: string | null;
+  /** SSE 流式执行中：实时 steps（含 partial 文本） */
+  streamingSteps?: WorkflowRunStep[] | null;
   isSubmitting: boolean;
   /** 已提交但尚未在列表里匹配到本轮 run */
   waitingForRunRecord: boolean;
@@ -31,12 +40,15 @@ export default function ResultCanvas({
   catNameById: Record<string, string>;
   cats: TeamCat[];
 }) {
-  const steps = useMemo(
-    () => sortedRunSteps(normalizeRunSteps(displayRun?.steps)),
-    [displayRun?.steps],
-  );
-  const inProgress = displayRun?.status === "running";
-  const failed = displayRun?.status === "failed";
+  const steps = useMemo(() => {
+    if (displayRun?.steps) return sortedRunSteps(normalizeRunSteps(displayRun.steps));
+    if (streamingSteps && streamingSteps.length) return sortedRunSteps(streamingSteps);
+    return [];
+  }, [displayRun?.steps, streamingSteps]);
+
+  const runStatus = displayRun?.status || streamingStatus || null;
+  const inProgress = runStatus === "running";
+  const failed = runStatus === "failed";
   const lastStep = steps.length ? steps[steps.length - 1] : null;
   const failedStep = useMemo(
     () => steps.find((s) => s.success === false || s.status === "error"),
@@ -90,7 +102,7 @@ export default function ResultCanvas({
       />
       <div className="absolute inset-0 bg-gradient-to-br from-primary-50/40 via-transparent to-accent-50/30 pointer-events-none" />
 
-      <div className="relative z-10 flex-1 overflow-y-auto space-y-4">
+      <div className="relative z-10 flex-1 overflow-y-auto space-y-4 flex flex-col justify-center items-center">
         {isSubmitting ? (
           <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
             <Loader2
@@ -127,14 +139,15 @@ export default function ResultCanvas({
         ) : null}
 
         {/* 执行中：主区域只展示 WorkflowPanel 同款流水线动画 */}
-        {!isSubmitting && displayRun && inProgress ? (
+        {!isSubmitting && (displayRun || (streamingRunId && inProgress)) && inProgress ? (
           <DashboardWorkflowPipeline
-            workflowName={workflowName || displayRun.workflowName}
+            workflowName={workflowName || displayRun?.workflowName || "执行中"}
             planSteps={planSteps}
             catNameById={catNameById}
             cats={cats}
             running
             runSteps={steps}
+            disableTypewriter
           />
         ) : null}
 
@@ -179,7 +192,10 @@ export default function ResultCanvas({
                     srcDoc={htmlPageData!}
                     sandbox="allow-scripts allow-same-origin"
                     className="w-full border-0"
-                    style={{ minHeight: "min(60vh, 520px)", height: "calc(100vh - 109px)" }}
+                    style={{
+                      minHeight: "min(60vh, 520px)",
+                      height: "calc(100vh - 109px)",
+                    }}
                     title="生成的网页预览"
                   />
                 )}
@@ -210,7 +226,6 @@ export default function ResultCanvas({
                 )}
               </div>
             )}
-
           </section>
         ) : null}
       </div>
