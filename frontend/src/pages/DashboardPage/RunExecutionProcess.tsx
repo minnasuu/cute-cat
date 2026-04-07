@@ -29,9 +29,7 @@ export function stepDisplayTextForRunStep(
   s: WorkflowRunStep | null | undefined,
 ): string {
   if (!s) return "";
-  if (s.resultType === "visual-design-output" && s.resultData) {
-    return s.resultData;
-  }
+  if (s.resultType && s.resultData) return s.resultData;
   return s.summary ?? "";
 }
 

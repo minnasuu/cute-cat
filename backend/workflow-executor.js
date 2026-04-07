@@ -290,6 +290,9 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       if (d._resultType) stepEntry.resultType = d._resultType;
       if (d._resultType && d.text) stepEntry.resultData = String(d.text);
     }
+    if (stepEntry.resultType && stepEntry.resultData && result.success) {
+      stepEntry.summary = `已生成 ${stepEntry.resultType}（${stepEntry.resultData.length} 字符）`;
+    }
     stepsData.push(stepEntry);
 
     try {

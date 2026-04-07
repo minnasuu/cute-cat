@@ -897,7 +897,6 @@ const DashboardPage: React.FC = () => {
                       type="button"
                       disabled={
                         !selectedWorkflowId ||
-                        loading ||
                         !userInput.trim() ||
                         atExecutionCap
                       }

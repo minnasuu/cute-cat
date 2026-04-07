@@ -195,11 +195,12 @@ export default function DashboardWorkflowPipeline({
 
   return (
     <div className="h-full flex flex-col items-center justify-center">
-
       <div className="stage-body scrollbar-hide">
         <div className="pipeline">
           {planSteps.map((step, i) => {
-            const cat = step.agentId ? getCatById(cats, step.agentId) : undefined;
+            const cat = step.agentId
+              ? getCatById(cats, step.agentId)
+              : undefined;
             const catColors = cat?.catColors as CatColors | undefined;
             const row = stepByIndex.get(i);
             const failed = !!(
@@ -227,9 +228,7 @@ export default function DashboardWorkflowPipeline({
 
             const resultStatus = failed ? "error" : "success";
             const outcomeText =
-              row?.resultType === "visual-design-output" && row?.resultData
-                ? row.resultData
-                : (row?.summary ?? "");
+              row?.resultType && row?.resultData ? row.resultData : (row?.summary ?? "");
             const showResult = (okDone || failed || isCurrent) && outcomeText;
             const isAlreadyTyped = typedDone.has(i);
 
@@ -248,10 +247,7 @@ export default function DashboardWorkflowPipeline({
                     className={`cat-avatar ${isCurrent && !failed ? "working" : ""}`}
                   >
                     {catColors ? (
-                      <CatSVG
-                        colors={catColors}
-                        className="pipeline-cat"
-                      />
+                      <CatSVG colors={catColors} className="pipeline-cat" />
                     ) : (
                       <div
                         className="pipeline-cat flex items-center justify-center text-4xl opacity-80"
@@ -278,10 +274,17 @@ export default function DashboardWorkflowPipeline({
 
                   {isCurrent && !failed && (
                     <div className="node-progress">
-                      <div
-                        className="node-progress-bar"
-                        style={{ animationDuration: `${STEP_DURATION}ms` }}
-                      />
+                      <div className="inline-flex items-center gap-1 text-text-tertiary">
+                        <span className="animate-spin">
+                          <AppIcon symbol="Loader2" size={14} />
+                        </span>
+                        <span className="animate-spin [animation-delay:120ms] opacity-80">
+                          <AppIcon symbol="Loader2" size={14} />
+                        </span>
+                        <span className="animate-spin [animation-delay:240ms] opacity-60">
+                          <AppIcon symbol="Loader2" size={14} />
+                        </span>
+                      </div>
                     </div>
                   )}
 
@@ -356,23 +359,6 @@ export default function DashboardWorkflowPipeline({
             );
           })}
         </div>
-      </div>
-
-      <div className="stage-footer">
-        {running ? (
-          <div className="exec-status">
-            <div className="exec-dots">
-              <span />
-              <span />
-              <span />
-            </div>
-            <span className="exec-label">
-              {showWaitingFooter
-                ? footerHint || "正在创建运行记录…"
-                : `步骤 ${Math.min(currentIndex + 1, planSteps.length)} / ${planSteps.length} 执行中…`}
-            </span>
-          </div>
-        ) : null}
       </div>
     </div>
   );

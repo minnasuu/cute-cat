@@ -139,7 +139,9 @@ export default function ResultCanvas({
         ) : null}
 
         {/* 执行中：主区域只展示 WorkflowPanel 同款流水线动画 */}
-        {!isSubmitting && (displayRun || (streamingRunId && inProgress)) && inProgress ? (
+        {!isSubmitting &&
+        (displayRun || (streamingRunId && inProgress)) &&
+        inProgress ? (
           <DashboardWorkflowPipeline
             workflowName={workflowName || displayRun?.workflowName || "执行中"}
             planSteps={planSteps}
@@ -153,7 +155,7 @@ export default function ResultCanvas({
 
         {/* 已结束：结果为主；步骤明细在左侧历史卡片「查看执行过程」 */}
         {!isSubmitting && displayRun && !inProgress ? (
-          <section className="space-y-3">
+          <section className="space-y-3 h-full">
             {/* HTML 页面预览 */}
             {previewKind ? (
               <div className="overflow-hidden">
