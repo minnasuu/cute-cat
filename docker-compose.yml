@@ -35,6 +35,9 @@ services:
       - ./backend/uploads:/app/uploads
     environment:
       PORT: 8002
+      # 与 db 服务必须一致；entrypoint 优先用下面两项连库，避免从 URL 解析密码时截断（密码含 @ # : 等）
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/cute_cat
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_BASE_URL: ${GEMINI_BASE_URL:-}
