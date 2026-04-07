@@ -139,6 +139,9 @@ export default function DashboardWorkflowPipeline({
   /** 跟踪哪些步骤的打字已完成，直接展示全文 */
   const [typedDone, setTypedDone] = useState<Set<number>>(new Set());
 
+  const catsRef = useRef(cats);
+  catsRef.current = cats;
+
   const { completedOk, currentIndex } = useMemo(
     () => derivePipelineState(planSteps.length, runSteps, running),
     [planSteps.length, runSteps, running],
@@ -159,15 +162,18 @@ export default function DashboardWorkflowPipeline({
       setCurrentDialog("");
       return;
     }
-    const dialogs = dialogsForCat(cats, activeAgentId);
     let i = 0;
-    setCurrentDialog(dialogs[0] ?? "执行中...");
+    const first = () => dialogsForCat(catsRef.current, activeAgentId);
+    const d0 = first();
+    setCurrentDialog(d0[0] ?? "执行中...");
     const t = window.setInterval(() => {
+      const dialogs = dialogsForCat(catsRef.current, activeAgentId);
+      if (!dialogs.length) return;
       i = (i + 1) % dialogs.length;
       setCurrentDialog(dialogs[i] ?? "执行中...");
     }, 1500);
     return () => window.clearInterval(t);
-  }, [running, currentIndex, activeAgentId, cats]);
+  }, [running, currentIndex, activeAgentId]);
 
   if (planSteps.length === 0) {
     return (

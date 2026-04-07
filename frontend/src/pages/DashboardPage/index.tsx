@@ -22,6 +22,7 @@ import {
   featureBlurb,
   featureLabel,
   isOfficialWorkflow,
+  mergeQuietWorkbenchRefresh,
   parseSteps,
 } from "./workbenchUtils";
 import ResultCanvas from "./ResultCanvas";
@@ -217,7 +218,9 @@ const DashboardPage: React.FC = () => {
         const wb = await apiClient.get<WorkbenchPayload>(
           "/api/teams/workbench",
         );
-        setWorkbench(wb);
+        setWorkbench((prev) =>
+          quiet ? mergeQuietWorkbenchRefresh(prev, wb) : wb,
+        );
         const officials = (wb.workflows ?? []).filter(isOfficialWorkflow);
         setSelectedWorkflowId((prev) =>
           prev && officials.some((w) => w.id === prev)
@@ -518,20 +521,12 @@ const DashboardPage: React.FC = () => {
             </p>
           </section>}
 
-          <section className={`w-full mb-8 justify-center ${splitMode ? "flex-1 flex flex-col" : ""}`}>
+          <section className={`w-full mb-8 justify-center ${splitMode ? "flex-1 flex flex-col h-full" : ""}`}>
             {/* 对话区 */}
             {splitMode && (
               <div className="flex-1 min-h-0 flex flex-col mb-3 overflow-auto border-b border-border/70 pb-3">
-                <div className="flex items-center justify-between gap-2 px-1 pt-0.5 pb-2 mb-1 border-b border-border/50">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-text-tertiary">
-                    历史任务
-                  </p>
-                  <span className="text-[10px] font-medium text-text-tertiary tabular-nums">
-                    {runsForHistoryPanel.length} 条
-                  </span>
-                </div>
-                <div className="flex flex-col min-h-[8rem] max-h-[min(40vh,22rem)] overflow-hidden">
-                  <ul className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
+                <div className="flex flex-col overflow-auto">
+                  <ul className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0 scrollbar-hide">
                     {runsForHistoryPanel.length === 0 ? (
                       <li className="text-xs text-text-tertiary px-2 py-6 text-center font-medium">
                         暂无记录，提交任务后将显示在此
@@ -598,14 +593,14 @@ const DashboardPage: React.FC = () => {
                               >
                                 <div className="flex items-start gap-3">
                                   <div className="min-w-0 flex-1 space-y-1">
-                                    <p className="text-xs text-text-primary font-semibold line-clamp-2 leading-snug tracking-tight">
+                                    <p className="text-xs text-text-primary font-semibold line-clamp-2 leading-snug">
                                       {preview}
                                     </p>
-                                  </div>
-                                  <p className="text-[10px] font-semibold text-primary-600/90 truncate">
+                                    <p className="text-[10px] font-semibold text-primary-600/90 truncate">
                                       {capability}
                                     </p>
-                                  <div className="flex flex-col items-end gap-1 shrink-0">
+                                  </div>
+                                  <div className="flex gap-1 shrink-0">
                                     <span
                                       className={`text-[10px] font-bold px-2 py-0.5 rounded-md leading-none ${statusClass}`}
                                     >
@@ -624,10 +619,11 @@ const DashboardPage: React.FC = () => {
                                     ) : null}
                                   </div>
                                 </div>
-                                <span className="text-[11px] font-medium text-text-tertiary/85 tabular-nums">
+                              </button>
+                              <div className="flex items-center justify-between px-3">
+                              <span className="text-[11px] font-medium text-text-tertiary/85 tabular-nums">
                                   {timeStr}
                                 </span>
-                              </button>
                               <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1 px-3 pb-2.5 pt-1.5 border-t border-border/50">
                                 {canRetry ? (
                                   <button
@@ -675,6 +671,7 @@ const DashboardPage: React.FC = () => {
                                     删除
                                   </button>
                                 )}
+                              </div>
                               </div>
                               {runSteps.length > 0 ? (
                                 <div className="px-2 pb-2 pt-0">

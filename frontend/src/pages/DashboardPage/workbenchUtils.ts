@@ -1,4 +1,54 @@
-import type { WorkflowRow } from "./workbenchTypes";
+import type { WorkflowRow, WorkbenchPayload, WorkflowRun } from "./workbenchTypes";
+
+/**
+ * 轮询 workbench 时若 cats/workflows 等未变则复用上一帧引用，避免子树（如流水线气泡动画）因引用抖动反复 reset。
+ * runs 按 id 合并：状态与 steps 序列化一致时复用原 run 对象，减少 displayRun / steps 引用抖动。
+ */
+export function mergeQuietWorkbenchRefresh(
+  prev: WorkbenchPayload | null,
+  next: WorkbenchPayload,
+): WorkbenchPayload {
+  if (!prev) return next;
+  const merged: WorkbenchPayload = { ...next };
+  try {
+    if (JSON.stringify(prev.cats) === JSON.stringify(next.cats)) {
+      merged.cats = prev.cats;
+    }
+    if (JSON.stringify(prev.workflows) === JSON.stringify(next.workflows)) {
+      merged.workflows = prev.workflows;
+    }
+    if (JSON.stringify(prev.aiStats) === JSON.stringify(next.aiStats)) {
+      merged.aiStats = prev.aiStats;
+    }
+    if (JSON.stringify(prev.counts) === JSON.stringify(next.counts)) {
+      merged.counts = prev.counts;
+    }
+    merged.runs = mergeRunsStable(prev.runs, next.runs);
+  } catch {
+    /* 使用 next 全量 */
+  }
+  return merged;
+}
+
+function mergeRunsStable(
+  prevRuns: WorkflowRun[] | undefined,
+  nextRuns: WorkflowRun[],
+): WorkflowRun[] {
+  if (!prevRuns?.length) return nextRuns;
+  return nextRuns.map((nr) => {
+    const pr = prevRuns.find((r) => r.id === nr.id);
+    if (!pr) return nr;
+    if (
+      pr.status === nr.status &&
+      pr.completedAt === nr.completedAt &&
+      pr.totalDuration === nr.totalDuration &&
+      JSON.stringify(pr.steps) === JSON.stringify(nr.steps)
+    ) {
+      return pr;
+    }
+    return nr;
+  });
+}
 
 export function parseSteps(
   steps: unknown,
