@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { type Workflow, HistoryItem } from '../data/types';
+import { type Workflow, type WorkflowStep, HistoryItem, resolveInputFromIndex } from '../data/types';
 import { getAgentHandler } from '../agents';
 import type { AgentResult } from '../agents/types';
 import CatSVG from './CatSVG';
@@ -86,6 +86,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [workHistory, setWorkHistory] = useState<HistoryItem[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 链式第一步 user 输入（执行开始时读 ref） */
+  const [workflowFirstPrompt, setWorkflowFirstPrompt] = useState('');
+  const workflowFirstPromptRef = useRef('');
 
   // 从后端加载工作流，失败则使用 mock 数据
   useEffect(() => {
@@ -283,8 +286,25 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
   }, [workHistory]);
 
-  const handleRunWorkflow = useCallback((workflow: Workflow) => {
+  /** 仅打开执行台（填任务描述后点「开始执行」） */
+  const openWorkflowForRun = useCallback((workflow: Workflow) => {
     setActiveWorkflow(workflow);
+    setRunningStepIndex(-1);
+    setCompletedSteps([]);
+    setIsRunning(false);
+    setCurrentDialog('');
+    setExecutionLogs([]);
+    setWorkflowFirstPrompt('');
+    workflowFirstPromptRef.current = '';
+    const emptyMap = new Map<number, AgentResult>();
+    setStepResults(emptyMap);
+    stepResultsRef.current = emptyMap;
+  }, []);
+
+  /** 从第一步开始链式执行 */
+  const startWorkflowExecution = useCallback(() => {
+    if (!activeWorkflow) return;
+    workflowFirstPromptRef.current = workflowFirstPrompt.trim();
     setRunningStepIndex(0);
     setCompletedSteps([]);
     setIsRunning(true);
@@ -293,7 +313,20 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     const emptyMap = new Map<number, AgentResult>();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
-  }, []);
+  }, [activeWorkflow, workflowFirstPrompt]);
+
+  /** 全部完成后再来一轮 */
+  const replayWorkflowExecution = useCallback(() => {
+    if (!activeWorkflow) return;
+    workflowFirstPromptRef.current = workflowFirstPrompt.trim();
+    setCompletedSteps([]);
+    setCurrentDialog('');
+    const emptyMap = new Map<number, AgentResult>();
+    setStepResults(emptyMap);
+    stepResultsRef.current = emptyMap;
+    setRunningStepIndex(0);
+    setIsRunning(true);
+  }, [activeWorkflow, workflowFirstPrompt]);
 
   // 执行步骤时调用事件处理器并更新对话
   useEffect(() => {
@@ -324,72 +357,18 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     // 显示第一句对话
     setCurrentDialog(dialogs[0]);
 
-    // 调用 skill handler
+    const steps = activeWorkflow.steps as WorkflowStep[];
+    const parentIdx = resolveInputFromIndex(steps, runningStepIndex, step.inputFrom);
+    const chainInput =
+      parentIdx < 0
+        ? workflowFirstPromptRef.current
+        : String(stepResultsRef.current.get(parentIdx)?.data?.text ?? '');
+
     const handler = getAgentHandler(step.agentId);
-    // 构建 input：合并所有前序步骤的结果，让下游 skill 能访问完整上下文
-    let skillInput: unknown = undefined;
-    {
-      const merged: Record<string, unknown> = {};
-      if (runningStepIndex > 0) {
-        for (let i = 0; i < runningStepIndex; i++) {
-          const prev = stepResultsRef.current.get(i)?.data;
-          if (prev && typeof prev === 'object') {
-            Object.assign(merged, prev);
-          }
-        }
-      }
-      // 注入参会猫猫列表
-      if (activeWorkflow) {
-        merged._attendees = activeWorkflow.steps.map((s) => s.agentId);
-      }
-      // 将步骤的 action 作为任务指令注入
-      if (step.action) {
-        merged._action = step.action;
-      }
-      // 将步骤的用户参数配置也注入（支持 valueSource 来源解析）
-      if (step.params && step.params.length > 0) {
-        const paramValues: Record<string, unknown> = {};
-        for (const p of step.params) {
-          const source = (p as any).valueSource || 'static';
-          if (source === 'upstream') {
-            // 从上游步骤输出中自动提取主体内容（无需指定字段名）
-            let found: unknown = undefined;
-            for (let i = runningStepIndex - 1; i >= 0; i--) {
-              const prevData = stepResultsRef.current.get(i)?.data;
-              if (prevData != null) {
-                if (typeof prevData === 'string') {
-                  found = prevData;
-                } else if (typeof prevData === 'object') {
-                  const d = prevData as Record<string, unknown>;
-                  found = d.text ?? d.summary ?? d.notes ?? d.content ?? d.result ?? d.html ?? d.body ?? d.data;
-                  if (found === undefined) found = JSON.stringify(prevData);
-                }
-                if (found !== undefined) break;
-              }
-            }
-            paramValues[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
-          } else if (source === 'system') {
-            const sysKey = (p as any).systemKey || '';
-            if (sysKey === 'workflow.name') {
-              paramValues[p.key] = activeWorkflow?.name || '';
-            } else if (sysKey === 'timestamp') {
-              paramValues[p.key] = new Date().toISOString();
-            } else {
-              paramValues[p.key] = p.value ?? p.defaultValue;
-            }
-          } else {
-            if (p.value !== undefined) paramValues[p.key] = p.value;
-            else if (p.defaultValue !== undefined) paramValues[p.key] = p.defaultValue;
-          }
-        }
-        if (Object.keys(paramValues).length > 0) merged._params = paramValues;
-      }
-      skillInput = Object.keys(merged).length > 0 ? merged : undefined;
-    }
     const executePromise = handler
       ? handler.execute({
           agentId: step.agentId,
-          input: typeof skillInput === 'string' ? skillInput : JSON.stringify(skillInput ?? ''),
+          input: chainInput,
           timestamp: new Date().toISOString(),
           catName: agent?.name,
           catRole: agent?.role,
@@ -509,6 +488,8 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
     setIsRunning(false);
     setCurrentDialog('');
     setExecutionLogs([]);
+    setWorkflowFirstPrompt('');
+    workflowFirstPromptRef.current = '';
     const emptyMap: Map<number, AgentResult> = new Map();
     setStepResults(emptyMap);
     stepResultsRef.current = emptyMap;
@@ -681,7 +662,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
               <div
                 key={wf.id}
                 className={`workflow-card ${wf.persistent ? 'persistent' : 'oneshot'}`}
-                onClick={() => editorMode && handleRunWorkflow(wf)}
+                onClick={() => editorMode && openWorkflowForRun(wf)}
               >
                 <div className="wf-card-header">
                   <span className="wf-name">{wf.name}</span>
@@ -786,6 +767,25 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
 
             {/* 舞台 - 猫猫们排列 + 流水线 */}
             <div className="stage-body">
+              {!isRunning && completedSteps.length === 0 && editorMode && (
+                <div className="workflow-chain-prompt" style={{ width: '100%', maxWidth: 560, margin: '0 auto 16px', padding: '0 12px' }}>
+                  <label className="block text-xs font-bold text-[#5D4037] mb-1" htmlFor="wf-first-prompt">
+                    任务描述（第一步 user 输入；后续步骤仅接收上一步输出）
+                  </label>
+                  <textarea
+                    id="wf-first-prompt"
+                    value={workflowFirstPrompt}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setWorkflowFirstPrompt(v);
+                      workflowFirstPromptRef.current = v;
+                    }}
+                    placeholder="例如：为某活动做一个落地页…"
+                    rows={3}
+                    className="w-full rounded-xl border border-[#E0D6CC] bg-[#FFFCF9] px-3 py-2 text-sm text-[#3E2723] placeholder:text-[#A1887F] resize-y min-h-[4rem]"
+                  />
+                </div>
+              )}
               {/* 流水线连线 */}
               <div className="pipeline">
                 {activeWorkflow.steps.map((step, i) => {
@@ -875,7 +875,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
             {/* 底部状态栏 */}
             <div className="stage-footer">
               {!isRunning && completedSteps.length === 0 && editorMode && (
-                <button className="exec-btn" onClick={() => handleRunWorkflow(activeWorkflow)}>
+                <button type="button" className="exec-btn" onClick={() => startWorkflowExecution()}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="#5D4037">
                     <path d="M8 5v14l11-7z" />
                   </svg>
@@ -914,7 +914,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({ editorMode = false }) => 
                       : '全部完成！任务已归档～'}
                   </span>
                   {editorMode && activeWorkflow.persistent && (
-                    <button className="replay-btn" onClick={() => handleRunWorkflow(activeWorkflow)}>
+                    <button type="button" className="replay-btn" onClick={() => replayWorkflowExecution()}>
                       再来一次
                     </button>
                   )}

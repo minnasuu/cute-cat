@@ -213,6 +213,15 @@ const DashboardPage: React.FC = () => {
     loadWorkbench();
   }, [loadWorkbench]);
 
+  /** 切换创作能力时，若正在查看的历史 run 不属于当前工作流，取消历史查看态 */
+  useEffect(() => {
+    if (!historyRunId || !workbench?.runs?.length || !selectedWorkflowId) return;
+    const r = workbench.runs.find((x) => x.id === historyRunId);
+    if (r && r.workflowId !== selectedWorkflowId) {
+      setHistoryRunId(null);
+    }
+  }, [selectedWorkflowId, historyRunId, workbench?.runs]);
+
   // 从历史记录跳转过来：workbench 就绪后，自动选中对应工作流并进入分栏模式
   useEffect(() => {
     if (!historyRunId || !workbench?.runs?.length) return;
@@ -275,6 +284,18 @@ const DashboardPage: React.FC = () => {
       list.find((r) => new Date(r.startedAt).getTime() >= t0 - 15_000) ?? null
     );
   }, [workbench, selectedWorkflowId, splitMode, sessionEpoch, historyRunId]);
+
+  /** 分栏左侧：当前工作流的执行记录（新→旧） */
+  const runsForHistoryPanel = useMemo(() => {
+    if (!workbench?.runs?.length || !selectedWorkflowId) return [];
+    return workbench.runs
+      .filter((r) => r.workflowId === selectedWorkflowId)
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+      );
+  }, [workbench?.runs, selectedWorkflowId]);
 
   const runSelected = async () => {
     const wfId = selectedWorkflowId;
@@ -388,10 +409,101 @@ const DashboardPage: React.FC = () => {
             </p>
           </section>}
 
-          <section className="w-full mb-8 flex-1 flex flex-col justify-center items-center">
+          <section className={`w-full mb-8 justify-center ${splitMode ? "flex-1 flex flex-col" : ""}`}>
             {/* 对话区 */}
-            {splitMode &&<div className="flex">
-              </div>}
+            {splitMode && (
+              <div className="flex-1 min-h-0 flex flex-col mb-3">
+                <div className="rounded-2xl border border-border bg-surface-secondary/40 flex flex-col min-h-[8rem] max-h-[min(40vh,22rem)] overflow-hidden">
+                  <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2 shrink-0">
+                    <span className="text-xs font-bold text-text-secondary">
+                      执行历史
+                      {selectedFeature
+                        ? ` · ${featureLabel(selectedFeature)}`
+                        : ""}
+                    </span>
+                    {historyRunId ? (
+                      <button
+                        type="button"
+                        onClick={() => setHistoryRunId(null)}
+                        className="text-[11px] font-bold text-primary-600 hover:text-primary-700 shrink-0"
+                      >
+                        看最新
+                      </button>
+                    ) : null}
+                  </div>
+                  <ul className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
+                    {!selectedWorkflowId ? (
+                      <li className="text-xs text-text-tertiary px-2 py-6 text-center font-medium">
+                        请先选择一种创作能力
+                      </li>
+                    ) : runsForHistoryPanel.length === 0 ? (
+                      <li className="text-xs text-text-tertiary px-2 py-6 text-center font-medium">
+                        暂无记录，提交任务后将显示在此
+                      </li>
+                    ) : (
+                      runsForHistoryPanel.map((run) => {
+                        const active = run.id === historyRunId || (!historyRunId && run.id === displayRun?.id);
+                        const st = run.status;
+                        const statusClass =
+                          st === "success"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : st === "failed"
+                              ? "bg-red-100 text-red-800"
+                              : st === "running"
+                                ? "bg-sky-100 text-sky-800"
+                                : "bg-surface text-text-secondary";
+                        const rawPreview =
+                          run.userInput?.trim() || run.workflowName || "无描述";
+                        const preview =
+                          rawPreview.length > 72
+                            ? `${rawPreview.slice(0, 72)}…`
+                            : rawPreview;
+                        const t = new Date(run.startedAt);
+                        const timeStr = `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+                        return (
+                          <li key={run.id}>
+                            <button
+                              type="button"
+                              onClick={() => setHistoryRunId(run.id)}
+                              className={`w-full text-left rounded-xl px-2.5 py-2 transition-colors border ${
+                                active
+                                  ? "border-primary-400 bg-primary-50/80"
+                                  : "border-transparent hover:bg-surface-secondary"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <span className="text-[11px] font-semibold text-text-tertiary tabular-nums">
+                                  {timeStr}
+                                </span>
+                                <span
+                                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${statusClass}`}
+                                >
+                                  {st === "success"
+                                    ? "成功"
+                                    : st === "failed"
+                                      ? "失败"
+                                      : st === "running"
+                                        ? "进行中"
+                                        : st}
+                                </span>
+                              </div>
+                              <p className="text-xs text-text-primary font-medium line-clamp-2 leading-snug">
+                                {preview}
+                              </p>
+                              {run.totalDuration != null ? (
+                                <p className="text-[10px] text-text-tertiary mt-1 font-medium">
+                                  耗时 {run.totalDuration}s
+                                </p>
+                              ) : null}
+                            </button>
+                          </li>
+                        );
+                      })
+                    )}
+                  </ul>
+                </div>
+              </div>
+            )}
             <div className="rounded-[28px] border border-border-strong bg-surface-secondary/40 p-3 sm:p-4">
               <div
                 className={`flex flex-col gap-4 lg:items-stretch ${

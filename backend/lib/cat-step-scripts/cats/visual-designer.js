@@ -29,15 +29,15 @@ module.exports = async function runVisualDesigner(ctx) {
     upstreamText = upstreamText.slice(0, 3000) + '\n\n…（内容过长已截断）';
   }
 
-  const userText = upstreamText
-    ? `以下是上游输出的产品架构与交互设计内容：\n\n${upstreamText}\n\n请匹配最合适的视觉风格并输出设计指引。`
+  const userText = upstreamText.trim()
+    ? upstreamText
     : '请为一个通用企业官网选择合适的视觉风格。';
 
   const result = await runWithAI('visual-designer', ctx, SYSTEM_PROMPT, userText, {
     maxTokens: 4096,
   });
 
-  // AI 只返回风格编号+理由，这里解析编号并拼接完整视觉定义
+  // 解析风格编号；链式下游仅需要完整 design prompt（与前端 visual-designer 一致）
   if (result.success && result.data?.text) {
     const aiResponse = result.data.text;
     const styleMatch = aiResponse.match(/风格\s*(\d+)/);
@@ -47,11 +47,11 @@ module.exports = async function runVisualDesigner(ctx) {
       selectedIndex = 0;
     }
     const selected = VISUAL_STYLES[selectedIndex];
+    const designPrompt = selected.prompt;
 
-    result.data.text = `${aiResponse}\n\n---\n\n## 完整视觉设计规范\n\n**${selected.name}** (${selected.id})\n\n${selected.prompt}`;
-    result.summary = result.data.text.length > 300
-      ? result.data.text.slice(0, 300) + '…'
-      : result.data.text;
+    result.data.text = designPrompt;
+    result.data.selectedStyleId = selected.id;
+    result.summary = designPrompt.length > 300 ? designPrompt.slice(0, 300) + '…' : designPrompt;
   }
 
   return result;

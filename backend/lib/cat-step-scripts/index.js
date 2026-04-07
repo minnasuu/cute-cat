@@ -26,15 +26,15 @@ for (const id of OFFICIAL_TEMPLATE_IDS) {
  */
 async function runAgentStep(args) {
   const { step, merged, userEmail, context } = args;
-  const agentId = step?.agentId || context?.catTemplateId || '';
+  const agentId = step?.agentId || '';
+  const templateId = context?.catTemplateId || '';
 
-  // 优先查找已注册的猫脚本
-  const run = handlers[agentId];
+  // 团队实例的 agentId 为 UUID，须用 catTemplateId（如 product-architect）命中官方脚本
+  const run = handlers[templateId] || handlers[agentId];
   if (run) {
     return run(args);
   }
 
-  // 未注册的 agentId：使用通用 AI 调用（不注入外部 prompt）
   const upstreamText = extractUpstreamText(merged);
   const userText = upstreamText || '请执行任务';
 
@@ -50,7 +50,7 @@ async function runAgentStep(args) {
     return {
       success: false,
       data: { text: '' },
-      summary: `[${agentId}] AI 调用失败: ${err.message}`,
+      summary: `[${agentId || templateId}] AI 调用失败: ${err.message}`,
       status: 'error',
     };
   }

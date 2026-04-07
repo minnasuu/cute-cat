@@ -23,7 +23,8 @@ export const workflows: Workflow[] = [
       {
         stepId: 'wpb_visual',
         agentId: 'visual-designer',
-        inputFrom: 'wpb_ix',
+        // 交互步骤未启用时直接承接产品架构（勿引用已注释的 wpb_ix）
+        inputFrom: 'wpb_arch',
       },
       {
         stepId: 'wpb_fe',

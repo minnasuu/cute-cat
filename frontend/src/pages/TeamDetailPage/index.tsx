@@ -84,6 +84,7 @@ const TeamDetailPage: React.FC = () => {
   const [executingWorkflow, setExecutingWorkflow] = useState<TeamWorkflow | null>(null);
   const [isPreparing, setIsPreparing] = useState(false); // 预览确认阶段（尚未执行）
   const [editableStepParams, setEditableStepParams] = useState<Map<number, Record<string, unknown>>>(new Map()); // 每步可编辑参数
+  const [workflowUserPrompt, setWorkflowUserPrompt] = useState('');
   const [runningStepIndices, setRunningStepIndices] = useState<Set<number>>(new Set()); // 当前并行执行中的步骤索引集合
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const completedStepsRef = useRef<number[]>([]);
@@ -92,6 +93,8 @@ const TeamDetailPage: React.FC = () => {
   const [stepResults, setStepResults] = useState<Map<number, AgentResult>>(new Map());
   const stepResultsRef = useRef<Map<number, AgentResult>>(new Map());
   const currentRunIdRef = useRef<string | null>(null); // 当前手动执行的 run 记录 ID
+  /** 链式 user：第一步 = 用户任务正文，与 state 同步便于输入框受控 */
+  const workflowUserPromptRef = useRef('');
   const runStartTimeRef = useRef<number>(0);
   // 每步耗时: { start: 开始时间戳ms, duration: 耗时ms(完成后填入) }
   const [stepTimings, setStepTimings] = useState<Map<number, { start: number; duration?: number }>>(new Map());
@@ -272,6 +275,8 @@ const TeamDetailPage: React.FC = () => {
 
     setExecutingWorkflow(wf);
     setIsPreparing(true);
+    setWorkflowUserPrompt('');
+    workflowUserPromptRef.current = '';
     setEditableStepParams(paramsMap);
     setRunningStepIndices(new Set());
     setCompletedSteps([]);
@@ -317,6 +322,7 @@ const TeamDetailPage: React.FC = () => {
     }) };
 
     setExecutingWorkflow(wf);
+    workflowUserPromptRef.current = workflowUserPrompt.trim();
     setIsPreparing(false);
 
     // ── 构建 DAG：解析每个步骤的上游依赖索引和拓扑层级 ──
@@ -439,65 +445,19 @@ const TeamDetailPage: React.FC = () => {
         return next;
       });
 
-      const handler = getAgentHandler(step.agentId);
+      const parentIdx = dagParentIndex[stepIdx] ?? (stepIdx === 0 ? -1 : stepIdx - 1);
+      const chainInput =
+        parentIdx < 0
+          ? workflowUserPromptRef.current
+          : String(stepResultsRef.current.get(parentIdx)?.data?.text ?? '');
 
-      // 构建 skillInput：合并上游步骤输出 + action + params
-      let skillInput: unknown = undefined;
-      {
-        const merged: Record<string, unknown> = {};
-        // 合并上游步骤输出（按 DAG 依赖关系，只取直接上游的结果）
-        const parentIdx = dagParentIndex[stepIdx] ?? (stepIdx === 0 ? -1 : stepIdx - 1);
-        if (parentIdx >= 0) {
-          const prev = stepResultsRef.current.get(parentIdx)?.data;
-          if (prev && typeof prev === 'object') Object.assign(merged, prev as Record<string, unknown>);
-        }
-        // 将步骤的 action 作为任务指令注入
-        if (step.action) merged._action = step.action;
-        // 参数配置注入（支持 valueSource 来源解析）
-        if (step.params && step.params.length > 0) {
-          const paramValues: Record<string, unknown> = {};
-          for (const p of step.params) {
-            const source = p.valueSource || 'static';
-            if (source === 'upstream') {
-              let found: unknown = undefined;
-              // 从上游依赖链中提取
-              let searchIdx = parentIdx;
-              while (searchIdx >= 0 && found === undefined) {
-                const prevData = stepResultsRef.current.get(searchIdx)?.data;
-                if (prevData != null) {
-                  if (typeof prevData === 'string') {
-                    found = prevData;
-                  } else if (typeof prevData === 'object') {
-                    const d = prevData as Record<string, unknown>;
-                    found = d.text ?? d.summary ?? d.notes ?? d.content ?? d.result ?? d.html ?? d.body ?? d.data;
-                    if (found === undefined) found = JSON.stringify(prevData);
-                  }
-                }
-                // 继续向上游追溯
-                searchIdx = dagParentIndex[searchIdx] ?? -1;
-              }
-              paramValues[p.key] = found !== undefined ? found : (p.value ?? p.defaultValue);
-            } else if (source === 'system') {
-              const sysKey = p.systemKey || '';
-              if (sysKey === 'user.email') paramValues[p.key] = user?.email || '';
-              else if (sysKey === 'user.name') paramValues[p.key] = user?.nickname || '';
-              else if (sysKey === 'workflow.name') paramValues[p.key] = executingWorkflow?.name || '';
-              else if (sysKey === 'timestamp') paramValues[p.key] = new Date().toISOString();
-              else paramValues[p.key] = p.value ?? p.defaultValue;
-            } else {
-              if (p.value !== undefined) paramValues[p.key] = p.value;
-              else if (p.defaultValue !== undefined) paramValues[p.key] = p.defaultValue;
-            }
-          }
-          if (Object.keys(paramValues).length > 0) merged._params = paramValues;
-        }
-        skillInput = Object.keys(merged).length > 0 ? merged : undefined;
-      }
+      const templateId = cat?.templateId || step.agentId;
+      const handler = getAgentHandler(templateId);
 
       const executePromise = handler
         ? handler.execute({
-            agentId: step.agentId,
-            input: typeof skillInput === 'string' ? skillInput : JSON.stringify(skillInput ?? ''),
+            agentId: templateId,
+            input: chainInput,
             timestamp: new Date().toISOString(),
             catName: cat?.name,
             catRole: cat?.role,
@@ -512,8 +472,8 @@ const TeamDetailPage: React.FC = () => {
         : Promise.resolve<AgentResult>({
             success: true,
             data: { text: skill?.mockResult ?? step.action ?? '执行完成' },
-            summary: skill?.mockResult ?? step.action ?? "执行完成",
-            status: "success",
+            summary: skill?.mockResult ?? step.action ?? '执行完成',
+            status: 'success',
           });
 
       // 等待最小展示时间
@@ -1342,6 +1302,24 @@ const TeamDetailPage: React.FC = () => {
                     >
                       请确认以下步骤及参数，编辑完成后点击底部「开始执行」按钮。
                     </p>
+                    <label
+                      className="block text-xs font-bold text-text-secondary mb-1"
+                      htmlFor="workflow-user-prompt"
+                    >
+                      任务描述（作为第一步的 user 输入，链式传给后续步骤的是上一步输出）
+                    </label>
+                    <textarea
+                      id="workflow-user-prompt"
+                      value={workflowUserPrompt}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setWorkflowUserPrompt(v);
+                        workflowUserPromptRef.current = v;
+                      }}
+                      placeholder="例如：为某品牌做一个新年活动落地页…"
+                      rows={3}
+                      className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary mb-4 resize-y min-h-[4.5rem]"
+                    />
                     <div
                       style={{
                         display: "flex",

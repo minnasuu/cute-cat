@@ -1,8 +1,9 @@
 /**
  * 后端工作流执行引擎
  *
- * 纯流水线调度器：负责连接各步骤、传递上游输出，不注入额外 prompt。
- * 每个步骤完全由对应猫猫的 agent 脚本自行控制输入输出。
+ * 链式调度：先创建 WorkflowRun，再按拓扑顺序串行执行各步。
+ * 每步 merged 仅为 { text } — 第一步 text = userInput，后续 text = 直接上游步骤的 data.text。
+ * 各猫脚本内部自带 system prompt，通过 callAI(system, user) 调用模型。
  */
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
@@ -77,19 +78,9 @@ async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
   return callGemini(systemPrompt, userText, maxTokens);
 }
 
-// ─── 单步执行：根据 agentId 分发到对应的猫脚本 ───
-// 工作流仅负责连接步骤、传递上游输出，不注入额外 prompt，每步完全由 agent 脚本自控。
-async function executeStep(step, prevResults, userEmail, context = {}) {
-  // 合并上游结果
-  const merged = { ...prevResults };
-
-  // 注入用户输入（如果是第一步且上游无文本）
-  if (context.userInput && !merged.text) {
-    merged.text = context.userInput;
-  }
-
+// ─── 单步执行：merged 仅为 { text: 本步 user 正文 } ───
+async function executeStep(step, merged, userEmail, context = {}) {
   try {
-    // 所有步骤统一通过 agentId 分发到 cat-step-scripts
     const { runAgentStep } = require('./lib/cat-step-scripts');
     return runAgentStep({ step, merged, userEmail, context });
   } catch (err) {
@@ -97,7 +88,7 @@ async function executeStep(step, prevResults, userEmail, context = {}) {
   }
 }
 
-// ─── 执行整个工作流（DAG 分层并行执行） ───
+// ─── 执行整个工作流（拓扑序串行） ───
 async function executeWorkflow(workflow, triggeredBy, options = {}) {
   const startTime = Date.now();
   const stepsData = [];
@@ -130,7 +121,6 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       userName = user.nickname || '';
     }
   }
-  // 如果没有 triggeredBy，用团队 owner 的信息
   if (!userEmail) {
     const team = await prisma.team.findUnique({ where: { id: workflow.teamId }, include: { owner: { select: { email: true, nickname: true } } } }).catch(() => null);
     if (team?.owner) {
@@ -139,7 +129,6 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
     }
   }
 
-  // 构建执行上下文（仅传递必要的运行时信息）
   const executionContext = {
     userName,
     workflowName: workflow.name,
@@ -149,32 +138,27 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
   let steps = Array.isArray(workflow.steps) ? workflow.steps : (typeof workflow.steps === 'string' ? JSON.parse(workflow.steps) : []);
   steps = JSON.parse(JSON.stringify(steps));
 
-  // ── 构建 DAG：解析每个步骤的上游依赖索引 ──
   const parentIndex = [];
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (!step.inputFrom) {
       parentIndex.push(i === 0 ? -1 : i - 1);
     } else {
-      // 优先按 stepId 匹配
       let found = steps.findIndex((s, si) => si < i && s.stepId === step.inputFrom);
       if (found < 0) {
-        // fallback: 按 agentId 匹配
         found = steps.findIndex((s, si) => si < i && s.agentId === step.inputFrom);
       }
       parentIndex.push(found >= 0 ? found : (i === 0 ? -1 : i - 1));
     }
   }
 
-  // ── 计算拓扑层级（depth） ──
   const depth = new Array(steps.length).fill(0);
   for (let i = 0; i < steps.length; i++) {
     const pi = parentIndex[i];
     depth[i] = pi >= 0 ? depth[pi] + 1 : 1;
   }
 
-  // ── 按层级分组 ──
-  const maxDepth = Math.max(...depth, 0);
+  const maxDepth = depth.length === 0 ? 0 : Math.max(...depth, 0);
   const layers = [];
   for (let d = 0; d <= maxDepth; d++) {
     layers.push([]);
@@ -183,87 +167,77 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
     layers[depth[i]].push(i);
   }
 
-  // ── 按层级顺序执行，同层并行 ──
-  const stepResults = new Array(steps.length).fill(null);  // 每个步骤的执行结果
+  /** 拓扑序：深度 1→maxDepth，同层按步骤下标升序 */
+  const order = [];
+  for (let d = 1; d <= maxDepth; d++) {
+    layers[d].sort((a, b) => a - b).forEach((idx) => order.push(idx));
+  }
+
+  const stepResults = new Array(steps.length).fill(null);
   let hasFailed = false;
 
-  for (let d = 1; d <= maxDepth && !hasFailed; d++) {
-    const layer = layers[d];
-    if (layer.length === 0) continue;
+  for (const i of order) {
+    if (hasFailed) break;
 
-    // 同层的步骤可以并行执行
-    const layerPromises = layer.map(async (i) => {
-      const step = steps[i];
-      const pi = parentIndex[i];
+    const step = steps[i];
+    const pi = parentIndex[i];
+    const upstreamText = pi < 0 ? userInput : String(stepResults[pi]?.data?.text ?? '');
+    const merged = { text: upstreamText };
 
-      // 获取上游结果
-      const prevResults = pi >= 0 && stepResults[pi]?.data
-        ? { ...stepResults[pi].data }
-        : {};
-
-      // 查询猫猫的 templateId（供 cat-step-scripts 按猫分发脚本）
-      let catTemplateId = '';
-      let catName = '';
-      if (step.agentId) {
-        const cat = await prisma.teamCat.findUnique({
-          where: { id: step.agentId },
-          select: { templateId: true, name: true },
-        }).catch(() => null);
-        if (cat?.templateId) catTemplateId = cat.templateId;
-        if (cat?.name) catName = cat.name;
-      }
-
-      // 带超时保护（120 秒）
-      let result;
-      try {
-        const executePromise = executeStep(step, prevResults, userEmail, {
-          ...executionContext,
-          catTemplateId,
-          catName,
-        });
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (120s)')), 120000));
-        result = await Promise.race([executePromise, timeoutPromise]);
-      } catch (err) {
-        result = { success: false, data: null, summary: err.message || '步骤执行异常', status: 'error' };
-      }
-
-      stepResults[i] = result;
-      return { index: i, result };
-    });
-
-    const layerResults = await Promise.all(layerPromises);
-
-    for (const { index: i, result } of layerResults) {
-      const stepEntry = {
-        index: i, agentId: steps[i].agentId,
-        success: result.success, status: result.status, summary: result.summary,
-      };
-      // 提取结果类型和数据（供前端 ResultCanvas 渲染）
-      if (result.data && typeof result.data === 'object') {
-        const d = result.data;
-        if (d._resultType) stepEntry.resultType = d._resultType;
-        if (d._resultType && d.text) stepEntry.resultData = String(d.text);
-      }
-      stepsData.push(stepEntry);
-
-      if (!result.success) {
-        hasFailed = true;
-        console.warn(`[executor] ${workflow.name} 步骤 ${i + 1} 失败: ${result.summary}`);
-      }
+    let catTemplateId = '';
+    let catName = '';
+    if (step.agentId) {
+      const cat = await prisma.teamCat.findUnique({
+        where: { id: step.agentId },
+        select: { templateId: true, name: true },
+      }).catch(() => null);
+      if (cat?.templateId) catTemplateId = cat.templateId;
+      if (cat?.name) catName = cat.name;
     }
 
-    // ── 每层执行完后增量更新 stepsData，让前端轮询可实时看到 ──
+    let result;
+    try {
+      const executePromise = executeStep(step, merged, userEmail, {
+        ...executionContext,
+        catTemplateId,
+        catName,
+      });
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('执行超时 (120s)')), 120000));
+      result = await Promise.race([executePromise, timeoutPromise]);
+    } catch (err) {
+      result = { success: false, data: null, summary: err.message || '步骤执行异常', status: 'error' };
+    }
+
+    stepResults[i] = result;
+
+    const stepEntry = {
+      index: i,
+      agentId: steps[i].agentId,
+      success: result.success,
+      status: result.status,
+      summary: result.summary,
+    };
+    if (result.data && typeof result.data === 'object') {
+      const d = result.data;
+      if (d._resultType) stepEntry.resultType = d._resultType;
+      if (d._resultType && d.text) stepEntry.resultData = String(d.text);
+    }
+    stepsData.push(stepEntry);
+
+    if (!result.success) {
+      hasFailed = true;
+      console.warn(`[executor] ${workflow.name} 步骤 ${i + 1} 失败: ${result.summary}`);
+    }
+
     const sortedSnapshot = [...stepsData].sort((a, b) => a.index - b.index);
     await prisma.workflowRun.update({
       where: { id: run.id },
       data: { steps: sortedSnapshot },
-    }).catch(err => console.error('[executor] incremental step update error:', err.message));
+    }).catch((err) => console.error('[executor] incremental step update error:', err.message));
   }
 
-  // 按步骤索引排序 stepsData
   stepsData.sort((a, b) => a.index - b.index);
 
-  // 更新 run 记录
   await prisma.workflowRun.update({
     where: { id: run.id },
     data: {
@@ -272,7 +246,7 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
       completedAt: new Date(),
       totalDuration: Math.round((Date.now() - startTime) / 1000),
     },
-  }).catch(err => console.error('[executor] update run error:', err.message));
+  }).catch((err) => console.error('[executor] update run error:', err.message));
 
   console.log(`[executor] 工作流 "${workflow.name}" 执行完成 → ${hasFailed ? 'failed' : 'success'} (${Math.round((Date.now() - startTime) / 1000)}s)`);
   return { runId: run.id, status: hasFailed ? 'failed' : 'success', steps: stepsData };
