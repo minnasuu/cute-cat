@@ -279,11 +279,17 @@ export const callDifySkillStream = async (
   text: string,
   model?: string,
   onChunk?: (chunk: string, accumulated: string) => void,
-  options?: { systemPrompt?: string; maxTokens?: number },
+  options?: { systemPrompt?: string; maxTokens?: number; streamTimeoutMs?: number },
 ): Promise<DifySkillResponse> => {
   const backendUrl = getBackendUrl();
   const url = `${backendUrl}/api/dify/skill/stream`;
   const selectedModel = model || _currentAIModel;
+  const streamTimeoutMs = options?.streamTimeoutMs ?? 120_000;
+  /** 提升到 try 外：流被中断/Abort 时仍能返回已收到的片段供前端修补 HTML */
+  let fullAnswer = '';
+
+  const ac = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => ac.abort(), streamTimeoutMs);
 
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -298,21 +304,24 @@ export const callDifySkillStream = async (
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+      signal: ac.signal,
     });
 
     if (!response.ok) {
+      globalThis.clearTimeout(timeoutId);
       const errText = await response.text().catch(() => '');
       return { answer: '', error: `HTTP ${response.status}: ${errText.slice(0, 200)}` };
     }
 
     const reader = response.body?.getReader();
     if (!reader) {
+      globalThis.clearTimeout(timeoutId);
       return { answer: '', error: 'ReadableStream not supported' };
     }
 
     const decoder = new TextDecoder();
     let buffer = '';
-    let fullAnswer = '';
+    fullAnswer = '';
     let finalData: DifySkillResponse | null = null;
 
     while (true) {
@@ -351,23 +360,54 @@ export const callDifySkillStream = async (
                 _onAiUsageUpdate(finalData.aiUsed, finalData.aiQuota);
               }
             } else if (currentEvent === 'error') {
-              return { answer: fullAnswer, error: data.error, aiUsed: data.aiUsed, aiQuota: data.aiQuota };
+              globalThis.clearTimeout(timeoutId);
+              const errText = data.error || 'stream error';
+              const p = fullAnswer.trim();
+              if (
+                p.length > 400 &&
+                /<!DOCTYPE\s+html|<html[\s>]/i.test(p.slice(0, 4000))
+              ) {
+                return { answer: p, aiUsed: data.aiUsed, aiQuota: data.aiQuota };
+              }
+              return {
+                answer: fullAnswer,
+                error: errText,
+                aiUsed: data.aiUsed,
+                aiQuota: data.aiQuota,
+              };
             }
           } catch { /* skip malformed JSON */ }
         }
       }
     }
 
+    globalThis.clearTimeout(timeoutId);
     return finalData || { answer: fullAnswer };
   } catch (error: unknown) {
+    globalThis.clearTimeout(timeoutId);
     console.error(`Error streaming AI skill [${taskId}] (model=${selectedModel}):`, error);
     let errMsg = error instanceof Error ? error.message : String(error);
+    const timedOut = ac.signal.aborted;
     if (error instanceof DOMException && error.name === 'AbortError') {
-      errMsg = '连接已中断或请求被取消（请勿在生成过程中关闭页面，或检查网络/代理超时设置后重试）';
+      errMsg = timedOut
+        ? `生成超时（${Math.round(streamTimeoutMs / 1000)}s 内未完成），已尽量保留已输出片段`
+        : '连接已中断或请求被取消（请勿在生成过程中关闭页面，或检查网络/代理超时设置后重试）';
     } else if (/aborted/i.test(errMsg)) {
-      errMsg = '连接已中断（常见于网络波动、反向代理超时或页面切换），请重试';
+      errMsg = timedOut
+        ? `生成超时（${Math.round(streamTimeoutMs / 1000)}s），已尽量保留已输出片段`
+        : '连接已中断（常见于网络波动、反向代理超时或页面切换），请重试';
     }
-    return { answer: '', error: errMsg };
+    const partial = fullAnswer.trim();
+    if (
+      partial.length > 400 &&
+      /<!DOCTYPE\s+html|<html[\s>]/i.test(partial.slice(0, 4000))
+    ) {
+      console.warn(
+        `[skill/stream] ${taskId} 流异常但保留已生成片段（${partial.length} 字）: ${errMsg}`,
+      );
+      return { answer: partial };
+    }
+    return { answer: partial, error: errMsg };
   }
 };
 

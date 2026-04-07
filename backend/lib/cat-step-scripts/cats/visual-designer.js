@@ -20,20 +20,15 @@ ${getStyleCatalog()}
 选择：风格 3
 理由：该风格的现代简约设计与产品的轻量化定位高度契合...`;
 
-/** 下游需要上游链路 + 视觉规范；与 frontend visual-designer.ts 分段一致 */
-function mergeUpstreamAndVisualPrompt(upstream, visualPrompt) {
+/** 与 frontend visual-designer.ts 一致：视觉风格 = 库内 prompt；用户需求 = 上游 */
+function formatVisualDesignerOutput(upstream, visualPrompt) {
   const up = String(upstream || '').trim();
   const vis = String(visualPrompt || '').trim();
-  if (!up) return vis;
-  return `## 上游产品与交互（来自前序步骤）
+  return `视觉风格：
+${vis || '（无）'}
 
-${up}
-
----
-
-## 视觉风格规范（墨墨·灵感库匹配）
-
-${vis}`;
+用户需求：
+${up || '（无）'}`;
 }
 
 module.exports = async function runVisualDesigner(ctx) {
@@ -76,10 +71,11 @@ ${upstreamForSystem}`;
     const selected = VISUAL_STYLES[selectedIndex];
     const designPrompt = selected.prompt;
 
-    const mergedText = mergeUpstreamAndVisualPrompt(upstreamFull, designPrompt);
+    const mergedText = formatVisualDesignerOutput(upstreamFull, designPrompt);
     result.data.text = mergedText;
+    result.data._resultType = 'visual-design-output';
     result.data.selectedStyleId = selected.id;
-    result.summary = mergedText.length > 300 ? mergedText.slice(0, 300) + '…' : mergedText;
+    result.summary = `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`;
   }
 
   return result;

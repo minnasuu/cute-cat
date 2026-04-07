@@ -3,25 +3,23 @@ import { extractUpstreamText } from './_framework';
 import { callDifySkillStream } from '../utils/backendClient';
 import { listVibeStyleLibLibrary } from '../pages/VibeStyleLib/vibeStyleLibApi';
 
-/** 下游步骤需要同时拿到上游链路与视觉规范：固定分段拼接，便于阅读与再解析 */
-function mergeUpstreamAndVisualPrompt(upstream: string, visualPrompt: string): string {
+/**
+ * 下游约定格式：视觉风格 = 灵感库 designPrompt（由 AI 选风格后取出，非整段 AI 自由生成）；
+ * 用户需求 = 上游链路全文。
+ */
+function formatVisualDesignerOutput(upstream: string, visualPrompt: string): string {
   const up = upstream.trim();
   const vis = visualPrompt.trim();
-  if (!up) return vis;
-  return `## 上游产品与交互（来自前序步骤）
+  return `视觉风格：
+${vis || '（无）'}
 
-${up}
-
----
-
-## 视觉风格规范（墨墨·灵感库匹配）
-
-${vis}`;
+用户需求：
+${up || '（无）'}`;
 }
 
 /**
  * 视觉设计师：从 VibeStyleLib（vibe-snap-library）灵感库中匹配最合适的设计风格
- * 优化策略：风格库与上游长文在 system，user 仅短指令；`data.text` = 上游 + 选中条目的 designPrompt 拼接
+ * 优化策略：风格库与上游长文在 system，user 仅短指令；`data.text` =「视觉风格：prompt」+「用户需求：上游」
  */
 export default async function runVisualDesigner(ctx: AgentContext): Promise<AgentResult> {
   const upstreamText = extractUpstreamText(ctx);
@@ -65,15 +63,16 @@ export default async function runVisualDesigner(ctx: AgentContext): Promise<Agen
 - 主色面积控制在 10% 以内，大面积用白色/浅灰
 - 响应式布局：移动端 1 列 → 平板 2 列 → 桌面 3 列`;
 
-      const mergedText = mergeUpstreamAndVisualPrompt(upstreamText, defaultPrompt);
+      const mergedText = formatVisualDesignerOutput(upstreamText, defaultPrompt);
       return {
         success: true,
         data: {
           text: mergedText,
+          _resultType: 'visual-design-output',
           selectedStyleId: null,
           selectedStyleTags: ['现代', '简约', '专业'],
         },
-        summary: mergedText.length > 300 ? mergedText.slice(0, 300) + '…' : mergedText,
+        summary: `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`,
         status: 'success',
       };
     }
@@ -186,16 +185,17 @@ ${upstreamForSystem}`;
     const selectedStyle = libraryItems[Math.max(0, Math.min(selectedIndex, libraryItems.length - 1))];
 
     const designPrompt = selectedStyle.designPrompt;
-    const mergedText = mergeUpstreamAndVisualPrompt(upstreamText, designPrompt);
+    const mergedText = formatVisualDesignerOutput(upstreamText, designPrompt);
 
     return {
       success: true,
       data: {
         text: mergedText,
+        _resultType: 'visual-design-output',
         selectedStyleId: selectedStyle.id,
         selectedStyleTags: selectedStyle.tags,
       },
-      summary: mergedText.length > 300 ? mergedText.slice(0, 300) + '…' : mergedText,
+      summary: `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`,
       status: 'success',
     };
 

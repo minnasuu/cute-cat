@@ -14,6 +14,14 @@ export function extractUpstreamText(ctx: AgentContext): string {
   return ctx.input || '';
 }
 
+/** 流式报错时是否值得保留片段（如前端工程师 HTML） */
+function streamAnswerLooksSalvageable(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 400) return false;
+  const head = t.slice(0, 8000);
+  return /<!DOCTYPE\s+html|<html[\s>]/i.test(head);
+}
+
 /**
  * 真实 AI 流式调用辅助
  * @param agentId 猫咪 agentId
@@ -29,37 +37,53 @@ export async function runWithAI(
     _resultType?: string;
     maxTokens?: number;
     onChunk?: (chunk: string, accumulated: string) => void;
+    /** 单次请求超时（ms），大 HTML 生成可加长 */
+    timeoutMs?: number;
+    /** 额外重试次数，共 1 + maxExtraRetries 次 */
+    maxExtraRetries?: number;
   } = {},
 ): Promise<AgentResult> {
   const upstreamText = extractUpstreamText(ctx);
 
-  console.log(`[agent:ai] ${agentId} inputLen=${upstreamText.length}${options.maxTokens ? ` maxTokens=${options.maxTokens}` : ''}`);
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const maxExtraRetries = options.maxExtraRetries ?? 2;
+
+  console.log(
+    `[agent:ai] ${agentId} inputLen=${upstreamText.length}${options.maxTokens ? ` maxTokens=${options.maxTokens}` : ''} timeoutMs=${timeoutMs}`,
+  );
 
   // user text 只包含上游输入，systemPrompt 作为独立参数传递给后端
   const userText = upstreamText || '请执行任务';
 
-  const MAX_RETRIES = 2;
-  const TIMEOUT_MS = 120_000;
-
   let lastResult!: AgentResult;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxExtraRetries; attempt++) {
     try {
-      const resultPromise = callDifySkillStream(
+      // 超时在 callDifySkillStream 内用 AbortSignal 触发，便于在 catch 里带上已收到的流式片段
+      const resp = await callDifySkillStream(
         'ai-chat',
         userText,
         'qwen',
         options.onChunk,
-        { systemPrompt, maxTokens: options.maxTokens },
+        {
+          systemPrompt,
+          maxTokens: options.maxTokens,
+          streamTimeoutMs: timeoutMs,
+        },
       );
-
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('请求超时')), TIMEOUT_MS)
-      );
-
-      const resp = await Promise.race([resultPromise, timeoutPromise]);
 
       if (resp.error) {
+        const salvage = (resp.answer || '').trim();
+        if (streamAnswerLooksSalvageable(salvage)) {
+          const data: { text: string; [key: string]: unknown } = { text: salvage };
+          if (options._resultType) data._resultType = options._resultType;
+          return {
+            success: true,
+            data,
+            summary: `流式结束异常（${resp.error}），已保留已生成 HTML 片段（${salvage.length} 字）并将尝试修补`,
+            status: 'warning',
+          };
+        }
         lastResult = {
           success: false,
           data: { text: '' },
@@ -88,7 +112,7 @@ export async function runWithAI(
         summary: `[${agentId}] AI ${isTimeout ? '超时' : '失败'}: ${msg}`,
         status: 'error',
       };
-      if (attempt < MAX_RETRIES) continue;
+      if (attempt < maxExtraRetries) continue;
     }
     if (lastResult && !lastResult.success && !/超时/.test(lastResult.summary || '')) break;
   }

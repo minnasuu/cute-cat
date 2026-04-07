@@ -481,16 +481,23 @@ const DashboardPage: React.FC = () => {
                                 <span className="text-[11px] font-semibold text-text-tertiary tabular-nums">
                                   {timeStr}
                                 </span>
-                                <span
-                                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${statusClass}`}
-                                >
-                                  {st === "success"
-                                    ? "成功"
-                                    : st === "failed"
-                                      ? "失败"
-                                      : st === "running"
-                                        ? "进行中"
-                                        : st}
+                                <span className="flex items-center gap-1.5 shrink-0">
+                                  <span
+                                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${statusClass}`}
+                                  >
+                                    {st === "success"
+                                      ? "成功"
+                                      : st === "failed"
+                                        ? "失败"
+                                        : st === "running"
+                                          ? "进行中"
+                                          : st}
+                                  </span>
+                                  {run.totalDuration != null ? (
+                                    <span className="text-[10px] font-bold text-text-tertiary tabular-nums">
+                                      {run.totalDuration}s
+                                    </span>
+                                  ) : null}
                                 </span>
                               </div>
                               <p className="text-[10px] font-bold text-primary-600/90 truncate mb-0.5">
@@ -499,11 +506,6 @@ const DashboardPage: React.FC = () => {
                               <p className="text-xs text-text-primary font-medium line-clamp-2 leading-snug">
                                 {preview}
                               </p>
-                              {run.totalDuration != null ? (
-                                <p className="text-[10px] text-text-tertiary mt-1 font-medium">
-                                  耗时 {run.totalDuration}s
-                                </p>
-                              ) : null}
                             </button>
                           </li>
                         );

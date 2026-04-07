@@ -217,7 +217,11 @@ export default function DashboardWorkflowPipeline({
                   : "waiting";
 
             const resultStatus = failed ? "error" : "success";
-            const showResult = (okDone || failed) && row?.summary;
+            const outcomeText =
+              row?.resultType === "visual-design-output" && row?.resultData
+                ? row.resultData
+                : (row?.summary ?? "");
+            const showResult = (okDone || failed) && outcomeText;
             const isAlreadyTyped = typedDone.has(i);
 
             return (
@@ -287,11 +291,11 @@ export default function DashboardWorkflowPipeline({
                       <div className="node-result-summary markdown-body">
                         {isAlreadyTyped ? (
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {row.summary ?? ""}
+                            {outcomeText}
                           </ReactMarkdown>
                         ) : (
                           <StreamingText
-                            text={row.summary ?? ""}
+                            text={outcomeText}
                             speed={16}
                             onDone={() =>
                               setTypedDone((prev) => new Set(prev).add(i))

@@ -67,9 +67,17 @@ export default function ResultCanvas({
     [steps],
   );
 
+  function stepDisplayText(s: WorkflowRunStep | null | undefined): string {
+    if (!s) return "";
+    if (s.resultType === "visual-design-output" && s.resultData) {
+      return s.resultData;
+    }
+    return s.summary ?? "";
+  }
+
   const resultHeadline = failed
-    ? failedStep?.summary || "执行未全部成功"
-    : lastStep?.summary || (steps.length ? "已完成全部步骤" : "");
+    ? stepDisplayText(failedStep) || "执行未全部成功"
+    : stepDisplayText(lastStep) || (steps.length ? "已完成全部步骤" : "");
 
   /** 检测最后一步是否为 HTML 页面类型 */
   const htmlPageData = useMemo(() => {
@@ -97,15 +105,6 @@ export default function ResultCanvas({
         }}
       />
       <div className="absolute inset-0 bg-gradient-to-br from-primary-50/40 via-transparent to-accent-50/30 pointer-events-none" />
-
-      <header className="relative z-10 px-5 pt-5 pb-3 border-b border-border/80 bg-surface/80 backdrop-blur-sm">
-        <h2 className="text-sm font-black tracking-tight text-text-primary">
-          {userPrompt.trim()}
-        </h2>
-        <p className="text-[11px] text-text-tertiary font-semibold mt-0.5">
-          {workflowName || "当前能力"}
-        </p>
-      </header>
 
       <div className="relative z-10 flex-1 overflow-y-auto px-5 py-4 space-y-4">
         {isSubmitting ? (
@@ -178,7 +177,7 @@ export default function ResultCanvas({
                   srcDoc={htmlPageData}
                   sandbox="allow-scripts allow-same-origin"
                   className="w-full border-0"
-                  style={{ minHeight: "min(60vh, 520px)", height: "60vh" }}
+                  style={{ minHeight: "min(60vh, 520px)", height: "calc(100vh - 109px)" }}
                   title="生成的网页预览"
                 />
               </div>
@@ -224,6 +223,7 @@ export default function ResultCanvas({
                         : null;
                       const ok = s.success !== false && s.status !== "error";
                       const Icon = ok ? CheckCircle2 : XCircle;
+                      const stepOut = stepDisplayText(s);
                       return (
                         <li
                           key={`${s.index}-${i}`}
@@ -252,9 +252,9 @@ export default function ResultCanvas({
                                 </span>
                               ) : null}
                             </div>
-                            {s.summary ? (
-                              <p className="text-xs text-text-tertiary font-medium mt-1.5 leading-snug">
-                                {s.summary}
+                            {stepOut ? (
+                              <p className="text-xs text-text-tertiary font-medium mt-1.5 leading-snug whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                                {stepOut}
                               </p>
                             ) : null}
                           </div>
@@ -265,26 +265,6 @@ export default function ResultCanvas({
                 </div>
               </details>
             ) : null}
-
-            <footer className="flex flex-wrap gap-3 text-[11px] font-bold text-text-tertiary">
-              <span>
-                状态{" "}
-                <span
-                  className={
-                    displayRun.status === "success"
-                      ? "text-primary-600"
-                      : displayRun.status === "failed"
-                        ? "text-danger-500"
-                        : "text-text-primary"
-                  }
-                >
-                  {displayRun.status}
-                </span>
-              </span>
-              {displayRun.totalDuration != null ? (
-                <span>耗时 {displayRun.totalDuration}s</span>
-              ) : null}
-            </footer>
           </section>
         ) : null}
       </div>
