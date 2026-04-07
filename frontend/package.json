@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build --config vite.sandbox-ui.config.ts",
+    "build:sandbox-ui": "vite build --config vite.sandbox-ui.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "tailwind-merge": "^2.6.0",
     "lucide-react": "^0.544.0",
     "marked": "^16.3.0",
     "react": "^19.1.0",

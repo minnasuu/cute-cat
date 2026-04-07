@@ -25,6 +25,11 @@ import {
   parseSteps,
 } from "./workbenchUtils";
 import ResultCanvas from "./ResultCanvas";
+import {
+  normalizeRunSteps,
+  RunExecutionProcessDetails,
+  sortedRunSteps,
+} from "./RunExecutionProcess";
 
 /** 未选中能力时的引导说明（选中后切换为当前能力的 description） */
 const HERO_DESCRIPTION_DEFAULT = (
@@ -86,22 +91,24 @@ function FeatureCard({
   blurb,
   selected,
   onSelect,
+  splitMode
 }: {
   icon: string;
   title: string;
   blurb: string;
   selected: boolean;
   onSelect: () => void;
+  splitMode?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`shrink-0 flex flex-col gap-1 text-left rounded-2xl border px-3 py-2.5 min-w-[6.75rem] sm:min-w-[7.5rem] max-w-[9.5rem] transition-all cursor-pointer ${
+      className={`shrink-0 flex flex-col gap-1 text-left border transition-all cursor-pointer ${
         selected
           ? "border-primary-400 bg-primary-50/50"
           : "border-border bg-surface hover:border-border-strong"
-      }`}
+      } ${splitMode ? "min-w-[6.75rem] sm:min-w-[7.5rem] max-w-[9.5rem] rounded-lg px-2 py-1" : "rounded-2xl px-3 py-2.5"}`}
     >
       <div className="flex items-center gap-1 w-full">
         <span className="text-primary-600">
@@ -111,9 +118,9 @@ function FeatureCard({
           {title}
         </span>
       </div>
-      <span className="text-[10px] text-text-tertiary font-medium mt-1 line-clamp-2 leading-snug">
+      {!splitMode&&<span className="text-[10px] text-text-tertiary font-medium mt-1 line-clamp-2 leading-snug">
         {blurb}
-      </span>
+      </span>}
     </button>
   );
 }
@@ -324,6 +331,13 @@ const DashboardPage: React.FC = () => {
       );
   }, [workbench?.runs]);
 
+  /** 进行中任务数；≥3 时禁止再提交 */
+  const runningTasksCount = useMemo(
+    () => (workbench?.runs ?? []).filter((r) => r.status === "running").length,
+    [workbench?.runs],
+  );
+  const atExecutionCap = runningTasksCount >= 3;
+
   const workflowLabelForRun = useCallback(
     (run: WorkflowRun) => {
       if (!run.workflowId || !workbench?.workflows) return run.workflowName;
@@ -345,6 +359,9 @@ const DashboardPage: React.FC = () => {
       const trimmed = prompt.trim();
       if (!wfId || !trimmed) return;
       if (isSubmitting) return;
+      const running =
+        (workbench?.runs ?? []).filter((r) => r.status === "running").length;
+      if (running >= 3) return;
 
       const myGen = ++executeGenerationRef.current;
       setHistoryRunId(null);
@@ -382,7 +399,7 @@ const DashboardPage: React.FC = () => {
         }
       }
     },
-    [isSubmitting, loadWorkbench],
+    [isSubmitting, loadWorkbench, workbench?.runs],
   );
 
   const runSelected = async () => {
@@ -415,6 +432,7 @@ const DashboardPage: React.FC = () => {
     (run: WorkflowRun) => {
       const wfId = run.workflowId;
       if (!wfId || run.status === "running") return;
+      if (atExecutionCap) return;
       const prompt =
         run.userInput?.trim() ||
         run.workflowName?.trim() ||
@@ -423,7 +441,7 @@ const DashboardPage: React.FC = () => {
       setSelectedWorkflowId(wfId);
       void executeWorkflowPrompt(wfId, prompt);
     },
-    [executeWorkflowPrompt],
+    [executeWorkflowPrompt, atExecutionCap],
   );
 
   const inputPlaceholder = selectedFeature
@@ -550,13 +568,21 @@ const DashboardPage: React.FC = () => {
                             run.userInput?.trim() ||
                             run.workflowName?.trim()
                           );
+                        const runSteps = sortedRunSteps(
+                          normalizeRunSteps(run.steps),
+                        );
+                        const planForRun = parseSteps(
+                          workbench?.workflows.find(
+                            (w) => w.id === run.workflowId,
+                          )?.steps,
+                        );
                         return (
                           <li key={run.id}>
                             <div
                               className={`rounded-xl border transition-colors ${
                                 active
                                   ? "border-primary-400 bg-primary-50/80"
-                                  : "border-transparent hover:bg-surface-secondary"
+                                  : "border-gray-200 hover:bg-surface-secondary cursor-pointer"
                               }`}
                             >
                               <button
@@ -568,15 +594,20 @@ const DashboardPage: React.FC = () => {
                                   setRightPaneHistoryBrowse(false);
                                   setHistoryRunId(run.id);
                                 }}
-                                className="w-full text-left rounded-t-xl px-2.5 pt-2 pb-1.5"
+                                className="w-full text-left rounded-t-xl px-3 pt-2.5 pb-2 flex flex-col gap-2 transition-[background-color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/35 focus-visible:ring-inset"
                               >
-                                <div className="flex items-center justify-between gap-2 mb-1">
-                                  <span className="text-[11px] font-semibold text-text-tertiary tabular-nums">
-                                    {timeStr}
-                                  </span>
-                                  <span className="flex items-center gap-1.5 shrink-0">
+                                <div className="flex items-start gap-3">
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <p className="text-xs text-text-primary font-semibold line-clamp-2 leading-snug tracking-tight">
+                                      {preview}
+                                    </p>
+                                  </div>
+                                  <p className="text-[10px] font-semibold text-primary-600/90 truncate">
+                                      {capability}
+                                    </p>
+                                  <div className="flex flex-col items-end gap-1 shrink-0">
                                     <span
-                                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${statusClass}`}
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md leading-none ${statusClass}`}
                                     >
                                       {st === "success"
                                         ? "成功"
@@ -587,39 +618,36 @@ const DashboardPage: React.FC = () => {
                                             : st}
                                     </span>
                                     {run.totalDuration != null ? (
-                                      <span className="text-[10px] font-bold text-text-tertiary tabular-nums">
+                                      <span className="text-[10px] font-semibold text-text-tertiary tabular-nums">
                                         {run.totalDuration}s
                                       </span>
                                     ) : null}
-                                  </span>
+                                  </div>
                                 </div>
-                                <p className="text-[10px] font-bold text-primary-600/90 truncate mb-0.5">
-                                  {capability}
-                                </p>
-                                <p className="text-xs text-text-primary font-medium line-clamp-2 leading-snug">
-                                  {preview}
-                                </p>
+                                <span className="text-[11px] font-medium text-text-tertiary/85 tabular-nums">
+                                  {timeStr}
+                                </span>
                               </button>
-                              <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 px-2 pb-2 pt-0 border-t border-border/40">
+                              <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1 px-3 pb-2.5 pt-1.5 border-t border-border/50">
                                 {canRetry ? (
                                   <button
                                     type="button"
-                                    disabled={executeBusy}
+                                    disabled={executeBusy || atExecutionCap}
                                     onClick={() => handleRetryHistoryRun(run)}
-                                    className="text-[10px] font-bold text-primary-600 hover:text-primary-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                    className="text-[11px] font-semibold text-primary-600 hover:text-primary-700 hover:bg-primary-500/10 rounded-md px-2 py-1 -my-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent cursor-pointer transition-colors"
                                   >
                                     {st === "failed" ? "重试" : "再跑"}
                                   </button>
                                 ) : null}
                                 {confirmDeleteRunId === run.id ? (
-                                  <span className="flex items-center gap-1.5 text-[10px]">
+                                  <span className="flex items-center gap-1 text-[11px]">
                                     <button
                                       type="button"
                                       disabled={deletingRunId === run.id}
                                       onClick={() =>
                                         void handleDeleteHistoryRun(run.id)
                                       }
-                                      className="font-bold text-red-600 hover:text-red-700 disabled:opacity-50 cursor-pointer"
+                                      className="font-semibold text-red-600 hover:text-red-700 hover:bg-red-500/10 rounded-md px-2 py-1 -my-0.5 disabled:opacity-50 disabled:hover:bg-transparent cursor-pointer transition-colors"
                                     >
                                       {deletingRunId === run.id
                                         ? "删除中…"
@@ -631,7 +659,7 @@ const DashboardPage: React.FC = () => {
                                       onClick={() =>
                                         setConfirmDeleteRunId(null)
                                       }
-                                      className="font-medium text-text-tertiary hover:text-text-secondary cursor-pointer"
+                                      className="font-medium text-text-tertiary hover:text-text-secondary hover:bg-surface-secondary rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
                                     >
                                       取消
                                     </button>
@@ -642,12 +670,22 @@ const DashboardPage: React.FC = () => {
                                     onClick={() =>
                                       setConfirmDeleteRunId(run.id)
                                     }
-                                    className="text-[10px] font-bold text-text-tertiary hover:text-red-600 cursor-pointer"
+                                    className="text-[11px] font-semibold text-text-tertiary hover:text-red-600 hover:bg-red-500/5 rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
                                   >
                                     删除
                                   </button>
                                 )}
                               </div>
+                              {runSteps.length > 0 ? (
+                                <div className="px-2 pb-2 pt-0">
+                                  <RunExecutionProcessDetails
+                                    steps={runSteps}
+                                    planSteps={planForRun}
+                                    catNameById={catNameById}
+                                    compact
+                                  />
+                                </div>
+                              ) : null}
                             </div>
                           </li>
                         );
@@ -659,8 +697,8 @@ const DashboardPage: React.FC = () => {
             )}
             <div className="rounded-[28px] border border-border-strong bg-surface-secondary/40 p-3 sm:p-4">
               <div
-                className={`flex flex-col gap-4 lg:items-stretch ${
-                  splitMode ? "" : "lg:flex-row"
+                className={`flex flex-col lg:items-stretch ${
+                  splitMode ? "gap-2" : "lg:flex-row gap-4"
                 }`}
               >
                 {/* 功能卡片：横向排列，与输入区在同一行（大屏） */}
@@ -686,6 +724,7 @@ const DashboardPage: React.FC = () => {
                         blurb={featureBlurb(wf)}
                         selected={selectedWorkflowId === wf.id}
                         onSelect={() => setSelectedWorkflowId(wf.id)}
+                        splitMode={splitMode}
                       />
                     ))
                   )}
@@ -694,18 +733,18 @@ const DashboardPage: React.FC = () => {
                 <div
                   className={
                     splitMode
-                      ? "flex-1 flex flex-col min-w-0 border-t border-border pt-3"
+                      ? "relative flex-1 flex flex-col min-w-0 border-t border-border pt-3"
                       : "flex-1 flex flex-col min-w-0 border-t border-border lg:border-t-0 lg:border-l lg:pl-4 pt-3 lg:pt-0 lg:min-w-[12rem]"
                   }
                 >
-                  <div className="flex gap-2 items-start min-h-[9rem] sm:min-h-[9rem]">
+                  <div className={`flex gap-2 items-start min-h-[9rem] sm:min-h-[9rem] bg-gray-100 rounded-2xl ${splitMode ? "pb-16" : ""}`}>
                     <textarea
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
                       placeholder={inputPlaceholder}
                       rows={6}
                       disabled={!selectedFeature}
-                      className="flex-1 min-h-[9rem] sm:min-h-[9rem] px-3 py-2 rounded-2xl bg-gray-100 border-0 outline-none resize-none text-sm font-medium placeholder:text-text-tertiary disabled:opacity-50"
+                      className={`flex-1 min-h-[6rem] sm:min-h-[6rem] px-3 py-2 border-0 outline-none resize-none text-sm font-medium placeholder:text-text-tertiary disabled:opacity-50 ${splitMode ? "absolute bottom-3 right-3" : ""}`}
                     />
                   </div>
 
@@ -715,7 +754,7 @@ const DashboardPage: React.FC = () => {
                       ? "内容会作为第一步的主题描述提交给当前模式。"
                       : "选择左侧或上方的能力后再输入。"}
                   </span> */}
-                    {selectedFeature ? (
+                    {(selectedFeature&&!splitMode) ? (
                       <div
                         className="shrink-0 pt-1"
                         role="status"
@@ -744,7 +783,8 @@ const DashboardPage: React.FC = () => {
                       disabled={
                         !selectedWorkflowId ||
                         loading ||
-                        !userInput.trim()
+                        !userInput.trim() ||
+                        atExecutionCap
                       }
                       onClick={() => void runSelected()}
                       className="ml-auto px-7 py-2.5 rounded-2xl bg-text-primary text-text-inverse text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
@@ -760,7 +800,7 @@ const DashboardPage: React.FC = () => {
               </div>
             </div>
 
-            <nav
+            {!splitMode && <nav
               className={`flex flex-wrap items-center gap-y-2 text-xs font-bold text-text-tertiary ${
                 splitMode ? "mt-2 gap-x-4 justify-start" : "mt-6 gap-x-8 justify-center"
               }`}
@@ -779,7 +819,7 @@ const DashboardPage: React.FC = () => {
               >
                 角色调用次数
               </Link>
-            </nav>
+            </nav>}
           </section>
         </div>
 
@@ -792,7 +832,7 @@ const DashboardPage: React.FC = () => {
             aria-valuenow={Math.round(splitLeftPct)}
             aria-label="拖动调整左右宽度"
             tabIndex={0}
-            className="flex w-3 shrink-0 cursor-col-resize select-none items-stretch justify-center touch-none py-1 group outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 rounded-sm"
+            className="relative flex w-3 shrink-0 cursor-col-resize select-none items-stretch justify-center touch-none py-1 group outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 rounded-sm"
             onPointerDown={(e) => {
               e.preventDefault();
               splitDragActiveRef.current = true;
@@ -812,7 +852,8 @@ const DashboardPage: React.FC = () => {
               }
             }}
           >
-            <div className="w-px flex-1 min-h-[120px] my-auto bg-border group-hover:bg-primary-400/80 group-active:bg-primary-500 transition-colors" />
+            <div className="opacity-10 group-hover:opacity-20 w-px flex-1 min-h-[120px] my-auto bg-border group-hover:bg-primary-400/80 group-active:bg-primary-500 transition-colors" />
+            <div className="absolute top-0 left-0 w-px h-full bg-gray-200"></div>
           </div>
         ) : null}
 

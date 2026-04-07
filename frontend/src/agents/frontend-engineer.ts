@@ -1,269 +1,136 @@
 import type { AgentContext, AgentResult } from './types';
 import { runWithAI } from './_framework';
 
-/**
- * 流式超时或模型截断时，补齐最小闭合标签，使 iframe 能渲染（宁可少模块也要可运行）。
- */
-function healIncompleteHtml(raw: string): string {
-  let h = raw.trim();
-  if (!/<html[\s>]/i.test(h)) return h;
-  if (/<\/html>/i.test(h)) return h;
-
-  const lastGt = h.lastIndexOf('>');
-  if (lastGt >= 0) h = h.slice(0, lastGt + 1);
-
-  const l = h.toLowerCase();
-  if (l.includes('<body')) {
-    if (!l.includes('</body>')) h += '\n</body>';
-  } else {
-    h += '\n<body></body>';
+/** 流式截断时尽量补全未闭合的大括号，使沙箱仍有机会渲染（保守策略） */
+function healIncompleteJsx(raw: string): string {
+  let s = raw.trim();
+  const open = (s.match(/\{/g) || []).length;
+  const close = (s.match(/\}/g) || []).length;
+  const deficit = open - close;
+  if (deficit > 0 && deficit <= 8) {
+    s += '\n' + '}'.repeat(deficit);
   }
-  h += '\n</html>';
-  return h;
+  return s;
+}
+
+function stripMarkdownFences(text: string): string {
+  let t = text.trim();
+  const m = t.match(/^```(?:tsx|ts|jsx|js)?\s*\n?([\s\S]*?)\n?\s*```$/m);
+  if (m) t = m[1].trim();
+  const inner = t.match(/```(?:tsx|ts|jsx|js)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (inner && inner[1].includes('function App')) t = inner[1].trim();
+  return t;
+}
+
+function stripImportExportLines(code: string): string {
+  return code
+    .replace(/^export\s+default\s+function\s+/gm, 'function ')
+    .replace(/^export\s+default\s+const\s+/gm, 'const ')
+    .replace(/^export\s+function\s+/gm, 'function ')
+    .replace(/^export\s+const\s+/gm, 'const ')
+    .replace(/^export\s+default\s+/gm, '')
+    .split('\n')
+    .filter((line) => {
+      const x = line.trim();
+      if (/^import\s+/.test(x)) return false;
+      if (/^export\s*\{/.test(x)) return false;
+      return true;
+    })
+    .join('\n');
+}
+
+function hasAppComponent(code: string): boolean {
+  return /\bfunction\s+App\s*\(/.test(code) || /\bconst\s+App\s*=/.test(code);
 }
 
 const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「琥珀」，岗位角色：前端工程师。
-你的任务是根据上游 user 消息生成一个完整可运行的 HTML 单页网站。
+你的任务是根据上游 user 消息生成 **一段可在沙箱中运行的 React（JSX）单页代码**，用于落地页 / 官网类页面。
 
-**工作流说明**：上游 user **通常仅为上一步视觉设计师输出的设计规范/提示词**（色板、字体、组件气质等），**不一定**包含产品架构或交互文档。你必须仅凭该说明，自行推断合理的单页信息结构与模块划分（如 Hero、功能亮点、数据展示、CTA、页脚等），并产出完整页面。
+**工作流说明**：上游 user **通常仅为上一步视觉设计师输出的设计规范/提示词**（色板、字体、组件气质等），**不一定**包含产品架构文档。你必须仅凭该说明，自行推断合理的单页信息结构与模块划分（如 Hero、功能亮点、数据展示、CTA、页脚等），并产出完整界面。
 
-## 🚨🚨🚨 最高优先级规则：只输出 HTML 代码 🚨🚨🚨
+## 最高优先级：只输出 JSX 源码
 
-你的回复必须**只包含 HTML 代码本身**，不允许包含任何其他内容：
-- 回复的第一个字符必须是 \`<\`（即 \`<!DOCTYPE html>\` 的开头）
-- 回复的最后一个字符必须是 \`>\`（即 \`</html>\` 的结尾）
-- **绝对禁止**在 HTML 代码前面写任何文字（包括"好的"、"以下是"、"根据需求"等）
-- **绝对禁止**在 HTML 代码后面写任何文字（包括"希望你喜欢"、"如需修改"等）
-- **绝对禁止**使用 markdown 代码块 \`\`\`html ... \`\`\` 包裹
-- **绝对禁止**输出任何非 HTML 的解释、说明、总结
+你的回复必须**只包含 JavaScript/JSX 代码本身**，不允许任何其他内容：
+- **绝对禁止**在代码前写开场白、在代码后写总结或追问
+- **绝对禁止**使用 markdown 代码块（不要用 \`\`\`tsx 包裹）
+- **绝对禁止** \`import\` 与 \`export\`（沙箱已注入全局依赖，见下文）
+- 必须定义根组件 **\`App\`**：\`function App()\` 或 \`const App = () =>\`
 
-## 🚨 禁止元对话、追问与内容评判（与「只输出 HTML」同等重要）
+## 全局可用（不要 import）
 
-- **绝对禁止**以聊天口吻开场（如「您好」「👋」「我仔细阅读了」等）或输出任何与 HTML 无关的段落。
-- **绝对禁止**评价、猜测用户输入来源（如「像是之前对话记录」「误复制」「测试反应」等），**禁止**据此让用户「选 1/2/3」或追问需求。
-- **绝对禁止**输出 Markdown 标题、列表、选项、客服话术建议等非 HTML 内容。
-- 上游可能是产品架构 JSON、纯视觉说明、混杂文案甚至无关对话：**一律忽略元对话**，只抽取可落地的视觉与主题线索，**直接生成**完整单页 HTML；信息不足时用合理占位文案与占位图，**不得**用文字向用户解释或索要补充。
+- **React**：\`React\`、\`ReactDOM\`（仅预览环境需要时可用；一般只需写组件）
+- **Hooks 简写**（沙箱已注入，可直接写）：\`useState\`、\`useMemo\`、\`useCallback\`、\`useEffect\`、\`useRef\`、\`Fragment\`
+- **UI**（shadcn 风格 + Tailwind，必须通过 \`UI.xxx\` 或下列简写使用）：
+  - 简写组件名（推荐，与 shadcn 一致）：\`Button\`、\`Card\`、\`CardHeader\`、\`CardFooter\`、\`CardTitle\`、\`CardDescription\`、\`CardContent\`、\`Badge\`、\`Separator\`
+  - 工具：\`cn(...classes)\` 合并 class；\`buttonVariants\`、\`badgeVariants\`（cva，按需）
+- 也可写 \`UI.Button\`、\`UI.Card\` 等与上面等价。
 
-正确示例（你应该这样输出）：
-<!DOCTYPE html><html lang="zh-CN"><head>...</head><body>...</body></html>
+## 技术与样式
 
-错误示例（绝对不要这样输出）：
-❌ 好的，以下是生成的网页：<!DOCTYPE html>...
-❌ \`\`\`html\n<!DOCTYPE html>...\n\`\`\`
-❌ <!DOCTYPE html>...</html>\n\n希望这个页面符合你的需求！
+- 使用 **Tailwind CSS** 工具类布局与间距；语义色优先用 **hsl(var(--primary))** 等 CSS 变量（沙箱已配置与 shadcn 一致的 theme），**避免大面积硬编码 hex**
+- **禁止**使用 \`lucide-react\` 等 npm 包；图标请用 **内联 SVG** 或极少量 emoji 文案点缀
+- 页面 **中文**；注释可用中文
+- **响应式**：移动优先，使用 \`sm:\` \`md:\` \`lg:\` 断点
+- 使用语义化结构：\`<header>\`、\`<main>\`、\`<section>\`、\`<footer>\` 等与 JSX 混排
 
-## 输出格式要求
+## 组件复用（必做）
 
-1. **直接输出纯 HTML 代码**，以 <!DOCTYPE html> 开头，以 </html> 结尾
-2. HTML 必须包含完整的 <head>（含 meta charset, viewport, title）和 <body>
-3. 所有 CSS 必须内联在 <style> 标签中（不引用外部 CSS 文件）
-4. 可以使用 Tailwind CSS CDN（推荐）或 Google Fonts CDN
-5. 页面必须是响应式的（支持移动端）
-6. 使用语义化 HTML 标签（header, nav, main, section, footer）
-7. 中文内容，代码注释用中文
-8. 严格遵循上游视觉设计师给出的配色、字体和组件风格
+- 重复区块必须抽成函数组件，例如 \`function FeatureCard({ title, desc }) { ... }\`，用 **数组 + \`.map()\`** 渲染列表，**禁止**复制粘贴多段近似 JSX
 
-## ⚡ 生成策略（优先级最高，优于完整度）
+## 生成策略（优先可运行）
 
-**在 token 和响应时间限制内，优先保证生成成功率，而非完整度：**
+- 实质内容区块（含 Hero）**最多 4 个**；更多用简短占位注释 + 空 \`<section>\` 表示
+- 必须包含：**页头/导航**、**Hero**（标题 + 副标题 + CTA）、至少 **1～2 个**核心模块
+- Footer 可简化为单行版权
+- 图片用占位 URL（如 \`https://placehold.co/800x400/e5e7eb/6b7280?text=Demo\`）
+- 若长度受限，优先保证 **\`App\` 根组件结构闭合**，宁可少模块
 
-0. **硬性上限**：实质内容区块（含 Hero）**最多 4 个**；更多需求只用一行 \`<!-- 占位：模块名 -->\` + 空 \`<section>\` 表示，禁止展开长 HTML。
+## 设计规范（摘要）
 
-1. **必须完成的核心部分**：
-   - 完整的 HTML 结构（<!DOCTYPE>, <head>, <body>）
-   - Header/导航区域（含 logo + 主导航）
-   - Hero Banner 区域（含标题 + 副标题 + CTA 按钮）
-   - 至少 1-2 个核心功能模块的完整实现
+- 主色仅用于 CTA、强调，面积控制；大背景用浅中性色
+- 圆角：卡片偏大圆角、按钮 rounded-xl 或 pill
+- 阴影柔和，避免彩色 glow；边框可用 border-border
+- 动效：\`transition-all duration-200\`，hover 轻微阴影或位移
 
-2. **可以精简/占位的部分**：
-   - 如果页面模块过多（>5 个），优先实现前 3 个核心模块，其余用占位符：
-     \`\`\`html
-     <!-- 📦 [模块名称] 占位区域 - 待后续完善 -->
-     <section class="py-20 text-center text-gray-400">
-       <p>🚧 [模块名称] 功能区域</p>
-     </section>
-     \`\`\`
-   - 复杂交互组件（如轮播图、多级菜单）可先用静态版本
-   - Footer 可以简化为单行版权信息
-   - 大段重复内容（如长列表、多个卡片）可只生成 2-3 个示例项
-
-3. **代码优化策略**：
-   - 优先使用 Tailwind CDN（减少自定义 CSS 代码量）
-   - 避免过长的内联 JavaScript（如需交互，只写核心逻辑）
-   - 图片用占位服务（如 \`https://via.placeholder.com/800x400/E5E7EB/9CA3AF?text=示例图片\`）
-   - 复杂动画效果可省略，优先保证布局和色彩正确
-
-4. **截断处理**：
-   - 如果接近 token 上限，优先保证 </body></html> 闭合标签完整
-   - 宁可少生成 1-2 个模块，也要确保 HTML 结构完整可运行
-
-**记住：一个可运行的精简版页面 > 一个不完整的豪华版页面。用户可以在此基础上迭代优化。**
-
-## 设计系统规范 ✅ DO（必须遵守）
-
-### 色彩/主题
-- 统一使用语义化 CSS 变量：--primary, --background, --card, --foreground, --muted-foreground, --border, --accent, --secondary, --destructive 等
-- 透明度用 rgb(var(--xxx) / 0.1) 或 hsl(var(--xxx) / 0.1) 语法
-- 整体页面底色用白色/极浅灰色（--background）
-- 主色（--primary）仅用于 CTA 按钮、活跃 Tab、关键图标，面积 ≤ 10%；大面积保持白/浅灰
-- 正文色用 --foreground，次要文字用 --muted-foreground
-- 文字颜色符合 WCAG 对比度标准（至少 4.5:1）
-
-### 阴影/边框
-- 阴影用柔和双层：box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 16px rgba(0,0,0,0.04)
-- 尽量减少投影使用，彩色/重色块禁止投影
-- hover 态阴影增强：box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 16px 40px rgba(0,0,0,0.08)
-- 所有边框统一用 0.5px（border: 0.5px solid）
-- 所有分割线必须搭配足够间距（上下 margin 16-24px + 内部 padding 12-16px）
-- 图片上的文字放在带背景模糊的半透明中性色块上
-
-### 布局/间距
-- Hero 区域：纵向充裕留白（padding-top/bottom: 128-240px）
-- 模块间距：gap 32-80px，保持呼吸感
-- Web: max-width: 1152px, margin: 0 auto / App: max-width: 430px, margin: 0 auto, min-height: 100vh
-- Grid 布局响应式：1 列（移动）→ 2 列（平板）→ 3 列（桌面），穿插 2 倍宽卡片打破节奏
-- 组件内 padding: 16-32px，留白充裕
-- 布局和间距符合「亲密性」设计原则（相关元素靠近，不相关元素拉开）
-
-### 排版
-- 适当增加视觉 Banner、装饰元素、装饰背景丰富页面层次，避免页面全是卡片列表
-- Hero/Display 标题：font-size: 2.25-3rem (36-48px), font-weight: bold, line-height: 1.1, letter-spacing: -0.02em
-- 区域标题：font-size: 1.5rem (24px), font-weight: 600
-- 卡片标题：font-size: 1.125rem (18px), font-weight: 600
-- 正文：font-size: 1rem (16px), line-height: 1.6, color: var(--muted-foreground)
-- 辅助/标签：font-size: 0.75rem (12px), font-weight: 500, text-transform: uppercase, letter-spacing: 0.05em
-- 层级清晰：标题用 --foreground（深色），正文用 --muted-foreground，辅助更淡
-- Banner 标题使用大号加粗文字，可对关键字做高亮或添加装饰元素
-
-### 圆角
-- 卡片：border-radius: 16-24px
-- 按钮：border-radius: 12-999px（可用 pill 形状）
-- 输入框：border-radius: 12px
-- Badge/Tag：border-radius: 999px（全圆角）
-- 保持全局圆角一致性
-- 嵌套模块的圆角符合「同心圆」准则（外层圆角 ≥ 内层圆角 + 间距）
-
-### 导航/Header
-- 每个项目的 Header 应该独特：根据项目类型选择不同的导航风格
-- 可选方案：a) 简洁品牌 logo + 水平 Tab 导航 b) 全宽搜索优先布局 c) 带 Hero banner 的沉浸式顶部 d) 双层导航（品牌行 + 功能行）e) 侧边抽屉式导航
-- Tab 切换按钮样式多样化：下划线式、pill 胶囊式、填充卡片式、图标+文字组合式等
-
-### 微交互
-- transition: all 0.2s ease-out
-- 卡片 hover：shadow 增强 + transform: translateY(-1px) 微浮
-- 按钮 hover：opacity 变化或微 scale(1.02)
-- 背景图片 hover: scale(1.05)
-
-### 图标
-- 使用 SVG 图标或图标字体（如 Lucide Icons, Heroicons）
-- 文本内容中可合理使用 emoji 辅助表达（如标签、状态文案）
-
-### 渐变色
-- 渐变色必须全部使用 CSS 变量，如：background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--background)))
-- 选择饱和度较低的渐变色，避免过度鲜艳
-
-### 组件
-- 数据驱动：同类内容（多张卡片、列表、网格项）用 JavaScript 数组 + 循环渲染
-- 精简 class：相同样式组合可提取为 CSS 类
-
-## 设计系统规范 ❌ DON'T（严禁违反）
-
-### 色彩/主题
-- **严禁硬编码 hex 颜色**：#RRGGBB、white、black 等
-- 大面积背景禁止带明显色彩倾向（如偏黄/偏粉/偏蓝），只用 --background（白）/ --muted（中性浅灰）
-- **禁止在图片上使用有色文字**（必须用半透明中性色块承载文字）
-
-### 阴影/边框
-- **禁止彩色辉光阴影**（box-shadow 不得用彩色）
-- **严禁使用 1px 边框**，必须用 0.5px
-- **禁止分割线紧贴内容**，必须搭配间距
-- **禁止用 box-shadow 代替 border**
-- **禁止同时添加小 size 的 box-shadow 和 border**
-- **禁止在彩色、重色块使用投影**
-
-### 微交互
-- 避免过多 backdrop-blur（影响性能）
-
-### 图标
-- **装饰性图标不要用 emoji**。❌ 🛒 购物车 → ✅ 使用 SVG 购物车图标
-
-### 渐变色
-- **严禁渐变色中变量与硬编码 hex 混用**。❌ linear-gradient(from hsl(var(--xxx)), to #f3f4f6)
-- **严禁全硬编码渐变**。❌ background: linear-gradient(from #eff6ff to transparent)
-
-### 组件
-- **严禁手写多份近似 HTML 块**，必须用数据驱动 + 循环
-
-生成美观、专业、符合现代设计规范、可直接在浏览器中打开的完整网页。`;
+输出 **完整可运行的单文件 JSX**（从第一个 \`function App\` 或子组件定义开始，到文件末尾闭合括号为止）。`;
 
 export default async function runFrontendEngineer(ctx: AgentContext): Promise<AgentResult> {
   const result = await runWithAI('frontend-engineer', ctx, SYSTEM_PROMPT, {
-    _resultType: 'html-page',
+    _resultType: 'react-sandbox',
     maxTokens: 12288,
     onChunk: ctx.onChunk,
     timeoutMs: 300_000,
     maxExtraRetries: 3,
   });
 
-  // 多重清理：确保最终结果只包含纯 HTML 代码
   if (result.success && result.data) {
-    let html = result.data.text.trim();
+    let code = result.data.text.trim();
+    code = stripMarkdownFences(code);
+    code = stripImportExportLines(code);
 
-    // 1. 去除 markdown 代码块包裹（支持多种格式：```html、```HTML、``` 等）
-    const codeBlockMatch = html.match(/```(?:html|HTML)?\s*\n?([\s\S]*?)\n?\s*```/);
-    if (codeBlockMatch) {
-      html = codeBlockMatch[1].trim();
+    const docIdx = code.search(/function\s+App\s*\(|const\s+App\s*=/);
+    if (docIdx > 0) {
+      code = code.slice(docIdx);
     }
 
-    // 2. 截取从 <!DOCTYPE 或 <html 开始的内容（去除 AI 前缀废话）
-    const docIdx = html.indexOf('<!DOCTYPE');
-    const docLowerIdx = html.indexOf('<!doctype');
-    const htmlTagIdx = html.indexOf('<html');
-    const startIdx = Math.min(
-      docIdx >= 0 ? docIdx : Infinity,
-      docLowerIdx >= 0 ? docLowerIdx : Infinity,
-      htmlTagIdx >= 0 ? htmlTagIdx : Infinity,
-    );
-    if (startIdx < Infinity && startIdx > 0) {
-      html = html.substring(startIdx);
+    if (!hasAppComponent(code)) {
+      code = healIncompleteJsx(code);
     }
 
-    // 3. 截断 </html> 之后的所有内容（去除 AI 后缀废话）
-    const closingHtmlIdx = html.lastIndexOf('</html>');
-    if (closingHtmlIdx >= 0) {
-      html = html.substring(0, closingHtmlIdx + '</html>'.length);
-    } else {
-      html = healIncompleteHtml(html);
-    }
-
-    // 4. 再次检查：如果结果仍然被 markdown 代码块包裹（嵌套情况），再清理一次
-    const secondPassMatch = html.match(/```(?:html|HTML)?\s*\n?([\s\S]*?)\n?\s*```/);
-    if (secondPassMatch && secondPassMatch[1].includes('<!DOCTYPE')) {
-      html = secondPassMatch[1].trim();
-      const idx2 = html.lastIndexOf('</html>');
-      if (idx2 >= 0) html = html.substring(0, idx2 + '</html>'.length);
-    }
-
-    html = html.trim();
-    let hasHtmlShell = /<html[\s>]/i.test(html) && /<\/html>/i.test(html);
-    if (!hasHtmlShell && /<html[\s>]/i.test(html)) {
-      html = healIncompleteHtml(html);
-      hasHtmlShell = /<html[\s>]/i.test(html) && /<\/html>/i.test(html);
-    }
-    if (!hasHtmlShell) {
+    if (!hasAppComponent(code)) {
       result.success = false;
       result.status = 'error';
       result.data.text = '';
-      result.summary = '模型未返回可解析的完整 HTML（检测到非代码回复），请重试该步骤';
+      result.summary = '模型未返回可解析的 React 沙箱代码（需包含 App 根组件），请重试该步骤';
     } else {
-      result.data.text = html;
-      result.data._resultType = 'html-page';
+      result.data.text = code.trim();
+      result.data._resultType = 'react-sandbox';
       result.success = true;
       result.status = result.status === 'warning' ? 'warning' : 'success';
       result.summary =
         result.status === 'warning'
-          ? `HTML 已生成（${html.length} 字符，含流式中断后的修补，建议在编辑器中继续完善）`
-          : `HTML 页面已生成（${html.length} 字符）`;
+          ? `React 页面已生成（${code.length} 字符，流式可能中断已尝试修补，可在编辑器中继续完善）`
+          : `React 页面已生成（${code.length} 字符，沙箱预览）`;
     }
   }
 

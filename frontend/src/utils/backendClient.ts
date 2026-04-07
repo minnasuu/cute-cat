@@ -1,6 +1,15 @@
 /** 浏览器内统一走同源 /api（Vite 代理 / nginx），以便携带 httpOnly Cookie */
 export const getBackendUrl = (): string => '';
 
+/** 流式中断时是否保留片段（历史 HTML 整页或 React 沙箱 App） */
+function streamPartialLooksSalvageable(partial: string): boolean {
+  if (partial.length <= 400) return false;
+  const head = partial.slice(0, 4000);
+  if (/<!DOCTYPE\s+html|<html[\s>]/i.test(head)) return true;
+  if (/\bfunction\s+App\s*\(/.test(head) || /\bconst\s+App\s*=/.test(head)) return true;
+  return false;
+}
+
 // ==================== Auth ====================
 
 export interface VerifyPasswordResponse {
@@ -363,10 +372,7 @@ export const callDifySkillStream = async (
               globalThis.clearTimeout(timeoutId);
               const errText = data.error || 'stream error';
               const p = fullAnswer.trim();
-              if (
-                p.length > 400 &&
-                /<!DOCTYPE\s+html|<html[\s>]/i.test(p.slice(0, 4000))
-              ) {
+              if (streamPartialLooksSalvageable(p)) {
                 return { answer: p, aiUsed: data.aiUsed, aiQuota: data.aiQuota };
               }
               return {
@@ -398,10 +404,7 @@ export const callDifySkillStream = async (
         : '连接已中断（常见于网络波动、反向代理超时或页面切换），请重试';
     }
     const partial = fullAnswer.trim();
-    if (
-      partial.length > 400 &&
-      /<!DOCTYPE\s+html|<html[\s>]/i.test(partial.slice(0, 4000))
-    ) {
+    if (streamPartialLooksSalvageable(partial)) {
       console.warn(
         `[skill/stream] ${taskId} 流异常但保留已生成片段（${partial.length} 字）: ${errMsg}`,
       );

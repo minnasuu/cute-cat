@@ -14,12 +14,14 @@ export function extractUpstreamText(ctx: AgentContext): string {
   return ctx.input || '';
 }
 
-/** 流式报错时是否值得保留片段（如前端工程师 HTML） */
+/** 流式报错时是否值得保留片段（前端工程师：HTML 历史或 React 沙箱） */
 function streamAnswerLooksSalvageable(text: string): boolean {
   const t = text.trim();
   if (t.length < 400) return false;
   const head = t.slice(0, 8000);
-  return /<!DOCTYPE\s+html|<html[\s>]/i.test(head);
+  if (/<!DOCTYPE\s+html|<html[\s>]/i.test(head)) return true;
+  if (/\bfunction\s+App\s*\(/.test(head) || /\bconst\s+App\s*=/.test(head)) return true;
+  return false;
 }
 
 /**
@@ -80,7 +82,7 @@ export async function runWithAI(
           return {
             success: true,
             data,
-            summary: `流式结束异常（${resp.error}），已保留已生成 HTML 片段（${salvage.length} 字）并将尝试修补`,
+            summary: `流式结束异常（${resp.error}），已保留已生成页面代码片段（${salvage.length} 字）并将尝试修补`,
             status: 'warning',
           };
         }

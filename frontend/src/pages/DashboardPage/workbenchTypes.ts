@@ -40,7 +40,7 @@ export interface WorkflowRunStep {
   success?: boolean;
   status?: string;
   summary?: string;
-  /** 结果类型标记，如 'html-page' */
+  /** 结果类型标记，如 'html-page' | 'react-sandbox' | 'visual-design-output' */
   resultType?: string;
   /** 完整结果内容（如 HTML 代码） */
   resultData?: string;
