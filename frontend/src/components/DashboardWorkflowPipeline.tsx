@@ -272,22 +272,6 @@ export default function DashboardWorkflowPipeline({
                     ) : null}
                   </div>
 
-                  {isCurrent && !failed && (
-                    <div className="node-progress">
-                      <div className="inline-flex items-center gap-1 text-text-tertiary">
-                        <span className="animate-spin">
-                          <AppIcon symbol="Loader2" size={14} />
-                        </span>
-                        <span className="animate-spin [animation-delay:120ms] opacity-80">
-                          <AppIcon symbol="Loader2" size={14} />
-                        </span>
-                        <span className="animate-spin [animation-delay:240ms] opacity-60">
-                          <AppIcon symbol="Loader2" size={14} />
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
                   {showResult ? (
                     <div className={`node-result status-${resultStatus}`}>
                       <div className="node-result-header inline-flex items-center gap-1">

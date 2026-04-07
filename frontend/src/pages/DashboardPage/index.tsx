@@ -930,12 +930,6 @@ const DashboardPage: React.FC = () => {
                 >
                   历史记录
                 </button>
-                <Link
-                  to="/dashboard/usage"
-                  className="hover:text-primary-600 transition-colors"
-                >
-                  角色调用次数
-                </Link>
               </nav>
             )}
           </section>
