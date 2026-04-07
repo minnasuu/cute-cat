@@ -4,6 +4,15 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 
+// ======================== 全局异常兜底（防止进程崩溃导致 502）========================
+process.on('uncaughtException', (err) => {
+  console.error('🔥 [FATAL] uncaughtException:', err);
+  // 不退出进程 —— 让容器保持运行，避免 nginx 502
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('🔥 [FATAL] unhandledRejection:', reason);
+});
+
 const app = express();
 const PORT = process.env.PORT || 8002;
 
@@ -52,6 +61,14 @@ if (process.env.NODE_ENV === 'production') {
     }
   });
 }
+
+// ======================== 全局错误中间件（兜底所有路由未捕获的异常）========================
+app.use((err, req, res, _next) => {
+  console.error('🔥 [EXPRESS] Unhandled error on', req.method, req.originalUrl, ':', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🐱 CuCaTopia V2.0 backend running on port ${PORT}`);

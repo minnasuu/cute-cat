@@ -1,12 +1,16 @@
 version: '3.8'
 
+# 固定项目名称，避免 volume 名称变化
+name: cucatopiacom
+
 services:
   db:
     image: postgres:15
+    container_name: cucatopia-db
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: cute_cat
     volumes:
       - cucatopiacom_postgres_data:/var/lib/postgresql/data
@@ -22,21 +26,25 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: cucatopia-backend
     restart: always
     ports:
       - "8002:8002"
+    volumes:
+      # 持久化上传的图片文件（容器内工作目录为 /app，multer 写入 /app/uploads/）
+      - ./backend/uploads:/app/uploads
     environment:
       PORT: 8002
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/cute_cat
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/cute_cat
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_BASE_URL: ${GEMINI_BASE_URL:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
       QWEN_API_KEY: ${QWEN_API_KEY:-}
-      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-qwen}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
-      BETA_CODES: ${BETA_CODES:-}
+      BETA_CODES: ${BETA_CODES:-CAT2026}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_USER: ${SMTP_USER:-}
@@ -52,6 +60,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    container_name: cucatopia-frontend
     restart: always
     ports:
       - "4000:80"

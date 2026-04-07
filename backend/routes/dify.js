@@ -292,7 +292,7 @@ async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
 
-  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
   const model = process.env.QWEN_MODEL || 'qwen-plus';
 
   const controller = new AbortController();
@@ -346,9 +346,197 @@ router.get('/models', (_req, res) => {
   res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'qwen' });
 });
 
-router.post('/skill', optionalAuth, async (req, res) => {
+// =====================================================================
+// POST /api/dify/skill/stream — 流式 SSE 版 AI Skill 调用
+// =====================================================================
+router.post('/skill/stream', optionalAuth, async (req, res) => {
+  // SSE 头
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const heartbeat = setInterval(() => {
+    try { res.write(':heartbeat\n\n'); } catch { /* closed */ }
+  }, 8000);
+
+  req.on('close', () => clearInterval(heartbeat));
+
+  function sendSSE(event, data) {
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch { /* closed */ }
+  }
+
+  function endSSE() {
+    clearInterval(heartbeat);
+    try { res.end(); } catch { /* closed */ }
+  }
+
   try {
     const { taskId, text, model, teamId, catId } = req.body;
+    if (!taskId || !text) {
+      sendSSE('error', { error: 'taskId and text are required' });
+      return endSSE();
+    }
+
+    // 配额检查
+    if (req.userId) {
+      const u = await prisma.user.findUnique({ where: { id: req.userId }, select: { aiUsed: true, aiQuota: true } });
+      if (u && u.aiUsed >= u.aiQuota) {
+        sendSSE('error', { error: 'AI 额度已用完', aiUsed: u.aiUsed, aiQuota: u.aiQuota });
+        return endSSE();
+      }
+    }
+
+    const systemPrompt = SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
+    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
+
+    const TASK_MAX_TOKENS = {
+      'workflow-gen': 8192, 'mece-analysis': 8192, 'scamper-creative': 8192,
+      'six-hats': 8192, 'generate-outline': 8192, 'content-review': 8192,
+      'recruit-cat': 8192, 'team-review': 8192, 'cat-training': 8192,
+    };
+    const maxTokens = TASK_MAX_TOKENS[taskId] || 4096;
+
+    console.log(`[ai/skill/stream] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}`);
+
+    if (selectedModel === 'qwen') {
+      // --- Qwen Streaming ---
+      const apiKey = process.env.QWEN_API_KEY;
+      if (!apiKey) {
+        sendSSE('error', { error: 'QWEN_API_KEY not set' });
+        return endSSE();
+      }
+      const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+      const qwenModel = process.env.QWEN_MODEL || 'qwen-plus';
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120000);
+
+      try {
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: qwenModel,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: text },
+            ],
+            max_tokens: maxTokens,
+            temperature: 0.7,
+            stream: true,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          sendSSE('error', { error: `Qwen API ${response.status}: ${errText.slice(0, 200)}` });
+          return endSSE();
+        }
+
+        let fullAnswer = '';
+        const reader = response.body;
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        for await (const chunk of reader) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (!trimmed.startsWith('data: ')) continue;
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json.choices?.[0]?.delta?.content || '';
+              if (delta) {
+                fullAnswer += delta;
+                sendSSE('chunk', { text: delta });
+              }
+            } catch { /* skip malformed */ }
+          }
+        }
+
+        clearTimeout(timeout);
+
+        // 记录 AI 用量
+        const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
+        sendSSE('done', {
+          answer: fullAnswer,
+          model: selectedModel,
+          ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+        });
+      } catch (err) {
+        clearTimeout(timeout);
+        const msg = err.name === 'AbortError' ? '请求超时' : (err.message || String(err));
+        sendSSE('error', { error: msg });
+      }
+    } else {
+      // --- Gemini Streaming ---
+      const GoogleGenAI = await getGoogleGenAI();
+      if (!GoogleGenAI) {
+        sendSSE('error', { error: '@google/genai module not available' });
+        return endSSE();
+      }
+      const geminiApiKey = process.env.GEMINI_API_KEY;
+      if (!geminiApiKey) {
+        sendSSE('error', { error: 'GEMINI_API_KEY not set' });
+        return endSSE();
+      }
+
+      try {
+        const ai = await createGeminiClient(geminiApiKey);
+        const stream = await ai.models.generateContentStream({
+          model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+          contents: text,
+          config: {
+            systemInstruction: systemPrompt,
+            maxOutputTokens: maxTokens,
+            temperature: 0.7,
+          },
+        });
+
+        let fullAnswer = '';
+        for await (const chunk of stream) {
+          const delta = chunk.text || '';
+          if (delta) {
+            fullAnswer += delta;
+            sendSSE('chunk', { text: delta });
+          }
+        }
+
+        const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
+        sendSSE('done', {
+          answer: fullAnswer,
+          model: selectedModel,
+          ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+        });
+      } catch (err) {
+        const msg = err.message || String(err);
+        sendSSE('error', { error: msg });
+      }
+    }
+
+    endSSE();
+  } catch (err) {
+    console.error('[ai/skill/stream] Error:', err);
+    sendSSE('error', { error: err.message || 'Stream error' });
+    endSSE();
+  }
+});
+
+router.post('/skill', optionalAuth, async (req, res) => {
+  try {
+    const { taskId, text, model, teamId, catId, systemPrompt: customSystemPrompt, maxTokens: customMaxTokens } = req.body;
 
     if (!taskId || !text) {
       return res.status(400).json({ error: 'taskId and text are required' });
@@ -362,7 +550,8 @@ router.post('/skill', optionalAuth, async (req, res) => {
       }
     }
 
-    const systemPrompt = SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
+    // 优先使用前端传入的 systemPrompt，否则 fallback 到 taskId 对应的默认值
+    const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
     const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
 
     // 根据 taskId 动态调整 token 限制
@@ -378,9 +567,10 @@ router.post('/skill', optionalAuth, async (req, res) => {
       'team-review': 8192,
       'cat-training': 8192,
     };
-    const maxTokens = TASK_MAX_TOKENS[taskId] || 4096;
+    // 优先使用前端传入的 maxTokens（上限 32768），否则 fallback 到 taskId 默认值
+    const maxTokens = customMaxTokens ? Math.min(Number(customMaxTokens), 32768) : (TASK_MAX_TOKENS[taskId] || 4096);
 
-    console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}`);
+    console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}${customSystemPrompt ? ', customPrompt=true' : ''}`);
 
     let answer = '';
 
@@ -569,5 +759,404 @@ function parseRSSItems(xml, source, limit) {
   }
   return items;
 }
+
+// =====================================================================
+// Vibe Style Lib — 图片上传 + AI 视觉风格分析 + 灵感库 CRUD
+// =====================================================================
+
+const multer = require('multer');
+const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
+
+/** 图片 base64 字符数上限（约 10MB 文件 → ~13.3M 字符） */
+const MAX_STYLE_REF_IMAGE_BASE64_CHARS = 14_000_000;
+
+/** MOCK 数据：MOCK_AI=true 或未配置密钥时返回，供前端联调 */
+const VIBE_SNAP_MOCK_EXTRACT = {
+  designSummary: {
+    styleDescription:
+      '现代金融科技落地页风格：高饱和紫绿渐变、玻璃拟态卡片、3D 插画与粗体标题结合，整体年轻、可信赖且富有活力。',
+    styleTags: ['现代科技感', '活力渐变', '亲和易用', '动效流畅'],
+    colors: [
+      { name: '主色紫', hex: '#6633FF', usage: '主按钮、品牌强调、关键 CTA' },
+      { name: '荧光绿', hex: '#B2FF00', usage: '点缀、数据高亮、次要按钮' },
+      { name: '深海军蓝', hex: '#1C1E32', usage: '深色背景、页脚、对比区块' },
+      { name: '米白背景', hex: '#F8F8FA', usage: '主背景、卡片底' },
+      { name: '石板灰', hex: '#64748B', usage: '次级正文、说明文案' },
+      { name: '纯白', hex: '#FFFFFF', usage: '卡片表面、留白' },
+    ],
+    typography: [
+      { family: 'Inter', note: '正文、按钮与界面标注' },
+      { family: 'Plus Jakarta Sans', note: '大标题与数字展示' },
+    ],
+    visualAttributes: {
+      borderRadius: '通用圆角约 0.75rem（12px）；胶囊标签与头像可用 99px / full',
+      shadow: '卡片 resting：0 4px 12px rgba(0,0,0,0.08)；悬停可升至 0 8px 24px rgba(0,0,0,0.12)',
+      border: '低对比 1px solid 分割线；玻璃卡片可用半透明白边',
+      spacing: '8px 网格，常用 16 / 24 / 32 / 40px 作为区块与组件间距',
+    },
+  },
+  designPrompt: `请生成与参考图一致的响应式网页落地页（信用卡 / 金融科技主题）。
+
+Tailwind 主题扩展建议：
+colors: { primary: "#6633FF", accent: "#B2FF00", background: { light: "#F8F8FA", dark: "#1C1E32" } }
+fontFamily: { sans: ["Inter", "Plus Jakarta Sans", "system-ui", "sans-serif"] }
+圆角：rounded-lg ≈ 0.75rem；药丸用 rounded-full。
+阴影：shadow-md / shadow-lg 表现卡片层级；hover 时略加深。
+动效：可用 Framer Motion，spring stiffness 约 250、damping 25、时长 0.4s 以内。
+
+结构：顶栏导航 + Hero（主标题、副文案、主 CTA、产品/mockup 图）+ 信任区 logo + 功能特性栅格 + App 下载区 + 卡片展示 + 用户评价 + 页脚。保持渐变背景与玻璃卡片层次，文案为中文。`,
+  libraryBlurb:
+    '紫绿渐变与玻璃拟态结合的金融科技落地页，Inter + Plus Jakarta Sans 排版，强调圆角卡片与轻阴影层次。',
+};
+
+// multer 配置：存储到 uploads/vibe-snap/
+const vibeSnapStorage = multer.diskStorage({
+  destination: path.join(__dirname, '..', 'uploads', 'vibe-snap'),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, `${crypto.randomUUID()}-${Date.now()}${ext}`);
+  },
+});
+const vibeSnapUpload = multer({
+  storage: vibeSnapStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('仅支持 PNG/JPG/WEBP/GIF 图片'));
+  },
+});
+
+// POST /api/dify/vibe-snap-upload — 上传图片文件
+router.post('/vibe-snap-upload', optionalAuth, (req, res) => {
+  vibeSnapUpload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, error: '图片文件过大（最大 10MB）' });
+      return res.status(400).json({ success: false, error: err.message || '上传失败' });
+    }
+    if (!req.file) return res.status(400).json({ success: false, error: '请选择图片文件' });
+    const url = `/uploads/vibe-snap/${req.file.filename}`;
+    res.json({ success: true, data: { url, filename: req.file.filename } });
+  });
+});
+
+// DELETE /api/dify/vibe-snap-upload?url=/uploads/vibe-snap/xxx — 删除临时上传（解析失败或未保存离开提取器时由前端调用）
+router.delete('/vibe-snap-upload', optionalAuth, (req, res) => {
+  try {
+    const raw = req.query.url;
+    if (!raw || typeof raw !== 'string') {
+      return res.status(400).json({ success: false, error: '缺少 url 参数' });
+    }
+    const imageUrl = decodeURIComponent(raw.trim());
+    const rel = imageUrl.replace(/^\//, '');
+    if (!rel.startsWith('uploads/vibe-snap/')) {
+      return res.status(400).json({ success: false, error: '仅允许删除 vibe-snap 目录下的文件' });
+    }
+    const vibeDir = path.resolve(path.join(__dirname, '..', 'uploads', 'vibe-snap'));
+    const resolved = path.resolve(path.join(__dirname, '..', rel));
+    const vibeDirWithSep = vibeDir.endsWith(path.sep) ? vibeDir : `${vibeDir}${path.sep}`;
+    if (resolved !== vibeDir && !resolved.startsWith(vibeDirWithSep)) {
+      return res.status(400).json({ success: false, error: '非法路径' });
+    }
+    fs.unlink(resolved, (err) => {
+      if (err && err.code !== 'ENOENT') {
+        console.warn('[vibe-snap-upload] delete failed:', resolved, err.message);
+        return res.status(500).json({ success: false, error: '删除失败' });
+      }
+      res.json({ success: true, data: { deleted: true } });
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message || '删除失败' });
+  }
+});
+
+// POST /api/dify/vibe-snap-extract — AI 视觉风格分析
+// 使用 SSE 心跳防止 nginx 等反向代理 504 Gateway Timeout
+router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
+  // --- 设置 SSE 流式响应头，让 nginx 不缓存并保持连接 ---
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // nginx 专用：关闭代理缓冲
+  res.flushHeaders();
+
+  // 心跳定时器：每 8 秒发送一个 SSE 注释行，让 nginx 知道连接仍然活跃
+  const heartbeat = setInterval(() => {
+    try { res.write(':heartbeat\n\n'); } catch { /* 连接已关闭 */ }
+  }, 8000);
+
+  // 辅助函数：发送最终 SSE 数据帧并结束响应
+  function sendResult(payload) {
+    clearInterval(heartbeat);
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      res.end();
+    } catch { /* 连接已关闭 */ }
+  }
+
+  // 客户端断开时清理
+  req.on('close', () => clearInterval(heartbeat));
+
+  try {
+    const { imageBase64: rawBase64, mimeType: rawMime, imageUrl } = req.body;
+
+    // 优先使用 imageUrl（从磁盘读取，避免前端传大体积 base64）
+    let imageBase64 = rawBase64;
+    let mimeType = rawMime;
+
+    if (imageUrl && !imageBase64) {
+      // imageUrl 格式如 /uploads/vibe-snap/xxx.jpg，映射到本地文件路径
+      const relativePath = imageUrl.replace(/^\//, '');
+      const filePath = path.join(__dirname, '..', relativePath);
+
+      // 安全检查：确保路径在 uploads 目录内
+      const uploadsDir = path.resolve(path.join(__dirname, '..', 'uploads'));
+      const resolvedPath = path.resolve(filePath);
+      if (!resolvedPath.startsWith(uploadsDir)) {
+        return sendResult({ success: false, error: '无效的图片路径' });
+      }
+
+      if (!fs.existsSync(resolvedPath)) {
+        return sendResult({ success: false, error: '图片文件不存在，请重新上传' });
+      }
+
+      const fileBuffer = fs.readFileSync(resolvedPath);
+      imageBase64 = fileBuffer.toString('base64');
+
+      // 从文件扩展名推断 mimeType
+      const ext = path.extname(resolvedPath).toLowerCase();
+      const extMimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
+      mimeType = extMimeMap[ext] || 'image/jpeg';
+
+      console.log(`[vibe-snap-extract] 从磁盘读取图片: ${resolvedPath} (${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB)`);
+    }
+
+    if (!imageBase64) {
+      return sendResult({ success: false, error: '缺少图片数据（请提供 imageBase64 或 imageUrl）' });
+    }
+
+    // 检查 base64 字符数上限
+    if (imageBase64.length > MAX_STYLE_REF_IMAGE_BASE64_CHARS) {
+      return sendResult({ success: false, error: '图片过大，请压缩后重试' });
+    }
+
+    // MOCK_AI 模式：返回 mock 数据供前端联调
+    if (process.env.MOCK_AI === 'true') {
+      return sendResult({ success: true, data: VIBE_SNAP_MOCK_EXTRACT, meta: { mock: true } });
+    }
+
+    const apiKey = process.env.QWEN_API_KEY;
+    // 未配置密钥时，fallback 返回 mock 数据（而非报错）
+    if (!apiKey) {
+      console.warn('[vibe-snap-extract] QWEN_API_KEY 未配置，返回 mock 数据');
+      return sendResult({ success: true, data: VIBE_SNAP_MOCK_EXTRACT, meta: { fallback: 'no-ai-key' } });
+    }
+
+    const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+    const model = 'qwen-vl-plus'; // 视觉模型，支持 image_url 输入
+
+    const systemPrompt = `你是资深 UI/视觉设计分析助手。用户上传的是**网页或 App 界面截图**（可能为长图）。
+
+请仅输出 **一个 JSON 对象**（不要 markdown 代码围栏，不要前后解释文字），字段严格如下：
+{
+  "designSummary": {
+    "styleDescription": "string，2-4 句中文，概括整体设计风格与气质",
+    "styleTags": ["3-6 个中文短语标签"],
+    "colors": [
+      { "name": "string", "hex": "#RRGGBB", "usage": "string 简短说明用途" }
+    ],
+    "typography": [
+      { "family": "字体名", "note": "可选，用途说明" }
+    ],
+    "visualAttributes": {
+      "borderRadius": "string，圆角规律与典型值",
+      "shadow": "string，阴影层级与示例 box-shadow 或描述",
+      "border": "string，描边/分割线用法",
+      "spacing": "string，间距体系与基准"
+    }
+  },
+  "designPrompt": "string，一段完整的中文提示词，供文生图/代码实现复刻类似页面；可包含 Tailwind/色板/字体/区块结构建议，800-2000 字为宜",
+  "libraryBlurb": "string，80-160 字中文，用于缩略卡片上的设计总结摘要"
+}
+
+要求：
+- 根据截图**如实推断**配色与风格；无法确认的字体写「无衬线」类描述并列举常见替代。
+- hex 必须合法 6 位。
+- colors 至少 4 项，建议 5-8 项。`;
+
+    // 安全校验 mimeType，非法则 fallback 到 image/jpeg
+    const safeMime = /^image\/(png|jpe?g|webp|gif)$/i.test(mimeType || '')
+      ? mimeType
+      : 'image/jpeg';
+    const dataUrl = `data:${safeMime};base64,${imageBase64}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 120s 超时
+
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: '请分析这张界面截图，输出上述 JSON。',
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url: dataUrl },
+                },
+              ],
+            },
+          ],
+          max_tokens: 8192,
+          temperature: 0.35,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Qwen API ${response.status}: ${errText.substring(0, 500)}`);
+      }
+
+      const data = await response.json();
+      let answer = data.choices?.[0]?.message?.content || '';
+      if (!answer.trim()) {
+        return sendResult({ success: false, error: '视觉模型返回内容为空' });
+      }
+
+      // 清理 markdown 代码块包裹
+      const codeMatch = answer.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeMatch) answer = codeMatch[1].trim();
+
+      let parsed;
+      try {
+        parsed = JSON.parse(answer);
+      } catch {
+        console.error('[vibe-snap-extract] JSON parse failed:', answer.slice(0, 500));
+        return sendResult({ success: false, error: 'AI 返回了无效的 JSON 数据' });
+      }
+
+      // 严格校验必要字段
+      const { designSummary, designPrompt, libraryBlurb } = parsed;
+      if (!designSummary || typeof designSummary !== 'object') {
+        return sendResult({ success: false, error: '模型返回缺少 designSummary' });
+      }
+      if (!designPrompt || typeof designPrompt !== 'string') {
+        return sendResult({ success: false, error: '模型返回缺少 designPrompt' });
+      }
+
+      // libraryBlurb 缺失时，从 styleDescription 自动 fallback
+      const finalBlurb = (typeof libraryBlurb === 'string' && libraryBlurb.trim())
+        ? libraryBlurb.trim()
+        : (typeof designSummary.styleDescription === 'string'
+            ? designSummary.styleDescription.slice(0, 200)
+            : '');
+
+      // 记录 AI 用量
+      await recordAiUsage(req.userId, { taskId: 'vibe-snap-extract', model: 'qwen' });
+
+      sendResult({
+        success: true,
+        data: {
+          designSummary,
+          designPrompt: designPrompt.trim(),
+          libraryBlurb: finalBlurb,
+        },
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err) {
+    console.error('[vibe-snap-extract] error:', err.name, err.message, err.cause || '');
+    const causeMsg = err.cause?.message || err.cause?.code || '';
+
+    // 网络层面失败（Connect Timeout / DNS / fetch failed）→ fallback mock 数据
+    const isNetworkError =
+      err.name === 'AbortError' ||
+      err.message === 'fetch failed' ||
+      err.message?.includes('fetch') ||
+      causeMsg.includes('Timeout') ||
+      causeMsg.includes('ECONNREFUSED') ||
+      causeMsg.includes('ENOTFOUND');
+
+    if (isNetworkError) {
+      console.warn(`[vibe-snap-extract] AI 网络不可达（${causeMsg || err.name}），返回 mock 数据`);
+      return sendResult({
+        success: true,
+        data: VIBE_SNAP_MOCK_EXTRACT,
+        meta: { fallback: 'ai-network-error', detail: causeMsg || err.message },
+      });
+    }
+
+    // 其他错误：仍然返回错误信息
+    sendResult({ success: false, error: err.message || 'AI 分析失败' });
+  }
+});
+
+// GET /api/dify/vibe-snap-library — 获取灵感库列表
+router.get('/vibe-snap-library', optionalAuth, async (req, res) => {
+  try {
+    const items = await prisma.vibeStyleItem.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data: { items } });
+  } catch (err) {
+    console.error('[vibe-snap-library] list error:', err);
+    res.status(500).json({ success: false, error: '获取灵感库失败' });
+  }
+});
+
+// POST /api/dify/vibe-snap-library — 保存灵感卡片
+router.post('/vibe-snap-library', optionalAuth, async (req, res) => {
+  try {
+    const { imageUrl, tags, colors, summary, designSummary, designPrompt, ownerName } = req.body;
+    if (!imageUrl || !designSummary || !designPrompt) {
+      return res.status(400).json({ success: false, error: '缺少必要字段' });
+    }
+    const item = await prisma.vibeStyleItem.create({
+      data: {
+        userId: req.userId || null,
+        imageUrl,
+        tags: tags || [],
+        colors: colors || [],
+        summary: summary || '',
+        designSummary,
+        designPrompt,
+        ownerName: ownerName || '',
+      },
+    });
+    res.json({ success: true, data: item });
+  } catch (err) {
+    console.error('[vibe-snap-library] save error:', err);
+    res.status(500).json({ success: false, error: '保存失败' });
+  }
+});
+
+// DELETE /api/dify/vibe-snap-library/:id — 删除灵感卡片
+router.delete('/vibe-snap-library/:id', optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const item = await prisma.vibeStyleItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ success: false, error: '卡片不存在' });
+
+    await prisma.vibeStyleItem.delete({ where: { id } });
+    res.json({ success: true, data: { id } });
+  } catch (err) {
+    console.error('[vibe-snap-library] delete error:', err);
+    res.status(500).json({ success: false, error: '删除失败' });
+  }
+});
 
 module.exports = router;

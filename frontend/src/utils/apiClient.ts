@@ -50,15 +50,23 @@ class ApiClient {
             credentials: 'include',
           });
           if (!retryRes.ok) {
-            const err = await retryRes.json().catch(() => ({ error: '请求失败' }));
-            const msg = err.error || '请求失败';
+            let msg = '请求失败';
+            try {
+              const ct = retryRes.headers.get('content-type') || '';
+              if (ct.includes('application/json')) {
+                const err = await retryRes.json();
+                msg = err.error || msg;
+              }
+            } catch {
+              /* ignore */
+            }
             showToast(msg);
             throw new Error(msg);
           }
           return retryRes.json();
         }
       } catch {
-        // Refresh failed
+        /* refresh failed */
       }
       try {
         await fetch(`${BASE_URL}/api/auth/logout`, {
@@ -78,8 +86,24 @@ class ApiClient {
     }
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: '请求失败' }));
-      const msg = err.error || '请求失败';
+      let msg = '请求失败';
+      if (response.status === 502) {
+        msg = '服务暂时不可用（502），请稍后再试';
+      } else if (response.status === 503) {
+        msg = '服务维护中（503），请稍后再试';
+      } else if (response.status === 504) {
+        msg = '服务响应超时（504），请稍后再试';
+      } else {
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const err = await response.json();
+            msg = err.error || msg;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       showToast(msg);
       throw new Error(msg);
     }

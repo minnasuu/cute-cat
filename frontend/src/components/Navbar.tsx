@@ -27,6 +27,8 @@ interface NavbarProps {
   activeNavId?: string;
   /** Right-side slot for custom content (e.g. UserProfileDropdown) — replaces default right section */
   rightSlot?: React.ReactNode;
+  /** Shown immediately to the right of the logo (e.g. greeting bubble on Dashboard) */
+  afterLogo?: React.ReactNode;
   /** Logo size */
   logoSize?: number;
 }
@@ -37,6 +39,7 @@ const Navbar: React.FC<NavbarProps> = ({
   navLinks,
   activeNavId,
   rightSlot,
+  afterLogo,
   logoSize = 40,
 }) => {
   const navigate = useNavigate();
@@ -49,8 +52,8 @@ const Navbar: React.FC<NavbarProps> = ({
     : 'sticky top-0 z-50 bg-surface/80 backdrop-blur-xl border-b border-border';
 
   const innerClass = isFixed
-    ? '' // fixed variant uses the header itself as flex container
-    : 'max-w-6xl mx-auto px-6 h-16 flex items-center justify-between';
+    ? "" // fixed variant uses the header itself as flex container
+    : "mx-auto px-6 h-16 flex items-center justify-between";
 
   /* Default right section based on auth state */
   const defaultRight = user ? (
@@ -70,10 +73,17 @@ const Navbar: React.FC<NavbarProps> = ({
   );
 
   const logo = (
-    <Link to="/" className="flex items-center gap-2 group cursor-pointer">
+    <Link to="/" className="flex items-center gap-2 group cursor-pointer shrink-0">
       <CatLogo size={logoSize} className="group-hover:rotate-12 transition-transform" />
       <span className="text-xl font-bold tracking-tight">CuCaTopia</span>
     </Link>
+  );
+
+  const logoCluster = (
+    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+      {logo}
+      {afterLogo}
+    </div>
   );
 
   const navSection = navLinks && navLinks.length > 0 ? (
@@ -94,7 +104,7 @@ const Navbar: React.FC<NavbarProps> = ({
   if (isFixed) {
     return (
       <header className={headerClass}>
-        {logo}
+        {logoCluster}
         {navSection}
         {rightSlot !== undefined ? rightSlot : defaultRight}
       </header>
@@ -104,7 +114,7 @@ const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className={headerClass}>
       <div className={innerClass}>
-        {logo}
+        {logoCluster}
         {navSection}
         {rightSlot !== undefined ? rightSlot : defaultRight}
       </div>

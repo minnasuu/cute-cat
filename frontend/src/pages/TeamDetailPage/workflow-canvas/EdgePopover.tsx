@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { WorkflowStep } from '../../../data/types';
 
 interface TeamCat {
-  id: string; name: string; role: string; catColors: any; skills: any[]; accent: string;
+  id: string; name: string; role: string; catColors: any; skills?: any[]; accent: string;
 }
 
 interface EdgePopoverProps {

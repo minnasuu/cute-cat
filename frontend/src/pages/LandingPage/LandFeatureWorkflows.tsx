@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import CatSVG from '../../components/CatSVG'
 import { assistants } from '../../data/cats'
 import { workflows } from '../../data/workflows'
-import { Skill } from '../../data/types'
+import { AppIcon } from '../../components/icons'
 
 const catMap = Object.fromEntries(assistants.map(c => [c.id, c]))
 
@@ -10,12 +10,6 @@ const catMap = Object.fromEntries(assistants.map(c => [c.id, c]))
 const DEMO_WORKFLOW = workflows.find(w => w.id === 'content-publish') ?? workflows[0]
 
 const STEP_DURATION = 2400
-
-const getSkill = (agentId: string, skillId: string): Skill | undefined => {
-  const agent = catMap[agentId]
-  if (!agent?.skills) return undefined
-  return (agent.skills as Skill[]).find(s => s.id === skillId)
-}
 
 const workingDialogs: Record<string, string[]> = {
   manager: ['统筹规划中...', '调度安排~', '一切就绪!'],
@@ -123,7 +117,6 @@ export const LandFeatureWorkflows = () => {
             <div className="flex items-start gap-0 pt-16 pb-10 px-8 min-w-max justify-center">
               {DEMO_WORKFLOW.steps.map((step, i) => {
                 const cat = catMap[step.agentId]
-                const skill = getSkill(step.agentId, step.skillId)
                 const status = stepStatuses[i] ?? 'waiting'
                 const dialog = dialogs[i] ?? ''
 
@@ -166,9 +159,9 @@ export const LandFeatureWorkflows = () => {
                       {/* Name + skill */}
                       <div className="flex flex-col items-center gap-1">
                         <span className="text-xs font-extrabold" style={{ color: cat?.accent }}>{cat?.name ?? step.agentId}</span>
-                        {skill && (
+                        {cat?.role && (
                           <span className="text-[10px] font-semibold text-text-tertiary bg-surface-secondary px-2 py-0.5 rounded-md">
-                            {skill.name}
+                            {cat.role}
                           </span>
                         )}
                       </div>
@@ -193,11 +186,11 @@ export const LandFeatureWorkflows = () => {
                       )}
 
                       {/* IO tags */}
-                      {skill && status === 'waiting' && (
+                      {status === 'waiting' && (
                         <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-[9px] font-bold uppercase bg-blue-50 text-blue-600 px-1.5 py-px rounded tracking-wider">{skill.input}</span>
+                          <span className="text-[9px] font-bold uppercase bg-blue-50 text-blue-600 px-1.5 py-px rounded tracking-wider">text</span>
                           <span className="text-[9px] text-text-tertiary">→</span>
-                          <span className="text-[9px] font-bold uppercase bg-orange-50 text-orange-600 px-1.5 py-px rounded tracking-wider">{skill.output}</span>
+                          <span className="text-[9px] font-bold uppercase bg-orange-50 text-orange-600 px-1.5 py-px rounded tracking-wider">text</span>
                         </div>
                       )}
                     </div>
@@ -214,10 +207,10 @@ export const LandFeatureWorkflows = () => {
                           <path d="M8 5v14l11-7z" />
                         </svg>
                         {/* Data flow tag */}
-                        {stepStatuses[i] === 'done' && skill && (
+                        {stepStatuses[i] === 'done' && (
                           <div className="absolute -top-5 left-1/2 -translate-x-1/2 animate-in fade-in zoom-in">
                             <span className="text-[9px] font-bold uppercase bg-primary-50 text-primary-600 px-1.5 py-px rounded tracking-wider">
-                              {getSkill(step.agentId, step.skillId)?.output ?? ''}
+                              text
                             </span>
                           </div>
                         )}
@@ -247,7 +240,7 @@ export const LandFeatureWorkflows = () => {
               )}
               {allDone && (
                 <div className="flex items-center gap-2 animate-in fade-in">
-                  <span className="text-sm">🎉</span>
+                  <span className="text-primary-600 inline-flex"><AppIcon symbol="PartyPopper" size={18} /></span>
                   <span className="text-xs font-bold text-primary-600">
                     工作流执行完成 · {DEMO_WORKFLOW.steps.length} 步全部成功
                   </span>

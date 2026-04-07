@@ -5,12 +5,7 @@ import { NODE_WIDTH, PORT_SIZE } from './canvas-utils';
 interface StepNodeProps {
   index: number;
   agentId: string;
-  skillId: string;
-  action: string;
-  cat?: { id: string; name: string; role: string; catColors: any; skills: any[] };
-  skillName?: string;
-  skillIcon?: string;
-  paramCount: number;
+  cat?: { id: string; name: string; role: string; catColors: any };
   isSelected: boolean;
   onSelect: (index: number) => void;
   onDrag: (index: number, pos: { x: number; y: number }) => void;
@@ -24,8 +19,8 @@ interface StepNodeProps {
 }
 
 const StepNode: React.FC<StepNodeProps> = ({
-  index, agentId, cat, skillName, skillIcon,
-  action, paramCount, isSelected,
+  index, agentId, cat,
+  isSelected,
   onSelect, onDrag, onRemove, position, zoom,
   onPortDragStart, isDropTarget,
 }) => {
@@ -193,23 +188,10 @@ const StepNode: React.FC<StepNodeProps> = ({
           <div className="text-xs font-bold text-gray-900 truncate">
             {cat?.name || '未选择猫猫'}
           </div>
-          <div className="text-[10px] text-gray-500 truncate mt-0.5 flex items-center gap-1">
-            {skillIcon && <span>{skillIcon}</span>}
-            <span>{skillName || '未选择技能'}</span>
+          <div className="text-[10px] text-gray-500 truncate mt-0.5">
+            <span>{cat?.role || '未分配角色'}</span>
           </div>
-          {action && (
-            <div className="text-[10px] text-gray-400 truncate mt-0.5">
-              {action}
-            </div>
-          )}
         </div>
-
-        {/* Param count badge */}
-        {paramCount > 0 && (
-          <span className="px-1.5 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-600 text-[8px] font-bold shrink-0">
-            {paramCount}P
-          </span>
-        )}
       </div>
     </div>
   );

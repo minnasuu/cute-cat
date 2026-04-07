@@ -9,7 +9,7 @@ import DragPreviewLine from './DragPreviewLine';
 import { NODE_WIDTH, START_NODE_SIZE, ADD_NODE_HEIGHT, PORT_SIZE, type NodePositions } from './canvas-utils';
 
 interface TeamCat {
-  id: string; name: string; role: string; catColors: any; skills: any[]; accent: string;
+  id: string; name: string; role: string; catColors: any; accent: string;
 }
 
 interface WorkflowCanvasProps {
@@ -107,13 +107,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     const canvasY = (e.clientY - rect.top - viewport.viewport.panY) / viewport.viewport.zoom;
     onDoubleClickCanvas({ x: canvasX, y: canvasY });
   }, [viewport, onDoubleClickCanvas]);
-
-  // 获取技能信息的辅助函数
-  const getSkillInfo = (cat: TeamCat | undefined, skillId: string) => {
-    if (!cat || !skillId) return { name: '', icon: '' };
-    const skill = cat.skills?.find((s: any) => s.id === skillId);
-    return { name: skill?.name || ''};
-  };
 
   // 背景点阵跟随视口变换，产生无限画布效果
   const bgStyle = useMemo(() => {
@@ -213,18 +206,12 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           const pos = nodePositions.get(i);
           if (!pos) return null;
           const cat = cats.find(c => c.id === step.agentId);
-          const { name: skillName, icon: skillIcon } = getSkillInfo(cat, step.skillId);
           return (
             <StepNode
               key={i}
               index={i}
               agentId={step.agentId}
-              skillId={step.skillId}
-              action={step.action}
               cat={cat}
-              skillName={skillName}
-              skillIcon={skillIcon}
-              paramCount={step.params?.length || 0}
               isSelected={selectedStepIndex === i}
               onSelect={onSelectStep}
               onDrag={onNodeDrag}

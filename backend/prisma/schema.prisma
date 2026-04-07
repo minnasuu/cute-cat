@@ -115,6 +115,7 @@ model WorkflowRun {
   team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
   triggeredBy   String?
   workflowName  String
+  userInput     String?   @db.Text  // 用户输入的 prompt
   status        String    @default("running") // running / success / failed / cancelled
   steps         Json?
   startedAt     DateTime  @default(now())
@@ -142,4 +143,21 @@ model AICallLog {
 
   @@index([userId])
   @@index([teamId])
+}
+
+// ==================== Vibe Style 灵感库 ====================
+
+model VibeStyleItem {
+  id             String   @id @default(uuid())
+  userId         String?
+  imageUrl       String
+  tags           Json     // string[]
+  colors         Json     // string[]
+  summary        String   @db.Text
+  designSummary  Json     // VibeSnapDesignSummary 对象
+  designPrompt   String   @db.Text
+  ownerName      String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
 }

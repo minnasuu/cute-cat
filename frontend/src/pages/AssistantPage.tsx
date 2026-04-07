@@ -3,8 +3,9 @@ import CatSVG from '../components/CatSVG';
 import CatMiniAvatar from '../components/CatMiniAvatar';
 import WorkflowPanel from '../components/WorkflowPanel';
 import '../styles/AssistantPage.scss';
-import {  type HistoryItem, type Skill } from '../data/types';
+import {  type HistoryItem } from '../data/types';
 import { assistants } from '../data/cats';
+import { AppIcon } from '../components/icons';
 
 const formatTime = (iso: string) => {
   const d = new Date(iso);
@@ -14,8 +15,6 @@ const formatTime = (iso: string) => {
   const m = String(d.getMinutes()).padStart(2, '0');
   return `${month}/${day} ${h}:${m}`;
 };
-
-const statusIcon = (s: string) => s === 'success' ? '✅' : s === 'warning' ? '⚠️' : '❌';
 
 interface AssistantPageProps {
   editorMode?: boolean;
@@ -84,26 +83,13 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
               <div className="name-plate">
                 <span className="name-text">{assistant.name}</span>
               </div>
-              {assistant.skills && (
-                <div className='flex flex-col items-center'>
-                    <div className="skill-tags">
-                  {(assistant.skills as Skill[]).slice(0,4).map((skill,index) => (
-                    <span key={skill.id} className="skill-tag" style={{ color: assistant.accent, borderColor: assistant.accent + '60' }}>
-                      {index >0 && <span className='text-base'>·</span>}
-                      <span className="skill-name">{skill.name}</span>
-                    </span>
-                  ))}
-                </div>
+              <div className='flex flex-col items-center'>
                 <div className="skill-tags">
-                  {(assistant.skills as Skill[]).slice(4).map((skill,index) => (
-                    <span key={skill.id} className="skill-tag" style={{ color: assistant.accent, borderColor: assistant.accent + '60' }}>
-                      {index >0 && <span className='text-base'>·</span>}
-                      <span className="skill-name">{skill.name}</span>
-                    </span>
-                  ))}
+                  <span className="skill-tag" style={{ color: assistant.accent, borderColor: assistant.accent + '60' }}>
+                    <span className="skill-name">{assistant.role}</span>
+                  </span>
                 </div>
-                </div>
-              )}
+              </div>
             </div>
           );
         })}
@@ -135,34 +121,30 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
               </div>
             </div>
 
-            {/* 第2栏：Skills */}
+            {/* 第2栏：AIGC（原「技能」收口为角色 + 统一生成入口） */}
             <div className="col col-skills">
               <h3 className="col-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selectedAssistant.catColors.deskDark} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                 </svg>
-                技能工具
-                <span className="col-count">{(selectedAssistant.skills as Skill[]).length}</span>
+                AIGC 协作
+                <span className="col-count">1</span>
               </h3>
               <div className="col-scroll">
                 <div className="skill-detail-list">
-                  {(selectedAssistant.skills as Skill[]).map((skill) => (
-                    <div key={skill.id} className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
-                      <div className="skill-detail-head">
-                        <span className="sd-name">{skill.name}</span>
-                        <div className="sd-io">
-                          <span className="sd-io-tag sd-in">{skill.input}</span>
-                          <span className="sd-arrow">→</span>
-                          <span className="sd-io-tag sd-out">{skill.output}</span>
-                        </div>
-                      </div>
-                      <p className="sd-desc">{skill.description}</p>
-                      <div className="sd-meta">
-                        {skill.provider && <span className="sd-provider">via {skill.provider}</span>}
-                        {skill.mockResult && <span className="sd-mock">{skill.mockResult}</span>}
+                  <div className="skill-detail-item" style={{ borderLeftColor: selectedAssistant.catColors.deskDark }}>
+                    <div className="skill-detail-head">
+                      <span className="sd-name inline-flex items-center gap-1">
+                        <AppIcon symbol="Sparkles" size={14} /> {selectedAssistant.role}
+                      </span>
+                      <div className="sd-io">
+                        <span className="sd-io-tag sd-in">text</span>
+                        <span className="sd-arrow">→</span>
+                        <span className="sd-io-tag sd-out">text</span>
                       </div>
                     </div>
-                  ))}
+                    <p className="sd-desc">{selectedAssistant.description}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -192,17 +174,32 @@ const AssistantPage: React.FC<AssistantPageProps> = ({ editorMode = false }) => 
                     </div>
                   ) : (
                     selectedHistory.map((item) => {
-                      const skill = (selectedAssistant.skills as Skill[]).find((s) => s.id === item.skillId);
+                      const skill = { icon: 'Sparkles', name: selectedAssistant.role };
                       return (
                         <div key={item.id} className={`history-item status-${item.status}`}>
                           <div className="hi-top">
-                            <span className="hi-status">{statusIcon(item.status)}</span>
+                            <span className="hi-status inline-flex">
+                              <AppIcon
+                                symbol={item.status === 'success' ? 'CheckCircle' : item.status === 'warning' ? 'AlertTriangle' : 'XCircle'}
+                                size={14}
+                              />
+                            </span>
                             <span className="hi-summary">{item.summary}</span>
                             <span className="hi-time">{formatTime(item.timestamp)}</span>
                           </div>
                           <div className="hi-bottom">
-                            {skill && <span className="hi-skill">{skill.icon} {skill.name}</span>}
-                            {item.workflowName && <span className="hi-wf">📋 {item.workflowName}</span>}
+                            {skill && (
+                              <span className="hi-skill inline-flex items-center gap-1">
+                                <AppIcon symbol={skill.icon} size={12} />
+                                {skill.name}
+                              </span>
+                            )}
+                            {item.workflowName && (
+                              <span className="hi-wf inline-flex items-center gap-1">
+                                <AppIcon symbol="ClipboardList" size={12} />
+                                {item.workflowName}
+                              </span>
+                            )}
                           </div>
                           <div className="hi-result">{item.result}</div>
                         </div>

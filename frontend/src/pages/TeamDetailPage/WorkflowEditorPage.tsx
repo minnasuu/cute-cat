@@ -5,8 +5,6 @@ import { showToast } from '../../components/Toast';
 import CatLogo from '../../components/CatLogo';
 import type { WorkflowStep } from '../../data/types';
 import { generateStepId, ensureStepIds } from '../../data/types';
-import { getVisibleSkillPool, injectAdminSkillsToCats } from '../../data/skills';
-import { useAuth } from '../../contexts/AuthContext';
 import { aiGenerateWorkflow } from './handleAiGenerateWorkflow';
 
 // Canvas components
@@ -19,24 +17,24 @@ import AiGenerateDialog from './workflow-canvas/AiGenerateDialog';
 import Minimap from './workflow-canvas/Minimap';
 import { autoLayout, type NodePositions } from './workflow-canvas/canvas-utils';
 import { useCanvasViewport } from './workflow-canvas/useCanvasViewport';
+import { AppIcon } from '../../components/icons';
+import { Clock, MousePointer2 } from 'lucide-react';
 
 interface TeamCat {
-  id: string; name: string; role: string; catColors: any; skills: any[]; accent: string; systemPrompt?: string;
+  id: string; name: string; role: string; catColors: any; accent: string; systemPrompt?: string; skills?: any[];
 }
 
 const WorkflowEditorPage: React.FC = () => {
   const { teamId, workflowId } = useParams<{ teamId: string; workflowId: string }>();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
-  const skillPool = getVisibleSkillPool(isAdmin);
   const isEditing = workflowId && workflowId !== 'new';
 
   // ── 核心数据状态（保留原有逻辑） ──
   const [cats, setCats] = useState<TeamCat[]>([]);
   const [name, setName] = useState('');
-  const [icon, setIcon] = useState('📋');
+  const [icon, setIcon] = useState('ClipboardList');
   const [description, setDescription] = useState('');
-  const [steps, setSteps] = useState<WorkflowStep[]>([{ stepId: generateStepId(), agentId: '', skillId: '', action: '' }]);
+  const [steps, setSteps] = useState<WorkflowStep[]>([{ stepId: generateStepId(), agentId: '' }]);
   const [trigger, setTrigger] = useState('manual');
   const [cron, setCron] = useState('');
   const [, setScheduled] = useState(false);
@@ -79,11 +77,11 @@ const WorkflowEditorPage: React.FC = () => {
 
   // ── 数据加载（保留原有逻辑） ──
   useEffect(() => {
-    apiClient.get(`/api/cats/team/${teamId}`).then((data: TeamCat[]) => setCats(injectAdminSkillsToCats(data, isAdmin))).catch(console.error);
+    apiClient.get(`/api/cats/team/${teamId}`).then((data: TeamCat[]) => setCats(data)).catch(console.error);
     if (isEditing) {
       apiClient.get(`/api/workflows/${workflowId}`).then(wf => {
         setName(wf.name);
-        setIcon(wf.icon || '📋');
+        setIcon(wf.icon || 'ClipboardList');
         setDescription(wf.description);
         setSteps(ensureStepIds(wf.steps || []));
         const isCron = wf.trigger === 'cron' || !!wf.scheduled;
@@ -96,7 +94,7 @@ const WorkflowEditorPage: React.FC = () => {
         setPersistent(!!wf.persistent);
       }).catch(() => navigate(`/teams/${teamId}`));
     }
-  }, [teamId, workflowId, isEditing, navigate, isAdmin]);
+  }, [teamId, workflowId, isEditing, navigate]);
 
   // ── 自动布局：steps 变化时重新计算节点位置（DAG 感知） ──
   useEffect(() => {
@@ -105,7 +103,7 @@ const WorkflowEditorPage: React.FC = () => {
 
   // ── 步骤操作函数（保留原有逻辑） ──
   const addStep = useCallback(() => {
-    setSteps(prev => [...prev, { stepId: generateStepId(), agentId: '', skillId: '', action: '' }]);
+    setSteps(prev => [...prev, { stepId: generateStepId(), agentId: '' }]);
   }, []);
 
   const removeStep = useCallback((index: number) => {
@@ -128,24 +126,9 @@ const WorkflowEditorPage: React.FC = () => {
   const updateStep = useCallback((index: number, field: keyof WorkflowStep, value: any) => {
     setSteps(prev => prev.map((s, i) => {
       if (i !== index) return s;
-      const updated = { ...s, [field]: value };
-      if (field === 'agentId') {
-        updated.skillId = '';
-        updated.params = [];
-      }
-      if (field === 'skillId' && value) {
-        const cat = cats.find(c => c.id === s.agentId);
-        const skill = cat?.skills?.find((sk: any) => sk.id === value);
-        const paramDefs = skill?.paramDefs || skillPool.find(sp => sp.id === value)?.paramDefs;
-        if (paramDefs?.length) {
-          updated.params = paramDefs.map((p: any) => ({ ...p }));
-        } else if (!updated.params?.length) {
-          updated.params = [];
-        }
-      }
-      return updated;
+      return { ...s, [field]: value };
     }));
-  }, [cats, skillPool]);
+  }, []);
 
   // ── 保存（保留原有逻辑） ──
   const handleSave = async () => {
@@ -202,7 +185,7 @@ const WorkflowEditorPage: React.FC = () => {
         const defaultCat = cats.find(c => c.role === 'Default');
         const finalSteps = ensureStepIds(result.steps.map(s => {
           if (!s.agentId && defaultCat) {
-            return { ...s, agentId: defaultCat.id, skillId: s.skillId || 'ai-chat' };
+            return { ...s, agentId: defaultCat.id };
           }
           return s;
         }));
@@ -276,52 +259,67 @@ const WorkflowEditorPage: React.FC = () => {
   }, [updateStep]);
 
   return (
-    <div className="h-screen flex flex-col bg-white text-gray-900">
-      {/* ── Header ── */}
-      <header className="relative flex items-center justify-between h-14 px-5 border-b border-gray-100 bg-white/80 backdrop-blur-xl z-30">
-        <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-50/40 rounded-full blur-[100px] -z-10 pointer-events-none" />
+    <div className="h-screen flex flex-col bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900">
+      {/* ── Header（与 CatEditorPage / 项目 surface 主题一致） ── */}
+      <header className="relative z-30 flex items-center justify-between h-20 px-6 shrink-0">
+        <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
+        <div className="absolute top-8 right-1/4 w-72 h-72 bg-accent-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <button
+            type="button"
             onClick={() => navigate(`/teams/${teamId}`)}
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-sm font-medium text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer shrink-0"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
             返回团队
           </button>
-          <div className="w-px h-4 bg-gray-200" />
-          <div className="flex items-center gap-2">
-            <span className="text-lg">{icon}</span>
-            <h1 className="text-base font-black tracking-tight">
+          <div className="w-px h-4 bg-black/10 shrink-0" />
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-primary-600 inline-flex shrink-0">
+              <AppIcon symbol={icon} size={22} />
+            </span>
+            <h1 className="text-xl md:text-2xl font-black tracking-tight truncate">
               {name || (isEditing ? '编辑工作流' : '新工作流')}
             </h1>
           </div>
-          {/* 快速信息标签 */}
-          <div className="flex items-center gap-1.5 ml-2">
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              trigger === 'cron'
-                ? 'bg-blue-50 text-blue-600 border-blue-200'
-                : 'bg-gray-50 text-gray-400 border-gray-200'
-            }`}>
-              {trigger === 'cron' ? `⏰ ${cron || '定时'}` : '🖱️ 手动'}
+          <div className="hidden sm:flex items-center gap-1.5 ml-1 shrink-0">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                trigger === 'cron'
+                  ? 'bg-primary-50 text-primary-700 border-primary-200'
+                  : 'bg-surface-secondary text-text-tertiary border-border'
+              }`}
+            >
+              {trigger === 'cron' ? (
+                <span className="inline-flex items-center gap-1">
+                  <Clock size={12} strokeWidth={2.5} />
+                  {cron || '定时'}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1">
+                  <MousePointer2 size={12} strokeWidth={2.5} />
+                  手动
+                </span>
+              )}
             </span>
-            <span className="px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-[10px] font-bold text-gray-400">
+            <span className="px-2 py-0.5 rounded-full bg-surface-secondary border border-border text-[10px] font-bold text-text-tertiary">
               {steps.length} 步
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {cats.length === 0 && (
-            <span className="text-[10px] font-bold text-red-500 mr-2">
-              团队暂无猫猫，
-              <button onClick={() => navigate(`/teams/${teamId}/cats/new`)} className="underline cursor-pointer hover:text-red-600">去添加</button>
+            <span className="text-[10px] font-bold text-red-600 mr-2 text-right max-w-[min(42vw,14rem)] sm:max-w-[16rem] leading-tight">
+              团队暂无猫猫，请在工作台重新初始化或联系管理员
             </span>
           )}
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-5 py-2 text-sm font-bold bg-gray-900 text-white rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+            className="px-6 py-3 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
           >
             {saving ? '保存中...' : '保存'}
           </button>
@@ -433,13 +431,13 @@ const WorkflowEditorPage: React.FC = () => {
         onGenerate={handleAiGenerate}
       />
 
-      {/* ── Footer ── */}
-      <footer className="py-2.5 border-t border-gray-100 bg-white">
-        <div className="mx-auto px-5 flex items-center justify-between">
+      {/* ── Footer（与 CatEditorPage 一致） ── */}
+      <footer className="py-4 border-t border-border shrink-0">
+        <div className="w-full mx-auto px-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 cursor-pointer">
-            <CatLogo size={28} />
+            <CatLogo size={36} />
           </Link>
-          <p className="text-gray-400 text-[10px] font-medium">&copy; 2026 CuCaTopia.</p>
+          <p className="text-text-tertiary text-xs font-medium">&copy; 2026 CuCaTopia.</p>
         </div>
       </footer>
     </div>

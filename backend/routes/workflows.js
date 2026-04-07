@@ -34,7 +34,7 @@ router.post('/team/:teamId', async (req, res) => {
     const team = await verifyTeamOwner(req.params.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '团队不存在' });
 
-    const { name, description, steps, trigger, cron, scheduled, startTime, endTime, persistent, enabled } = req.body;
+    const { name, description, steps, icon, trigger, cron, scheduled, startTime, endTime, persistent, enabled } = req.body;
     if (!name || !steps) return res.status(400).json({ error: '请填写工作流名称和步骤' });
 
     const resolvedTrigger = trigger || (scheduled ? 'cron' : 'manual');
@@ -42,6 +42,7 @@ router.post('/team/:teamId', async (req, res) => {
       data: {
         teamId: req.params.teamId,
         name,
+        icon: icon || 'ClipboardList',
         description: description || '',
         steps,
         trigger: resolvedTrigger,
@@ -128,11 +129,12 @@ router.post('/:id/execute', async (req, res) => {
     if (!team) return res.status(404).json({ error: '无权访问' });
 
     const { executeWorkflow } = require('../workflow-executor');
+    const userInput = typeof req.body?.userInput === 'string' ? req.body.userInput : '';
 
     // 异步执行，立即返回
     res.json({ message: '工作流已开始执行', workflowId: workflow.id });
 
-    executeWorkflow(workflow, req.userId).catch(err => {
+    executeWorkflow(workflow, req.userId, { userInput }).catch(err => {
       console.error(`[workflows] execute error for ${workflow.id}:`, err.message);
     });
   } catch (err) {
@@ -149,18 +151,19 @@ router.post('/:id/run', async (req, res) => {
     const team = await verifyTeamOwner(workflow.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '无权访问' });
 
-    // 每个团队最多保存 30 条日志，达到上限时先清空再插入
     const runCount = await prisma.workflowRun.count({ where: { teamId: workflow.teamId } });
-    if (runCount >= 30) {
+    if (runCount >= 100) {
       await prisma.workflowRun.deleteMany({ where: { teamId: workflow.teamId } });
     }
 
+    const userInput = typeof req.body?.userInput === 'string' ? req.body.userInput.trim() : '';
     const run = await prisma.workflowRun.create({
       data: {
         workflowId: workflow.id,
         teamId: workflow.teamId,
         triggeredBy: req.userId,
         workflowName: workflow.name,
+        userInput: userInput || null,
         status: 'running',
       },
     });
@@ -179,11 +182,27 @@ router.get('/team/:teamId/runs', async (req, res) => {
     const runs = await prisma.workflowRun.findMany({
       where: { teamId: req.params.teamId },
       orderBy: { startedAt: 'desc' },
-      take: 30,
+      take: 100,
     });
     res.json(runs);
   } catch (err) {
     res.status(500).json({ error: '获取执行记录失败' });
+  }
+});
+
+// ======================== 删除执行记录 ========================
+router.delete('/runs/:runId', async (req, res) => {
+  try {
+    const run = await prisma.workflowRun.findUnique({ where: { id: req.params.runId } });
+    if (!run) return res.status(404).json({ error: '记录不存在' });
+    const team = await verifyTeamOwner(run.teamId, req.userId);
+    if (!team) return res.status(404).json({ error: '无权访问' });
+
+    await prisma.workflowRun.delete({ where: { id: req.params.runId } });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[workflows] delete run error:', err);
+    res.status(500).json({ error: '删除执行记录失败' });
   }
 });
 

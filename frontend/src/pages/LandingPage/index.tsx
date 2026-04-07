@@ -4,7 +4,6 @@ import CatLogo from '../../components/CatLogo';
 import Navbar from '../../components/Navbar';
 import { LandHeroCtas } from './LandHeroCtas';
 import { LandFeatureRoles } from './LandFeatureRoles';
-import { LandFeatureSkills } from './LandFeatureSkills';
 import { LandFeatureWorkflows } from './LandFeatureWorkflows';
 import { LandCta } from './LandCta';
 
@@ -113,7 +112,6 @@ const LandingPage: React.FC = () => {
 
       {/* Features: Roles / Skills / Workflows */}
       <LandFeatureRoles />
-      <LandFeatureSkills />
       <LandFeatureWorkflows />
 
       {/* Call to Action */}

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import CatLogo from '../components/CatLogo';
 import { showToast } from '../components/Toast';
+import { AppIcon } from '../components/icons';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,15 +35,13 @@ const LoginPage: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-surface shadow-lg mb-4">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary-100 mb-4">
             <CatLogo size={48} />
           </div>
-          <h1 className="text-3xl font-bold text-text-primary">CuCaTopia</h1>
-          <p className="text-text-secondary mt-1">AI 猫猫工作流协作平台</p>
         </div>
 
         {/* Form */}
-        <div className="bg-surface rounded-2xl shadow-xl p-8 border border-border">
+        <div className="bg-surface rounded-2xl p-8 border border-border-strong">
           <h2 className="text-xl font-semibold text-text-primary mb-6">登录</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -82,7 +81,7 @@ const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-text-inverse font-medium rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              className="w-full py-3 bg-gradient-to-r from-primary-500 to-primary-600 text-text-inverse font-medium rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               {loading ? '登录中...' : '登录'}
             </button>
@@ -97,7 +96,10 @@ const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        <p className="text-center text-xs text-text-tertiary mt-6">让可爱的猫猫帮你工作 🐱</p>
+        <p className="text-center text-xs text-text-tertiary mt-6 flex items-center justify-center gap-1.5">
+          让可爱的猫猫帮你工作
+          <AppIcon symbol="Cat" size={14} className="text-text-tertiary shrink-0" />
+        </p>
       </div>
     </div>
   );
