@@ -131,6 +131,17 @@ export default function ResultCanvas({
           />
         ) : null}
 
+        {!isSubmitting && !waitingForRunRecord && !displayRun ? (
+          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-surface-secondary/35 py-14 px-6 text-center">
+            <p className="text-sm font-semibold text-text-secondary">
+              在左侧点选一条历史任务可查看详情与预览
+            </p>
+            <p className="text-xs text-text-tertiary font-medium max-w-sm">
+              或在本页输入新的创作需求后点击「开始创作」；执行开始后输入框会清空，可随时填写下一条。
+            </p>
+          </div>
+        ) : null}
+
         {/* 执行中：主区域只展示 WorkflowPanel 同款流水线动画 */}
         {!isSubmitting && displayRun && inProgress ? (
           <DashboardWorkflowPipeline

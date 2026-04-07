@@ -13,7 +13,11 @@ import Navbar from "../../components/Navbar";
 import UserProfileDropdown from "./UserProfileDropdown";
 import { AppIcon } from "../../components/icons";
 import { X } from "lucide-react";
-import type { WorkflowRow, WorkbenchPayload } from "./workbenchTypes";
+import type {
+  WorkflowRow,
+  WorkbenchPayload,
+  WorkflowRun,
+} from "./workbenchTypes";
 import {
   featureBlurb,
   featureLabel,
@@ -21,7 +25,6 @@ import {
   parseSteps,
 } from "./workbenchUtils";
 import ResultCanvas from "./ResultCanvas";
-import type { WorkflowRun } from "./workbenchTypes";
 
 /** 未选中能力时的引导说明（选中后切换为当前能力的 description） */
 const HERO_DESCRIPTION_DEFAULT = (
@@ -117,9 +120,10 @@ function FeatureCard({
 
 /**
  * 创作主页交互要点：
- * - splitMode：是否进入左（输入+历史）右（ResultCanvas）分栏；首次「开始创作」或带 ?runId= 进入时为 true。
+ * - splitMode：是否进入左（输入+历史）右（ResultCanvas）分栏；首次「开始创作」、点「历史记录」或带 ?runId= 进入时为 true。
  * - historyRunId：用户从左侧点的某条 run；存在时右侧固定展示该条（历史查看态）。再次「开始创作」会清空，回到「本轮执行态」。
- * - sessionStartedAtRef + sessionEpoch：最近一次点击「开始创作」的时间；在无 historyRunId 且 splitMode 下，用 startedAt 落在该时间附近匹配「刚跑的那条」run。
+ * - rightPaneHistoryBrowse：由「历史记录」进入分栏且未点选左侧条目时为 true，右侧不自动挂靠某条 run（默认不选中高亮）。
+ * - sessionStartedAtRef + sessionEpoch：最近一次点击「开始创作」的时间；在无 historyRunId 且非 browse 且 splitMode 下，用 startedAt 落在该时间附近匹配「刚跑的那条」run。
  */
 const DashboardPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -145,6 +149,16 @@ const DashboardPage: React.FC = () => {
   const [historyRunId, setHistoryRunId] = useState<string | null>(initialRunId);
   /** 最近一次「开始创作」点击时间戳；用于在无 historyRunId 时从同能力 runs 中框定本轮新记录 */
   const sessionStartedAtRef = useRef(0);
+  /** 多次快速「开始创作」时让旧轮询提前结束，避免互抢状态 */
+  const executeGenerationRef = useRef(0);
+  /** true：仅从「历史记录」进入分栏、尚未点选左侧任务，右侧画布不自动展示某条 run */
+  const [rightPaneHistoryBrowse, setRightPaneHistoryBrowse] = useState(false);
+  /** 历史卡片删除：二次确认中的 runId */
+  const [confirmDeleteRunId, setConfirmDeleteRunId] = useState<string | null>(
+    null,
+  );
+  /** 历史卡片删除：请求中 */
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
   const splitDragActiveRef = useRef(false);
   const isLg = useMinWidthLg();
@@ -226,6 +240,7 @@ const DashboardPage: React.FC = () => {
     if (targetRun.workflowId) {
       setSelectedWorkflowId(targetRun.workflowId);
     }
+    setRightPaneHistoryBrowse(false);
     setSplitMode(true);
     if (searchParams.get("runId")) {
       setSearchParams({}, { replace: true });
@@ -277,6 +292,7 @@ const DashboardPage: React.FC = () => {
     if (historyRunId) {
       return workbench.runs.find((r) => r.id === historyRunId) ?? null;
     }
+    if (rightPaneHistoryBrowse) return null;
     if (!selectedWorkflowId) return null;
     const list = workbench.runs.filter(
       (r) => r.workflowId === selectedWorkflowId,
@@ -288,7 +304,14 @@ const DashboardPage: React.FC = () => {
     return (
       list.find((r) => new Date(r.startedAt).getTime() >= t0 - 15_000) ?? null
     );
-  }, [workbench, selectedWorkflowId, splitMode, sessionEpoch, historyRunId]);
+  }, [
+    workbench,
+    selectedWorkflowId,
+    splitMode,
+    sessionEpoch,
+    historyRunId,
+    rightPaneHistoryBrowse,
+  ]);
 
   /** 分栏左侧：工作台全部执行记录（新→旧），不限当前能力；点选行会同步 selectedWorkflowId */
   const runsForHistoryPanel = useMemo(() => {
@@ -310,47 +333,104 @@ const DashboardPage: React.FC = () => {
     [workbench?.workflows],
   );
 
+  const openHistorySplit = useCallback(() => {
+    setSplitMode(true);
+    setHistoryRunId(null);
+    setRightPaneHistoryBrowse(true);
+  }, []);
+
+  /** 提交执行并轮询 workbench，直至本轮 run 结束或超时（主输入与历史「重试」共用） */
+  const executeWorkflowPrompt = useCallback(
+    async (wfId: string, prompt: string) => {
+      const trimmed = prompt.trim();
+      if (!wfId || !trimmed) return;
+      if (isSubmitting) return;
+
+      const myGen = ++executeGenerationRef.current;
+      setHistoryRunId(null);
+      setRightPaneHistoryBrowse(false);
+      sessionStartedAtRef.current = Date.now();
+      setSessionEpoch((e) => e + 1);
+      setSplitMode(true);
+      setIsSubmitting(true);
+      try {
+        await apiClient.post(`/api/workflows/${wfId}/execute`, {
+          userInput: trimmed,
+        });
+        setIsSubmitting(false);
+        setPollingWfId(wfId);
+
+        for (let i = 0; i < 48; i++) {
+          if (myGen !== executeGenerationRef.current) break;
+          const wb = await loadWorkbench({ quiet: true });
+          if (!wb) break;
+          const match = wb.runs?.find(
+            (r) =>
+              r.workflowId === wfId &&
+              new Date(r.startedAt).getTime() >=
+                sessionStartedAtRef.current - 15_000,
+          );
+          if (match && match.status !== "running") break;
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      } catch {
+        /* toast via apiClient */
+      } finally {
+        setIsSubmitting(false);
+        if (myGen === executeGenerationRef.current) {
+          setPollingWfId(null);
+        }
+      }
+    },
+    [isSubmitting, loadWorkbench],
+  );
+
   const runSelected = async () => {
     const wfId = selectedWorkflowId;
     if (!wfId) return;
-    setHistoryRunId(null); // 清除历史查看态
-    sessionStartedAtRef.current = Date.now();
-    setSessionEpoch((e) => e + 1);
-    setSplitMode(true);
-    setIsSubmitting(true);
-    try {
-      // 1. 提交执行请求（后端异步执行，立即返回）
-      await apiClient.post(`/api/workflows/${wfId}/execute`, {
-        userInput: userInput.trim(),
-      });
-      // 提交成功 → 关闭"正在提交任务…"，进入轮询态显示流水线进度
-      setIsSubmitting(false);
-      setPollingWfId(wfId);
-
-      // 2. 轮询执行进度
-      for (let i = 0; i < 48; i++) {
-        const wb = await loadWorkbench({ quiet: true });
-        if (!wb) break;
-        const match = wb.runs?.find(
-          (r) =>
-            r.workflowId === wfId &&
-            new Date(r.startedAt).getTime() >=
-              sessionStartedAtRef.current - 15_000,
-        );
-        if (match && match.status !== "running") break;
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-    } catch {
-      /* toast via apiClient */
-    } finally {
-      setIsSubmitting(false);
-      setPollingWfId(null);
-    }
+    const prompt = userInput.trim();
+    if (!prompt) return;
+    setUserInput("");
+    await executeWorkflowPrompt(wfId, prompt);
   };
+
+  const handleDeleteHistoryRun = useCallback(
+    async (runId: string) => {
+      setDeletingRunId(runId);
+      try {
+        await apiClient.delete(`/api/workflows/runs/${runId}`);
+        await loadWorkbench({ quiet: true });
+        setHistoryRunId((prev) => (prev === runId ? null : prev));
+        setConfirmDeleteRunId(null);
+      } catch {
+        /* toast via apiClient */
+      } finally {
+        setDeletingRunId(null);
+      }
+    },
+    [loadWorkbench],
+  );
+
+  const handleRetryHistoryRun = useCallback(
+    (run: WorkflowRun) => {
+      const wfId = run.workflowId;
+      if (!wfId || run.status === "running") return;
+      const prompt =
+        run.userInput?.trim() ||
+        run.workflowName?.trim() ||
+        "";
+      if (!prompt) return;
+      setSelectedWorkflowId(wfId);
+      void executeWorkflowPrompt(wfId, prompt);
+    },
+    [executeWorkflowPrompt],
+  );
 
   const inputPlaceholder = selectedFeature
     ? "描述你的页面或站点：目标用户、必备模块、风格气质…"
     : "请先点选上方一个创作方向";
+
+  const executeBusy = isSubmitting || !!pollingWfId;
 
   return (
     <div className="h-screen flex flex-col bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900">
@@ -442,7 +522,9 @@ const DashboardPage: React.FC = () => {
                       runsForHistoryPanel.map((run) => {
                         const active =
                           run.id === historyRunId ||
-                          (!historyRunId && run.id === displayRun?.id);
+                          (!historyRunId &&
+                            !rightPaneHistoryBrowse &&
+                            run.id === displayRun?.id);
                         const st = run.status;
                         const statusClass =
                           st === "success"
@@ -461,52 +543,112 @@ const DashboardPage: React.FC = () => {
                         const t = new Date(run.startedAt);
                         const timeStr = `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
                         const capability = workflowLabelForRun(run);
+                        const canRetry =
+                          !!run.workflowId &&
+                          st !== "running" &&
+                          !!(
+                            run.userInput?.trim() ||
+                            run.workflowName?.trim()
+                          );
                         return (
                           <li key={run.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (run.workflowId) {
-                                  setSelectedWorkflowId(run.workflowId);
-                                }
-                                setHistoryRunId(run.id);
-                              }}
-                              className={`w-full text-left rounded-xl px-2.5 py-2 transition-colors border ${
+                            <div
+                              className={`rounded-xl border transition-colors ${
                                 active
                                   ? "border-primary-400 bg-primary-50/80"
                                   : "border-transparent hover:bg-surface-secondary"
                               }`}
                             >
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <span className="text-[11px] font-semibold text-text-tertiary tabular-nums">
-                                  {timeStr}
-                                </span>
-                                <span className="flex items-center gap-1.5 shrink-0">
-                                  <span
-                                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${statusClass}`}
-                                  >
-                                    {st === "success"
-                                      ? "成功"
-                                      : st === "failed"
-                                        ? "失败"
-                                        : st === "running"
-                                          ? "进行中"
-                                          : st}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (run.workflowId) {
+                                    setSelectedWorkflowId(run.workflowId);
+                                  }
+                                  setRightPaneHistoryBrowse(false);
+                                  setHistoryRunId(run.id);
+                                }}
+                                className="w-full text-left rounded-t-xl px-2.5 pt-2 pb-1.5"
+                              >
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <span className="text-[11px] font-semibold text-text-tertiary tabular-nums">
+                                    {timeStr}
                                   </span>
-                                  {run.totalDuration != null ? (
-                                    <span className="text-[10px] font-bold text-text-tertiary tabular-nums">
-                                      {run.totalDuration}s
+                                  <span className="flex items-center gap-1.5 shrink-0">
+                                    <span
+                                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${statusClass}`}
+                                    >
+                                      {st === "success"
+                                        ? "成功"
+                                        : st === "failed"
+                                          ? "失败"
+                                          : st === "running"
+                                            ? "进行中"
+                                            : st}
                                     </span>
-                                  ) : null}
-                                </span>
+                                    {run.totalDuration != null ? (
+                                      <span className="text-[10px] font-bold text-text-tertiary tabular-nums">
+                                        {run.totalDuration}s
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] font-bold text-primary-600/90 truncate mb-0.5">
+                                  {capability}
+                                </p>
+                                <p className="text-xs text-text-primary font-medium line-clamp-2 leading-snug">
+                                  {preview}
+                                </p>
+                              </button>
+                              <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 px-2 pb-2 pt-0 border-t border-border/40">
+                                {canRetry ? (
+                                  <button
+                                    type="button"
+                                    disabled={executeBusy}
+                                    onClick={() => handleRetryHistoryRun(run)}
+                                    className="text-[10px] font-bold text-primary-600 hover:text-primary-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                  >
+                                    {st === "failed" ? "重试" : "再跑"}
+                                  </button>
+                                ) : null}
+                                {confirmDeleteRunId === run.id ? (
+                                  <span className="flex items-center gap-1.5 text-[10px]">
+                                    <button
+                                      type="button"
+                                      disabled={deletingRunId === run.id}
+                                      onClick={() =>
+                                        void handleDeleteHistoryRun(run.id)
+                                      }
+                                      className="font-bold text-red-600 hover:text-red-700 disabled:opacity-50 cursor-pointer"
+                                    >
+                                      {deletingRunId === run.id
+                                        ? "删除中…"
+                                        : "确认"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={deletingRunId === run.id}
+                                      onClick={() =>
+                                        setConfirmDeleteRunId(null)
+                                      }
+                                      className="font-medium text-text-tertiary hover:text-text-secondary cursor-pointer"
+                                    >
+                                      取消
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setConfirmDeleteRunId(run.id)
+                                    }
+                                    className="text-[10px] font-bold text-text-tertiary hover:text-red-600 cursor-pointer"
+                                  >
+                                    删除
+                                  </button>
+                                )}
                               </div>
-                              <p className="text-[10px] font-bold text-primary-600/90 truncate mb-0.5">
-                                {capability}
-                              </p>
-                              <p className="text-xs text-text-primary font-medium line-clamp-2 leading-snug">
-                                {preview}
-                              </p>
-                            </button>
+                            </div>
                           </li>
                         );
                       })
@@ -599,11 +741,19 @@ const DashboardPage: React.FC = () => {
                     ) : null}
                     <button
                       type="button"
-                      disabled={!selectedWorkflowId || isSubmitting || !!pollingWfId || loading || !userInput}
-                      onClick={runSelected}
+                      disabled={
+                        !selectedWorkflowId ||
+                        loading ||
+                        !userInput.trim()
+                      }
+                      onClick={() => void runSelected()}
                       className="ml-auto px-7 py-2.5 rounded-2xl bg-text-primary text-text-inverse text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
                     >
-                      {isSubmitting ? "提交中…" : pollingWfId ? "执行中…" : "开始创作"}
+                      {isSubmitting
+                        ? "提交中…"
+                        : pollingWfId
+                          ? "执行中…"
+                          : "开始创作"}
                     </button>
                   </div>
                 </div>
@@ -616,12 +766,13 @@ const DashboardPage: React.FC = () => {
               }`}
               aria-label="更多入口"
             >
-              <Link
-                to="/dashboard/history"
-                className="hover:text-primary-600 transition-colors"
+              <button
+                type="button"
+                onClick={openHistorySplit}
+                className="hover:text-primary-600 transition-colors text-left"
               >
                 历史记录
-              </Link>
+              </button>
               <Link
                 to="/dashboard/usage"
                 className="hover:text-primary-600 transition-colors"
