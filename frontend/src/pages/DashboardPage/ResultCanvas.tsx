@@ -155,7 +155,7 @@ export default function ResultCanvas({
 
         {/* 已结束：结果为主；步骤明细在左侧历史卡片「查看执行过程」 */}
         {!isSubmitting && displayRun && !inProgress ? (
-          <section className="space-y-3 h-full">
+          <section className="space-y-3 w-full">
             {/* HTML 页面预览 */}
             {previewKind ? (
               <div className="overflow-hidden">
