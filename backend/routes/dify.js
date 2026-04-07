@@ -375,7 +375,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
   }
 
   try {
-    const { taskId, text, model, teamId, catId } = req.body;
+    const { taskId, text, model, teamId, catId, systemPrompt: customSystemPrompt, maxTokens: customMaxTokens } = req.body;
     if (!taskId || !text) {
       sendSSE('error', { error: 'taskId and text are required' });
       return endSSE();
@@ -390,7 +390,8 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
       }
     }
 
-    const systemPrompt = SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
+    // 与非流式 POST /skill 一致：优先使用前端传入的 systemPrompt / maxTokens
+    const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
     const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
 
     const TASK_MAX_TOKENS = {
@@ -398,9 +399,12 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
       'six-hats': 8192, 'generate-outline': 8192, 'content-review': 8192,
       'recruit-cat': 8192, 'team-review': 8192, 'cat-training': 8192,
     };
-    const maxTokens = TASK_MAX_TOKENS[taskId] || 4096;
+    const maxTokens = customMaxTokens ? Math.min(Number(customMaxTokens), 32768) : (TASK_MAX_TOKENS[taskId] || 4096);
 
-    console.log(`[ai/skill/stream] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}`);
+    const qwenStreamTimeoutMs = Number.parseInt(process.env.QWEN_STREAM_TIMEOUT_MS || '', 10);
+    const streamAbortMs = qwenStreamTimeoutMs > 0 ? qwenStreamTimeoutMs : 180000;
+
+    console.log(`[ai/skill/stream] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}${customSystemPrompt ? ', customPrompt=true' : ''}, streamTimeoutMs=${streamAbortMs}`);
 
     if (selectedModel === 'qwen') {
       // --- Qwen Streaming ---
@@ -413,7 +417,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
       const qwenModel = process.env.QWEN_MODEL || 'qwen3.5-plus';
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120000);
+      const timeout = setTimeout(() => controller.abort(), streamAbortMs);
 
       try {
         const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -477,7 +481,9 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
         });
       } catch (err) {
         clearTimeout(timeout);
-        const msg = err.name === 'AbortError' ? '请求超时' : (err.message || String(err));
+        const msg = err.name === 'AbortError'
+          ? `AI 流式请求超时（当前上限 ${streamAbortMs / 1000}s，可通过环境变量 QWEN_STREAM_TIMEOUT_MS 调大）`
+          : (err.message || String(err));
         sendSSE('error', { error: msg });
       }
     } else {

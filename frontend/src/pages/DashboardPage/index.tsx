@@ -361,12 +361,8 @@ const DashboardPage: React.FC = () => {
               : undefined
           }
         >
-          <section
-            className={
-              splitMode
-                ? "relative py-5 text-left"
-                : "relative py-8 md:py-11 text-center max-w-2xl mx-auto"
-            }
+          {!splitMode &&<section
+            className="relative py-8 md:py-11 text-center max-w-2xl mx-auto"
           >
             {!splitMode ? (
               <>
@@ -390,9 +386,12 @@ const DashboardPage: React.FC = () => {
             >
               {heroDescription ?? HERO_DESCRIPTION_DEFAULT}
             </p>
-          </section>
+          </section>}
 
-          <section className="w-full mb-8 flex-1">
+          <section className="w-full mb-8 flex-1 flex flex-col justify-center items-center">
+            {/* 对话区 */}
+            {splitMode &&<div className="flex">
+              </div>}
             <div className="rounded-[28px] border border-border-strong bg-surface-secondary/40 p-3 sm:p-4">
               <div
                 className={`flex flex-col gap-4 lg:items-stretch ${
@@ -489,8 +488,8 @@ const DashboardPage: React.FC = () => {
             </div>
 
             <nav
-              className={`mt-6 flex flex-wrap items-center gap-x-8 gap-y-2 text-xs font-bold text-text-tertiary ${
-                splitMode ? "justify-start" : "justify-center"
+              className={`flex flex-wrap items-center gap-y-2 text-xs font-bold text-text-tertiary ${
+                splitMode ? "mt-2 gap-x-4 justify-start" : "mt-6 gap-x-8 justify-center"
               }`}
               aria-label="更多入口"
             >

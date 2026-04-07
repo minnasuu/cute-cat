@@ -359,9 +359,15 @@ export const callDifySkillStream = async (
     }
 
     return finalData || { answer: fullAnswer };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`Error streaming AI skill [${taskId}] (model=${selectedModel}):`, error);
-    return { answer: '', error: String(error) };
+    let errMsg = error instanceof Error ? error.message : String(error);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      errMsg = '连接已中断或请求被取消（请勿在生成过程中关闭页面，或检查网络/代理超时设置后重试）';
+    } else if (/aborted/i.test(errMsg)) {
+      errMsg = '连接已中断（常见于网络波动、反向代理超时或页面切换），请重试';
+    }
+    return { answer: '', error: errMsg };
   }
 };
 
