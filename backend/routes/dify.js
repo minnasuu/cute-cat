@@ -1,6 +1,6 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, getAccessTokenFromRequest, verifyToken } = require('../middleware/auth');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -8,11 +8,11 @@ const prisma = new PrismaClient();
  * 可选认证中间件 — 有 token 就解析 userId，没有也放行
  */
 function optionalAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
+  const token = getAccessTokenFromRequest(req);
+  if (!token) return next();
   try {
-    const { verifyToken } = require('../middleware/auth');
-    const decoded = verifyToken(authHeader.split(' ')[1]);
+    const decoded = verifyToken(token);
+    if (decoded.type === 'refresh') return next();
     req.userId = decoded.userId;
   } catch { /* ignore invalid token */ }
   next();

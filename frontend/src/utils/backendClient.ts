@@ -1,12 +1,5 @@
-const getBackendUrl = (): string => {
-  if (import.meta.env.VITE_BACKEND_URL) {
-    return import.meta.env.VITE_BACKEND_URL;
-  }
-  if (import.meta.env.PROD) {
-    return '';
-  }
-  return 'http://localhost:8002';
-};
+/** 浏览器内统一走同源 /api（Vite 代理 / nginx），以便携带 httpOnly Cookie */
+export const getBackendUrl = (): string => '';
 
 // ==================== Auth ====================
 
@@ -23,6 +16,7 @@ export const verifyEditorPassword = async (password: string): Promise<VerifyPass
   try {
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
@@ -86,7 +80,7 @@ export const fetchWorkflows = async (): Promise<WorkflowDB[]> => {
   const url = `${backendUrl}/api/workflows`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { credentials: 'include' });
     if (!response.ok) {
       throw new Error(`Failed to fetch workflows: ${response.status}`);
     }
@@ -103,7 +97,7 @@ export const fetchWorkflowById = async (id: string): Promise<WorkflowDB> => {
   const url = `${backendUrl}/api/workflows/${id}`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { credentials: 'include' });
     if (!response.ok) {
       throw new Error(`Failed to fetch workflow ${id}: ${response.status}`);
     }
@@ -122,6 +116,7 @@ export const createWorkflow = async (workflow: CreateWorkflowRequest): Promise<W
   try {
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(workflow),
     });
@@ -144,6 +139,7 @@ export const updateWorkflow = async (id: string, workflow: Partial<CreateWorkflo
   try {
     const response = await fetch(url, {
       method: 'PUT',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(workflow),
     });
@@ -164,7 +160,7 @@ export const deleteWorkflow = async (id: string): Promise<void> => {
   const url = `${backendUrl}/api/workflows/${id}`;
 
   try {
-    const response = await fetch(url, { method: 'DELETE' });
+    const response = await fetch(url, { method: 'DELETE', credentials: 'include' });
     if (!response.ok) {
       throw new Error(`Failed to delete workflow: ${response.status}`);
     }
@@ -197,7 +193,7 @@ export const fetchAssistants = async (): Promise<AssistantDB[]> => {
   const url = `${backendUrl}/api/assistants`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { credentials: 'include' });
     if (!response.ok) {
       throw new Error(`Failed to fetch assistants: ${response.status}`);
     }
@@ -216,6 +212,7 @@ export const seedAssistants = async (assistants: any[]): Promise<any> => {
   try {
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ assistants }),
     });
@@ -264,7 +261,7 @@ export interface AIModelInfo {
 export const fetchAIModels = async (): Promise<{ models: AIModelInfo[]; default: string }> => {
   const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/dify/models`);
+    const response = await fetch(`${backendUrl}/api/dify/models`, { credentials: 'include' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();
   } catch {
@@ -284,13 +281,10 @@ export const callDifySkill = async (taskId: string, text: string, model?: string
   const selectedModel = model || _currentAIModel;
 
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const token = localStorage.getItem('accessToken');
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
     const response = await fetch(url, {
       method: 'POST',
-      headers,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ taskId, text, model: selectedModel }),
     });
 
@@ -342,6 +336,7 @@ export const sendEmail = async (req: SendEmailRequest): Promise<SendEmailRespons
   try {
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
     });
@@ -409,7 +404,7 @@ export const fetchWorkflowRuns = async (params?: {
   const url = `${backendUrl}/api/workflow-runs?${query.toString()}`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { credentials: 'include' });
     if (!response.ok) {
       throw new Error(`Failed to fetch workflow runs: ${response.status}`);
     }
@@ -427,6 +422,7 @@ export const createWorkflowRun = async (run: CreateWorkflowRunRequest): Promise<
   try {
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(run),
     });
@@ -447,6 +443,7 @@ export const batchCreateWorkflowRuns = async (runs: CreateWorkflowRunRequest[]):
   try {
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ runs }),
     });
@@ -466,7 +463,7 @@ export const batchCreateWorkflowRuns = async (runs: CreateWorkflowRunRequest[]):
 export const fetchArticles = async (): Promise<any[]> => {
   const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/articles`);
+    const response = await fetch(`${backendUrl}/api/articles`, { credentials: 'include' });
     if (!response.ok) return [];
     return await response.json();
   } catch {
@@ -477,7 +474,7 @@ export const fetchArticles = async (): Promise<any[]> => {
 export const fetchCrafts = async (): Promise<any[]> => {
   const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/crafts`);
+    const response = await fetch(`${backendUrl}/api/crafts`, { credentials: 'include' });
     if (!response.ok) return [];
     return await response.json();
   } catch {

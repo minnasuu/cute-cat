@@ -45,11 +45,11 @@ router.post('/', async (req, res) => {
       return res.status(403).json({ error: `免费版最多创建 ${limits.maxTeams} 个团队，请升级套餐` });
     }
 
-    const { name, description, icon } = req.body;
+    const { name, description } = req.body;
     if (!name) return res.status(400).json({ error: '请输入团队名称' });
 
     const team = await prisma.team.create({
-      data: { name, description, icon, ownerId: req.userId },
+      data: { name, description, ownerId: req.userId },
     });
 
     // 自动为新团队添加一只默认 CAT 猫猫
@@ -87,10 +87,10 @@ router.put('/:id', async (req, res) => {
     const team = await prisma.team.findFirst({ where: { id: req.params.id, ownerId: req.userId } });
     if (!team) return res.status(404).json({ error: '团队不存在' });
 
-    const { name, description, icon } = req.body;
+    const { name, description } = req.body;
     const updated = await prisma.team.update({
       where: { id: req.params.id },
-      data: { ...(name && { name }), ...(description !== undefined && { description }), ...(icon !== undefined && { icon }) },
+      data: { ...(name && { name }), ...(description !== undefined && { description }) },
     });
     res.json(updated);
   } catch (err) {

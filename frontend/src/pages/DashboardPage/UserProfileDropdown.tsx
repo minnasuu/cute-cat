@@ -15,7 +15,7 @@ interface UserProfileDropdownProps {
   teamCount: number;
   totalCats: number;
   totalWorkflows: number;
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
 }
 
 const PLAN_LIMITS: Record<string, { maxTeams: number; maxCatsPerTeam: number; maxWorkflowsPerTeam: number }> = {

@@ -34,7 +34,7 @@ router.post('/team/:teamId', async (req, res) => {
     const team = await verifyTeamOwner(req.params.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '团队不存在' });
 
-    const { name, icon, description, steps, trigger, cron, scheduled, startTime, endTime, persistent, enabled } = req.body;
+    const { name, description, steps, trigger, cron, scheduled, startTime, endTime, persistent, enabled } = req.body;
     if (!name || !steps) return res.status(400).json({ error: '请填写工作流名称和步骤' });
 
     const resolvedTrigger = trigger || (scheduled ? 'cron' : 'manual');
@@ -42,7 +42,6 @@ router.post('/team/:teamId', async (req, res) => {
       data: {
         teamId: req.params.teamId,
         name,
-        icon: icon || '📋',
         description: description || '',
         steps,
         trigger: resolvedTrigger,
@@ -81,13 +80,12 @@ router.put('/:id', async (req, res) => {
     const team = await verifyTeamOwner(workflow.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '无权访问' });
 
-    const { name, icon, description, steps, trigger, cron, scheduled, scheduledEnabled, startTime, endTime, persistent, enabled } = req.body;
+    const { name, description, steps, trigger, cron, scheduled, scheduledEnabled, startTime, endTime, persistent, enabled } = req.body;
     const resolvedTrigger = trigger || (scheduled ? 'cron' : 'manual');
     const updated = await prisma.workflow.update({
       where: { id: req.params.id },
       data: {
         ...(name && { name }),
-        ...(icon && { icon }),
         ...(description !== undefined && { description }),
         ...(steps && { steps }),
         trigger: resolvedTrigger,

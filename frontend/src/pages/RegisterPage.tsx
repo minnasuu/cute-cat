@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../utils/apiClient';
@@ -23,6 +23,14 @@ const RegisterPage: React.FC = () => {
   const [codeLoading, setCodeLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [betaRequired, setBetaRequired] = useState(true);
+
+  useEffect(() => {
+    apiClient
+      .get<{ betaRequired: boolean }>('/api/auth/public-config')
+      .then((d) => setBetaRequired(d.betaRequired))
+      .catch(() => setBetaRequired(true));
+  }, []);
 
   const handleSendCode = async () => {
     if (!email) { showToast('请先输入邮箱', 'warning'); return; }
@@ -55,10 +63,16 @@ const RegisterPage: React.FC = () => {
     if (!code.trim()) { showToast('请输入验证码', 'warning'); return; }
     if (password.length < 6) { showToast('密码至少 6 位', 'warning'); return; }
     if (password !== confirmPassword) { showToast('两次输入的密码不一致', 'warning'); return; }
-    if (!betaCode.trim()) { showToast('请输入邀请码', 'warning'); return; }
+    if (betaRequired && !betaCode.trim()) { showToast('请输入邀请码', 'warning'); return; }
     setLoading(true);
     try {
-      await register(email, password, nickname.trim(), code.trim(), betaCode.trim());
+      await register(
+        email,
+        password,
+        nickname.trim(),
+        code.trim(),
+        betaRequired ? betaCode.trim() : undefined,
+      );
       showToast('注册成功，欢迎加入！', 'success');
       navigate('/dashboard');
     } catch {
@@ -85,18 +99,20 @@ const RegisterPage: React.FC = () => {
           <h2 className="text-xl font-semibold text-text-primary mb-6">注册</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <label className="block text-sm font-semibold text-amber-700 mb-1">🔑 内测码</label>
-              <input
-                type="text"
-                value={betaCode}
-                onChange={(e) => setBetaCode(e.target.value.toUpperCase())}
-                placeholder="请输入内测邀请码"
-                required
-                className="w-full px-4 py-3 rounded-xl border border-amber-300 bg-white focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all outline-none font-mono tracking-widest text-center text-lg"
-              />
-              <p className="text-xs text-amber-600 mt-1.5">当前为内测阶段，需要邀请码才能注册</p>
-            </div>
+            {betaRequired && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <label className="block text-sm font-semibold text-amber-700 mb-1">🔑 内测码</label>
+                <input
+                  type="text"
+                  value={betaCode}
+                  onChange={(e) => setBetaCode(e.target.value.toUpperCase())}
+                  placeholder="请输入内测邀请码"
+                  required={betaRequired}
+                  className="w-full px-4 py-3 rounded-xl border border-amber-300 bg-white focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all outline-none font-mono tracking-widest text-center text-lg"
+                />
+                <p className="text-xs text-amber-600 mt-1.5">当前为内测阶段，需要邀请码才能注册</p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-1">昵称</label>
@@ -124,6 +140,7 @@ const RegisterPage: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-1">验证码</label>
+              <p className="text-xs text-text-tertiary mb-1.5">验证码 10 分钟内有效，请填写最新一封邮件中的 6 位数字。</p>
               <div className="flex gap-2">
                 <input
                   type="text"

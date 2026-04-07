@@ -1,11 +1,5 @@
 import type { PrimitiveHandler, PrimitiveContext, PrimitiveResult } from './types';
-import { callDifySkill } from '../../utils/backendClient';
-
-const getBackendUrl = (): string => {
-  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
-  if (import.meta.env.PROD) return '';
-  return 'http://localhost:8002';
-};
+import { callDifySkill, getBackendUrl } from '../../utils/backendClient';
 
 /**
  * 数据库查询原型 (db-query)
@@ -44,13 +38,10 @@ const dbQuery: PrimitiveHandler = {
       // 如果配了后端代理端点，直接走代理
       if (proxyEndpoint) {
         const backendUrl = getBackendUrl();
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('accessToken');
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
         const resp = await fetch(`${backendUrl}${proxyEndpoint}`, {
           method: 'POST',
-          headers,
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: queryText, table, queryType }),
         });
 

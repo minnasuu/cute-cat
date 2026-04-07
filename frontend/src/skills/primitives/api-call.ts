@@ -1,10 +1,5 @@
 import type { PrimitiveHandler, PrimitiveContext, PrimitiveResult } from './types';
-
-const getBackendUrl = (): string => {
-  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
-  if (import.meta.env.PROD) return '';
-  return 'http://localhost:8002';
-};
+import { getBackendUrl } from '../../utils/backendClient';
 
 /**
  * 外部 API 调用原型 (api-call)
@@ -25,13 +20,10 @@ const apiCall: PrimitiveHandler = {
     if (proxyEndpoint) {
       try {
         const backendUrl = getBackendUrl();
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('accessToken');
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
         const resp = await fetch(`${backendUrl}${proxyEndpoint}`, {
           method: 'POST',
-          headers,
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(proxyBody),
         });
 

@@ -1,7 +1,26 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
-const { generateTokens, verifyToken, authMiddleware } = require('../middleware/auth');
+const {
+  generateTokens,
+  verifyToken,
+  authMiddleware,
+  setAuthCookies,
+  clearAuthCookies,
+} = require('../middleware/auth');
+
+function normalizeEmail(email) {
+  if (!email || typeof email !== 'string') return '';
+  return email.trim().toLowerCase();
+}
+
+/** 与历史大小写混存数据兼容 */
+function findUserByEmailInsensitive(normalizedEmail) {
+  return prisma.user.findFirst({
+    where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+  });
+}
+
 const nodemailer = require('nodemailer');
 
 const router = express.Router();
@@ -53,10 +72,17 @@ function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+// ======================== 公开配置（无需登录）========================
+router.get('/public-config', (req, res) => {
+  const betaCodes = (process.env.BETA_CODES || '').split(',').map((c) => c.trim()).filter(Boolean);
+  res.json({ betaRequired: betaCodes.length > 0 });
+});
+
 // ======================== 发送验证码 ========================
 router.post('/send-code', async (req, res) => {
   try {
-    const { email, type = 'register' } = req.body;
+    const { email: rawEmail, type = 'register' } = req.body;
+    const email = normalizeEmail(rawEmail);
     if (!email) return res.status(400).json({ error: '请输入邮箱' });
 
     const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
@@ -68,11 +94,11 @@ router.post('/send-code', async (req, res) => {
     }
 
     if (type === 'register') {
-      const existing = await prisma.user.findUnique({ where: { email } });
+      const existing = await findUserByEmailInsensitive(email);
       if (existing) return res.status(400).json({ error: '该邮箱已注册' });
     }
     if (type === 'reset_password') {
-      const existing = await prisma.user.findUnique({ where: { email } });
+      const existing = await findUserByEmailInsensitive(email);
       if (!existing) return res.status(400).json({ error: '该邮箱未注册' });
     }
 
@@ -117,7 +143,8 @@ router.post('/send-code', async (req, res) => {
 // ======================== 注册 ========================
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, nickname, code, betaCode } = req.body;
+    const { email: rawEmail, password, nickname, code, betaCode } = req.body;
+    const email = normalizeEmail(rawEmail);
     if (!email || !password || !nickname || !code) {
       return res.status(400).json({ error: '请填写所有必填项' });
     }
@@ -135,7 +162,13 @@ router.post('/register', async (req, res) => {
 
     // Verify code
     const verification = await prisma.emailVerification.findFirst({
-      where: { email, code, type: 'register', used: false, expiresAt: { gt: new Date() } },
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        code,
+        type: 'register',
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: 'desc' },
     });
     if (!verification) {
@@ -143,7 +176,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Check duplicate
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await findUserByEmailInsensitive(email);
     if (existing) return res.status(400).json({ error: '该邮箱已注册' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -159,10 +192,10 @@ router.post('/register', async (req, res) => {
     });
 
     const tokens = generateTokens(user.id);
+    setAuthCookies(res, tokens);
     res.json({
       success: true,
       user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, plan: user.plan, aiQuota: user.aiQuota, aiUsed: user.aiUsed },
-      ...tokens,
     });
   } catch (err) {
     console.error('[auth] register error:', err);
@@ -173,7 +206,8 @@ router.post('/register', async (req, res) => {
 // ======================== 登录 ========================
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email: rawEmail, password } = req.body;
+    const email = normalizeEmail(rawEmail);
     if (!email || !password) return res.status(400).json({ error: '请输入邮箱和密码' });
 
     const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
@@ -184,7 +218,7 @@ router.post('/login', async (req, res) => {
       return res.status(429).json({ error: '登录尝试过于频繁，请 15 分钟后再试' });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await findUserByEmailInsensitive(email);
     if (!user) {
       console.warn('[auth] login: user not found |', email);
       return res.status(401).json({ error: '邮箱或密码错误' });
@@ -203,10 +237,10 @@ router.post('/login', async (req, res) => {
     }
 
     const tokens = generateTokens(user.id);
+    setAuthCookies(res, tokens);
     res.json({
       success: true,
       user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, plan: user.plan, aiQuota: user.aiQuota, aiUsed: user.aiUsed },
-      ...tokens,
     });
   } catch (err) {
     console.error('[auth] login error:', err);
@@ -217,17 +251,27 @@ router.post('/login', async (req, res) => {
 // ======================== 忘记密码 ========================
 router.post('/reset-password', async (req, res) => {
   try {
-    const { email, password, code } = req.body;
+    const { email: rawEmail, password, code } = req.body;
+    const email = normalizeEmail(rawEmail);
     if (!email || !password || !code) return res.status(400).json({ error: '请填写所有字段' });
 
     const verification = await prisma.emailVerification.findFirst({
-      where: { email, code, type: 'reset_password', used: false, expiresAt: { gt: new Date() } },
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        code,
+        type: 'reset_password',
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: 'desc' },
     });
     if (!verification) return res.status(400).json({ error: '验证码无效或已过期' });
 
+    const userRow = await findUserByEmailInsensitive(email);
+    if (!userRow) return res.status(400).json({ error: '该邮箱未注册' });
+
     const hashedPassword = await bcrypt.hash(password, 10);
-    await prisma.user.update({ where: { email }, data: { password: hashedPassword } });
+    await prisma.user.update({ where: { id: userRow.id }, data: { password: hashedPassword } });
     await prisma.emailVerification.update({ where: { id: verification.id }, data: { used: true } });
 
     res.json({ success: true, message: '密码重置成功' });
@@ -240,7 +284,7 @@ router.post('/reset-password', async (req, res) => {
 // ======================== 刷新 Token ========================
 router.post('/refresh-token', async (req, res) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!refreshToken) return res.status(400).json({ error: '缺少 refreshToken' });
 
     const decoded = verifyToken(refreshToken);
@@ -251,10 +295,17 @@ router.post('/refresh-token', async (req, res) => {
     if (!user) return res.status(401).json({ error: '用户不存在' });
 
     const tokens = generateTokens(decoded.userId);
-    res.json({ success: true, ...tokens });
+    setAuthCookies(res, tokens);
+    res.json({ success: true });
   } catch (err) {
     res.status(401).json({ error: 'Token 无效或已过期' });
   }
+});
+
+// ======================== 登出 ========================
+router.post('/logout', (req, res) => {
+  clearAuthCookies(res);
+  res.json({ success: true });
 });
 
 // ======================== 获取当前用户 ========================

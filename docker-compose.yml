@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: cute_cat
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - cucatopiacom_postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -42,7 +42,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      # 逗号分隔；需与浏览器访问前端的 Origin 一致（含端口），否则带 Cookie 的跨域请求会被 CORS 拒绝
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4000,http://localhost:5173}
     depends_on:
       db:
         condition: service_healthy
@@ -58,4 +59,4 @@ services:
       - backend
 
 volumes:
-  postgres_data:
+  cucatopiacom_postgres_data:

@@ -1,10 +1,5 @@
 import type { PrimitiveHandler, PrimitiveContext, PrimitiveResult } from './types';
-
-const getBackendUrl = (): string => {
-  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
-  if (import.meta.env.PROD) return '';
-  return 'http://localhost:8002';
-};
+import { getBackendUrl } from '../../utils/backendClient';
 
 /**
  * 文件读写原型 (file-io)
@@ -37,16 +32,15 @@ const fileIo: PrimitiveHandler = {
     }
 
     const backendUrl = getBackendUrl();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const token = localStorage.getItem('accessToken');
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const jsonHeaders = { 'Content-Type': 'application/json' };
 
     try {
       // ── 通过自定义代理端点操作 ──
       if (proxyEndpoint) {
         const resp = await fetch(`${backendUrl}${proxyEndpoint}`, {
           method: operation === 'read' ? 'GET' : 'POST',
-          headers,
+          credentials: 'include',
+          headers: jsonHeaders,
           ...(operation !== 'read' ? { body: JSON.stringify({ path: filePath, content, fileName }) } : {}),
         });
         const data = await resp.json();
@@ -65,7 +59,7 @@ const fileIo: PrimitiveHandler = {
       if (operation === 'read') {
         // 利用 articles/crafts API 读取
         const endpoint = filePath.includes('craft') ? '/api/crafts' : '/api/articles';
-        const resp = await fetch(`${backendUrl}${endpoint}`, { headers });
+        const resp = await fetch(`${backendUrl}${endpoint}`, { credentials: 'include', headers: jsonHeaders });
         if (!resp.ok) {
           return { success: false, data: null, summary: `读取失败: HTTP ${resp.status}`, status: 'error' };
         }
@@ -84,7 +78,8 @@ const fileIo: PrimitiveHandler = {
         const body = content || JSON.stringify(ctx.input);
         const resp = await fetch(`${backendUrl}${endpoint}`, {
           method: 'POST',
-          headers,
+          credentials: 'include',
+          headers: jsonHeaders,
           body,
         });
         const data = await resp.json();

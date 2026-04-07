@@ -29,10 +29,8 @@ const useAsyncOptions = (asyncOptionsFrom?: string, valueKey = 'id', labelKey = 
 
     const load = async () => {
       try {
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : 'http://localhost:8002');
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('accessToken');
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+        // 同源 /api，携带 httpOnly Cookie
+        const backendUrl = '';
 
         // 替换路径中的 :teamId 占位符
         let url = asyncOptionsFrom;
@@ -41,7 +39,10 @@ const useAsyncOptions = (asyncOptionsFrom?: string, valueKey = 'id', labelKey = 
           url = url.replace(':teamId', teamMatch[1]);
         }
 
-        const resp = await fetch(`${backendUrl}${url}`, { headers });
+        const resp = await fetch(`${backendUrl}${url}`, {
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
         if (resp.ok && !cancelled) {
           const data = await resp.json();
           if (Array.isArray(data)) {

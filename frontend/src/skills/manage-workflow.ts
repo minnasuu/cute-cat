@@ -1,19 +1,13 @@
 import type { SkillHandler, SkillContext, SkillResult } from './types';
-import { callDifySkill } from '../utils/backendClient';
+import { callDifySkill, getBackendUrl } from '../utils/backendClient';
 
-const getBackendUrl = (): string => {
-  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
-  if (import.meta.env.PROD) return '';
-  return 'http://localhost:8002';
+const jsonAuthInit = (init: RequestInit = {}): RequestInit => {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...((init.headers as Record<string, string>) || {}),
+  };
+  return { credentials: 'include', ...init, headers };
 };
-
-/** 构造带 auth 的请求 headers */
-function authHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = localStorage.getItem('accessToken');
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  return headers;
-}
 
 /** 从 URL 或用户团队列表中自动获取 teamId */
 async function resolveTeamId(): Promise<string> {
@@ -23,7 +17,7 @@ async function resolveTeamId(): Promise<string> {
 
   // 2. 兜底：查询用户的团队列表取第一个
   try {
-    const resp = await fetch(`${getBackendUrl()}/api/teams`, { headers: authHeaders() });
+    const resp = await fetch(`${getBackendUrl()}/api/teams`, jsonAuthInit());
     if (resp.ok) {
       const teams = await resp.json();
       if (Array.isArray(teams) && teams.length > 0) return teams[0].id;
@@ -37,7 +31,7 @@ async function resolveTeamId(): Promise<string> {
 /** 获取团队猫猫信息，供 AI 生成使用 */
 async function fetchCatInfo(teamId: string): Promise<string> {
   try {
-    const resp = await fetch(`${getBackendUrl()}/api/teams/${teamId}`, { headers: authHeaders() });
+    const resp = await fetch(`${getBackendUrl()}/api/teams/${teamId}`, jsonAuthInit());
     if (resp.ok) {
       const teamData = await resp.json();
       const cats = teamData.cats || [];
@@ -126,11 +120,10 @@ async function handleCreate(teamId: string, prompt: string): Promise<SkillResult
   }
 
   try {
-    const resp = await fetch(`${getBackendUrl()}/api/workflows/team/${teamId}`, {
+    const resp = await fetch(`${getBackendUrl()}/api/workflows/team/${teamId}`, jsonAuthInit({
       method: 'POST',
-      headers: authHeaders(),
       body: JSON.stringify(workflowData),
-    });
+    }));
 
     const data = await resp.json();
     if (!resp.ok) {
@@ -172,7 +165,7 @@ async function handleUpdate(teamId: string, workflowId: string, prompt: string):
   // 先获取现有工作流信息
   let existingWorkflow: any;
   try {
-    const resp = await fetch(`${getBackendUrl()}/api/workflows/${workflowId}`, { headers: authHeaders() });
+    const resp = await fetch(`${getBackendUrl()}/api/workflows/${workflowId}`, jsonAuthInit());
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       return { success: false, data: null, summary: `获取工作流失败: ${err.error || `HTTP ${resp.status}`}`, status: 'error' };
@@ -210,11 +203,10 @@ async function handleUpdate(teamId: string, workflowId: string, prompt: string):
   if (aiResult.persistent !== undefined) updateData.persistent = !!aiResult.persistent;
 
   try {
-    const resp = await fetch(`${getBackendUrl()}/api/workflows/${workflowId}`, {
+    const resp = await fetch(`${getBackendUrl()}/api/workflows/${workflowId}`, jsonAuthInit({
       method: 'PUT',
-      headers: authHeaders(),
       body: JSON.stringify(updateData),
-    });
+    }));
 
     const data = await resp.json();
     if (!resp.ok) {
@@ -244,7 +236,7 @@ async function handleDelete(workflowId: string): Promise<SkillResult> {
   // 先获取工作流名称用于提示
   let workflowName = workflowId;
   try {
-    const infoResp = await fetch(`${getBackendUrl()}/api/workflows/${workflowId}`, { headers: authHeaders() });
+    const infoResp = await fetch(`${getBackendUrl()}/api/workflows/${workflowId}`, jsonAuthInit());
     if (infoResp.ok) {
       const info = await infoResp.json();
       workflowName = info.name || workflowId;
@@ -252,10 +244,9 @@ async function handleDelete(workflowId: string): Promise<SkillResult> {
   } catch { /* ignore */ }
 
   try {
-    const resp = await fetch(`${getBackendUrl()}/api/workflows/${workflowId}`, {
+    const resp = await fetch(`${getBackendUrl()}/api/workflows/${workflowId}`, jsonAuthInit({
       method: 'DELETE',
-      headers: authHeaders(),
-    });
+    }));
 
     const data = await resp.json();
     if (!resp.ok) {

@@ -1,10 +1,5 @@
 import type { PrimitiveHandler, PrimitiveContext, PrimitiveResult } from './types';
-
-const getBackendUrl = (): string => {
-  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
-  if (import.meta.env.PROD) return '';
-  return 'http://localhost:8002';
-};
+import { getBackendUrl } from '../../utils/backendClient';
 
 /**
  * 工作流引擎原型 (workflow-engine)
@@ -38,9 +33,13 @@ const workflowEngine: PrimitiveHandler = {
     }
 
     const backendUrl = getBackendUrl();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const token = localStorage.getItem('accessToken');
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const jsonFetch = (init: RequestInit): RequestInit => {
+      const headers = {
+        'Content-Type': 'application/json',
+        ...((init.headers as Record<string, string>) || {}),
+      };
+      return { credentials: 'include', ...init, headers };
+    };
 
     try {
       switch (action) {
@@ -50,11 +49,10 @@ const workflowEngine: PrimitiveHandler = {
           if (!workflowId) {
             return { success: false, data: null, summary: '未指定 workflowId', status: 'error' };
           }
-          const resp = await fetch(`${backendUrl}/api/workflows/${workflowId}/execute`, {
+          const resp = await fetch(`${backendUrl}/api/workflows/${workflowId}/execute`, jsonFetch({
             method: 'POST',
-            headers,
             body: JSON.stringify({ input: inputData }),
-          });
+          }));
           const data = await resp.json();
           if (!resp.ok) {
             return { success: false, data, summary: data.error || `HTTP ${resp.status}`, status: 'error' };
@@ -72,11 +70,10 @@ const workflowEngine: PrimitiveHandler = {
           if (!teamId) {
             return { success: false, data: null, summary: '未指定 teamId', status: 'error' };
           }
-          const resp = await fetch(`${backendUrl}/api/workflows/team/${teamId}`, {
+          const resp = await fetch(`${backendUrl}/api/workflows/team/${teamId}`, jsonFetch({
             method: 'POST',
-            headers,
             body: JSON.stringify(inputData),
-          });
+          }));
           const data = await resp.json();
           if (!resp.ok) {
             return { success: false, data, summary: data.error || `HTTP ${resp.status}`, status: 'error' };
@@ -89,11 +86,10 @@ const workflowEngine: PrimitiveHandler = {
           if (!workflowId) {
             return { success: false, data: null, summary: '未指定 workflowId', status: 'error' };
           }
-          const resp = await fetch(`${backendUrl}/api/workflows/${workflowId}`, {
+          const resp = await fetch(`${backendUrl}/api/workflows/${workflowId}`, jsonFetch({
             method: 'PUT',
-            headers,
             body: JSON.stringify(inputData),
-          });
+          }));
           const data = await resp.json();
           if (!resp.ok) {
             return { success: false, data, summary: data.error || `HTTP ${resp.status}`, status: 'error' };
@@ -106,10 +102,9 @@ const workflowEngine: PrimitiveHandler = {
           if (!workflowId) {
             return { success: false, data: null, summary: '未指定 workflowId', status: 'error' };
           }
-          const resp = await fetch(`${backendUrl}/api/workflows/${workflowId}`, {
+          const resp = await fetch(`${backendUrl}/api/workflows/${workflowId}`, jsonFetch({
             method: 'DELETE',
-            headers,
-          });
+          }));
           if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
             return { success: false, data, summary: `删除失败: HTTP ${resp.status}`, status: 'error' };
@@ -122,7 +117,7 @@ const workflowEngine: PrimitiveHandler = {
           if (!teamId) {
             return { success: false, data: null, summary: '未指定 teamId', status: 'error' };
           }
-          const resp = await fetch(`${backendUrl}/api/workflows/team/${teamId}`, { headers });
+          const resp = await fetch(`${backendUrl}/api/workflows/team/${teamId}`, jsonFetch({ method: 'GET' }));
           const data = await resp.json();
           if (!resp.ok) {
             return { success: false, data, summary: data.error || `HTTP ${resp.status}`, status: 'error' };
@@ -143,7 +138,7 @@ const workflowEngine: PrimitiveHandler = {
           if (!tid) {
             return { success: false, data: null, summary: '未指定 teamId 或 workflowId', status: 'error' };
           }
-          const resp = await fetch(`${backendUrl}/api/workflows/team/${teamId}/runs`, { headers });
+          const resp = await fetch(`${backendUrl}/api/workflows/team/${teamId}/runs`, jsonFetch({ method: 'GET' }));
           const data = await resp.json();
           if (!resp.ok) {
             return { success: false, data, summary: data.error || `HTTP ${resp.status}`, status: 'error' };

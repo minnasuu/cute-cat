@@ -2,66 +2,78 @@ import { showToast } from '../components/Toast';
 
 const BASE_URL = '';
 
-class ApiClient {
-  private getToken(): string | null {
-    return localStorage.getItem('accessToken');
-  }
+/** 这些路径返回 401 时不应尝试 refresh（凭据错误等） */
+const AUTH_PATHS_NO_REFRESH_ON_401 = new Set([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/send-code',
+  '/api/auth/reset-password',
+  '/api/auth/refresh-token',
+]);
 
+function shouldSkipRefreshOn401(url: string): boolean {
+  const path = url.split('?')[0];
+  return AUTH_PATHS_NO_REFRESH_ON_401.has(path);
+}
+
+class ApiClient {
   private async request<T = any>(url: string, options: RequestInit = {}): Promise<T> {
-    const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
     };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
 
     let response: Response;
     try {
-      response = await fetch(`${BASE_URL}${url}`, { ...options, headers });
+      response = await fetch(`${BASE_URL}${url}`, {
+        ...options,
+        headers,
+        credentials: 'include',
+      });
     } catch {
       showToast('网络连接失败，请检查网络后重试');
       throw new Error('网络连接失败');
     }
 
-    // Auth endpoints (login/register etc.) should not trigger token refresh or redirect,
-    // let their 401 fall through to the generic !response.ok handler below.
-    const isAuthEndpoint = url.startsWith('/api/auth/');
-
-    if (response.status === 401 && !isAuthEndpoint) {
-      // Try refresh token
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (refreshToken) {
-        try {
-          const refreshRes = await fetch(`${BASE_URL}/api/auth/refresh-token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken }),
+    if (response.status === 401 && !shouldSkipRefreshOn401(url)) {
+      try {
+        const refreshRes = await fetch(`${BASE_URL}/api/auth/refresh-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({}),
+        });
+        if (refreshRes.ok) {
+          const retryRes = await fetch(`${BASE_URL}${url}`, {
+            ...options,
+            headers,
+            credentials: 'include',
           });
-          if (refreshRes.ok) {
-            const data = await refreshRes.json();
-            localStorage.setItem('accessToken', data.accessToken);
-            localStorage.setItem('refreshToken', data.refreshToken);
-            // Retry original request
-            headers['Authorization'] = `Bearer ${data.accessToken}`;
-            const retryRes = await fetch(`${BASE_URL}${url}`, { ...options, headers });
-            if (!retryRes.ok) {
-              const err = await retryRes.json().catch(() => ({ error: '请求失败' }));
-              const msg = err.error || '请求失败';
-              showToast(msg);
-              throw new Error(msg);
-            }
-            return retryRes.json();
+          if (!retryRes.ok) {
+            const err = await retryRes.json().catch(() => ({ error: '请求失败' }));
+            const msg = err.error || '请求失败';
+            showToast(msg);
+            throw new Error(msg);
           }
-        } catch {
-          // Refresh failed
+          return retryRes.json();
         }
+      } catch {
+        // Refresh failed
       }
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      showToast('登录已过期，请重新登录');
-      window.location.href = '/login';
+      try {
+        await fetch(`${BASE_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
+      } catch {
+        /* ignore */
+      }
+      const pathOnly = url.split('?')[0];
+      if (pathOnly !== '/api/auth/me') {
+        showToast('登录已过期，请重新登录');
+        window.location.href = '/login';
+      }
       throw new Error('登录已过期');
     }
 

@@ -1,10 +1,5 @@
 import type { PrimitiveHandler, PrimitiveContext, PrimitiveResult } from './types';
-
-const getBackendUrl = (): string => {
-  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
-  if (import.meta.env.PROD) return '';
-  return 'http://localhost:8002';
-};
+import { getBackendUrl } from '../../utils/backendClient';
 
 /**
  * 浏览器自动化原型 (browser-action)
@@ -41,15 +36,13 @@ const browserAction: PrimitiveHandler = {
 
     try {
       const backendUrl = getBackendUrl();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      const token = localStorage.getItem('accessToken');
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
       // 如果配了自定义代理端点
       if (proxyEndpoint) {
         const resp = await fetch(`${backendUrl}${proxyEndpoint}`, {
           method: 'POST',
-          headers,
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: targetUrl, actionType, testCases }),
         });
         const data = await resp.json();
@@ -62,7 +55,8 @@ const browserAction: PrimitiveHandler = {
       // 默认通过爬取接口获取页面信息（利用已有的 crawl 接口）
       const resp = await fetch(`${backendUrl}/api/dify/crawl`, {
         method: 'POST',
-        headers,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sources: [targetUrl], maxItems: 1 }),
       });
       const data = await resp.json();
