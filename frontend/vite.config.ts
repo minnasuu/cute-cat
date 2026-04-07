@@ -16,5 +16,18 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  // vite preview 默认不走 server.proxy，不配置则 /uploads 会 404，图片无法显示
+  preview: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      }
+    }
   }
 })

@@ -1,5 +1,11 @@
 import { useMemo } from "react";
-import { CheckCircle2, ChevronRight, Loader2, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  Lock,
+  XCircle,
+} from "lucide-react";
 import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
 import type { PlanStep, TeamCat, WorkflowRun, WorkflowRunStep } from "./workbenchTypes";
 
@@ -144,13 +150,29 @@ export default function ResultCanvas({
             {/* HTML 页面预览 */}
             {htmlPageData ? (
               <div className="rounded-2xl border border-primary-200/80 bg-white/90 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-border/60 bg-surface-secondary/30">
-                  <p className="text-[10px] font-black uppercase tracking-wide text-text-tertiary">
-                    网页预览
-                  </p>
-                  <span className="text-[10px] font-bold text-primary-600">
-                    HTML · {htmlPageData.length} 字符
-                  </span>
+                {/* macOS 风格窗口标题栏 + Safari 式地址栏 */}
+                <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 border-b border-black/[0.07] bg-gradient-to-b from-[#ececec] to-[#dededf]">
+                  <div
+                    className="flex items-center gap-1.5 shrink-0 pl-0.5"
+                    aria-hidden="true"
+                  >
+                    <span className="size-[11px] rounded-full bg-[#ff5f57] shadow-[inset_0_-1px_1px_rgba(0,0,0,0.15)] ring-1 ring-black/[0.12]" />
+                    <span className="size-[11px] rounded-full bg-[#febc2e] shadow-[inset_0_-1px_1px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.08]" />
+                    <span className="size-[11px] rounded-full bg-[#28c840] shadow-[inset_0_-1px_1px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.1]" />
+                  </div>
+                  <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md bg-white/95 px-2.5 sm:px-3 py-1 shadow-[inset_0_1px_1px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.08]">
+                    <Lock
+                      className="size-3 shrink-0 text-emerald-600/85"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1 truncate text-center text-[11px] font-medium text-neutral-600 font-mono">
+                      preview.html
+                    </span>
+                    <span className="shrink-0 text-[10px] font-medium tabular-nums text-neutral-400">
+                      {htmlPageData.length.toLocaleString()} 字符
+                    </span>
+                  </div>
                 </div>
                 <iframe
                   srcDoc={htmlPageData}

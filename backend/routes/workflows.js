@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authMiddleware } = require('../middleware/auth');
+const { WORKBENCH_MARKER } = require('../lib/workbench-seed');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -33,6 +34,9 @@ router.post('/team/:teamId', async (req, res) => {
   try {
     const team = await verifyTeamOwner(req.params.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '团队不存在' });
+    if (team.description === WORKBENCH_MARKER) {
+      return res.status(403).json({ error: '官方创作空间的工作流由系统维护，不可新增' });
+    }
 
     const { name, description, steps, icon, trigger, cron, scheduled, startTime, endTime, persistent, enabled } = req.body;
     if (!name || !steps) return res.status(400).json({ error: '请填写工作流名称和步骤' });
@@ -80,6 +84,9 @@ router.put('/:id', async (req, res) => {
     if (!workflow) return res.status(404).json({ error: '工作流不存在' });
     const team = await verifyTeamOwner(workflow.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '无权访问' });
+    if (team.description === WORKBENCH_MARKER) {
+      return res.status(403).json({ error: '官方创作空间的工作流不可修改' });
+    }
 
     const { name, description, steps, trigger, cron, scheduled, scheduledEnabled, startTime, endTime, persistent, enabled } = req.body;
     const resolvedTrigger = trigger || (scheduled ? 'cron' : 'manual');
@@ -112,6 +119,9 @@ router.delete('/:id', async (req, res) => {
     if (!workflow) return res.status(404).json({ error: '工作流不存在' });
     const team = await verifyTeamOwner(workflow.teamId, req.userId);
     if (!team) return res.status(404).json({ error: '无权访问' });
+    if (team.description === WORKBENCH_MARKER) {
+      return res.status(403).json({ error: '官方创作空间的工作流不可删除' });
+    }
 
     await prisma.workflow.delete({ where: { id: req.params.id } });
     res.json({ success: true });

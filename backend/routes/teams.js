@@ -4,17 +4,10 @@ const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 const prisma = new PrismaClient();
-const { ensureWorkbenchTeam, seedOfficialCatsForTeam } = require('../lib/workbench-seed');
+const { ensureWorkbenchTeam, WORKBENCH_MARKER } = require('../lib/workbench-seed');
 
 // All routes require auth
 router.use(authMiddleware);
-
-// Plan limits
-const PLAN_LIMITS = {
-  free: { maxTeams: 3, maxCatsPerTeam: 5, maxWorkflowsPerTeam: 5 },
-  pro: { maxTeams: 999, maxCatsPerTeam: 20, maxWorkflowsPerTeam: 999 },
-  enterprise: { maxTeams: 999, maxCatsPerTeam: 999, maxWorkflowsPerTeam: 999 },
-};
 
 /**
  * 工作台完整 JSON（含最近运行与 AI 统计），供 GET /workbench 与 GET /:id 误匹配 id=workbench 时兜底。
@@ -145,30 +138,8 @@ router.get('/', async (req, res) => {
 });
 
 // ======================== 创建团队 ========================
-router.post('/', async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    const limits = PLAN_LIMITS[user.plan] || PLAN_LIMITS.free;
-
-    const teamCount = await prisma.team.count({ where: { ownerId: req.userId } });
-    if (teamCount >= limits.maxTeams) {
-      return res.status(403).json({ error: `免费版最多创建 ${limits.maxTeams} 个团队，请升级套餐` });
-    }
-
-    const { name, description } = req.body;
-    if (!name) return res.status(400).json({ error: '请输入团队名称' });
-
-    const team = await prisma.team.create({
-      data: { name, description, ownerId: req.userId },
-    });
-
-    await seedOfficialCatsForTeam(prisma, team.id);
-
-    res.json(team);
-  } catch (err) {
-    console.error('[teams] create error:', err);
-    res.status(500).json({ error: '创建团队失败' });
-  }
+router.post('/', (req, res) => {
+  res.status(403).json({ error: '当前产品不再支持自建团队；创作数据由系统自动准备' });
 });
 
 // ======================== 获取团队详情 ========================
@@ -199,6 +170,9 @@ router.put('/:id', async (req, res) => {
   try {
     const team = await prisma.team.findFirst({ where: { id: req.params.id, ownerId: req.userId } });
     if (!team) return res.status(404).json({ error: '团队不存在' });
+    if (team.description === WORKBENCH_MARKER) {
+      return res.status(403).json({ error: '官方创作空间不可修改' });
+    }
 
     const { name, description } = req.body;
     const updated = await prisma.team.update({
@@ -217,6 +191,9 @@ router.delete('/:id', async (req, res) => {
   try {
     const team = await prisma.team.findFirst({ where: { id: req.params.id, ownerId: req.userId } });
     if (!team) return res.status(404).json({ error: '团队不存在' });
+    if (team.description === WORKBENCH_MARKER) {
+      return res.status(403).json({ error: '官方创作空间不可删除' });
+    }
 
     await prisma.team.delete({ where: { id: req.params.id } });
     res.json({ success: true });

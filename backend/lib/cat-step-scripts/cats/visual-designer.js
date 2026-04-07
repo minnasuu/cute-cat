@@ -20,24 +20,51 @@ ${getStyleCatalog()}
 选择：风格 3
 理由：该风格的现代简约设计与产品的轻量化定位高度契合...`;
 
+/** 下游需要上游链路 + 视觉规范；与 frontend visual-designer.ts 分段一致 */
+function mergeUpstreamAndVisualPrompt(upstream, visualPrompt) {
+  const up = String(upstream || '').trim();
+  const vis = String(visualPrompt || '').trim();
+  if (!up) return vis;
+  return `## 上游产品与交互（来自前序步骤）
+
+${up}
+
+---
+
+## 视觉风格规范（墨墨·灵感库匹配）
+
+${vis}`;
+}
+
 module.exports = async function runVisualDesigner(ctx) {
   const { merged } = ctx;
-  let upstreamText = extractUpstreamText(merged);
+  const upstreamFull = extractUpstreamText(merged);
+  let upstreamText = upstreamFull;
 
-  // 限制上游文本长度，避免加上风格库后 prompt 总量过大导致 AI 调用超时
+  // 限制上游文本长度（仅用于喂给模型），返回给下游仍用完整 upstreamFull 拼接
   if (upstreamText.length > 3000) {
     upstreamText = upstreamText.slice(0, 3000) + '\n\n…（内容过长已截断）';
   }
 
-  const userText = upstreamText.trim()
+  // 上游长文并入 system，user 仅简短指令，避免模型在回复中复述整段输入（下游解析/展示像「用户+AI 拼接」）
+  const upstreamForSystem = upstreamText.trim()
     ? upstreamText
-    : '请为一个通用企业官网选择合适的视觉风格。';
+    : '（无上游说明，请按通用企业官网场景选择风格。）';
 
-  const result = await runWithAI('visual-designer', ctx, SYSTEM_PROMPT, userText, {
+  const fullSystemPrompt = `${SYSTEM_PROMPT}
+
+## 上游产品 / 交互参考（仅供你内部匹配，不要在回复中复述或摘抄）
+
+${upstreamForSystem}`;
+
+  const userText =
+    '请根据上文「上游产品 / 交互参考」与风格库，只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
+
+  const result = await runWithAI('visual-designer', ctx, fullSystemPrompt, userText, {
     maxTokens: 4096,
   });
 
-  // 解析风格编号；链式下游仅需要完整 design prompt（与前端 visual-designer 一致）
+  // 解析风格编号；data.text = 完整上游 + 灵感库 design prompt（与前端一致）
   if (result.success && result.data?.text) {
     const aiResponse = result.data.text;
     const styleMatch = aiResponse.match(/风格\s*(\d+)/);
@@ -49,9 +76,10 @@ module.exports = async function runVisualDesigner(ctx) {
     const selected = VISUAL_STYLES[selectedIndex];
     const designPrompt = selected.prompt;
 
-    result.data.text = designPrompt;
+    const mergedText = mergeUpstreamAndVisualPrompt(upstreamFull, designPrompt);
+    result.data.text = mergedText;
     result.data.selectedStyleId = selected.id;
-    result.summary = designPrompt.length > 300 ? designPrompt.slice(0, 300) + '…' : designPrompt;
+    result.summary = mergedText.length > 300 ? mergedText.slice(0, 300) + '…' : mergedText;
   }
 
   return result;

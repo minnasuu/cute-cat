@@ -57,7 +57,7 @@ const HistoryPage: React.FC = () => {
             to="/dashboard"
             className="text-sm font-bold text-primary-600 hover:text-primary-700 transition-colors"
           >
-            ← 工作台
+            ← 创作首页
           </Link>
           <span className="text-text-tertiary text-sm">/</span>
           <h1 className="text-sm font-black tracking-tight">历史记录</h1>

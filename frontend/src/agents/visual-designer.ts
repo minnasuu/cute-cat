@@ -3,11 +3,29 @@ import { extractUpstreamText } from './_framework';
 import { callDifySkillStream } from '../utils/backendClient';
 import { listVibeStyleLibLibrary } from '../pages/VibeStyleLib/vibeStyleLibApi';
 
+/** 下游步骤需要同时拿到上游链路与视觉规范：固定分段拼接，便于阅读与再解析 */
+function mergeUpstreamAndVisualPrompt(upstream: string, visualPrompt: string): string {
+  const up = upstream.trim();
+  const vis = visualPrompt.trim();
+  if (!up) return vis;
+  return `## 上游产品与交互（来自前序步骤）
+
+${up}
+
+---
+
+## 视觉风格规范（墨墨·灵感库匹配）
+
+${vis}`;
+}
+
 /**
  * 视觉设计师：从 VibeStyleLib（vibe-snap-library）灵感库中匹配最合适的设计风格
- * 优化策略：仅传 styleDescription 给 AI 匹配（节省 token）；对外输出仅为选中条目的 designPrompt 字段
+ * 优化策略：风格库与上游长文在 system，user 仅短指令；`data.text` = 上游 + 选中条目的 designPrompt 拼接
  */
 export default async function runVisualDesigner(ctx: AgentContext): Promise<AgentResult> {
+  const upstreamText = extractUpstreamText(ctx);
+
   try {
     // 1. 获取灵感库数据（加超时保护，避免 API 不可用时永久卡住）
     let libraryItems: Awaited<ReturnType<typeof listVibeStyleLibLibrary>> = [];
@@ -47,15 +65,15 @@ export default async function runVisualDesigner(ctx: AgentContext): Promise<Agen
 - 主色面积控制在 10% 以内，大面积用白色/浅灰
 - 响应式布局：移动端 1 列 → 平板 2 列 → 桌面 3 列`;
 
+      const mergedText = mergeUpstreamAndVisualPrompt(upstreamText, defaultPrompt);
       return {
         success: true,
         data: {
-          text: defaultPrompt,
+          text: mergedText,
           selectedStyleId: null,
           selectedStyleTags: ['现代', '简约', '专业'],
         },
-        summary:
-          defaultPrompt.length > 300 ? defaultPrompt.slice(0, 300) + '…' : defaultPrompt,
+        summary: mergedText.length > 300 ? mergedText.slice(0, 300) + '…' : mergedText,
         status: 'success',
       };
     }
@@ -99,15 +117,30 @@ ${styleCatalog}
 ❌ 选择：风格 3\n理由：...\n\n以下是完整设计规范...（多余内容）
 ❌ 让我逐一分析：风格1适合...风格2适合...（逐个分析）`;
 
-    const upstreamText = extractUpstreamText(ctx);
-
     console.log(`[visual-designer] 灵感库条目数: ${libraryItems.length}, 上游输入长度: ${upstreamText.length}`);
 
-    // 4. 调用 AI 进行风格匹配（直接调用 callDifySkill，不经过 primitive）
-    const userText = upstreamText || '请为一个通用企业官网选择合适的视觉风格';
+    // 4. 调用 AI：上游长文放在 system 侧，user 仅下简短指令，避免模型在回复里复述整段用户输入（流式/解析看起来像「用户+AI 拼接」）
+    const UPSTREAM_SYS_MAX = 12_000;
+    const upstreamForSystem = upstreamText.trim()
+      ? upstreamText.length > UPSTREAM_SYS_MAX
+        ? `${upstreamText.slice(0, UPSTREAM_SYS_MAX)}\n\n…（上游过长已截断）`
+        : upstreamText
+      : '（无上游说明，请按通用企业官网场景选择风格。）';
+
+    const fullSystemPrompt = `${systemPrompt}
+
+## 上游产品 / 交互参考（仅供你内部匹配，不要在回复中复述或摘抄）
+
+${upstreamForSystem}`;
+
+    const userText =
+      '请根据上文「上游产品 / 交互参考」与风格库，只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
 
     const TIMEOUT_MS = 120_000;
-    const resultPromise = callDifySkillStream('ai-chat', userText, 'qwen', ctx.onChunk, { systemPrompt, maxTokens: 4096 });
+    const resultPromise = callDifySkillStream('ai-chat', userText, 'qwen', ctx.onChunk, {
+      systemPrompt: fullSystemPrompt,
+      maxTokens: 4096,
+    });
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('请求超时')), TIMEOUT_MS)
     );
@@ -153,15 +186,16 @@ ${styleCatalog}
     const selectedStyle = libraryItems[Math.max(0, Math.min(selectedIndex, libraryItems.length - 1))];
 
     const designPrompt = selectedStyle.designPrompt;
+    const mergedText = mergeUpstreamAndVisualPrompt(upstreamText, designPrompt);
 
     return {
       success: true,
       data: {
-        text: designPrompt,
+        text: mergedText,
         selectedStyleId: selectedStyle.id,
         selectedStyleTags: selectedStyle.tags,
       },
-      summary: designPrompt.length > 300 ? designPrompt.slice(0, 300) + '…' : designPrompt,
+      summary: mergedText.length > 300 ? mergedText.slice(0, 300) + '…' : mergedText,
       status: 'success',
     };
 

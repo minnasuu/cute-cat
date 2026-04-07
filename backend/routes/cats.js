@@ -2,6 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authMiddleware } = require('../middleware/auth');
 const { CAT_TEMPLATES, OFFICIAL_TEMPLATE_IDS } = require('../data/official-cats');
+const { WORKBENCH_MARKER } = require('../lib/workbench-seed');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -40,6 +41,9 @@ router.post('/team/:teamId', async (req, res) => {
   try {
     const team = await prisma.team.findFirst({ where: { id: req.params.teamId, ownerId: req.userId } });
     if (!team) return res.status(404).json({ error: '团队不存在' });
+    if (team.description === WORKBENCH_MARKER) {
+      return res.status(403).json({ error: '官方创作空间的角色由系统维护，不可新增' });
+    }
 
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     const limits = PLAN_LIMITS[user.plan] || PLAN_LIMITS.free;
@@ -117,6 +121,9 @@ router.put('/:catId', async (req, res) => {
     if (!cat) return res.status(404).json({ error: '猫猫不存在' });
     const team = await prisma.team.findFirst({ where: { id: cat.teamId, ownerId: req.userId } });
     if (!team) return res.status(404).json({ error: '无权访问' });
+    if (team.description === WORKBENCH_MARKER) {
+      return res.status(403).json({ error: '官方创作空间的角色不可修改' });
+    }
 
     const { name, role, description, catColors, systemPrompt, skills, aiModel, temperature, maxTokens, accent, item, messages } = req.body;
     if (skills !== undefined) {
@@ -154,6 +161,9 @@ router.delete('/:catId', async (req, res) => {
     if (!cat) return res.status(404).json({ error: '猫猫不存在' });
     const team = await prisma.team.findFirst({ where: { id: cat.teamId, ownerId: req.userId } });
     if (!team) return res.status(404).json({ error: '无权访问' });
+    if (team.description === WORKBENCH_MARKER) {
+      return res.status(403).json({ error: '官方创作空间的角色不可删除' });
+    }
 
     await prisma.teamCat.delete({ where: { id: req.params.catId } });
     res.json({ success: true });

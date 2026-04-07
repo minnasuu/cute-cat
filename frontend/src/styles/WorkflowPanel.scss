@@ -671,6 +671,8 @@
 
   // 真实执行结果区域
   .node-result {
+    display: flex;
+    flex-direction: column;
     width: 130px;
     max-height: 320px;
     margin-top: 4px;
@@ -685,7 +687,8 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      margin-bottom: 3px;
+      height: 30px;
+      flex-shrink: 0;
 
       .node-result-status {
         font-size: 0.6rem;

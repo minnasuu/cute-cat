@@ -1,5 +1,33 @@
 const API_BASE = "/api/dify";
 
+/** 生产或 preview 未代理 /uploads 时，用环境变量指向后端源 */
+function backendOrigin(): string {
+  const raw = import.meta.env.VITE_BACKEND_URL?.trim() ?? "";
+  return raw.replace(/\/$/, "");
+}
+
+/**
+ * 灵感库 / 提取器里用于 <img src> 的最终地址。
+ * - data: / blob: / 绝对 http(s) 原样返回
+ * - 以 /uploads/ 开头的相对路径：若配置了 VITE_BACKEND_URL 则拼到该源（跨域部署）
+ */
+export function resolveVibeSnapImageUrl(url: string | null | undefined): string {
+  const u = url?.trim() ?? "";
+  if (!u) return "";
+  if (
+    u.startsWith("data:") ||
+    u.startsWith("blob:") ||
+    /^https?:\/\//i.test(u)
+  ) {
+    return u;
+  }
+  const origin = backendOrigin();
+  if (origin && u.startsWith("/uploads/")) {
+    return `${origin}${u}`;
+  }
+  return u;
+}
+
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   const token = localStorage.getItem("accessToken");

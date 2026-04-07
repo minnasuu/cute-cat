@@ -12,22 +12,12 @@ interface User {
 
 interface UserProfileDropdownProps {
   user: User;
-  /** 当前工作台工作流数 */
-  workflowCount: number;
-  /** 官方猫猫数（通常为 17） */
-  officialCatCount: number;
   /** 工作流累计执行记录数 */
   workflowRuns: number;
   /** AI 调用日志按猫聚合总和 */
   totalAiCalls: number;
   onLogout: () => void | Promise<void>;
 }
-
-const PLAN_LIMITS: Record<string, { maxTeams: number; maxCatsPerTeam: number; maxWorkflowsPerTeam: number }> = {
-  free:       { maxTeams: 3,   maxCatsPerTeam: 5,   maxWorkflowsPerTeam: 5   },
-  pro:        { maxTeams: 999, maxCatsPerTeam: 20,  maxWorkflowsPerTeam: 999 },
-  enterprise: { maxTeams: 999, maxCatsPerTeam: 999, maxWorkflowsPerTeam: 999 },
-};
 
 const PLAN_LABELS: Record<string, string> = {
   free: 'Free',
@@ -37,8 +27,6 @@ const PLAN_LABELS: Record<string, string> = {
 
 const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
   user,
-  workflowCount,
-  officialCatCount,
   workflowRuns,
   totalAiCalls,
   onLogout,
@@ -54,7 +42,6 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const limits = PLAN_LIMITS[user.plan] || PLAN_LIMITS.free;
   const planLabel = PLAN_LABELS[user.plan] || user.plan;
   const aiQuota = user.aiQuota ?? 100;
   const aiUsed = user.aiUsed ?? 0;
@@ -104,14 +91,12 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
           <div className="px-5 py-4 space-y-3">
             <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">账户用量</p>
 
-            <QuotaRow label="工作流（工作台）" used={workflowCount} max={limits.maxWorkflowsPerTeam} />
-            <QuotaRow label="官方猫猫" used={officialCatCount} max={limits.maxCatsPerTeam} />
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-secondary">历史执行次数</span>
               <span className="text-xs font-bold text-text-primary">{workflowRuns}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-secondary">猫咪 AI 调用（计次）</span>
+              <span className="text-xs font-medium text-text-secondary">角色 AI 调用（计次）</span>
               <span className="text-xs font-bold text-text-primary">{totalAiCalls}</span>
             </div>
             {/* AI Calls */}
@@ -140,29 +125,6 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-/* Quota row sub-component */
-const QuotaRow: React.FC<{
-  label: string;
-  used: number | null;
-  max: number;
-  description?: string;
-}> = ({  label, used, max, description }) => {
-  const formatLimit = (val: number) => (val >= 999 ? '∞' : String(val));
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs font-medium text-text-secondary">{label}</span>
-      <div className="text-right">
-          <span className="text-xs font-bold text-text-primary">
-            {used||0} / <span className="text-xs text-text-tertiary">{formatLimit(max)}</span>
-          </span>
-        {description && (
-          <span className="text-[10px] text-text-tertiary ml-1.5">{description}</span>
-        )}
-      </div>
     </div>
   );
 };

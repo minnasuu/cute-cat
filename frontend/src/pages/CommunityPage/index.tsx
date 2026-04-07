@@ -49,7 +49,7 @@ const CommunityPage = () => {
   const [expandedWf, setExpandedWf] = useState<string | null>(null);
 
   const tabs: { id: Tab; label: string; iconSymbol: string; count: number }[] = [
-    { id: "cats", label: "官方猫猫", iconSymbol: "Cat", count: allCats.length },
+    { id: "cats", label: "官方角色", iconSymbol: "Cat", count: allCats.length },
     {
       id: "workflows",
       label: "官方工作流",
@@ -102,7 +102,7 @@ const CommunityPage = () => {
             猫猫专家阵容
           </h1>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            {allCats.length} 只官方猫猫各有岗位角色，统一围绕 AIGC
+            {allCats.length} 位官方角色各有岗位分工，统一围绕 AIGC
             协作；执行管道当前为占位，便于后续接入真实生成能力。
           </p>
         </div>
@@ -211,7 +211,7 @@ const CommunityPage = () => {
                         AIGC 说明
                       </p>
                       <p className="text-xs text-text-secondary font-medium leading-relaxed p-3 rounded-xl bg-surface-secondary/60 border border-border">
-                        不再按「技能」拆分能力；该猫猫在团队内以岗位角色参与工作流，统一走
+                        不再按「技能」拆分能力；该角色在流水线中以岗位参与各步骤，统一走
                         AIGC 执行入口（当前占位）。
                       </p>
                     </div>
@@ -226,7 +226,7 @@ const CommunityPage = () => {
         {tab === "workflows" && (
           <div>
             <p className="text-text-secondary font-medium mb-8 max-w-2xl">
-              官方示意工作流：按猫猫岗位串联，多步统一走 AIGC
+              官方示意工作流：按角色岗位串联，多步统一走 AIGC
               占位执行，便于后续接入真实生成管道。
             </p>
             <div className="space-y-5">

@@ -115,11 +115,16 @@ function FeatureCard({
   );
 }
 
+/**
+ * 创作主页交互要点：
+ * - splitMode：是否进入左（输入+历史）右（ResultCanvas）分栏；首次「开始创作」或带 ?runId= 进入时为 true。
+ * - historyRunId：用户从左侧点的某条 run；存在时右侧固定展示该条（历史查看态）。再次「开始创作」会清空，回到「本轮执行态」。
+ * - sessionStartedAtRef + sessionEpoch：最近一次点击「开始创作」的时间；在无 historyRunId 且 splitMode 下，用 startedAt 落在该时间附近匹配「刚跑的那条」run。
+ */
 const DashboardPage: React.FC = () => {
   const { user, logout } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialRunId = searchParams.get("runId");
-  const [teamId, setTeamId] = useState<string | null>(null);
   const [workbench, setWorkbench] = useState<WorkbenchPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [userInput, setUserInput] = useState("");
@@ -134,10 +139,11 @@ const DashboardPage: React.FC = () => {
   const [splitMode, setSplitMode] = useState(false);
   /** lg+ 分栏时左侧宽度占主区域比例（%），最大 40% */
   const [splitLeftPct, setSplitLeftPct] = useState(SPLIT_LEFT_DEFAULT_PCT);
-  /** 递增以使本轮 run 匹配 useMemo 刷新 */
+  /** 与 sessionStartedAtRef 联动递增，触发 displayRun 对「本轮」run 的重新计算 */
   const [sessionEpoch, setSessionEpoch] = useState(0);
-  /** 从历史记录跳转过来时指定的 runId */
+  /** 左侧列表点选的 run；URL ?runId= 初始化时也会写入 */
   const [historyRunId, setHistoryRunId] = useState<string | null>(initialRunId);
+  /** 最近一次「开始创作」点击时间戳；用于在无 historyRunId 时从同能力 runs 中框定本轮新记录 */
   const sessionStartedAtRef = useRef(0);
   const mainRef = useRef<HTMLElement | null>(null);
   const splitDragActiveRef = useRef(false);
@@ -190,7 +196,6 @@ const DashboardPage: React.FC = () => {
         const wb = await apiClient.get<WorkbenchPayload>(
           "/api/teams/workbench",
         );
-        setTeamId(wb.teamId);
         setWorkbench(wb);
         const officials = (wb.workflows ?? []).filter(isOfficialWorkflow);
         setSelectedWorkflowId((prev) =>
@@ -213,7 +218,21 @@ const DashboardPage: React.FC = () => {
     loadWorkbench();
   }, [loadWorkbench]);
 
-  /** 切换创作能力时，若正在查看的历史 run 不属于当前工作流，取消历史查看态 */
+  // 须先于「能力不一致则清 history」：否则 ?runId= 首屏会因 selectedWorkflowId 尚未对齐而误清 historyRunId
+  useEffect(() => {
+    if (!historyRunId || !workbench?.runs?.length) return;
+    const targetRun = workbench.runs.find((r) => r.id === historyRunId);
+    if (!targetRun) return;
+    if (targetRun.workflowId) {
+      setSelectedWorkflowId(targetRun.workflowId);
+    }
+    setSplitMode(true);
+    if (searchParams.get("runId")) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [historyRunId, workbench, setSearchParams, searchParams]);
+
+  /** 用户改选能力卡片时，若当前 history 指向另一工作流的 run，则退出历史查看态 */
   useEffect(() => {
     if (!historyRunId || !workbench?.runs?.length || !selectedWorkflowId) return;
     const r = workbench.runs.find((x) => x.id === historyRunId);
@@ -221,20 +240,6 @@ const DashboardPage: React.FC = () => {
       setHistoryRunId(null);
     }
   }, [selectedWorkflowId, historyRunId, workbench?.runs]);
-
-  // 从历史记录跳转过来：workbench 就绪后，自动选中对应工作流并进入分栏模式
-  useEffect(() => {
-    if (!historyRunId || !workbench?.runs?.length) return;
-    const targetRun = workbench.runs.find((r) => r.id === historyRunId);
-    if (!targetRun) return;
-    // 选中该 run 所属的工作流
-    if (targetRun.workflowId) {
-      setSelectedWorkflowId(targetRun.workflowId);
-    }
-    setSplitMode(true);
-    // 清除 URL 参数，避免刷新后重复触发
-    setSearchParams({}, { replace: true });
-  }, [historyRunId, workbench, setSearchParams]);
 
   useEffect(() => {
     if (!splitMode) return;
@@ -266,9 +271,9 @@ const DashboardPage: React.FC = () => {
     };
   }, [splitMode]);
 
+  /** 右侧画布展示的 run：优先 historyRunId；否则为当前能力下、与本轮 session 时间对齐的最新一条 */
   const displayRun: WorkflowRun | null = useMemo(() => {
     if (!workbench?.runs?.length) return null;
-    // 从历史记录跳转进来：按 runId 精确匹配
     if (historyRunId) {
       return workbench.runs.find((r) => r.id === historyRunId) ?? null;
     }
@@ -285,17 +290,25 @@ const DashboardPage: React.FC = () => {
     );
   }, [workbench, selectedWorkflowId, splitMode, sessionEpoch, historyRunId]);
 
-  /** 分栏左侧：当前工作流的执行记录（新→旧） */
+  /** 分栏左侧：工作台全部执行记录（新→旧），不限当前能力；点选行会同步 selectedWorkflowId */
   const runsForHistoryPanel = useMemo(() => {
-    if (!workbench?.runs?.length || !selectedWorkflowId) return [];
+    if (!workbench?.runs?.length) return [];
     return workbench.runs
-      .filter((r) => r.workflowId === selectedWorkflowId)
       .slice()
       .sort(
         (a, b) =>
           new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
       );
-  }, [workbench?.runs, selectedWorkflowId]);
+  }, [workbench?.runs]);
+
+  const workflowLabelForRun = useCallback(
+    (run: WorkflowRun) => {
+      if (!run.workflowId || !workbench?.workflows) return run.workflowName;
+      const wf = workbench.workflows.find((w) => w.id === run.workflowId);
+      return wf ? featureLabel(wf) : run.workflowName;
+    },
+    [workbench?.workflows],
+  );
 
   const runSelected = async () => {
     const wfId = selectedWorkflowId;
@@ -347,8 +360,6 @@ const DashboardPage: React.FC = () => {
           user ? (
             <UserProfileDropdown
               user={user}
-              workflowCount={workbench?.counts.workflows ?? 0}
-              officialCatCount={workbench?.counts.cats ?? 0}
               workflowRuns={workbench?.counts.workflowRuns ?? 0}
               totalAiCalls={totalAiCalls}
               onLogout={logout}
@@ -412,37 +423,26 @@ const DashboardPage: React.FC = () => {
           <section className={`w-full mb-8 justify-center ${splitMode ? "flex-1 flex flex-col" : ""}`}>
             {/* 对话区 */}
             {splitMode && (
-              <div className="flex-1 min-h-0 flex flex-col mb-3">
-                <div className="rounded-2xl border border-border bg-surface-secondary/40 flex flex-col min-h-[8rem] max-h-[min(40vh,22rem)] overflow-hidden">
-                  <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2 shrink-0">
-                    <span className="text-xs font-bold text-text-secondary">
-                      执行历史
-                      {selectedFeature
-                        ? ` · ${featureLabel(selectedFeature)}`
-                        : ""}
-                    </span>
-                    {historyRunId ? (
-                      <button
-                        type="button"
-                        onClick={() => setHistoryRunId(null)}
-                        className="text-[11px] font-bold text-primary-600 hover:text-primary-700 shrink-0"
-                      >
-                        看最新
-                      </button>
-                    ) : null}
-                  </div>
+              <div className="flex-1 min-h-0 flex flex-col mb-3 overflow-auto border-b border-border/70 pb-3">
+                <div className="flex items-center justify-between gap-2 px-1 pt-0.5 pb-2 mb-1 border-b border-border/50">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-text-tertiary">
+                    历史任务
+                  </p>
+                  <span className="text-[10px] font-medium text-text-tertiary tabular-nums">
+                    {runsForHistoryPanel.length} 条
+                  </span>
+                </div>
+                <div className="flex flex-col min-h-[8rem] max-h-[min(40vh,22rem)] overflow-hidden">
                   <ul className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
-                    {!selectedWorkflowId ? (
-                      <li className="text-xs text-text-tertiary px-2 py-6 text-center font-medium">
-                        请先选择一种创作能力
-                      </li>
-                    ) : runsForHistoryPanel.length === 0 ? (
+                    {runsForHistoryPanel.length === 0 ? (
                       <li className="text-xs text-text-tertiary px-2 py-6 text-center font-medium">
                         暂无记录，提交任务后将显示在此
                       </li>
                     ) : (
                       runsForHistoryPanel.map((run) => {
-                        const active = run.id === historyRunId || (!historyRunId && run.id === displayRun?.id);
+                        const active =
+                          run.id === historyRunId ||
+                          (!historyRunId && run.id === displayRun?.id);
                         const st = run.status;
                         const statusClass =
                           st === "success"
@@ -460,11 +460,17 @@ const DashboardPage: React.FC = () => {
                             : rawPreview;
                         const t = new Date(run.startedAt);
                         const timeStr = `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+                        const capability = workflowLabelForRun(run);
                         return (
                           <li key={run.id}>
                             <button
                               type="button"
-                              onClick={() => setHistoryRunId(run.id)}
+                              onClick={() => {
+                                if (run.workflowId) {
+                                  setSelectedWorkflowId(run.workflowId);
+                                }
+                                setHistoryRunId(run.id);
+                              }}
                               className={`w-full text-left rounded-xl px-2.5 py-2 transition-colors border ${
                                 active
                                   ? "border-primary-400 bg-primary-50/80"
@@ -487,6 +493,9 @@ const DashboardPage: React.FC = () => {
                                         : st}
                                 </span>
                               </div>
+                              <p className="text-[10px] font-bold text-primary-600/90 truncate mb-0.5">
+                                {capability}
+                              </p>
                               <p className="text-xs text-text-primary font-medium line-clamp-2 leading-snug">
                                 {preview}
                               </p>
@@ -615,24 +624,8 @@ const DashboardPage: React.FC = () => {
                 to="/dashboard/usage"
                 className="hover:text-primary-600 transition-colors"
               >
-                猫猫调用次数
+                角色调用次数
               </Link>
-              {teamId ? (
-                <Link
-                  to={`/teams/${teamId}`}
-                  className="hover:text-primary-600 transition-colors"
-                >
-                  团队与流程
-                </Link>
-              ) : null}
-              {teamId && selectedWorkflowId ? (
-                <Link
-                  to={`/teams/${teamId}/workflows/${selectedWorkflowId}`}
-                  className="hover:text-primary-600 transition-colors"
-                >
-                  流程设计（进阶）
-                </Link>
-              ) : null}
             </nav>
           </section>
         </div>

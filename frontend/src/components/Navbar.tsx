@@ -62,7 +62,7 @@ const Navbar: React.FC<NavbarProps> = ({
         onClick={() => navigate('/dashboard')}
         className="px-5 py-2 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all cursor-pointer"
       >
-        进入工作台
+        进入创作
       </button>
     </div>
   ) : (

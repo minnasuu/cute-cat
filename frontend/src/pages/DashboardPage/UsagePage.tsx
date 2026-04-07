@@ -33,16 +33,16 @@ const UsagePage: React.FC = () => {
             to="/dashboard"
             className="text-sm font-bold text-primary-600 hover:text-primary-700 transition-colors"
           >
-            ← 工作台
+            ← 创作首页
           </Link>
           <span className="text-text-tertiary text-sm">/</span>
-          <h1 className="text-sm font-black tracking-tight">猫猫调用次数</h1>
+          <h1 className="text-sm font-black tracking-tight">角色调用次数</h1>
         </div>
       </header>
 
       <main className="max-w-2xl mx-auto px-6 py-10">
         <p className="text-text-secondary text-sm font-medium mb-6">
-          按猫猫聚合的 AI 调用次数，便于了解各角色参与度。
+          按角色聚合的 AI 调用次数，便于了解各步骤参与度。
         </p>
 
         <div className="rounded-[20px] border border-border bg-surface-secondary/30 overflow-hidden">

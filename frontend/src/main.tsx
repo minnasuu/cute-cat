@@ -10,9 +10,6 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import DashboardHistoryPage from './pages/DashboardPage/HistoryPage';
 import DashboardUsagePage from './pages/DashboardPage/UsagePage';
-import TeamDetailPage from './pages/TeamDetailPage';
-import CatEditorPage from './pages/TeamDetailPage/CatEditorPage';
-import WorkflowEditorPage from './pages/TeamDetailPage/WorkflowEditorPage';
 import CommunityPage from './pages/CommunityPage';
 import { ToastProvider } from './components/Toast';
 import './styles/index.css';
@@ -75,11 +72,14 @@ const App: React.FC = () => {
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/dashboard/history" element={<ProtectedRoute><DashboardHistoryPage /></ProtectedRoute>} />
             <Route path="/dashboard/usage" element={<ProtectedRoute><DashboardUsagePage /></ProtectedRoute>} />
-            <Route path="/teams/:teamId" element={<ProtectedRoute><TeamDetailPage /></ProtectedRoute>} />
-            <Route path="/teams/:teamId/cats/new" element={<ProtectedRoute><CatEditorPage /></ProtectedRoute>} />
-            <Route path="/teams/:teamId/cats/:catId" element={<ProtectedRoute><CatEditorPage /></ProtectedRoute>} />
-            <Route path="/teams/:teamId/workflows/new" element={<ProtectedRoute><WorkflowEditorPage /></ProtectedRoute>} />
-            <Route path="/teams/:teamId/workflows/:workflowId" element={<ProtectedRoute><WorkflowEditorPage /></ProtectedRoute>} />
+            <Route
+              path="/teams/*"
+              element={
+                <ProtectedRoute>
+                  <Navigate to="/dashboard" replace />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />

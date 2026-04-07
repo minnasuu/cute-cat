@@ -14,6 +14,7 @@ import {
   saveVibeStyleLibLibraryItem,
   uploadVibeStyleLibImage,
   vibeSnapExtract,
+  resolveVibeSnapImageUrl,
   type VibeStyleLibExtractResult,
 } from "./vibeStyleLibApi";
 import type { VibeStyleLibLibraryItem } from "./vibeStyleLibApi";
@@ -845,7 +846,7 @@ export const VibeStyleLib = () => {
                 >
                   <div className="aspect-[4/5] w-full overflow-hidden bg-surface-secondary">
                     <img
-                      src={card.imageUrl}
+                      src={resolveVibeSnapImageUrl(card.imageUrl)}
                       alt=""
                       className="h-full w-full object-cover object-top"
                       loading="lazy"
@@ -945,7 +946,7 @@ export const VibeStyleLib = () => {
                 >
                   {extractorImage ? (
                     <img
-                      src={extractorImage}
+                      src={resolveVibeSnapImageUrl(extractorImage)}
                       alt="预览"
                       className="w-full h-full object-contain object-center"
                     />
@@ -1050,7 +1051,7 @@ export const VibeStyleLib = () => {
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
             <div className="max-h-[40vh] overflow-auto border-b border-border bg-surface-secondary lg:max-h-none lg:w-[42%] lg:border-b-0 lg:border-r lg:border-border">
               <img
-                src={detailItem?.imageUrl}
+                src={resolveVibeSnapImageUrl(detailItem?.imageUrl)}
                 alt=""
                 className="min-h-[200px] w-full object-contain object-top"
               />
