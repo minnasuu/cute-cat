@@ -536,6 +536,194 @@ const DashboardPage: React.FC = () => {
     [isSubmitting, loadWorkbench, workbench?.runs],
   );
 
+  /** 重试既有 run：复用同一个 runId，不新建记录 */
+  const retryWorkflowRun = useCallback(
+    async (run: WorkflowRun) => {
+      if (!run?.id) return;
+      if (run.status === "running") return;
+      if (atExecutionCap) return;
+
+      const wfId = run.workflowId;
+      if (!wfId) return;
+
+      const prompt = run.userInput?.trim() || run.workflowName?.trim() || "";
+      if (!prompt) return;
+
+      const myGen = ++executeGenerationRef.current;
+      streamingAbortRef.current?.abort();
+      streamingAbortRef.current = null;
+
+      // 保持选择在当前 run 上，避免历史列表出现“新的一条”
+      setSelectedWorkflowId(wfId);
+      setHistoryRunId(run.id);
+      setRightPaneHistoryBrowse(false);
+      sessionStartedAtRef.current = Date.now();
+      setSessionEpoch((e) => e + 1);
+      setSplitMode(true);
+
+      setIsSubmitting(true);
+      setStreamingRunId(null);
+      setStreamingStatus("running");
+      setStreamingSteps([]);
+      let workbenchPollTimer: ReturnType<typeof setInterval> | null = null;
+      try {
+        const ac = new AbortController();
+        streamingAbortRef.current = ac;
+
+        const resp = await fetch(
+          `/api/workflows/runs/${encodeURIComponent(run.id)}/retry/stream`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userInput: prompt }),
+            signal: ac.signal,
+          },
+        );
+
+        setIsSubmitting(false);
+        setPollingWfId(wfId);
+
+        const reader = resp.body?.getReader();
+        if (!resp.ok || !reader) {
+          const errText = await resp.text().catch(() => "");
+          throw new Error(
+            errText || `HTTP ${resp.status} (${resp.statusText || "请求失败"})`,
+          );
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let currentEvent = "";
+        const accByIndex = new Map<number, string>();
+        let runIdSeen: string | null = null;
+
+        workbenchPollTimer = window.setInterval(() => {
+          if (myGen !== executeGenerationRef.current) return;
+          void loadWorkbench({ quiet: true });
+        }, 2800);
+
+        const upsertStep = (idx: number, patch: Partial<WorkflowRunStep>) => {
+          setStreamingSteps((prev) => {
+            const next = prev.slice();
+            const at = next.findIndex((s) => (s.index ?? 0) === idx);
+            const base: WorkflowRunStep =
+              at >= 0
+                ? next[at]
+                : { index: idx, agentId: patch.agentId, status: "running" };
+            const mergedStep = { ...base, ...patch, index: idx };
+            if (at >= 0) next[at] = mergedStep;
+            else next.push(mergedStep);
+            next.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+            return next;
+          });
+        };
+
+        while (true) {
+          if (myGen !== executeGenerationRef.current) break;
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) {
+              currentEvent = "";
+              continue;
+            }
+            if (trimmedLine.startsWith(":")) continue; // heartbeat
+            if (trimmedLine.startsWith("event: ")) {
+              currentEvent = trimmedLine.slice(7).trim();
+              continue;
+            }
+            if (trimmedLine.startsWith("data: ")) {
+              const raw = trimmedLine.slice(6);
+              let data: any = null;
+              try {
+                data = JSON.parse(raw);
+              } catch {
+                data = null;
+              }
+              if (!data) continue;
+
+              if (currentEvent === "runCreated") {
+                runIdSeen = String(data.runId || "");
+                setStreamingRunId(runIdSeen);
+                setStreamingStatus("running");
+                void loadWorkbench({ quiet: true });
+              } else if (currentEvent === "stepStart") {
+                const idx = Number(data.index ?? 0);
+                upsertStep(idx, {
+                  index: idx,
+                  agentId: data.agentId,
+                  status: "running",
+                  success: undefined,
+                  summary: "",
+                });
+              } else if (currentEvent === "stepChunk") {
+                const idx = Number(data.index ?? 0);
+                const delta = String(data.textDelta || "");
+                const prevAcc = accByIndex.get(idx) || "";
+                const acc = prevAcc + delta;
+                accByIndex.set(idx, acc);
+                upsertStep(idx, { index: idx, summary: acc });
+              } else if (currentEvent === "stepDone") {
+                const idx = Number(data.index ?? 0);
+                const acc = accByIndex.get(idx) || "";
+                const ok = data.success !== false && data.status !== "error";
+                const resultType = data.resultType || undefined;
+                const payloadData =
+                  typeof data.resultData === "string" && data.resultData.length > 0
+                    ? data.resultData
+                    : acc;
+                upsertStep(idx, {
+                  index: idx,
+                  success: ok,
+                  status: data.status,
+                  summary: data.summary || acc,
+                  ...(resultType
+                    ? { resultType, resultData: payloadData }
+                    : undefined),
+                });
+              } else if (currentEvent === "runDone") {
+                setStreamingStatus(String(data.status || ""));
+              } else if (currentEvent === "error") {
+                throw new Error(String(data.message || "stream error"));
+              }
+            }
+          }
+        }
+
+        if (myGen === executeGenerationRef.current) {
+          const wb = await loadWorkbench({ quiet: true });
+          const useId = runIdSeen || run.id;
+          if (useId && wb?.runs?.some((r) => r.id === useId)) {
+            setHistoryRunId(useId);
+          }
+        }
+      } catch {
+        /* toast via apiClient */
+      } finally {
+        if (workbenchPollTimer != null) {
+          clearInterval(workbenchPollTimer);
+          workbenchPollTimer = null;
+        }
+        setIsSubmitting(false);
+        if (myGen === executeGenerationRef.current) {
+          setPollingWfId(null);
+          streamingAbortRef.current = null;
+          setStreamingRunId(null);
+          setStreamingStatus(null);
+          setStreamingSteps([]);
+        }
+      }
+    },
+    [atExecutionCap, loadWorkbench],
+  );
+
   const runSelected = async () => {
     const wfId = selectedWorkflowId;
     if (!wfId) return;
@@ -564,18 +752,9 @@ const DashboardPage: React.FC = () => {
 
   const handleRetryHistoryRun = useCallback(
     (run: WorkflowRun) => {
-      const wfId = run.workflowId;
-      if (!wfId || run.status === "running") return;
-      if (atExecutionCap) return;
-      const prompt =
-        run.userInput?.trim() ||
-        run.workflowName?.trim() ||
-        "";
-      if (!prompt) return;
-      setSelectedWorkflowId(wfId);
-      void executeWorkflowPrompt(wfId, prompt);
+      void retryWorkflowRun(run);
     },
-    [executeWorkflowPrompt, atExecutionCap],
+    [retryWorkflowRun],
   );
 
   const inputPlaceholder = selectedFeature

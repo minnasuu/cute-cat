@@ -782,30 +782,33 @@ export default function ResultCanvas({
                 </div>
               </div>
             ) : (
-              <div
-                className={`rounded-2xl border px-4 py-4 ${
-                  failed
-                    ? "border-danger-200 bg-danger-50/50"
-                    : "border-primary-200/80 bg-white/90 shadow-sm"
-                }`}
-              >
-                <p className="text-[10px] font-black uppercase tracking-wide text-text-tertiary mb-2">
-                  {failed ? "执行结果" : "生成结果"}
-                </p>
-                {effectiveSteps.length === 0 ? (
-                  <p className="text-sm font-medium text-text-secondary">
-                    本轮已结束（后端未写入步骤明细）。可前往历史记录查看状态。
+              // 失败态已在上方渲染 DashboardWorkflowPipeline（含失败步骤），避免重复展示“失败结果卡片”
+              !showFailedPipeline ? (
+                <div
+                  className={`rounded-2xl border px-4 py-4 ${
+                    failed
+                      ? "border-danger-200 bg-danger-50/50"
+                      : "border-primary-200/80 bg-white/90 shadow-sm"
+                  }`}
+                >
+                  <p className="text-[10px] font-black uppercase tracking-wide text-text-tertiary mb-2">
+                    {failed ? "执行结果" : "生成结果"}
                   </p>
-                ) : resultHeadline ? (
-                  <p className="text-sm font-bold text-text-primary leading-relaxed whitespace-pre-wrap">
-                    {resultHeadline}
-                  </p>
-                ) : (
-                  <p className="text-sm font-medium text-text-secondary">
-                    本轮已结束，可在左侧对应历史卡片中展开「查看执行过程」。
-                  </p>
-                )}
-              </div>
+                  {effectiveSteps.length === 0 ? (
+                    <p className="text-sm font-medium text-text-secondary">
+                      本轮已结束（后端未写入步骤明细）。可前往历史记录查看状态。
+                    </p>
+                  ) : resultHeadline ? (
+                    <p className="text-sm font-bold text-text-primary leading-relaxed whitespace-pre-wrap">
+                      {resultHeadline}
+                    </p>
+                  ) : (
+                    <p className="text-sm font-medium text-text-secondary">
+                      本轮已结束，可在左侧对应历史卡片中展开「查看执行过程」。
+                    </p>
+                  )}
+                </div>
+              ) : null
             )}
           </section>
         ) : null}

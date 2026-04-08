@@ -96,5 +96,18 @@ router.put('/workflows/:id', async (req, res) => {
   }
 });
 
+// ======================== Admin: delete workflow ========================
+router.delete('/workflows/:id', async (req, res) => {
+  try {
+    const wf = await prisma.workflow.findUnique({ where: { id: req.params.id } });
+    if (!wf) return res.status(404).json({ error: '工作流不存在' });
+    await prisma.workflow.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[admin] delete workflow error:', err);
+    res.status(500).json({ error: '删除工作流失败' });
+  }
+});
+
 module.exports = router;
 

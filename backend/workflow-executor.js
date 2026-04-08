@@ -128,6 +128,40 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
     await hooks.onRunCreated?.({ runId: run.id, workflowId: workflow.id });
   } catch { /* ignore hooks */ }
 
+  return executeWorkflowIntoExistingRun(workflow, run, triggeredBy, { ...options, _startTime: startTime, _stepsData: stepsData });
+}
+
+/**
+ * 重试：在既有 runId 上执行，覆盖 steps/status，不新建记录
+ * @param {any} workflow
+ * @param {{id: string, teamId: string, userInput?: string | null}} run
+ * @param {string} triggeredBy
+ * @param {{userInput?: string, hooks?: object}} options
+ */
+async function executeWorkflowIntoExistingRun(workflow, run, triggeredBy, options = {}) {
+  const startTime = options._startTime || Date.now();
+  const stepsData = options._stepsData || [];
+  const hooks = options.hooks || {};
+  const userInputRaw = typeof options.userInput === 'string' ? options.userInput.trim() : '';
+  const userInput = userInputRaw || (typeof run.userInput === 'string' ? run.userInput.trim() : '');
+
+  // 重置 run 为 running（保留 runId，不新增）
+  await prisma.workflowRun.update({
+    where: { id: run.id },
+    data: {
+      status: 'running',
+      steps: [],
+      completedAt: null,
+      totalDuration: null,
+      startedAt: new Date(),
+      userInput: userInput || null,
+    },
+  }).catch((err) => console.error('[executor] retry reset run error:', err.message));
+
+  try {
+    await hooks.onRunCreated?.({ runId: run.id, workflowId: workflow.id });
+  } catch { /* ignore hooks */ }
+
   // 获取触发用户的邮箱和名称（用于 system key 注入）
   let userEmail = '';
   let userName = '';
@@ -346,4 +380,4 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
   return { runId: run.id, status: hasFailed ? 'failed' : 'success', steps: stepsData };
 }
 
-module.exports = { executeWorkflow, executeStep, callAI };
+module.exports = { executeWorkflow, executeWorkflowIntoExistingRun, executeStep, callAI };

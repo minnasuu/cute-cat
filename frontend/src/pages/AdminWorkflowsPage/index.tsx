@@ -54,6 +54,9 @@ export default function AdminWorkflowsPage() {
     steps: Step[];
   } | null>(null);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -115,6 +118,26 @@ export default function AdminWorkflowsPage() {
     setWorkflows((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
   };
 
+  const onDelete = async (wf: Workflow) => {
+    if (!wf?.id) return;
+    setDeletingId(wf.id);
+    try {
+      await apiClient.delete(`/api/admin/workflows/${encodeURIComponent(wf.id)}`);
+      setWorkflows((prev) => {
+        const next = prev.filter((x) => x.id !== wf.id);
+        return next;
+      });
+      setSelectedId((prev) => {
+        if (prev !== wf.id) return prev;
+        const remain = workflows.filter((x) => x.id !== wf.id);
+        return remain[0]?.id ?? null;
+      });
+      setConfirmDeleteId(null);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface text-text-primary">
       <Navbar
@@ -127,8 +150,8 @@ export default function AdminWorkflowsPage() {
         activeNavId="admin"
       />
 
-      <main className="pt-20 px-6 pb-10">
-        <div className="max-w-6xl mx-auto">
+      <main className="pt-20 px-6 pb-10 h-full flex flex-col h-screen">
+        <div className="max-w-6xl mx-auto h-full flex flex-col">
           <div className="mb-4">
             <h1 className="text-2xl font-black">管理员后台 · 工作流编辑</h1>
             <p className="text-sm text-text-tertiary mt-1">
@@ -136,8 +159,8 @@ export default function AdminWorkflowsPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
-            <section className="rounded-2xl border border-border bg-surface p-3">
+          <div className="flex-1 h-px flex gap-4">
+            <section className="w-80 rounded-2xl border border-border bg-surface p-3">
               <div className="text-xs font-bold text-text-tertiary uppercase tracking-widest px-2 py-2">
                 工作流
               </div>
@@ -148,34 +171,71 @@ export default function AdminWorkflowsPage() {
               ) : (
                 <div className="space-y-1">
                   {workflows.map((w) => (
-                    <button
+                    <div
                       key={w.id}
-                      type="button"
-                      onClick={() => setSelectedId(w.id)}
                       className={`w-full text-left px-3 py-2 rounded-xl border transition-colors ${
                         selectedId === w.id
                           ? 'bg-primary-50 border-primary-200'
                           : 'bg-surface-secondary/40 border-transparent hover:border-border'
                       }`}
                     >
-                      <div className="text-sm font-extrabold">{w.name}</div>
-                      <div className="text-[11px] text-text-tertiary mt-0.5 line-clamp-2">
-                        {w.description}
+                      <div className="flex items-start gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedId(w.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <div className="text-sm font-extrabold">{w.name}</div>
+                          <div className="text-[11px] text-text-tertiary mt-0.5 line-clamp-2">
+                            {w.description}
+                          </div>
+                          <div className="text-[10px] text-text-tertiary mt-1">
+                            teamId: {w.teamId.slice(0, 8)}… · {w.enabled ? 'enabled' : 'disabled'}
+                          </div>
+                        </button>
+
+                        <div className="shrink-0 pt-0.5">
+                          {confirmDeleteId === w.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={deletingId === w.id}
+                                onClick={() => void onDelete(w)}
+                                className="text-[11px] font-bold text-red-600 hover:text-red-700 bg-red-500/10 hover:bg-red-500/20 rounded-lg px-2 py-1 disabled:opacity-40"
+                              >
+                                {deletingId === w.id ? '删除中…' : '确认'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deletingId === w.id}
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="text-[11px] font-semibold text-text-tertiary hover:text-text-secondary hover:bg-surface rounded-lg px-2 py-1 disabled:opacity-40"
+                              >
+                                取消
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(w.id)}
+                              className="text-[11px] font-bold text-red-500 hover:text-red-600 bg-red-500/5 hover:bg-red-500/10 rounded-lg px-2 py-1"
+                            >
+                              删除
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-[10px] text-text-tertiary mt-1">
-                        teamId: {w.teamId.slice(0, 8)}… · {w.enabled ? 'enabled' : 'disabled'}
-                      </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
             </section>
 
-            <section className="rounded-2xl border border-border bg-surface p-4">
+            <section className="flex-1 h-full flex flex-col">
               {!selected || !draft ? (
                 <div className="text-sm text-text-tertiary">选择一个工作流后开始编辑。</div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-4 flex-1 h-px overflow-y-auto rounded-2xl border border-border bg-surface p-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <label className="space-y-1">
                       <div className="text-xs font-bold text-text-tertiary">名称</div>
@@ -304,18 +364,51 @@ export default function AdminWorkflowsPage() {
                       ))}
                     </div>
                   </div>
-
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="button"
-                      onClick={() => void onSave()}
-                      className="px-6 py-2 rounded-2xl bg-text-primary text-text-inverse text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all"
-                    >
-                      保存
-                    </button>
-                  </div>
                 </div>
+                
               )}
+               <div className="flex justify-end pt-2">
+                    <div className="flex items-center gap-2">
+                      {selected ? (
+                        confirmDeleteId === selected.id ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={deletingId === selected.id}
+                              onClick={() => void onDelete(selected)}
+                              className="px-4 py-2 rounded-2xl bg-red-600 text-white text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40"
+                            >
+                              {deletingId === selected.id ? '删除中…' : '确认删除'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingId === selected.id}
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-4 py-2 rounded-2xl border border-border bg-surface text-text-secondary text-sm font-bold hover:bg-surface-secondary transition-colors disabled:opacity-40"
+                            >
+                              取消
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(selected.id)}
+                            className="px-4 py-2 rounded-2xl border border-red-200 bg-red-50 text-red-700 text-sm font-bold hover:bg-red-100 transition-colors"
+                          >
+                            删除
+                          </button>
+                        )
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => void onSave()}
+                        className="px-6 py-2 rounded-2xl bg-text-primary text-text-inverse text-sm font-bold hover:scale-[1.02] active:scale-[0.98] transition-all"
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </div>
             </section>
           </div>
         </div>

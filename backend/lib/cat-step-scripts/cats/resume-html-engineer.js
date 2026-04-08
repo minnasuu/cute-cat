@@ -24,6 +24,16 @@ function looksLikeHtmlDoc(html) {
   return /^<!doctype\b/i.test(s) || /^<html\b/i.test(s);
 }
 
+function injectHeadStyle(html, cssText) {
+  const css = String(cssText || '').trim();
+  if (!css) return html;
+  if (html.includes('id="cuca-export-constraints"')) return html;
+  const styleTag = `\n<style id="cuca-export-constraints">\n${css}\n</style>\n`;
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${styleTag}</head>`);
+  if (/<body\b/i.test(html)) return html.replace(/<body\b[^>]*>/i, (m) => `${m}\n${styleTag}`);
+  return html + styleTag;
+}
+
 const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「砚线」，岗位角色：排版工程师。
 你的任务：把上游内容渲染成一个可直接打开的单文件 HTML 简历。
 
@@ -71,6 +81,16 @@ module.exports = async function runResumeHtmlEngineer(ctx) {
         status: 'error',
       };
     }
+
+    // 强制约束：无背景、宽度 100%、A4 比例（screen 预览），避免生成“带底色画布”
+    html = injectHeadStyle(
+      html,
+      [
+        'html, body { background: transparent !important; }',
+        'body { margin: 0; width: 100%; }',
+        '@media screen { body { aspect-ratio: 210 / 297; } }',
+      ].join('\n'),
+    );
 
     // 兜底：若模型忘了放头像 img，则在 head 里标记一个默认占位（不改布局，只提供资源给后续替换）
     if (!/<img\b/i.test(html)) {

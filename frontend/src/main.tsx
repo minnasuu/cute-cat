@@ -121,14 +121,6 @@ const App: React.FC = () => {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/teams/*"
-                element={
-                  <ProtectedRoute>
-                    <Navigate to="/dashboard" replace />
-                  </ProtectedRoute>
-                }
-              />
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />

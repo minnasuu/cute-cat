@@ -24,6 +24,16 @@ function looksLikeHtmlDoc(html) {
   return /^<!doctype\b/i.test(s) || /^<html\b/i.test(s);
 }
 
+function injectHeadStyle(html, cssText) {
+  const css = String(cssText || '').trim();
+  if (!css) return html;
+  if (html.includes('id="cuca-export-constraints"')) return html;
+  const styleTag = `\n<style id="cuca-export-constraints">\n${css}\n</style>\n`;
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${styleTag}</head>`);
+  if (/<body\b/i.test(html)) return html.replace(/<body\b[^>]*>/i, (m) => `${m}\n${styleTag}`);
+  return html + styleTag;
+}
+
 const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「琥珀」，岗位角色：前端工程师。
 你的任务是根据上游 user 消息生成 **一个可直接打开的静态单页落地页 HTML 文件**（自包含、无后端数据）。
 
@@ -56,7 +66,7 @@ module.exports = async function runFrontendEngineer(ctx) {
   });
 
   if (result.success && result.data?.text) {
-    const html = normalizeHtmlDoc(result.data.text);
+    let html = normalizeHtmlDoc(result.data.text);
     if (!looksLikeHtmlDoc(html)) {
       return {
         success: false,
@@ -65,6 +75,14 @@ module.exports = async function runFrontendEngineer(ctx) {
         status: 'error',
       };
     }
+
+    // 强制约束：无背景、宽度 100%，便于导出/截图时保持透明画布
+    html = injectHeadStyle(
+      html,
+      ['html, body { background: transparent !important; }', 'body { margin: 0; width: 100%; }'].join(
+        '\n',
+      ),
+    );
 
     result.data.text = html;
     result.data._resultType = 'html-page';

@@ -78,9 +78,14 @@ async function ensureWorkbenchTeam(prisma, userId) {
       });
     }
   } else {
-    await repairWebPageBuilderWorkflowIfNeeded(prisma, team.id, byTemplate);
-    await repairResumeWorkflowIfNeeded(prisma, team.id, byTemplate);
-    await repairPosterWorkflowIfNeeded(prisma, team.id, byTemplate);
+    // 默认不自动修复/重建内置工作流：
+    // - 管理员后台允许编辑工作流，自动 repair 会覆盖修改，甚至在改名/删除后“新增一条种子工作流”
+    // 如需强制对齐种子步骤（仅运维场景），显式开启 WORKBENCH_REPAIR_WORKFLOWS=1
+    if (process.env.WORKBENCH_REPAIR_WORKFLOWS === '1') {
+      await repairWebPageBuilderWorkflowIfNeeded(prisma, team.id, byTemplate);
+      await repairResumeWorkflowIfNeeded(prisma, team.id, byTemplate);
+      await repairPosterWorkflowIfNeeded(prisma, team.id, byTemplate);
+    }
   }
 
   return team;
