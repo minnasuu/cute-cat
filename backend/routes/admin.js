@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authMiddleware } = require('../middleware/auth');
+const { WORKBENCH_MARKER, repairWorkbenchWorkflowsForTeam } = require('../lib/workbench-seed');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -106,6 +107,33 @@ router.delete('/workflows/:id', async (req, res) => {
   } catch (err) {
     console.error('[admin] delete workflow error:', err);
     res.status(500).json({ error: '删除工作流失败' });
+  }
+});
+
+// ======================== Admin: repair workbench official workflows ========================
+// POST /api/admin/workflows/repair-workbench?teamId=xxx
+// - no teamId: repair all workbench teams (description marker)
+router.post('/workflows/repair-workbench', async (req, res) => {
+  try {
+    const teamId = typeof req.query.teamId === 'string' ? req.query.teamId.trim() : '';
+    const targetTeams = teamId
+      ? await prisma.team.findMany({ where: { id: teamId } })
+      : await prisma.team.findMany({ where: { description: WORKBENCH_MARKER } });
+
+    const results = [];
+    for (const t of targetTeams) {
+      try {
+        await repairWorkbenchWorkflowsForTeam(prisma, t.id);
+        results.push({ teamId: t.id, ok: true });
+      } catch (e) {
+        results.push({ teamId: t.id, ok: false, error: e?.message || String(e) });
+      }
+    }
+
+    res.json({ success: true, data: { repaired: results } });
+  } catch (err) {
+    console.error('[admin] repair workbench workflows error:', err);
+    res.status(500).json({ error: '修复工作台工作流失败' });
   }
 });
 

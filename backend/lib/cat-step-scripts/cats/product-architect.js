@@ -150,6 +150,7 @@ module.exports = async function runProductArchitect(ctx) {
       result.summary =
         '模型输出未能解析为合法 JSON，已自动使用精简兜底模块大纲（仍可继续生成落地页）';
     } else if (repairedBrackets) {
+      result.status = result.status === 'warning' ? 'warning' : 'success';
       result.summary = `落地页模块大纲已生成（${text.length} 字符，已自动补全未闭合括号）`;
     } else {
       result.summary = `落地页模块大纲已生成（${text.length} 字符）`;

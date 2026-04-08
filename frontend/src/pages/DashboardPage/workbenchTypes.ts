@@ -23,6 +23,7 @@ export interface WorkflowRow {
   description: string;
   placeholder?: string | null;
   steps: unknown;
+  enabled?: boolean;
 }
 
 export interface WorkbenchPayload {

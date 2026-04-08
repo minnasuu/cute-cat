@@ -451,9 +451,33 @@ async function seedOfficialCatsForTeam(prisma, teamId) {
   }
 }
 
+/**
+ * 管理员运维：强制修复某个 teamId 的工作台官方工作流（不会触碰非官方工作流）。
+ * @param {import('@prisma/client').PrismaClient} prisma
+ * @param {string} teamId
+ */
+async function repairWorkbenchWorkflowsForTeam(prisma, teamId) {
+  const team = await prisma.team.findUnique({ where: { id: teamId } }).catch(() => null);
+  if (!team) throw new Error('team not found');
+
+  const cats = await prisma.teamCat.findMany({
+    where: { teamId },
+    orderBy: { createdAt: 'asc' },
+  });
+  const byTemplate = Object.fromEntries(
+    cats.filter((c) => c.templateId).map((c) => [c.templateId, c])
+  );
+
+  await repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, byTemplate);
+  await disableResumeWorkflowIfNeeded(prisma, teamId);
+  await repairBrandKitWorkflowIfNeeded(prisma, teamId, byTemplate);
+  await repairPosterWorkflowIfNeeded(prisma, teamId, byTemplate);
+}
+
 module.exports = {
   ensureWorkbenchTeam,
   seedOfficialCatsForTeam,
   WORKBENCH_MARKER,
   buildSeedWorkflowSteps,
+  repairWorkbenchWorkflowsForTeam,
 };

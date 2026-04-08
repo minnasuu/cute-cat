@@ -40,6 +40,7 @@ export default function AdminWorkflowsPage() {
   const [loading, setLoading] = useState(true);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [repairingWorkbench, setRepairingWorkbench] = useState(false);
   const selected = useMemo(
     () => workflows.find((w) => w.id === selectedId) ?? null,
     [selectedId, workflows],
@@ -75,6 +76,27 @@ export default function AdminWorkflowsPage() {
       mounted = false;
     };
   }, []);
+
+  const reloadWorkflows = async () => {
+    setLoading(true);
+    try {
+      const list = await apiClient.get<Workflow[]>('/api/admin/workflows');
+      setWorkflows(list || []);
+      setSelectedId((prev) => prev ?? (list?.[0]?.id ?? null));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRepairWorkbench = async () => {
+    setRepairingWorkbench(true);
+    try {
+      await apiClient.post('/api/admin/workflows/repair-workbench', {});
+      await reloadWorkflows();
+    } finally {
+      setRepairingWorkbench(false);
+    }
+  };
 
   useEffect(() => {
     if (!selected) {
@@ -153,9 +175,24 @@ export default function AdminWorkflowsPage() {
       <main className="pt-20 px-6 pb-10 h-full flex flex-col h-screen">
         <div className="max-w-6xl mx-auto h-full flex flex-col">
           <div className="mb-4">
-            <h1 className="text-2xl font-black">管理员后台 · 工作流编辑</h1>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-black">管理员后台 · 工作流编辑</h1>
+                <p className="text-sm text-text-tertiary mt-1">
+                  当前登录：{user?.email}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={repairingWorkbench}
+                onClick={() => void onRepairWorkbench()}
+                className="text-xs font-bold rounded-xl px-3 py-2 bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {repairingWorkbench ? '同步中…' : '同步工作台官方工作流'}
+              </button>
+            </div>
             <p className="text-sm text-text-tertiary mt-1">
-              当前登录：{user?.email}
+              点击“同步工作台官方工作流”会把工作台默认三条能力更新到最新模板（并禁用简历）。
             </p>
           </div>
 

@@ -178,7 +178,10 @@ const DashboardPage: React.FC = () => {
 
   /** 仅官方种子工作流，供能力卡片展示（不含团队自建流程） */
   const officialWorkflows = useMemo(
-    () => (workbench?.workflows ?? []).filter(isOfficialWorkflow),
+    () =>
+      (workbench?.workflows ?? []).filter(
+        (w) => isOfficialWorkflow(w) && w.enabled !== false,
+      ),
     [workbench],
   );
 
