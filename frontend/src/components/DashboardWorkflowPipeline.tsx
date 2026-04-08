@@ -284,6 +284,7 @@ export default function DashboardWorkflowPipeline({
                           {resultStatus === "success" ? "完成" : "失败"}
                         </span>
                       </div>
+                      <div className="markdown-body-container flex flex-col-reverse overflow-y-auto">
                       <div className="node-result-summary markdown-body">
                         {disableTypewriter || isCurrent ? (
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -302,6 +303,7 @@ export default function DashboardWorkflowPipeline({
                             }
                           />
                         )}
+                      </div>
                       </div>
                     </div>
                   ) : null}
