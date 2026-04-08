@@ -110,7 +110,7 @@ function FeatureCard({
         selected
           ? "border-primary-400 bg-primary-50/50"
           : "border-border bg-surface hover:border-border-strong"
-      } ${splitMode ? "min-w-[6.75rem] sm:min-w-[7.5rem] max-w-[9.5rem] rounded-lg px-2 py-1" : "rounded-2xl px-3 py-2.5"}`}
+      } ${splitMode ? "w-fit rounded-lg px-2 py-1" : "rounded-2xl px-3 py-2.5"}`}
     >
       <div className="flex items-center gap-1 w-full">
         <span className="text-primary-600">
@@ -798,7 +798,7 @@ const DashboardPage: React.FC = () => {
                                       onClick={() =>
                                         setConfirmDeleteRunId(run.id)
                                       }
-                                      className="text-[11px] font-semibold text-text-tertiary hover:text-red-600 hover:bg-red-500/5 rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
+                                      className="text-[11px] font-semibold text-text-tertiary text-red-600 bg-red-500/5 hover:bg-red-500/10 rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
                                     >
                                       删除
                                     </button>
@@ -832,7 +832,7 @@ const DashboardPage: React.FC = () => {
               >
                 {/* 功能卡片：横向排列，与输入区在同一行（大屏） */}
                 <div
-                  className="flex flex-row flex-wrap gap-2 content-start shrink-0 lg:max-w-[min(100%,14rem)] xl:max-w-[min(100%,22rem)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-x-auto pb-1 lg:overflow-x-visible lg:pb-0"
+                  className="flex flex-row gap-2 content-start shrink-0 lg:max-w-[min(100%,14rem)] xl:max-w-[min(100%,22rem)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-x-auto pb-1 lg:overflow-x-visible lg:pb-0 overflow-auto scrollbar-hide"
                   role="tablist"
                   aria-label="创作能力"
                 >
