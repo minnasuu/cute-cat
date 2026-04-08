@@ -106,7 +106,7 @@ function FeatureCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`shrink-0 flex flex-col gap-1 text-left border transition-all cursor-pointer ${
+      className={`w-full shrink-0 flex flex-col gap-1 text-left border transition-all cursor-pointer ${
         selected
           ? "border-primary-400 bg-primary-50/50"
           : "border-border bg-surface hover:border-border-strong"
@@ -659,9 +659,9 @@ const DashboardPage: React.FC = () => {
           >
             {/* 对话区 */}
             {splitMode && (
-              <div className="flex-1 min-h-0 flex flex-col mb-3 overflow-auto border-b border-border/70 pb-3">
-                <div className="flex flex-col overflow-auto">
-                  <ul className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0 scrollbar-hide">
+              <div className="flex-1 min-h-0 flex flex-col mb-3 overflow-auto scrollbar-hide border-b border-border/70 pb-3">
+                <div className="flex flex-col">
+                  <ul className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
                     {runsForHistoryPanel.length === 0 ? (
                       <li className="text-xs text-text-tertiary px-2 py-6 text-center font-medium">
                         暂无记录，提交任务后将显示在此
