@@ -580,7 +580,8 @@ const DashboardPage: React.FC = () => {
   );
 
   const inputPlaceholder = selectedFeature
-    ? "描述你的页面或站点：目标用户、必备模块、风格气质…"
+    ? (selectedFeature.placeholder?.trim() ||
+        "描述你的页面或站点：目标用户、必备模块、风格气质…")
     : "请先点选上方一个创作方向";
 
   const executeBusy = isSubmitting || !!pollingWfId;

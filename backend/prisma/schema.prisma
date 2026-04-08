@@ -92,6 +92,7 @@ model Workflow {
   name              String
   icon              String   @default("📋")
   description       String   @db.Text
+  placeholder       String?  @db.Text
   steps             Json
   trigger           String   @default("manual") // manual / cron / webhook
   cron              String?

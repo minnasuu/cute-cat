@@ -21,6 +21,7 @@ export interface WorkflowRow {
   name: string;
   icon: string;
   description: string;
+  placeholder?: string | null;
   steps: unknown;
 }
 

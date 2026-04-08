@@ -69,6 +69,7 @@ async function ensureWorkbenchTeam(prisma, userId) {
           name: w.name,
           icon: w.icon,
           description: w.description,
+          placeholder: w.placeholder || null,
           steps: w.steps,
           trigger: w.trigger || 'manual',
           persistent: !!w.persistent,
@@ -101,6 +102,7 @@ function buildSeedWorkflowSteps(catByTemplateId) {
       icon: 'Globe',
       description:
         '一句话生成静态单页落地页：策划梳理模块 → 视觉确定风格 → 前端生成可预览 HTML，并支持一键导出 HTML / 图片。',
+      placeholder: '描述你的页面或站点：目标用户、必备模块、风格气质…',
       trigger: 'manual',
       persistent: false,
       steps: [
@@ -167,6 +169,7 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
         steps: want.steps,
         description: want.description,
         icon: want.icon,
+        placeholder: want.placeholder || null,
       },
     });
     console.log(
