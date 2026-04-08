@@ -5,14 +5,13 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { apiClient } from "../../utils/apiClient";
-import CatLogo from "../../components/CatLogo";
 import Navbar from "../../components/Navbar";
 import UserProfileDropdown from "./UserProfileDropdown";
 import { AppIcon } from "../../components/icons";
-import { X } from "lucide-react";
+import { CheckCircle2, Loader2, X, XCircle } from "lucide-react";
 import type {
   WorkflowRow,
   WorkbenchPayload,
@@ -27,11 +26,9 @@ import {
   parseSteps,
 } from "./workbenchUtils";
 import ResultCanvas from "./ResultCanvas";
-import {
-  normalizeRunSteps,
-  RunExecutionProcessDetails,
-  sortedRunSteps,
-} from "./RunExecutionProcess";
+import { normalizeRunSteps, sortedRunSteps } from "./RunExecutionProcess";
+import { buildReactSandboxSrcDoc } from "./reactSandboxDoc";
+import { sandboxUiScriptSrc } from "./ReactSandboxPreview";
 
 /** 未选中能力时的引导说明（选中后切换为当前能力的 description） */
 const HERO_DESCRIPTION_DEFAULT = (
@@ -106,11 +103,11 @@ function FeatureCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full shrink-0 flex flex-col gap-1 text-left border transition-all cursor-pointer ${
+      className={`shrink-0 flex flex-col gap-1 text-left border transition-all cursor-pointer ${
         selected
           ? "border-primary-400 bg-primary-50/50"
           : "border-border bg-surface hover:border-border-strong"
-      } ${splitMode ? "w-fit rounded-lg px-2 py-1" : "rounded-2xl px-3 py-2.5"}`}
+      } ${splitMode ? "w-fit rounded-lg px-2 py-1" : "w-60 rounded-2xl px-3 py-2.5"}`}
     >
       <div className="flex items-center gap-1 w-full">
         <span className="text-primary-600">
@@ -120,9 +117,11 @@ function FeatureCard({
           {title}
         </span>
       </div>
-      {!splitMode&&<span className="text-[10px] text-text-tertiary font-medium mt-1 line-clamp-2 leading-snug">
-        {blurb}
-      </span>}
+      {!splitMode && (
+        <span className="text-[10px] text-text-tertiary font-medium mt-1 line-clamp-2 leading-snug">
+          {blurb}
+        </span>
+      )}
     </button>
   );
 }
@@ -614,7 +613,7 @@ const DashboardPage: React.FC = () => {
         <div
           className={
             splitMode
-              ? "flex flex-col shrink-0 w-full h-full px-8 lg:min-w-0 lg:shrink-0"
+              ? "flex flex-col shrink-0 w-full h-full lg:min-w-0 lg:shrink-0"
               : "w-full h-full flex flex-col justify-center items-center"
           }
           style={
@@ -659,9 +658,9 @@ const DashboardPage: React.FC = () => {
           >
             {/* 对话区 */}
             {splitMode && (
-              <div className="flex-1 min-h-0 flex flex-col mb-3 overflow-auto scrollbar-hide border-b border-border/70 pb-3">
+              <div className="flex-1 min-h-0 flex flex-col mb-6 overflow-auto scrollbar-hide border-b border-border/70 pb-3">
                 <div className="flex flex-col">
-                  <ul className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
+                  <ul className="flex-1 overflow-y-auto space-y-1.5 min-h-0 px-6 py-6">
                     {runsForHistoryPanel.length === 0 ? (
                       <li className="text-xs text-text-tertiary px-2 py-6 text-center font-medium">
                         暂无记录，提交任务后将显示在此
@@ -676,12 +675,12 @@ const DashboardPage: React.FC = () => {
                         const st = run.status;
                         const statusClass =
                           st === "success"
-                            ? "bg-emerald-100 text-emerald-800"
+                            ? "text-emerald-800"
                             : st === "failed"
-                              ? "bg-red-100 text-red-800"
+                              ? "text-red-800"
                               : st === "running"
-                                ? "bg-sky-100 text-sky-800"
-                                : "bg-surface text-text-secondary";
+                                ? "text-sky-800"
+                                : "text-text-secondary";
                         const rawPreview =
                           run.userInput?.trim() || run.workflowName || "无描述";
                         const preview =
@@ -734,21 +733,36 @@ const DashboardPage: React.FC = () => {
                                   </div>
                                   <div className="flex gap-1 shrink-0">
                                     <span
-                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md leading-none ${statusClass}`}
+                                      className={`text-[10px] flex items-center gap-1 font-bold py-1 rounded-md leading-none ${statusClass}`}
                                     >
-                                      {st === "success"
-                                        ? "成功"
-                                        : st === "failed"
-                                          ? "失败"
-                                          : st === "running"
-                                            ? "进行中"
-                                            : st}
+                                      {st === "success" ? (
+                                        <CheckCircle2
+                                          className="size-3 shrink-0 text-emerald-600/85"
+                                          strokeWidth={2}
+                                          aria-hidden
+                                        />
+                                      ) : st === "failed" ? (
+                                        <XCircle
+                                          className="size-3 shrink-0 text-red-600/85"
+                                          strokeWidth={2}
+                                          aria-hidden
+                                        />
+                                      ) : st === "running" ? (
+                                        <Loader2
+                                          className="size-3 shrink-0 text-sky-600/85"
+                                          strokeWidth={2}
+                                          aria-hidden
+                                        />
+                                      ) : (
+                                        st
+                                      )}
+                                      <span> · </span>
+                                      {run.totalDuration != null ? (
+                                        <span className="text-[10px] font-semibold text-text-tertiary tabular-nums">
+                                          {run.totalDuration}s
+                                        </span>
+                                      ) : null}
                                     </span>
-                                    {run.totalDuration != null ? (
-                                      <span className="text-[10px] font-semibold text-text-tertiary tabular-nums">
-                                        {run.totalDuration}s
-                                      </span>
-                                    ) : null}
                                   </div>
                                 </div>
                               </button>
@@ -756,7 +770,7 @@ const DashboardPage: React.FC = () => {
                                 <span className="text-[11px] font-medium text-text-tertiary/85 tabular-nums">
                                   {timeStr}
                                 </span>
-                                <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1 px-3 pb-2.5 pt-1.5 border-t border-border/50">
+                                <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1 pb-2.5 pt-1.5">
                                   {canRetry ? (
                                     <button
                                       type="button"
@@ -775,7 +789,7 @@ const DashboardPage: React.FC = () => {
                                         onClick={() =>
                                           void handleDeleteHistoryRun(run.id)
                                         }
-                                        className="font-semibold text-red-600 hover:text-red-700 bg-red-500/10 hover:bg-red-500/20 rounded-md px-2 py-1 -my-0.5 disabled:opacity-50 disabled:hover:bg-transparent cursor-pointer transition-colors"
+                                        className="font-semibold text-red-600 text-red-600 hover:text-red-700 bg-red-500/10 hover:bg-red-500/20 rounded-md px-2 py-1 -my-0.5 disabled:opacity-50 disabled:hover:bg-transparent cursor-pointer transition-colors"
                                       >
                                         {deletingRunId === run.id
                                           ? "删除中…"
@@ -798,23 +812,13 @@ const DashboardPage: React.FC = () => {
                                       onClick={() =>
                                         setConfirmDeleteRunId(run.id)
                                       }
-                                      className="text-[11px] font-semibold text-text-tertiary text-red-600 bg-red-500/5 hover:bg-red-500/10 rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
+                                      className="text-[11px] font-semibold text-red-500 bg-red-500/5 hover:bg-red-500/10 rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
                                     >
                                       删除
                                     </button>
                                   )}
                                 </div>
                               </div>
-                              {runSteps.length > 0 ? (
-                                <div className="px-2 pb-2 pt-0">
-                                  <RunExecutionProcessDetails
-                                    steps={runSteps}
-                                    planSteps={planForRun}
-                                    catNameById={catNameById}
-                                    compact
-                                  />
-                                </div>
-                              ) : null}
                             </div>
                           </li>
                         );
@@ -824,15 +828,11 @@ const DashboardPage: React.FC = () => {
                 </div>
               </div>
             )}
-            <div className="rounded-[28px] border border-border-strong bg-surface-secondary/40 p-3 sm:p-4">
-              <div
-                className={`flex flex-col lg:items-stretch ${
-                  splitMode ? "gap-2" : "lg:flex-row gap-4"
-                }`}
-              >
+            <div className="rounded-[28px] border border-border-strong bg-surface-secondary/40 p-3 sm:p-4 mx-6 mb-6">
+              <div className={`flex flex-col ${splitMode ? "gap-2" : "gap-4"}`}>
                 {/* 功能卡片：横向排列，与输入区在同一行（大屏） */}
                 <div
-                  className="flex flex-row gap-2 content-start shrink-0 lg:max-w-[min(100%,14rem)] xl:max-w-[min(100%,22rem)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-x-auto pb-1 lg:overflow-x-visible lg:pb-0 overflow-auto scrollbar-hide"
+                  className="flex gap-2 content-start shrink-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-x-auto pb-1 lg:overflow-x-visible lg:pb-0 overflow-auto scrollbar-hide"
                   role="tablist"
                   aria-label="创作能力"
                 >
@@ -863,7 +863,7 @@ const DashboardPage: React.FC = () => {
                   className={
                     splitMode
                       ? "relative flex-1 flex flex-col min-w-0 border-t border-border pt-3"
-                      : "flex-1 flex flex-col min-w-0 border-t border-border lg:border-t-0 lg:border-l lg:pl-4 pt-3 lg:pt-0 lg:min-w-[12rem]"
+                      : "flex-1 flex flex-col min-w-0 border-t border-border lg:border-t-0 pt-3 lg:pt-0 lg:min-w-[12rem]"
                   }
                 >
                   <div
@@ -925,32 +925,169 @@ const DashboardPage: React.FC = () => {
                         ? "提交中…"
                         : pollingWfId
                           ? "执行中…"
-                          : "开始创作"}
+                          : "拿来吧喵"}
                     </button>
                   </div>
                 </div>
               </div>
             </div>
-
-            {!splitMode && (
-              <nav
-                className={`flex flex-wrap items-center gap-y-2 text-xs font-bold text-text-tertiary ${
-                  splitMode
-                    ? "mt-2 gap-x-4 justify-start"
-                    : "mt-6 gap-x-8 justify-center"
-                }`}
-                aria-label="更多入口"
-              >
-                <button
-                  type="button"
-                  onClick={openHistorySplit}
-                  className="hover:text-primary-600 transition-colors text-left"
-                >
-                  历史记录
-                </button>
-              </nav>
-            )}
           </section>
+          {!splitMode ? (
+            <div className="mt-6 w-full max-w-[90vw] w-fit">
+              <div className="flex items-center justify-between mb-3 px-1">
+                {runsForHistoryPanel.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={openHistorySplit}
+                    className="ml-auto text-xs font-bold text-text-tertiary hover:text-primary-600 transition-colors cursor-pointer"
+                  >
+                    查看全部
+                  </button>
+                ) : null}
+              </div>
+
+              {runsForHistoryPanel.length === 0 ? (
+                <div className="rounded-2xl border border-border bg-surface-secondary/40 px-4 py-6 text-center">
+                  <p className="text-xs font-medium text-text-tertiary">
+                    暂无记录，开始创作后会显示在这里
+                  </p>
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  {runsForHistoryPanel?.map((run) => {
+                    const st = run.status;
+                    const statusClass =
+                      st === "success"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : st === "failed"
+                          ? "bg-red-100 text-red-800"
+                          : st === "running"
+                            ? "bg-sky-100 text-sky-800"
+                            : "bg-surface text-text-secondary";
+
+                    const runSteps = sortedRunSteps(
+                      normalizeRunSteps(run.steps),
+                    );
+                    const lastStep = runSteps.length
+                      ? runSteps[runSteps.length - 1]
+                      : null;
+                    const htmlPageData =
+                      st === "failed" || !lastStep
+                        ? null
+                        : lastStep.resultType === "html-page" &&
+                            lastStep.resultData
+                          ? lastStep.resultData
+                          : (() => {
+                              const s = (lastStep.summary || "").trim();
+                              if (
+                                s.startsWith("<!DOCTYPE") ||
+                                s.startsWith("<html")
+                              ) {
+                                return s;
+                              }
+                              return null;
+                            })();
+                    const reactSandboxCode =
+                      st === "failed" || !lastStep
+                        ? null
+                        : lastStep.resultType === "react-sandbox" &&
+                            lastStep.resultData
+                          ? lastStep.resultData
+                          : null;
+                    const previewKind = reactSandboxCode
+                      ? "react"
+                      : htmlPageData
+                        ? "html"
+                        : null;
+                    const previewSrcDoc =
+                      previewKind === "react"
+                        ? buildReactSandboxSrcDoc(
+                            reactSandboxCode!,
+                            sandboxUiScriptSrc(),
+                          )
+                        : previewKind === "html"
+                          ? htmlPageData!
+                          : null;
+
+                    const rawPreview =
+                      run.userInput?.trim() || run.workflowName || "无描述";
+                    const preview =
+                      rawPreview.length > 72
+                        ? `${rawPreview.slice(0, 72)}…`
+                        : rawPreview;
+                    const t = new Date(run.startedAt);
+                    const timeStr = `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+                    const capability = workflowLabelForRun(run);
+                    return (
+                      <button
+                        key={run.id}
+                        type="button"
+                        onClick={() => {
+                          if (run.workflowId) {
+                            setSelectedWorkflowId(run.workflowId);
+                          }
+                          setSplitMode(true);
+                          setRightPaneHistoryBrowse(false);
+                          setHistoryRunId(run.id);
+                        }}
+                        className="flex-shrink-0 flex-1 min-w-40 group text-left rounded-2xl border border-gray-200 bg-surface hover:bg-surface-secondary transition-colors px-3.5 py-3 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/35"
+                      >
+                        <div className="space-y-2.5">
+                          <div className="relative h-28 w-full overflow-hidden rounded-xl border border-border bg-white">
+                            {previewSrcDoc ? (
+                              <div className="absolute inset-0 origin-top-left scale-[0.25]">
+                                <iframe
+                                  title="生成结果预览"
+                                  srcDoc={previewSrcDoc}
+                                  sandbox="allow-scripts allow-same-origin"
+                                  className="w-[400%] h-[400%] border-0 pointer-events-none"
+                                />
+                              </div>
+                            ) : (
+                              <div className="absolute inset-0 flex items-center justify-center bg-surface-secondary/40">
+                                <p className="text-[11px] font-semibold text-text-tertiary">
+                                  {st === "running"
+                                    ? "生成中…"
+                                    : "暂无可预览结果"}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <div className="min-w-0 flex-1 space-y-1.5">
+                              <p className="text-xs text-text-primary font-semibold line-clamp-2 leading-snug">
+                                {preview}
+                              </p>
+                              <p className="text-[10px] font-semibold text-primary-600/90 truncate">
+                                {capability}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md leading-none ${statusClass}`}
+                              >
+                                {st === "success"
+                                  ? "成功"
+                                  : st === "failed"
+                                    ? "失败"
+                                    : st === "running"
+                                      ? "进行中"
+                                      : st}
+                              </span>
+                              <span className="text-[10px] font-semibold text-text-tertiary tabular-nums">
+                                {timeStr}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {splitMode && isLg ? (
@@ -983,7 +1120,7 @@ const DashboardPage: React.FC = () => {
             }}
           >
             <div className="opacity-10 group-hover:opacity-20 w-px flex-1 min-h-[120px] my-auto bg-border group-hover:bg-primary-400/80 group-active:bg-primary-500 transition-colors" />
-            <div className="absolute top-0 left-0 w-px h-full bg-gray-200"></div>
+            <div className="absolute top-0 right-0 w-px h-full bg-gray-200"></div>
           </div>
         ) : null}
 
@@ -1019,7 +1156,7 @@ const DashboardPage: React.FC = () => {
         ) : null}
       </main>
 
-      {splitMode ? null : (
+      {/* {splitMode ? null : (
         <footer className="py-4 border-t border-border">
           <div className="w-full mx-auto px-6 flex items-center justify-between">
             <Link to="/" className="flex items-center gap-2 cursor-pointer">
@@ -1030,7 +1167,7 @@ const DashboardPage: React.FC = () => {
             </p>
           </div>
         </footer>
-      )}
+      )} */}
     </div>
   );
 };

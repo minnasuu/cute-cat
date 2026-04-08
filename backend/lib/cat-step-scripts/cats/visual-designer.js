@@ -96,17 +96,60 @@ ${upstreamForSystem}`;
     ? '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：<id>」与「理由：…」，其中 <id> 必须来自候选里的 id。'
     : '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
 
-  // 支持管理员在 step 上覆盖 system prompt：覆盖后不再拼 catalog/upstream（高级用法）
+  // 支持管理员在 step 上覆盖 system prompt：
+  // - 覆盖后按覆盖提示词执行（更适合“海报制作”等直出风格提示词的场景），避免被“候选选择”格式约束导致不稳定
   const sysOverride = resolveSystemPrompt('', ctx);
-  const result = await runWithAI(
-    'visual-designer',
-    ctx,
-    sysOverride ? sysOverride : fullSystemPrompt,
-    userText,
-    {
+  let result;
+  if (sysOverride) {
+    const directUserText = upstreamText.trim()
+      ? upstreamText
+      : '（无上游说明，请输出可被前端直接采用的视觉风格提示词。）';
+    result = await runWithAI('visual-designer', ctx, sysOverride, directUserText, {
+      maxTokens: 4096,
+    });
+    if (!result.success) {
+      const fallbackPrompt = VISUAL_STYLES[0]?.prompt || '';
+      const mergedText = formatVisualDesignerOutput(upstreamFull, fallbackPrompt);
+      return {
+        success: true,
+        status: 'success',
+        data: {
+          text: mergedText,
+          _resultType: 'visual-design-output',
+          selectedStyleId: VISUAL_STYLES[0]?.id || '',
+          _fallback: true,
+        },
+        summary: `墨墨·视觉设计：AI 失败已回退为默认风格（${mergedText.length} 字）`,
+      };
+    }
+    // 统一格式：将 AI 输出作为“视觉风格提示词”承载，避免下游/前端展示差异
+    if (result.data?.text) {
+      const mergedText = formatVisualDesignerOutput(upstreamFull, result.data.text);
+      result.data.text = mergedText;
+      result.data._resultType = 'visual-design-output';
+      result.summary = `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`;
+    }
+    return result;
+  }
+
+  result = await runWithAI('visual-designer', ctx, fullSystemPrompt, userText, {
     maxTokens: 4096,
-    },
-  );
+  });
+  if (!result.success) {
+    const fallbackPrompt = VISUAL_STYLES[0]?.prompt || '';
+    const mergedText = formatVisualDesignerOutput(upstreamFull, fallbackPrompt);
+    return {
+      success: true,
+      status: 'success',
+      data: {
+        text: mergedText,
+        _resultType: 'visual-design-output',
+        selectedStyleId: VISUAL_STYLES[0]?.id || '',
+        _fallback: true,
+      },
+      summary: `墨墨·视觉设计：AI 失败已回退为默认风格（${mergedText.length} 字）`,
+    };
+  }
 
   // 解析选择；data.text = 完整上游 + designPrompt（与前端一致）
   if (result.success && result.data?.text) {

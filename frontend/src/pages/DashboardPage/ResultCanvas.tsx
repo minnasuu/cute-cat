@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileDown, ImageDown, Loader2, Lock } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 import html2canvas from "html2canvas";
 import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
 import ReactSandboxPreview from "./ReactSandboxPreview";
@@ -80,11 +80,13 @@ export default function ResultCanvas({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [frameReady, setFrameReady] = useState(false);
   const [exportingPng, setExportingPng] = useState(false);
-  const [editEnabled, setEditEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editedHtml, setEditedHtml] = useState<string | null>(null);
   const [pendingImageToken, setPendingImageToken] = useState<string | null>(null);
   const imgFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showExecutionBack, setShowExecutionBack] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
 
   const serverSteps = useMemo(
     () => sortedRunSteps(normalizeRunSteps(displayRun?.steps)),
@@ -137,6 +139,14 @@ export default function ResultCanvas({
     (streamTerminal ||
       (displayRun != null && displayRun.status !== "running"));
 
+  /** 执行失败：也展示流水线，标出失败步骤 */
+  const showFailedPipeline =
+    !isSubmitting &&
+    !waitingForRunRecord &&
+    !showPipeline &&
+    failed &&
+    effectiveSteps.length > 0;
+
   const showBrowseHint =
     !isSubmitting &&
     !waitingForRunRecord &&
@@ -177,6 +187,10 @@ export default function ResultCanvas({
     : effectiveHtml
       ? "html"
       : null;
+
+  const actionBtnClass =
+    "inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors";
+  const hasExecutionSteps = effectiveSteps.length > 0;
 
   const downloadBlob = useCallback((blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -245,11 +259,20 @@ export default function ResultCanvas({
 
   // 切换到其它 run 时重置编辑态，避免串 run
   useEffect(() => {
-    setEditEnabled(false);
     setSaving(false);
     setEditedHtml(null);
     setPendingImageToken(null);
+    setShowExecutionBack(false);
   }, [displayRun?.id]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const el = exportMenuRef.current;
+      if (el && !el.contains(e.target as Node)) setExportMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const injectEditCapabilities = useCallback(() => {
     const iframe = iframeRef.current;
@@ -370,14 +393,14 @@ export default function ResultCanvas({
       });
   }, []);
 
+  // 默认：HTML 预览即为可编辑态；非 HTML 时移除编辑能力
   useEffect(() => {
-    if (previewKind !== "html") return;
-    if (!editEnabled) {
+    if (previewKind !== "html") {
       removeEditCapabilities();
       return;
     }
     injectEditCapabilities();
-  }, [editEnabled, injectEditCapabilities, previewKind, removeEditCapabilities]);
+  }, [injectEditCapabilities, previewKind, removeEditCapabilities]);
 
   const serializeIframeHtml = useCallback((): string | null => {
     const iframe = iframeRef.current;
@@ -423,7 +446,6 @@ export default function ResultCanvas({
     try {
       await updateWorkflowRunLocal(displayRun.id, { steps: nextSteps });
       setEditedHtml(newHtml);
-      setEditEnabled(false);
     } finally {
       setSaving(false);
     }
@@ -435,11 +457,6 @@ export default function ResultCanvas({
     serializeIframeHtml,
     updateWorkflowRunLocal,
   ]);
-
-  const onToggleEdit = useCallback(() => {
-    if (previewKind !== "html") return;
-    setEditEnabled((v) => !v);
-  }, [previewKind]);
 
   const onImageFilePicked = useCallback(
     async (file: File | null) => {
@@ -527,9 +544,22 @@ export default function ResultCanvas({
           />
         ) : null}
 
+        {/* 执行失败：依然展示流水线，并标出失败步骤 */}
+        {showFailedPipeline ? (
+          <DashboardWorkflowPipeline
+            workflowName={workflowName || displayRun?.workflowName || "执行失败"}
+            planSteps={planSteps}
+            catNameById={catNameById}
+            cats={cats}
+            running={false}
+            runSteps={effectiveSteps}
+            disableTypewriter
+          />
+        ) : null}
+
         {/* 已结束：结果为主；步骤明细在左侧历史卡片「查看执行过程」 */}
         {showResultPanel ? (
-          <section className="space-y-3 w-full">
+          <section className={`space-y-3 ${previewKind ? "w-full" : ""}`}>
             {/* HTML 页面预览 */}
             {previewKind ? (
               <div className="overflow-hidden">
@@ -562,95 +592,194 @@ export default function ResultCanvas({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {hasExecutionSteps ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowExecutionBack((v) => !v)}
+                        className={actionBtnClass}
+                        title={
+                          showExecutionBack ? "返回结果预览" : "查看执行过程"
+                        }
+                        aria-pressed={showExecutionBack}
+                      >
+                        {showExecutionBack ? "返回预览" : "查看执行过程"}
+                      </button>
+                    ) : null}
                     {previewKind === "html" ? (
                       <>
                         <button
                           type="button"
-                          onClick={onToggleEdit}
-                          disabled={!displayRun?.id}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
-                          title={!displayRun?.id ? "仅历史 run 可保存回写" : editEnabled ? "退出编辑" : "进入编辑"}
-                        >
-                          {editEnabled ? "退出编辑" : "编辑"}
-                        </button>
-
-                        <button
-                          type="button"
                           onClick={onSaveEdits}
-                          disabled={!editEnabled || saving || !displayRun?.id}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
-                          title={!editEnabled ? "开启编辑后可保存" : saving ? "保存中…" : "保存并回写到当前任务"}
+                          disabled={saving || !displayRun?.id}
+                          className={actionBtnClass}
+                          title={
+                            saving ? "保存中…" : "保存并回写到当前任务"
+                          }
                         >
                           {saving ? (
-                            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                            <Loader2
+                              className="size-3.5 animate-spin"
+                              aria-hidden
+                            />
                           ) : null}
                           保存
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={onDownloadHtml}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
-                          title="下载 HTML"
-                        >
-                          <Download className="size-3.5" aria-hidden />
-                          HTML
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={onExportPdf}
-                          disabled={!frameReady}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
-                          title={!frameReady ? "预览加载完成后可导出 PDF" : "打开打印对话框并另存为 PDF"}
-                        >
-                          <FileDown className="size-3.5" aria-hidden />
-                          PDF
                         </button>
                       </>
                     ) : null}
 
-                    <button
-                      type="button"
-                      onClick={onExportPng}
-                      disabled={!frameReady || exportingPng}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
-                      title={!frameReady ? "预览加载完成后可导出图片" : "导出整页 PNG"}
-                    >
-                      {exportingPng ? (
-                        <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                      ) : (
-                        <ImageDown className="size-3.5" aria-hidden />
-                      )}
-                      PNG
-                    </button>
+                    <div ref={exportMenuRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setExportMenuOpen((v) => !v)}
+                        className={`${actionBtnClass} pr-7 relative`}
+                        title="导出"
+                        aria-haspopup="menu"
+                        aria-expanded={exportMenuOpen}
+                      >
+                        导出
+                        <svg
+                          className={`absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500 transition-transform ${exportMenuOpen ? "rotate-180" : ""}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2.5}
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+
+                      {exportMenuOpen ? (
+                        <div
+                          role="menu"
+                          className="absolute right-0 top-full mt-2 w-44 rounded-xl border border-border bg-surface shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={!frameReady || exportingPng}
+                            onClick={() => {
+                              setExportMenuOpen(false);
+                              void onExportPng();
+                            }}
+                            className="w-full px-3 py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-secondary text-left disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer transition-colors"
+                          >
+                            {exportingPng ? "PNG（导出中…）" : "导出 PNG"}
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={!frameReady}
+                            onClick={() => {
+                              setExportMenuOpen(false);
+                              onExportPdf();
+                            }}
+                            className="w-full px-3 py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-secondary text-left disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer transition-colors"
+                          >
+                            导出 PDF
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={!effectiveHtml}
+                            onClick={() => {
+                              setExportMenuOpen(false);
+                              onDownloadHtml();
+                            }}
+                            className="w-full px-3 py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-secondary text-left disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer transition-colors"
+                          >
+                            导出 HTML
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-                {previewKind === "react" ? (
-                  <ReactSandboxPreview
-                    code={reactSandboxCode!}
-                    iframeRef={(el) => {
-                      iframeRef.current = el;
-                      if (el) setFrameReady(false);
-                    }}
-                    onLoad={() => setFrameReady(true)}
-                  />
-                ) : (
-                  <iframe
-                    srcDoc={effectiveHtml!}
-                    sandbox="allow-scripts allow-same-origin"
-                    ref={(el) => {
-                      iframeRef.current = el;
-                    }}
-                    onLoad={() => setFrameReady(true)}
-                    className="w-full border-0"
+
+                <div className="relative w-full" style={{ perspective: 1400 }}>
+                  <div
+                    className="relative w-full transition-transform duration-500 ease-[cubic-bezier(.2,.8,.2,1)]"
                     style={{
-                      minHeight: "min(60vh, 520px)",
-                      height: "calc(100vh - 109px)",
+                      transformStyle: "preserve-3d",
+                      transform: showExecutionBack
+                        ? "rotateY(180deg)"
+                        : "rotateY(0deg)",
                     }}
-                    title="生成的网页预览"
-                  />
-                )}
+                  >
+                    <div
+                      className="w-full"
+                      style={{ backfaceVisibility: "hidden" as any }}
+                    >
+                      {previewKind === "react" ? (
+                        <ReactSandboxPreview
+                          code={reactSandboxCode!}
+                          iframeRef={(el) => {
+                            iframeRef.current = el;
+                            if (el) setFrameReady(false);
+                          }}
+                          onLoad={() => setFrameReady(true)}
+                        />
+                      ) : (
+                        <iframe
+                          srcDoc={effectiveHtml!}
+                          sandbox="allow-scripts allow-same-origin"
+                          ref={(el) => {
+                            iframeRef.current = el;
+                          }}
+                          onLoad={() => setFrameReady(true)}
+                          className="w-full border-0"
+                          style={{
+                            minHeight: "min(60vh, 520px)",
+                            height: "calc(100vh - 109px)",
+                          }}
+                          title="生成的网页预览"
+                        />
+                      )}
+                    </div>
+
+                    <div
+                      className="absolute inset-0 w-full"
+                      style={{
+                        backfaceVisibility: "hidden" as any,
+                        transform: "rotateY(180deg)",
+                      }}
+                    >
+                      <div
+                        className="w-full border-0 bg-surface"
+                        style={{
+                          minHeight: "min(60vh, 520px)",
+                          height: "calc(100vh - 109px)",
+                        }}
+                      >
+                        <div className="h-full overflow-y-auto">
+                          {hasExecutionSteps ? (
+                            <DashboardWorkflowPipeline
+                              workflowName={
+                                workflowName ||
+                                displayRun?.workflowName ||
+                                "执行过程"
+                              }
+                              planSteps={planSteps}
+                              catNameById={catNameById}
+                              cats={cats}
+                              running={false}
+                              runSteps={effectiveSteps}
+                              disableTypewriter
+                            />
+                          ) : (
+                            <p className="text-xs font-medium text-text-tertiary">
+                              暂无执行过程数据
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div

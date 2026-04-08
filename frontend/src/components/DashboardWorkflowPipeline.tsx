@@ -194,7 +194,7 @@ export default function DashboardWorkflowPipeline({
   const showWaitingFooter = runSteps.length === 0 && running;
 
   return (
-    <div className="h-full flex flex-col items-center justify-center">
+    <div className="h-full flex flex-col justify-center" style={{alignItems: 'safe center'}}>
       <div className="stage-body scrollbar-hide">
         <div className="pipeline">
           {planSteps.map((step, i) => {
