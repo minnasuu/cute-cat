@@ -310,21 +310,31 @@ export const VibeAssets = () => {
         <div className="mx-auto w-full max-w-6xl px-6 py-6">
           <div className="flex items-center justify-between gap-4 mb-4">
             <div>
-              <h1 className="text-xl font-semibold text-text-primary">VibeAssets</h1>
-              <p className={ui.body}>官方资源与用户上传资源的统一资产库（风格 / 字体）。</p>
+              <h1 className="text-xl font-semibold text-text-primary">
+                VibeAssets
+              </h1>
+              <p className={ui.body}>
+                官方资源与用户上传资源的统一资产库（风格 / 字体）。
+              </p>
             </div>
             <div className={ui.tabs}>
               <button
                 type="button"
                 onClick={() => setMainTab("styles")}
-                className={clsx(ui.tabBtn, mainTab === "styles" ? ui.tabActive : ui.tabIdle)}
+                className={clsx(
+                  ui.tabBtn,
+                  mainTab === "styles" ? ui.tabActive : ui.tabIdle,
+                )}
               >
                 设计风格
               </button>
               <button
                 type="button"
                 onClick={() => setMainTab("fonts")}
-                className={clsx(ui.tabBtn, mainTab === "fonts" ? ui.tabActive : ui.tabIdle)}
+                className={clsx(
+                  ui.tabBtn,
+                  mainTab === "fonts" ? ui.tabActive : ui.tabIdle,
+                )}
               >
                 字体
               </button>
@@ -337,7 +347,10 @@ export const VibeAssets = () => {
                 key={t.id}
                 type="button"
                 onClick={() => setScope(t.id)}
-                className={clsx(ui.tabBtn, scope === t.id ? ui.tabActive : ui.tabIdle)}
+                className={clsx(
+                  ui.tabBtn,
+                  scope === t.id ? ui.tabActive : ui.tabIdle,
+                )}
               >
                 {t.label}
               </button>
@@ -348,14 +361,17 @@ export const VibeAssets = () => {
             <div className="grid grid-cols-1 gap-6">
               <section className={clsx(ui.card, ui.cardPad)}>
                 <div className="flex items-center justify-between gap-4 mb-3">
-                  <h2 className="text-sm font-semibold text-text-primary">新增风格（截图提取）</h2>
+                  <h2 className="text-sm font-semibold text-text-primary">
+                    新增风格（截图提取）
+                  </h2>
                   <button
                     type="button"
                     className={ui.btnGhost}
                     onClick={() => {
                       setExtractorResult(null);
                       setExtractorServerUrl(null);
-                      if (extractorImagePreview) URL.revokeObjectURL(extractorImagePreview);
+                      if (extractorImagePreview)
+                        URL.revokeObjectURL(extractorImagePreview);
                       setExtractorImagePreview(null);
                     }}
                   >
@@ -399,7 +415,9 @@ export const VibeAssets = () => {
                       保存到资产库
                     </button>
                   </div>
-                  {stylesError ? <div className="text-sm text-red-600">{stylesError}</div> : null}
+                  {stylesError ? (
+                    <div className="text-sm text-red-600">{stylesError}</div>
+                  ) : null}
                 </div>
 
                 {extractorResult ? (
@@ -408,21 +426,34 @@ export const VibeAssets = () => {
                       <button
                         type="button"
                         onClick={() => setExtractorResultTab("summary")}
-                        className={clsx(ui.tabBtn, extractorResultTab === "summary" ? ui.tabActive : ui.tabIdle)}
+                        className={clsx(
+                          ui.tabBtn,
+                          extractorResultTab === "summary"
+                            ? ui.tabActive
+                            : ui.tabIdle,
+                        )}
                       >
                         总结
                       </button>
                       <button
                         type="button"
                         onClick={() => setExtractorResultTab("prompt")}
-                        className={clsx(ui.tabBtn, extractorResultTab === "prompt" ? ui.tabActive : ui.tabIdle)}
+                        className={clsx(
+                          ui.tabBtn,
+                          extractorResultTab === "prompt"
+                            ? ui.tabActive
+                            : ui.tabIdle,
+                        )}
                       >
                         Prompt
                       </button>
                     </div>
                     <div className="rounded-lg border border-border bg-surface-secondary p-4 text-sm whitespace-pre-wrap">
                       {extractorResultTab === "summary"
-                        ? String(extractorResult.designSummary?.styleDescription || "")
+                        ? String(
+                            extractorResult.designSummary?.styleDescription ||
+                              "",
+                          )
                         : String(extractorResult.designPrompt || "")}
                     </div>
                   </div>
@@ -431,8 +462,14 @@ export const VibeAssets = () => {
 
               <section className={clsx(ui.card, ui.cardPad)}>
                 <div className="flex items-center justify-between gap-4 mb-3">
-                  <h2 className="text-sm font-semibold text-text-primary">风格资产</h2>
-                  <button type="button" className={ui.btnGhost} onClick={() => void loadStyles()}>
+                  <h2 className="text-sm font-semibold text-text-primary">
+                    风格资产
+                  </h2>
+                  <button
+                    type="button"
+                    className={ui.btnGhost}
+                    onClick={() => void loadStyles()}
+                  >
                     刷新
                   </button>
                 </div>
@@ -457,10 +494,14 @@ export const VibeAssets = () => {
                             <span className="text-sm font-medium text-text-primary line-clamp-1">
                               {it.summary || "（无摘要）"}
                             </span>
-                            <span className={ui.pill}>{it.isOfficial ? "官方" : "用户"}</span>
+                            <span className={ui.pill}>
+                              {it.isOfficial ? "官方" : "用户"}
+                            </span>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={ui.pill}>{it.aiEnabled ? "AI:开" : "AI:关"}</span>
+                            <span className={ui.pill}>
+                              {it.aiEnabled ? "AI:开" : "AI:关"}
+                            </span>
                             {(it.tags || []).slice(0, 4).map((t) => (
                               <span key={t} className={ui.pill}>
                                 {t}
@@ -480,7 +521,9 @@ export const VibeAssets = () => {
           ) : (
             <div className="grid grid-cols-1 gap-6">
               <section className={clsx(ui.card, ui.cardPad)}>
-                <h2 className="text-sm font-semibold text-text-primary mb-3">上传字体</h2>
+                <h2 className="text-sm font-semibold text-text-primary mb-3">
+                  上传字体
+                </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label className="flex flex-col gap-1">
                     <span className={ui.sectionTitle}>字体家族名（可选）</span>
@@ -511,13 +554,21 @@ export const VibeAssets = () => {
                     />
                   </div>
                 </div>
-                {fontsError ? <div className="mt-3 text-sm text-red-600">{fontsError}</div> : null}
+                {fontsError ? (
+                  <div className="mt-3 text-sm text-red-600">{fontsError}</div>
+                ) : null}
               </section>
 
               <section className={clsx(ui.card, ui.cardPad)}>
                 <div className="flex items-center justify-between gap-4 mb-3">
-                  <h2 className="text-sm font-semibold text-text-primary">字体资产</h2>
-                  <button type="button" className={ui.btnGhost} onClick={() => void loadFonts()}>
+                  <h2 className="text-sm font-semibold text-text-primary">
+                    字体资产
+                  </h2>
+                  <button
+                    type="button"
+                    className={ui.btnGhost}
+                    onClick={() => void loadFonts()}
+                  >
                     刷新
                   </button>
                 </div>
@@ -532,11 +583,29 @@ export const VibeAssets = () => {
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-text-primary">
+                            <span
+                              className="text-sm font-medium text-text-primary"
+                              style={{
+                                fontFamily:
+                                  f.family || f.filename || "inherit",
+                              }}
+                            >
+                              <style type="text/css">
+                                {`
+                                  @font-face {
+                                    font-family: "${f.family || f.filename}";
+                                    src: url("${f.fileUrl}") format("${f.mimeType.split("/")[1]}");
+                                  }
+                                `}
+                              </style>
                               {f.family || f.filename}
                             </span>
-                            <span className={ui.pill}>{f.isOfficial ? "官方" : "用户"}</span>
-                            <span className={ui.pill}>{f.aiEnabled ? "AI:开" : "AI:关"}</span>
+                            <span className={ui.pill}>
+                              {f.isOfficial ? "官方" : "用户"}
+                            </span>
+                            <span className={ui.pill}>
+                              {f.aiEnabled ? "AI:开" : "AI:关"}
+                            </span>
                           </div>
                           <a
                             className="text-xs text-primary-700 hover:underline break-all"
@@ -555,9 +624,21 @@ export const VibeAssets = () => {
                             disabled={!canManageItem(f.userId, f.isOfficial)}
                             onChange={(v) => {
                               const prev = f.aiEnabled;
-                              setFonts((p) => p.map((x) => (x.id === f.id ? { ...x, aiEnabled: v } : x)));
-                              void updateVibeFontAsset(f.id, { aiEnabled: v }).catch(() => {
-                                setFonts((p) => p.map((x) => (x.id === f.id ? { ...x, aiEnabled: prev } : x)));
+                              setFonts((p) =>
+                                p.map((x) =>
+                                  x.id === f.id ? { ...x, aiEnabled: v } : x,
+                                ),
+                              );
+                              void updateVibeFontAsset(f.id, {
+                                aiEnabled: v,
+                              }).catch(() => {
+                                setFonts((p) =>
+                                  p.map((x) =>
+                                    x.id === f.id
+                                      ? { ...x, aiEnabled: prev }
+                                      : x,
+                                  ),
+                                );
                               });
                             }}
                           />
@@ -568,7 +649,9 @@ export const VibeAssets = () => {
                             onClick={() => {
                               const prev = fonts;
                               setFonts((p) => p.filter((x) => x.id !== f.id));
-                              void deleteVibeFontAsset(f.id).catch(() => setFonts(prev));
+                              void deleteVibeFontAsset(f.id).catch(() =>
+                                setFonts(prev),
+                              );
                             }}
                           >
                             删除
@@ -576,7 +659,9 @@ export const VibeAssets = () => {
                         </div>
                       </div>
                     ))}
-                    {fonts.length === 0 ? <div className={ui.body}>暂无字体资产</div> : null}
+                    {fonts.length === 0 ? (
+                      <div className={ui.body}>暂无字体资产</div>
+                    ) : null}
                   </div>
                 )}
               </section>
@@ -595,18 +680,34 @@ export const VibeAssets = () => {
             />
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
-                <span className={ui.pill}>{styleDetail.isOfficial ? "官方" : "用户"}</span>
+                <span className={ui.pill}>
+                  {styleDetail.isOfficial ? "官方" : "用户"}
+                </span>
                 <Toggle
                   label="AI 可用"
                   value={styleDetail.aiEnabled}
-                  disabled={!canManageItem(styleDetail.userId, styleDetail.isOfficial)}
+                  disabled={
+                    !canManageItem(styleDetail.userId, styleDetail.isOfficial)
+                  }
                   onChange={(v) => {
                     const prev = styleDetail.aiEnabled;
                     setStyleDetail({ ...styleDetail, aiEnabled: v });
-                    setStyles((p) => p.map((x) => (x.id === styleDetail.id ? { ...x, aiEnabled: v } : x)));
-                    void updateVibeAssetsStyleItem(styleDetail.id, { aiEnabled: v }).catch(() => {
+                    setStyles((p) =>
+                      p.map((x) =>
+                        x.id === styleDetail.id ? { ...x, aiEnabled: v } : x,
+                      ),
+                    );
+                    void updateVibeAssetsStyleItem(styleDetail.id, {
+                      aiEnabled: v,
+                    }).catch(() => {
                       setStyleDetail({ ...styleDetail, aiEnabled: prev });
-                      setStyles((p) => p.map((x) => (x.id === styleDetail.id ? { ...x, aiEnabled: prev } : x)));
+                      setStyles((p) =>
+                        p.map((x) =>
+                          x.id === styleDetail.id
+                            ? { ...x, aiEnabled: prev }
+                            : x,
+                        ),
+                      );
                     });
                   }}
                 />
@@ -631,13 +732,17 @@ export const VibeAssets = () => {
                 <button
                   type="button"
                   className={ui.btnGhost}
-                  disabled={!canManageItem(styleDetail.userId, styleDetail.isOfficial)}
+                  disabled={
+                    !canManageItem(styleDetail.userId, styleDetail.isOfficial)
+                  }
                   onClick={() => {
                     const id = styleDetail.id;
                     const prev = styles;
                     setStyles((p) => p.filter((x) => x.id !== id));
                     setStyleDetail(null);
-                    void deleteVibeAssetsStyleItem(id).catch(() => setStyles(prev));
+                    void deleteVibeAssetsStyleItem(id).catch(() =>
+                      setStyles(prev),
+                    );
                   }}
                 >
                   删除

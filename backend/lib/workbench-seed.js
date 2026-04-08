@@ -83,7 +83,8 @@ async function ensureWorkbenchTeam(prisma, userId) {
     // 如需强制对齐种子步骤（仅运维场景），显式开启 WORKBENCH_REPAIR_WORKFLOWS=1
     if (process.env.WORKBENCH_REPAIR_WORKFLOWS === '1') {
       await repairWebPageBuilderWorkflowIfNeeded(prisma, team.id, byTemplate);
-      await repairResumeWorkflowIfNeeded(prisma, team.id, byTemplate);
+      await disableResumeWorkflowIfNeeded(prisma, team.id);
+      await repairBrandKitWorkflowIfNeeded(prisma, team.id, byTemplate);
       await repairPosterWorkflowIfNeeded(prisma, team.id, byTemplate);
     }
   }
@@ -108,14 +109,16 @@ function buildSeedWorkflowSteps(catByTemplateId) {
       name: '落地页',
       icon: 'Globe',
       description:
-        '一句话生成静态单页落地页：策划梳理模块 → 视觉确定风格 → 前端生成可预览 HTML，并支持一键导出 HTML / 图片。',
-      placeholder: '描述你的页面或站点：目标用户、必备模块、风格气质…',
+        '一句话生成可编辑的“落地页首屏 Hero”：提炼卖点 → 视觉确定风格 → 前端输出可预览 HTML（适合分享与导出）。',
+      placeholder: '描述你的产品/活动：一句话定位 + 目标人群 + 想强调的卖点…',
       trigger: 'manual',
       persistent: false,
       steps: [
         {
           stepId: 'wpb_arch',
           agentId: C('product-architect'),
+          systemPrompt:
+            '你是落地页策划/产品架构师。只为“首屏Hero”输出结构 JSON（必须可解析）。只允许输出 4~6 个字段：主标题/副标题/三条卖点/信任背书/CTA（可选价格/限时）。输出必须是 JSON 对象，禁止 markdown，禁止解释文字。',
         },
         {
           stepId: 'wpb_visual',
@@ -126,36 +129,8 @@ function buildSeedWorkflowSteps(catByTemplateId) {
           stepId: 'wpb_fe',
           agentId: C('frontend-engineer'),
           inputFrom: 'wpb_visual',
-        },
-      ],
-    },
-    {
-      name: '简历',
-      icon: 'FileText',
-      description:
-        '输入求职岗位，一键生成可编辑的一页简历：HR 梳理结构 → 文案补全要点 → 视觉优化（可复用落地页视觉猫） → 排版输出 A4 HTML，并支持导出 PDF。',
-      placeholder: '输入求职岗位：如「产品经理 / 前端工程师 / 数据分析师」…',
-      trigger: 'manual',
-      persistent: false,
-      steps: [
-        {
-          stepId: 'resume_arch',
-          agentId: C('resume-architect'),
-        },
-        {
-          stepId: 'resume_write',
-          agentId: C('resume-writer'),
-          inputFrom: 'resume_arch',
-        },
-        {
-          stepId: 'resume_visual',
-          agentId: C('visual-designer'),
-          inputFrom: 'resume_write',
-        },
-        {
-          stepId: 'resume_html',
-          agentId: C('resume-html-engineer'),
-          inputFrom: 'resume_visual',
+          systemPrompt:
+            '你是前端工程师。生成“落地页首屏Hero”静态单页 HTML（自包含、移动端优先）：包含主标题/副标题/卖点列表/信任背书/CTA按钮（2个）。必须适合导出 PNG/PDF，并且正文可被 contenteditable 编辑（避免把文字渲染进图片）。只输出完整 HTML。',
         },
       ],
     },
@@ -193,7 +168,45 @@ function buildSeedWorkflowSteps(catByTemplateId) {
           agentId: C('frontend-engineer'),
           inputFrom: 'poster_visual',
           systemPrompt:
-            '你是前端工程师。生成“单屏海报”静态单页 HTML（自包含）：居中排版、强主标题、按钮CTA、装饰性背景（SVG/CSS渐变）。必须移动端优先，适合导出图片/PDF。只输出完整 HTML。',
+            '你是前端工程师。生成“单屏海报”静态单页 HTML（自包含）：居中排版、强主标题、按钮CTA、装饰性背景（SVG/CSS渐变）。必须移动端优先，适合导出图片/PDF。额外要求：布局需兼容 3:4、1:1、9:16 裁切（关键文字始终在安全区）。只输出完整 HTML。',
+        },
+      ],
+    },
+    {
+      name: '品牌气质卡',
+      icon: 'Palette',
+      description:
+        '输入品牌/产品一句话，生成可编辑的品牌气质卡：品牌Brief → 口号与语气 → 视觉方向 → 一页品牌卡（配色/字体/语气示例/组件样式）。',
+      placeholder: '描述你的品牌：定位 + 受众 + 3个关键词（如“温柔、专业、克制”）…',
+      trigger: 'manual',
+      persistent: false,
+      steps: [
+        {
+          stepId: 'brandkit_brief',
+          agentId: C('recorder-log'),
+          systemPrompt:
+            '你是品牌运营。输出“品牌Brief”：定位/受众/调性关键词（5个以内）/禁用词/场景/参考气质。只输出 Markdown，短而完整。',
+        },
+        {
+          stepId: 'brandkit_copy',
+          agentId: C('writer-article'),
+          inputFrom: 'brandkit_brief',
+          systemPrompt:
+            '你是品牌文案。基于品牌Brief输出：一句话定位、口号备选（3条）、品牌语气（3条原则）、示例文案（3句）。只输出 Markdown，避免长文。',
+        },
+        {
+          stepId: 'brandkit_visual',
+          agentId: C('visual-designer'),
+          inputFrom: 'brandkit_copy',
+          systemPrompt:
+            '你是视觉设计师。基于上游品牌文案与气质，输出“视觉风格：<设计提示词>”（可被前端工程师直接采用）。只输出两段：视觉风格：...\\n\\n用户需求：...（不需要选择理由）。',
+        },
+        {
+          stepId: 'brandkit_fe',
+          agentId: C('frontend-engineer'),
+          inputFrom: 'brandkit_visual',
+          systemPrompt:
+            '你是前端工程师。生成“一页品牌气质卡”静态单页 HTML（自包含、移动端优先、可编辑）：展示配色（至少5个色块+用途文案）、字体搭配（2种 font-family fallback）、语气原则与示例文案、按钮/卡片样式示例。必须适合导出 PNG/PDF。只输出完整 HTML。',
         },
       ],
     },
@@ -254,20 +267,36 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
 }
 
 /**
- * 线上已有工作台团队时，补齐/修正「简历」为与 seed 一致（三步：HR→写手→排版）。
+ * 线上已有工作台团队时，下线「简历」：
+ * - 将 enabled=false（保留历史 run 关联）
+ * - 不再 repair/新增该工作流
+ * @param {import('@prisma/client').PrismaClient} prisma
+ * @param {string} teamId
+ */
+async function disableResumeWorkflowIfNeeded(prisma, teamId) {
+  const wfs = await prisma.workflow.findMany({ where: { teamId, name: '简历' } });
+  for (const wf of wfs) {
+    if (wf.enabled === false) continue;
+    await prisma.workflow.update({ where: { id: wf.id }, data: { enabled: false } });
+    console.log('[workbench-seed] disabled 简历 workflow');
+  }
+}
+
+/**
+ * 线上已有工作台团队时，补齐/修正「品牌气质卡」为与 seed 一致（运营→文案→视觉→前端）。
  * @param {import('@prisma/client').PrismaClient} prisma
  * @param {string} teamId
  * @param {Record<string, { id: string }>} catByTemplateId
  */
-async function repairResumeWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
-  for (const tid of ['resume-architect', 'resume-writer', 'visual-designer', 'resume-html-engineer']) {
+async function repairBrandKitWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
+  for (const tid of ['recorder-log', 'writer-article', 'visual-designer', 'frontend-engineer']) {
     if (!catByTemplateId[tid]?.id) return;
   }
-  const want = buildSeedWorkflowSteps(catByTemplateId).find((w) => w.name === '简历');
+  const want = buildSeedWorkflowSteps(catByTemplateId).find((w) => w.name === '品牌气质卡');
   if (!want?.steps?.length) return;
 
   const wfs = await prisma.workflow.findMany({
-    where: { teamId, name: '简历' },
+    where: { teamId, name: '品牌气质卡' },
   });
 
   if (!wfs.length) {
@@ -284,7 +313,7 @@ async function repairResumeWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
         enabled: true,
       },
     });
-    console.log('[workbench-seed] added 简历 workflow');
+    console.log('[workbench-seed] added 品牌气质卡 workflow');
     return;
   }
 
@@ -316,9 +345,10 @@ async function repairResumeWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
         description: want.description,
         icon: want.icon,
         placeholder: want.placeholder || null,
+        enabled: true,
       },
     });
-    console.log('[workbench-seed] repaired 简历: steps → resume_arch → resume_write → resume_html');
+    console.log('[workbench-seed] repaired 品牌气质卡: steps → brandkit_brief → brandkit_copy → brandkit_visual → brandkit_fe');
   }
 }
 

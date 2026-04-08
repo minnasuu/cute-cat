@@ -9,7 +9,7 @@ export const workflows: Workflow[] = [
     id: 'landing-page',
     name: '落地页',
     description:
-      '一句话生成静态单页落地页：策划梳理模块 → 视觉确定风格 → 前端生成可预览 HTML，并支持一键导出 HTML / 图片。',
+      '一句话生成可编辑的“落地页首屏 Hero”：提炼卖点 → 视觉确定风格 → 前端输出可预览 HTML（适合分享与导出）。',
     steps: [
       {
         stepId: 'wpb_arch',
@@ -30,33 +30,6 @@ export const workflows: Workflow[] = [
         stepId: 'wpb_fe',
         agentId: 'frontend-engineer',
         inputFrom: 'wpb_visual',
-      },
-    ],
-  },
-  {
-    id: 'resume',
-    name: '简历',
-    description:
-      '输入求职岗位，一键生成可编辑的一页简历：HR 梳理结构 → 文案补全要点 → 视觉优化 → 排版输出 A4 HTML，并支持导出 PDF。',
-    steps: [
-      {
-        stepId: 'resume_arch',
-        agentId: 'resume-architect',
-      },
-      {
-        stepId: 'resume_write',
-        agentId: 'resume-writer',
-        inputFrom: 'resume_arch',
-      },
-      {
-        stepId: 'resume_visual',
-        agentId: 'visual-designer',
-        inputFrom: 'resume_write',
-      },
-      {
-        stepId: 'resume_html',
-        agentId: 'resume-html-engineer',
-        inputFrom: 'resume_visual',
       },
     ],
   },
@@ -84,6 +57,33 @@ export const workflows: Workflow[] = [
         stepId: 'poster_fe',
         agentId: 'frontend-engineer',
         inputFrom: 'poster_visual',
+      },
+    ],
+  },
+  {
+    id: 'brand-kit',
+    name: '品牌气质卡',
+    description:
+      '输入品牌/产品一句话，生成可编辑的品牌气质卡：品牌Brief → 口号与语气 → 视觉方向 → 一页品牌卡（配色/字体/语气示例/组件样式）。',
+    steps: [
+      {
+        stepId: 'brandkit_brief',
+        agentId: 'recorder-log',
+      },
+      {
+        stepId: 'brandkit_copy',
+        agentId: 'writer-article',
+        inputFrom: 'brandkit_brief',
+      },
+      {
+        stepId: 'brandkit_visual',
+        agentId: 'visual-designer',
+        inputFrom: 'brandkit_copy',
+      },
+      {
+        stepId: 'brandkit_fe',
+        agentId: 'frontend-engineer',
+        inputFrom: 'brandkit_visual',
       },
     ],
   },

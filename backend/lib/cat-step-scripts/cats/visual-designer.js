@@ -65,14 +65,16 @@ module.exports = async function runVisualDesigner(ctx) {
     : '（无上游说明，请按通用企业官网场景选择风格。）';
 
   // 优先从 Vibe Style Lib 灵感库读取候选（只用 summary/tags 给 AI 匹配；取最近 N 条避免上下文过长）
+  // 提高稳定性：只取 aiEnabled=true，且优先 official（官方 > 用户）。
   const TAKE = Math.min(
-    Math.max(Number.parseInt(process.env.VIBE_STYLE_LIB_TAKE || '20', 10) || 20, 1),
+    Math.max(Number.parseInt(process.env.VIBE_STYLE_LIB_TAKE || '16', 10) || 16, 1),
     50,
   );
   let vibeItems = [];
   try {
     vibeItems = await prisma.vibeStyleItem.findMany({
-      orderBy: { createdAt: 'desc' },
+      where: { aiEnabled: true },
+      orderBy: [{ isOfficial: 'desc' }, { createdAt: 'desc' }],
       take: TAKE,
       // designPrompt 不拼进候选目录，但需要在最终命中时返回给下游
       select: { id: true, tags: true, summary: true, designPrompt: true },
