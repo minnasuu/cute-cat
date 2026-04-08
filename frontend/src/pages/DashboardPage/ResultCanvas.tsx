@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, ImageDown, Loader2, Lock } from "lucide-react";
+import { Download, FileDown, ImageDown, Loader2, Lock } from "lucide-react";
 import html2canvas from "html2canvas";
 import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
 import ReactSandboxPreview from "./ReactSandboxPreview";
@@ -190,8 +190,25 @@ export default function ResultCanvas({
   const onDownloadHtml = useCallback(() => {
     if (!effectiveHtml) return;
     const blob = new Blob([effectiveHtml], { type: "text/html;charset=utf-8" });
-    downloadBlob(blob, "landing.html");
-  }, [downloadBlob, effectiveHtml]);
+    const safe = (workflowName || "document")
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, " ");
+    downloadBlob(blob, `${safe || "document"}.html`);
+  }, [downloadBlob, effectiveHtml, workflowName]);
+
+  const onExportPdf = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !frameReady) return;
+    const win = iframe.contentWindow;
+    if (!win) return;
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      // ignore
+    }
+  }, [frameReady]);
 
   const onExportPng = useCallback(async () => {
     const iframe = iframeRef.current;
@@ -213,14 +230,18 @@ export default function ResultCanvas({
       await new Promise<void>((resolve, reject) => {
         canvas.toBlob((blob: Blob | null) => {
           if (!blob) return reject(new Error("toBlob failed"));
-          downloadBlob(blob, "landing.png");
+          const safe = (workflowName || "document")
+            .trim()
+            .replace(/[\\/:*?"<>|]+/g, "-")
+            .replace(/\s+/g, " ");
+          downloadBlob(blob, `${safe || "document"}.png`);
           resolve();
         }, "image/png");
       });
     } finally {
       setExportingPng(false);
     }
-  }, [downloadBlob, frameReady]);
+  }, [downloadBlob, frameReady, workflowName]);
 
   // 切换到其它 run 时重置编辑态，避免串 run
   useEffect(() => {
@@ -574,6 +595,17 @@ export default function ResultCanvas({
                         >
                           <Download className="size-3.5" aria-hidden />
                           HTML
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={onExportPdf}
+                          disabled={!frameReady}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
+                          title={!frameReady ? "预览加载完成后可导出 PDF" : "打开打印对话框并另存为 PDF"}
+                        >
+                          <FileDown className="size-3.5" aria-hidden />
+                          PDF
                         </button>
                       </>
                     ) : null}

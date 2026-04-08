@@ -6,8 +6,8 @@ import { AppIcon } from '../../components/icons'
 
 const catMap = Object.fromEntries(assistants.map(c => [c.id, c]))
 
-// 选一个最具代表性的工作流（文章发布：5步，涉及多只猫）
-const DEMO_WORKFLOW = workflows.find(w => w.id === 'content-publish') ?? workflows[0]
+// 选一个最具代表性的工作流：优先展示「简历」，否则回退第一个
+const DEMO_WORKFLOW = workflows.find(w => w.id === 'resume') ?? workflows[0]
 
 const STEP_DURATION = 2400
 
@@ -19,6 +19,9 @@ const workingDialogs: Record<string, string[]> = {
   reviewer: ['仔细检查中...', '质量测试~', '检测通过!'],
   ops: ['邮件编辑中...', '正在发送~', '送达成功!'],
   engineer: ['代码审查中...', '构建编译~', '部署完毕!'],
+  'resume-architect': ['结构梳理中...', '亮点提炼~', '结构搞定!'],
+  'resume-writer': ['措辞打磨中...', '要点补全~', '文案就绪!'],
+  'resume-html-engineer': ['排版中...', '对齐 A4~', '简历生成!'],
 }
 
 type StepStatus = 'waiting' | 'active' | 'done'

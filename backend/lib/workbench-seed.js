@@ -79,6 +79,7 @@ async function ensureWorkbenchTeam(prisma, userId) {
     }
   } else {
     await repairWebPageBuilderWorkflowIfNeeded(prisma, team.id, byTemplate);
+    await repairResumeWorkflowIfNeeded(prisma, team.id, byTemplate);
   }
 
   return team;
@@ -119,6 +120,31 @@ function buildSeedWorkflowSteps(catByTemplateId) {
           stepId: 'wpb_fe',
           agentId: C('frontend-engineer'),
           inputFrom: 'wpb_visual',
+        },
+      ],
+    },
+    {
+      name: '简历',
+      icon: 'FileText',
+      description:
+        '输入求职岗位，一键生成可编辑的一页简历：HR 梳理结构 → 文案补全要点 → 排版输出 A4 HTML，并支持导出 PDF。',
+      placeholder: '输入求职岗位：如「产品经理 / 前端工程师 / 数据分析师」…',
+      trigger: 'manual',
+      persistent: false,
+      steps: [
+        {
+          stepId: 'resume_arch',
+          agentId: C('resume-architect'),
+        },
+        {
+          stepId: 'resume_write',
+          agentId: C('resume-writer'),
+          inputFrom: 'resume_arch',
+        },
+        {
+          stepId: 'resume_html',
+          agentId: C('resume-html-engineer'),
+          inputFrom: 'resume_write',
         },
       ],
     },
@@ -175,6 +201,75 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
     console.log(
       '[workbench-seed] repaired 落地页: steps → wpb_arch → wpb_visual → wpb_fe（与 workflows.ts 对齐）',
     );
+  }
+}
+
+/**
+ * 线上已有工作台团队时，补齐/修正「简历」为与 seed 一致（三步：HR→写手→排版）。
+ * @param {import('@prisma/client').PrismaClient} prisma
+ * @param {string} teamId
+ * @param {Record<string, { id: string }>} catByTemplateId
+ */
+async function repairResumeWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
+  for (const tid of ['resume-architect', 'resume-writer', 'resume-html-engineer']) {
+    if (!catByTemplateId[tid]?.id) return;
+  }
+  const want = buildSeedWorkflowSteps(catByTemplateId).find((w) => w.name === '简历');
+  if (!want?.steps?.length) return;
+
+  const wfs = await prisma.workflow.findMany({
+    where: { teamId, name: '简历' },
+  });
+
+  if (!wfs.length) {
+    await prisma.workflow.create({
+      data: {
+        teamId,
+        name: want.name,
+        icon: want.icon,
+        description: want.description,
+        placeholder: want.placeholder || null,
+        steps: want.steps,
+        trigger: want.trigger || 'manual',
+        persistent: !!want.persistent,
+        enabled: true,
+      },
+    });
+    console.log('[workbench-seed] added 简历 workflow');
+    return;
+  }
+
+  const normFrom = (v) => (v === undefined || v === null || v === '' ? null : v);
+  for (const wf of wfs) {
+    let steps = wf.steps;
+    if (typeof steps === 'string') {
+      try {
+        steps = JSON.parse(steps);
+      } catch {
+        steps = null;
+      }
+    }
+    if (!Array.isArray(steps)) steps = [];
+
+    const aligned =
+      steps.length === want.steps.length &&
+      want.steps.every((exp) => {
+        const cur = steps.find((s) => s.stepId === exp.stepId);
+        if (!cur || cur.agentId !== exp.agentId) return false;
+        return normFrom(cur.inputFrom) === normFrom(exp.inputFrom);
+      });
+    if (aligned) continue;
+
+    await prisma.workflow.update({
+      where: { id: wf.id },
+      data: {
+        steps: want.steps,
+        description: want.description,
+        icon: want.icon,
+        placeholder: want.placeholder || null,
+      },
+    });
+    console.log('[workbench-seed] repaired 简历: steps → resume_arch → resume_write → resume_html');
   }
 }
 

@@ -73,6 +73,10 @@ const CAT_TEMPLATES = [
   officialCat('ux-designer', '阿蓝', '交互设计师', '#8DB889', 'clipboard', ['交互中', '让我思考最重要的交互流程'], '根据用户需求生成符合产品逻辑的交互流程图', 1),
   officialCat('visual-designer', '墨墨', '视觉设计师', '#4E342E', 'camera', ['画面生成中…', '你喜欢什么风格？'], '主视觉与配图创意，AIGC 生成画面方向。', 8),
   officialCat('frontend-engineer', '琥珀', '前端工程师', '#8DB889', 'camera', ['开始设计网页！', '让我看看你的设计'], '根据用户需求生成符合产品逻辑的网页结构和样式', 2),
+  // ── 简历专属猫猫 ──
+  officialCat('resume-architect', '阿禾', 'HR顾问', '#2F855A', 'clipboard', ['结构梳理中', '先抓住岗位关键词'], '把岗位关键词转成一页简历的结构与亮点策略。', 4),
+  officialCat('resume-writer', '豆包', '简历写手', '#2B6CB0', 'notebook', ['措辞打磨中…', '让亮点更清晰'], '把经历写成可编辑的一页简历要点（更聚焦成果与数字）。', 1),
+  officialCat('resume-html-engineer', '砚线', '排版工程师', '#1A202C', 'camera', ['排版中…', '我会对齐到像素'], '把简历内容排成 A4 单页 HTML，便于编辑与导出 PDF。', 0),
 ];
 
 const OFFICIAL_TEMPLATE_IDS = CAT_TEMPLATES.map((t) => t.id);

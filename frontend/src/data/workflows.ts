@@ -33,4 +33,26 @@ export const workflows: Workflow[] = [
       },
     ],
   },
+  {
+    id: 'resume',
+    name: '简历',
+    description:
+      '输入求职岗位，一键生成可编辑的一页简历：HR 梳理结构 → 文案补全要点 → 排版输出 A4 HTML，并支持导出 PDF。',
+    steps: [
+      {
+        stepId: 'resume_arch',
+        agentId: 'resume-architect',
+      },
+      {
+        stepId: 'resume_write',
+        agentId: 'resume-writer',
+        inputFrom: 'resume_arch',
+      },
+      {
+        stepId: 'resume_html',
+        agentId: 'resume-html-engineer',
+        inputFrom: 'resume_write',
+      },
+    ],
+  },
 ];

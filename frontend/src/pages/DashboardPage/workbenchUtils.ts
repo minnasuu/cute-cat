@@ -68,23 +68,21 @@ export function parseSteps(
   return [];
 }
 
-/** 官方种子工作流（当前产品即落地页，含 stepId wpb_arch） */
+/** 官方种子工作流（工作台内置能力，如：落地页/简历） */
 export function isOfficialWorkflow(w: WorkflowRow): boolean {
-  if (w.name === "落地页") return true;
-  return parseSteps(w.steps).some((s) => s.stepId === "wpb_arch");
+  if (w.name === "落地页" || w.name === "简历") return true;
+  return parseSteps(w.steps).some((s) =>
+    s.stepId === "wpb_arch" || s.stepId === "resume_arch",
+  );
 }
 
 /** 对用户展示的功能名（不强调后端工作流概念） */
 export function featureLabel(w: WorkflowRow): string {
-  if (isOfficialWorkflow(w)) return "落地页";
   return w.name;
 }
 
 /** 功能卡片副文案 */
 export function featureBlurb(w: WorkflowRow): string {
-  if (isOfficialWorkflow(w)) {
-    return "一句话生成落地页，可预览与导出";
-  }
   const d = (w.description || "").trim();
   return d.length > 36 ? `${d.slice(0, 34)}…` : d || "描述需求即可开始";
 }

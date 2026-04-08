@@ -96,6 +96,7 @@ function stepTimeoutMsFor(step) {
   const feMsRaw = Number.parseInt(process.env.WORKFLOW_FE_STEP_TIMEOUT_MS || '', 10);
   const feMs = Number.isFinite(feMsRaw) && feMsRaw > 0 ? feMsRaw : 300_000;
   if (step?.agentId === 'frontend-engineer' || step?.stepId === 'wpb_fe') return feMs;
+  if (step?.agentId === 'resume-html-engineer' || step?.stepId === 'resume_html') return feMs;
 
   return defaultMs;
 }
