@@ -676,6 +676,3 @@ export const fetchCrafts = async (): Promise<any[]> => {
     return [];
   }
 };
-
-// Explicit re-exports for TS consumers (editor / lint tool stability)
-export { updateWorkflowRun, uploadImage };
