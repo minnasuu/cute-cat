@@ -70,9 +70,12 @@ export function parseSteps(
 
 /** 官方种子工作流（工作台内置能力，如：落地页/简历） */
 export function isOfficialWorkflow(w: WorkflowRow): boolean {
-  if (w.name === "落地页" || w.name === "简历") return true;
+  if (w.name === "落地页" || w.name === "简历" || w.name === "海报制作") return true;
   return parseSteps(w.steps).some((s) =>
-    s.stepId === "wpb_arch" || s.stepId === "resume_arch" || s.stepId === "resume_visual",
+    s.stepId === "wpb_arch" ||
+    s.stepId === "resume_arch" ||
+    s.stepId === "resume_visual" ||
+    s.stepId === "poster_brand",
   );
 }
 

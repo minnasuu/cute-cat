@@ -60,4 +60,31 @@ export const workflows: Workflow[] = [
       },
     ],
   },
+  {
+    id: 'poster',
+    name: '海报制作',
+    description:
+      '输入活动/产品主题，一键生成可编辑海报：品牌运营拆解 → 文案共鸣表达 → 视觉匹配风格 → 前端输出单页海报（可导出）。',
+    steps: [
+      {
+        stepId: 'poster_brand',
+        agentId: 'recorder-log',
+      },
+      {
+        stepId: 'poster_copy',
+        agentId: 'writer-article',
+        inputFrom: 'poster_brand',
+      },
+      {
+        stepId: 'poster_visual',
+        agentId: 'visual-designer',
+        inputFrom: 'poster_copy',
+      },
+      {
+        stepId: 'poster_fe',
+        agentId: 'frontend-engineer',
+        inputFrom: 'poster_visual',
+      },
+    ],
+  },
 ];

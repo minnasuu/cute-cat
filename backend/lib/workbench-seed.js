@@ -80,6 +80,7 @@ async function ensureWorkbenchTeam(prisma, userId) {
   } else {
     await repairWebPageBuilderWorkflowIfNeeded(prisma, team.id, byTemplate);
     await repairResumeWorkflowIfNeeded(prisma, team.id, byTemplate);
+    await repairPosterWorkflowIfNeeded(prisma, team.id, byTemplate);
   }
 
   return team;
@@ -150,6 +151,44 @@ function buildSeedWorkflowSteps(catByTemplateId) {
           stepId: 'resume_html',
           agentId: C('resume-html-engineer'),
           inputFrom: 'resume_visual',
+        },
+      ],
+    },
+    {
+      name: '海报制作',
+      icon: 'Image',
+      description:
+        '输入活动/产品主题，一键生成可编辑海报：品牌运营拆解 → 文案共鸣表达 → 视觉匹配风格 → 前端输出单页海报（可导出）。',
+      placeholder: '输入海报主题：如「新品发布会 / 春季招新 / 限时折扣」…',
+      trigger: 'manual',
+      persistent: false,
+      steps: [
+        {
+          stepId: 'poster_brand',
+          agentId: C('recorder-log'),
+          systemPrompt:
+            '你是品牌运营。输出“海报Brief”：主题/受众/目的/情绪/关键词/约束（移动端一屏海报，可编辑，避免外链图片）。只输出 Markdown。',
+        },
+        {
+          stepId: 'poster_copy',
+          agentId: C('writer-article'),
+          inputFrom: 'poster_brand',
+          systemPrompt:
+            '你是文案专员。基于海报Brief输出海报文案：主标题/副标题/三条卖点/行动号召（2个按钮备选）。只输出 Markdown。',
+        },
+        {
+          stepId: 'poster_visual',
+          agentId: C('visual-designer'),
+          inputFrom: 'poster_copy',
+          systemPrompt:
+            '你是视觉设计师。根据上游海报文案与意图，输出“视觉风格：<设计提示词>”（可被前端工程师直接采用）。只输出两段：视觉风格：...\\n\\n用户需求：...（不需要选择理由）。',
+        },
+        {
+          stepId: 'poster_fe',
+          agentId: C('frontend-engineer'),
+          inputFrom: 'poster_visual',
+          systemPrompt:
+            '你是前端工程师。生成“单屏海报”静态单页 HTML（自包含）：居中排版、强主标题、按钮CTA、装饰性背景（SVG/CSS渐变）。必须移动端优先，适合导出图片/PDF。只输出完整 HTML。',
         },
       ],
     },
@@ -275,6 +314,75 @@ async function repairResumeWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
       },
     });
     console.log('[workbench-seed] repaired 简历: steps → resume_arch → resume_write → resume_html');
+  }
+}
+
+/**
+ * 线上已有工作台团队时，补齐/修正「海报制作」为与 seed 一致（运营→文案→视觉→前端）。
+ * @param {import('@prisma/client').PrismaClient} prisma
+ * @param {string} teamId
+ * @param {Record<string, { id: string }>} catByTemplateId
+ */
+async function repairPosterWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
+  for (const tid of ['recorder-log', 'writer-article', 'visual-designer', 'frontend-engineer']) {
+    if (!catByTemplateId[tid]?.id) return;
+  }
+  const want = buildSeedWorkflowSteps(catByTemplateId).find((w) => w.name === '海报制作');
+  if (!want?.steps?.length) return;
+
+  const wfs = await prisma.workflow.findMany({
+    where: { teamId, name: '海报制作' },
+  });
+
+  if (!wfs.length) {
+    await prisma.workflow.create({
+      data: {
+        teamId,
+        name: want.name,
+        icon: want.icon,
+        description: want.description,
+        placeholder: want.placeholder || null,
+        steps: want.steps,
+        trigger: want.trigger || 'manual',
+        persistent: !!want.persistent,
+        enabled: true,
+      },
+    });
+    console.log('[workbench-seed] added 海报制作 workflow');
+    return;
+  }
+
+  const normFrom = (v) => (v === undefined || v === null || v === '' ? null : v);
+  for (const wf of wfs) {
+    let steps = wf.steps;
+    if (typeof steps === 'string') {
+      try {
+        steps = JSON.parse(steps);
+      } catch {
+        steps = null;
+      }
+    }
+    if (!Array.isArray(steps)) steps = [];
+
+    const aligned =
+      steps.length === want.steps.length &&
+      want.steps.every((exp) => {
+        const cur = steps.find((s) => s.stepId === exp.stepId);
+        if (!cur || cur.agentId !== exp.agentId) return false;
+        return normFrom(cur.inputFrom) === normFrom(exp.inputFrom);
+      });
+    if (aligned) continue;
+
+    await prisma.workflow.update({
+      where: { id: wf.id },
+      data: {
+        steps: want.steps,
+        description: want.description,
+        icon: want.icon,
+        placeholder: want.placeholder || null,
+      },
+    });
+    console.log('[workbench-seed] repaired 海报制作: steps → poster_brand → poster_copy → poster_visual → poster_fe');
   }
 }
 
