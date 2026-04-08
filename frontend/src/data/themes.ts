@@ -376,7 +376,7 @@ export const appearanceTemplates: AppearanceTemplate[] = [
   { id: 'xuanmao',    name: '黑猫',  preview: '全身黑色，神秘利落',   colors: xuanmaoTheme },
   { id: 'baimao',    name: '白猫',  preview: '通体纯白，干净温柔',   colors: baimaoColors },
   { id: 'naimao',    name: '奶牛猫',  preview: '黑白拼接，俏皮可爱',   colors: milkColors },
-  { id: 'yinse',     name: '美短',  preview: '低调银灰，知性沉稳',   colors: meiduanColors },
+  { id: 'meiduan',     name: '美短',  preview: '低调银灰，知性沉稳',   colors: meiduanColors },
   // ── 新增品种（配色从 themes.ts 导入）──
   { id: 'boshimao',  name: '波斯猫',      preview: '蓬松华丽，贵族气质',  colors: boshimaoTheme },
   { id: 'jiafei',    name: '灰猫',      preview: '圆脸扁鼻，憨态可掬',  colors: jiafeiTheme },
