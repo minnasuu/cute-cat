@@ -68,17 +68,16 @@ export function parseSteps(
   return [];
 }
 
-/** 官方种子工作流（当前产品即网页制作流水线，含 stepId wpb_arch） */
+/** 官方种子工作流（当前产品即落地页，含 stepId wpb_arch） */
 export function isOfficialWorkflow(w: WorkflowRow): boolean {
-  if (w.name === "网页制作流水线") return true;
+  if (w.name === "落地页") return true;
   return parseSteps(w.steps).some((s) => s.stepId === "wpb_arch");
 }
 
 /** 对用户展示的功能名（不强调后端工作流概念） */
 export function featureLabel(w: WorkflowRow): string {
-  if (isOfficialWorkflow(w)) return "网页制作";
-  const n = w.name.replace(/流水线\s*$/u, "").trim();
-  return n || "创作";
+  if (isOfficialWorkflow(w)) return "落地页";
+  return w.name;
 }
 
 /** 功能卡片副文案 */

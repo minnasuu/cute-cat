@@ -97,7 +97,7 @@ function buildSeedWorkflowSteps(catByTemplateId) {
   // 与 frontend/src/data/workflows.ts 中 web-page-builder 逐步一致（仅多 agentId=TeamCat.id）
   return [
     {
-      name: '网页制作流水线',
+      name: '落地页',
       icon: 'Globe',
       description:
         '一句话生成静态单页落地页：策划梳理模块 → 视觉确定风格 → 前端生成可预览 HTML，并支持一键导出 HTML / 图片。',
@@ -124,7 +124,7 @@ function buildSeedWorkflowSteps(catByTemplateId) {
 }
 
 /**
- * 线上已有工作台团队时，将「网页制作流水线」修正为与 frontend/src/data/workflows.ts 一致（当前为三步：策划→视觉→前端）。
+ * 线上已有工作台团队时，将「落地页」修正为与 frontend/src/data/workflows.ts 一致（当前为三步：策划→视觉→前端）。
  * @param {import('@prisma/client').PrismaClient} prisma
  * @param {string} teamId
  * @param {Record<string, { id: string }>} catByTemplateId
@@ -137,7 +137,7 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
   if (!want?.steps?.length) return;
 
   const wfs = await prisma.workflow.findMany({
-    where: { teamId, name: '网页制作流水线' },
+    where: { teamId, name: '落地页' },
   });
 
   for (const wf of wfs) {
@@ -170,7 +170,7 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
       },
     });
     console.log(
-      '[workbench-seed] repaired 网页制作流水线: steps → wpb_arch → wpb_visual → wpb_fe（与 workflows.ts 对齐）',
+      '[workbench-seed] repaired 落地页: steps → wpb_arch → wpb_visual → wpb_fe（与 workflows.ts 对齐）',
     );
   }
 }

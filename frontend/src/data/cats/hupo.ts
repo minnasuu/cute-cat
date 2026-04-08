@@ -2,7 +2,7 @@ import type { Assistant } from '../types';
 import { appearanceTemplates } from '../themes';
 import type { CatColors } from '../../components/CatSVG';
 
-/** 琥珀 — 前端工程师（网页制作流水线） */
+/** 琥珀 — 前端工程师（落地页） */
 export const hupo: Assistant = {
   id: 'frontend-engineer',
   name: '琥珀',

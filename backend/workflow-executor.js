@@ -92,7 +92,7 @@ function stepTimeoutMsFor(step) {
   const base = Number.parseInt(process.env.WORKFLOW_STEP_TIMEOUT_MS || '', 10);
   const defaultMs = Number.isFinite(base) && base > 0 ? base : 120_000;
 
-  // 网页制作流水线：前端工程师输出长代码，通常需要更长时间
+  // 落地页：前端工程师输出长代码，通常需要更长时间
   const feMsRaw = Number.parseInt(process.env.WORKFLOW_FE_STEP_TIMEOUT_MS || '', 10);
   const feMs = Number.isFinite(feMsRaw) && feMsRaw > 0 ? feMsRaw : 300_000;
   if (step?.agentId === 'frontend-engineer' || step?.stepId === 'wpb_fe') return feMs;

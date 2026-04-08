@@ -2,7 +2,7 @@ import type { Assistant } from '../types';
 import { appearanceTemplates } from '../themes';
 import type { CatColors } from '../../components/CatSVG';
 
-/** 阿蓝 — 交互设计师（网页制作流水线） */
+/** 阿蓝 — 交互设计师（落地页） */
 export const alan: Assistant = {
   id: 'ux-designer',
   name: '阿蓝',

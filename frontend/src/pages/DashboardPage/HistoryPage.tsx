@@ -3,11 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiClient } from "../../utils/apiClient";
 import type { WorkbenchPayload, WorkflowRun } from "./workbenchTypes";
 
-/** 对用户展示的友好工作流名称（去掉"流水线"后缀） */
+/** 对用户展示的友好工作流名称 */
 function friendlyName(name: string): string {
-  if (name === "网页制作流水线") return "网页制作";
-  const n = name.replace(/流水线\s*$/u, "").trim();
-  return n || "创作";
+  if (name === "落地页") return "落地页";
+  return name;
 }
 
 const HistoryPage: React.FC = () => {

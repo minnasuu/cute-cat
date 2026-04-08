@@ -2,7 +2,7 @@ import type { Assistant } from '../types';
 import { appearanceTemplates } from '../themes';
 import type { CatColors } from '../../components/CatSVG';
 
-/** 墨墨 — 视觉设计师（网页制作流水线） */
+/** 墨墨 — 视觉设计师（落地页） */
 export const momo: Assistant = {
   id: 'visual-designer',
   name: '墨墨',

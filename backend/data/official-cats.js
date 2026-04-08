@@ -68,7 +68,7 @@ const CAT_TEMPLATES = [
   officialCat('qa-review', '小白', '质量控制', '#EC407A', 'clipboard', ['审核完毕', '这里建议改一下', '风险点标出来了～'], '内容质量与合规把关，AIGC 输出审阅意见与修改建议。', 14),
   officialCat('creative-mece', '发发', '商业分析师', '#FFB74D', 'clipboard', ['MECE 树画好了！', '穷尽且无重', '再开一层？'], '结构化拆解与商业论证，AIGC 辅助 MECE 式分析文稿。', 15),
   officialCat('creative-scamper', '灵犀', '创意策划', '#FFB74D', 'clipboard', ['七个维度扫完了！', '灵感清单在这', '要组合一版吗？'], 'Campaign 与产品创意，AIGC 做 SCAMPER 等发散与整合。', 16),
-  // ── 网页制作流水线专属猫猫 ──
+  // ── 落地页专属猫猫 ──
   officialCat('product-architect', '花椒', '产品策划', '#8DB889', 'clipboard', ['架构中', '让我思考最重要的结构'], '根据用户需求生成符合产品逻辑的结构树型架构图', 0),
   officialCat('ux-designer', '阿蓝', '交互设计师', '#8DB889', 'clipboard', ['交互中', '让我思考最重要的交互流程'], '根据用户需求生成符合产品逻辑的交互流程图', 1),
   officialCat('visual-designer', '墨墨', '视觉设计师', '#4E342E', 'camera', ['画面生成中…', '你喜欢什么风格？'], '主视觉与配图创意，AIGC 生成画面方向。', 8),
