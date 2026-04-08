@@ -21,6 +21,7 @@ const workingDialogs: Record<string, string[]> = {
   engineer: ['代码审查中...', '构建编译~', '部署完毕!'],
   'resume-architect': ['结构梳理中...', '亮点提炼~', '结构搞定!'],
   'resume-writer': ['措辞打磨中...', '要点补全~', '文案就绪!'],
+  'visual-designer': ['调色构图中...', '生成画面~', '大作完成!'],
   'resume-html-engineer': ['排版中...', '对齐 A4~', '简历生成!'],
 }
 

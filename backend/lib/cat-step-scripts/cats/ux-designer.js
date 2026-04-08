@@ -1,6 +1,6 @@
 'use strict';
 
-const { runWithAI, extractUpstreamText } = require('../_framework');
+const { runWithAI, extractUpstreamText, resolveSystemPrompt } = require('../_framework');
 
 const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「阿蓝」，岗位角色：交互设计师。
 你的任务是基于上游产品策划输出的网站信息架构（JSON），补充完整的交互链路设计。
@@ -18,7 +18,7 @@ module.exports = async function runUxDesigner(ctx) {
   const { merged } = ctx;
   const userText = extractUpstreamText(merged).trim() || '请为一个通用企业官网设计交互链路。';
 
-  return runWithAI('ux-designer', ctx, SYSTEM_PROMPT, userText, {
+  return runWithAI('ux-designer', ctx, resolveSystemPrompt(SYSTEM_PROMPT, ctx), userText, {
     maxTokens: 4096,
   });
 };

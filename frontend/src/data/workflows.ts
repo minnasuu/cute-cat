@@ -37,7 +37,7 @@ export const workflows: Workflow[] = [
     id: 'resume',
     name: '简历',
     description:
-      '输入求职岗位，一键生成可编辑的一页简历：HR 梳理结构 → 文案补全要点 → 排版输出 A4 HTML，并支持导出 PDF。',
+      '输入求职岗位，一键生成可编辑的一页简历：HR 梳理结构 → 文案补全要点 → 视觉优化 → 排版输出 A4 HTML，并支持导出 PDF。',
     steps: [
       {
         stepId: 'resume_arch',
@@ -49,9 +49,14 @@ export const workflows: Workflow[] = [
         inputFrom: 'resume_arch',
       },
       {
+        stepId: 'resume_visual',
+        agentId: 'visual-designer',
+        inputFrom: 'resume_write',
+      },
+      {
         stepId: 'resume_html',
         agentId: 'resume-html-engineer',
-        inputFrom: 'resume_write',
+        inputFrom: 'resume_visual',
       },
     ],
   },

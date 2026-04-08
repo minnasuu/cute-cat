@@ -127,7 +127,7 @@ function buildSeedWorkflowSteps(catByTemplateId) {
       name: '简历',
       icon: 'FileText',
       description:
-        '输入求职岗位，一键生成可编辑的一页简历：HR 梳理结构 → 文案补全要点 → 排版输出 A4 HTML，并支持导出 PDF。',
+        '输入求职岗位，一键生成可编辑的一页简历：HR 梳理结构 → 文案补全要点 → 视觉优化（可复用落地页视觉猫） → 排版输出 A4 HTML，并支持导出 PDF。',
       placeholder: '输入求职岗位：如「产品经理 / 前端工程师 / 数据分析师」…',
       trigger: 'manual',
       persistent: false,
@@ -142,9 +142,14 @@ function buildSeedWorkflowSteps(catByTemplateId) {
           inputFrom: 'resume_arch',
         },
         {
+          stepId: 'resume_visual',
+          agentId: C('visual-designer'),
+          inputFrom: 'resume_write',
+        },
+        {
           stepId: 'resume_html',
           agentId: C('resume-html-engineer'),
-          inputFrom: 'resume_write',
+          inputFrom: 'resume_visual',
         },
       ],
     },
@@ -211,7 +216,7 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
  * @param {Record<string, { id: string }>} catByTemplateId
  */
 async function repairResumeWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
-  for (const tid of ['resume-architect', 'resume-writer', 'resume-html-engineer']) {
+  for (const tid of ['resume-architect', 'resume-writer', 'visual-designer', 'resume-html-engineer']) {
     if (!catByTemplateId[tid]?.id) return;
   }
   const want = buildSeedWorkflowSteps(catByTemplateId).find((w) => w.name === '简历');

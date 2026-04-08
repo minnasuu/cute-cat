@@ -1,6 +1,6 @@
 'use strict';
 
-const { runWithAI, extractUpstreamText } = require('../_framework');
+const { runWithAI, extractUpstreamText, resolveSystemPrompt } = require('../_framework');
 
 const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「阿禾」，岗位角色：HR顾问。
 你的任务：用户只给一个「求职岗位」，你要输出一份「一页简历」的结构方案，便于下游写手补全与排版渲染。
@@ -39,7 +39,7 @@ module.exports = async function runResumeArchitect(ctx) {
   const jobTitle = raw.replace(/\s+/g, ' ').replace(/[。！？；;]+$/g, '').trim();
   const userText = jobTitle || '通用岗位';
 
-  const result = await runWithAI('resume-architect', ctx, SYSTEM_PROMPT, userText, {
+  const result = await runWithAI('resume-architect', ctx, resolveSystemPrompt(SYSTEM_PROMPT, ctx), userText, {
     maxTokens: 2048,
   });
 

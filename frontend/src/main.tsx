@@ -13,6 +13,7 @@ import CommunityPage from './pages/CommunityPage';
 import { ToastProvider } from './components/Toast';
 import './styles/index.css';
 import { VibeStyleLib } from './pages/VibeStyleLib';
+import AdminWorkflowsPage from './pages/AdminWorkflowsPage';
 
 const LoadingScreen = () => (
   <div className="min-h-screen flex items-center justify-center text-text-tertiary">加载中...</div>
@@ -91,6 +92,14 @@ const App: React.FC = () => {
                 element={
                   <AdminRoute>
                     <VibeStyleLib />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/workflows"
+                element={
+                  <AdminRoute>
+                    <AdminWorkflowsPage />
                   </AdminRoute>
                 }
               />

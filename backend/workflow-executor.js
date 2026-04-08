@@ -203,13 +203,15 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
 
     let catTemplateId = '';
     let catName = '';
+    let catSystemPrompt = '';
     if (step.agentId) {
       const cat = await prisma.teamCat.findUnique({
         where: { id: step.agentId },
-        select: { templateId: true, name: true },
+        select: { templateId: true, name: true, systemPrompt: true },
       }).catch(() => null);
       if (cat?.templateId) catTemplateId = cat.templateId;
       if (cat?.name) catName = cat.name;
+      if (typeof cat?.systemPrompt === 'string') catSystemPrompt = cat.systemPrompt;
     }
 
     try {
@@ -266,6 +268,11 @@ async function executeWorkflow(workflow, triggeredBy, options = {}) {
         ...executionContext,
         catTemplateId,
         catName,
+        catSystemPrompt,
+        stepSystemPrompt:
+          typeof step?.systemPrompt === 'string'
+            ? step.systemPrompt
+            : (typeof step?.system_prompt === 'string' ? step.system_prompt : ''),
         onChunk,
       });
       const timeoutMs = stepTimeoutMsFor(step);

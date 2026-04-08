@@ -1,6 +1,6 @@
 'use strict';
 
-const { runWithAI, extractUpstreamText } = require('../_framework');
+const { runWithAI, extractUpstreamText, resolveSystemPrompt } = require('../_framework');
 
 const FALLBACK_LANDING_MODULES =
   '[{"id":"1","title":"首屏"},{"id":"2","title":"核心卖点"},{"id":"3","title":"案例与口碑"},{"id":"4","title":"FAQ"},{"id":"5","title":"页脚CTA"}]';
@@ -138,7 +138,7 @@ module.exports = async function runProductArchitect(ctx) {
   const { merged } = ctx;
   const userText = extractUpstreamText(merged).trim() || '请根据需求生成落地页模块大纲（JSON 树）';
 
-  const result = await runWithAI('product-architect', ctx, SYSTEM_PROMPT, userText, {
+  const result = await runWithAI('product-architect', ctx, resolveSystemPrompt(SYSTEM_PROMPT, ctx), userText, {
     maxTokens: 8192,
   });
 

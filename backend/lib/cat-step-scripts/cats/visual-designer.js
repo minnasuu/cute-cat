@@ -1,6 +1,6 @@
 'use strict';
 
-const { runWithAI, extractUpstreamText } = require('../_framework');
+const { runWithAI, extractUpstreamText, resolveSystemPrompt } = require('../_framework');
 const { VISUAL_STYLES, getStyleCatalog } = require('../visual-prompt-library');
 const { PrismaClient } = require('@prisma/client');
 
@@ -96,9 +96,17 @@ ${upstreamForSystem}`;
     ? '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：<id>」与「理由：…」，其中 <id> 必须来自候选里的 id。'
     : '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
 
-  const result = await runWithAI('visual-designer', ctx, fullSystemPrompt, userText, {
+  // 支持管理员在 step 上覆盖 system prompt：覆盖后不再拼 catalog/upstream（高级用法）
+  const sysOverride = resolveSystemPrompt('', ctx);
+  const result = await runWithAI(
+    'visual-designer',
+    ctx,
+    sysOverride ? sysOverride : fullSystemPrompt,
+    userText,
+    {
     maxTokens: 4096,
-  });
+    },
+  );
 
   // 解析选择；data.text = 完整上游 + designPrompt（与前端一致）
   if (result.success && result.data?.text) {

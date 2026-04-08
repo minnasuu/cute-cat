@@ -72,7 +72,7 @@ export function parseSteps(
 export function isOfficialWorkflow(w: WorkflowRow): boolean {
   if (w.name === "落地页" || w.name === "简历") return true;
   return parseSteps(w.steps).some((s) =>
-    s.stepId === "wpb_arch" || s.stepId === "resume_arch",
+    s.stepId === "wpb_arch" || s.stepId === "resume_arch" || s.stepId === "resume_visual",
   );
 }
 

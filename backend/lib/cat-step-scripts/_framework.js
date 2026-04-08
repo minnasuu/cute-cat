@@ -261,4 +261,17 @@ function extractUpstreamText(merged) {
   );
 }
 
-module.exports = { runPlaceholder, runWithAI, runWithAIStream, extractUpstreamText };
+/**
+ * 允许管理员在 workflow step 上覆盖 system prompt：
+ * - stepSystemPrompt 优先级最高（每步自定义）
+ * - catSystemPrompt 其次（猫实例自定义）
+ */
+function resolveSystemPrompt(defaultPrompt, ctx) {
+  const stepPrompt = ctx?.context?.stepSystemPrompt;
+  if (typeof stepPrompt === 'string' && stepPrompt.trim()) return stepPrompt.trim();
+  const catPrompt = ctx?.context?.catSystemPrompt;
+  if (typeof catPrompt === 'string' && catPrompt.trim()) return catPrompt.trim();
+  return defaultPrompt;
+}
+
+module.exports = { runPlaceholder, runWithAI, runWithAIStream, extractUpstreamText, resolveSystemPrompt };
