@@ -207,7 +207,8 @@ router.post('/:id/execute/stream', async (req, res) => {
             status,
             summary,
             resultType: resultType || null,
-            resultDataLen: (resultData || '').length,
+            // 前端需完整 resultData 才能无刷新预览 html-page / react-sandbox；体积由步骤本身决定
+            resultData: resultData != null ? String(resultData) : null,
           }),
         onRunDone: ({ runId, status }) => sendSSE('runDone', { runId, status }),
       },

@@ -384,6 +384,7 @@ const DashboardPage: React.FC = () => {
       setStreamingRunId(null);
       setStreamingStatus("running");
       setStreamingSteps([]);
+      let workbenchPollTimer: ReturnType<typeof setInterval> | null = null;
       try {
         const ac = new AbortController();
         streamingAbortRef.current = ac;
@@ -411,6 +412,10 @@ const DashboardPage: React.FC = () => {
         let currentEvent = "";
         const accByIndex = new Map<number, string>();
         let runIdSeen: string | null = null;
+        workbenchPollTimer = window.setInterval(() => {
+          if (myGen !== executeGenerationRef.current) return;
+          void loadWorkbench({ quiet: true });
+        }, 2800);
 
         const upsertStep = (idx: number, patch: Partial<WorkflowRunStep>) => {
           setStreamingSteps((prev) => {
@@ -462,6 +467,7 @@ const DashboardPage: React.FC = () => {
                 runIdSeen = String(data.runId || "");
                 setStreamingRunId(runIdSeen);
                 setStreamingStatus("running");
+                void loadWorkbench({ quiet: true });
               } else if (currentEvent === "stepStart") {
                 const idx = Number(data.index ?? 0);
                 upsertStep(idx, {
@@ -483,13 +489,17 @@ const DashboardPage: React.FC = () => {
                 const acc = accByIndex.get(idx) || "";
                 const ok = data.success !== false && data.status !== "error";
                 const resultType = data.resultType || undefined;
+                const payloadData =
+                  typeof data.resultData === "string" && data.resultData.length > 0
+                    ? data.resultData
+                    : acc;
                 upsertStep(idx, {
                   index: idx,
                   success: ok,
                   status: data.status,
                   summary: data.summary || acc,
                   ...(resultType
-                    ? { resultType, resultData: acc }
+                    ? { resultType, resultData: payloadData }
                     : undefined),
                 });
               } else if (currentEvent === "runDone") {
@@ -510,10 +520,17 @@ const DashboardPage: React.FC = () => {
       } catch {
         /* toast via apiClient */
       } finally {
+        if (workbenchPollTimer != null) {
+          clearInterval(workbenchPollTimer);
+          workbenchPollTimer = null;
+        }
         setIsSubmitting(false);
         if (myGen === executeGenerationRef.current) {
           setPollingWfId(null);
           streamingAbortRef.current = null;
+          setStreamingRunId(null);
+          setStreamingStatus(null);
+          setStreamingSteps([]);
         }
       }
     },

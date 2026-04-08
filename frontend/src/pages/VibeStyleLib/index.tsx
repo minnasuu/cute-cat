@@ -4,7 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import clsx from "clsx";
 import {
@@ -12,6 +14,7 @@ import {
   deleteVibeStyleLibUploadedImage,
   listVibeStyleLibLibrary,
   saveVibeStyleLibLibraryItem,
+  updateVibeStyleLibLibraryItem,
   uploadVibeStyleLibImage,
   vibeSnapExtract,
   resolveVibeSnapImageUrl,
@@ -283,6 +286,79 @@ const VISUAL_ATTR_KEYS = [
   ["间距", "spacing"],
 ] as const;
 
+/** 详情弹窗内：编辑卡片文案与通用视觉方向（designPrompt） */
+function DetailEditForm({
+  draft,
+  setDraft,
+  disabled,
+}: {
+  draft: { summary: string; styleDescription: string; designPrompt: string };
+  setDraft: Dispatch<
+    SetStateAction<{
+      summary: string;
+      styleDescription: string;
+      designPrompt: string;
+    } | null>
+  >;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="scrollbar-hide flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+      <section className={clsx(ui.card, ui.cardPad)}>
+        <h3 className={clsx(ui.sectionTitle, "mb-2")}>卡片摘要</h3>
+        <p className={clsx(ui.body, "mb-2")}>
+          显示在灵感库缩略卡片上的短文案（libraryBlurb / summary）。
+        </p>
+        <textarea
+          value={draft.summary}
+          disabled={disabled}
+          onChange={(e) =>
+            setDraft((prev) =>
+              prev ? { ...prev, summary: e.target.value } : prev,
+            )
+          }
+          rows={3}
+          className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50"
+        />
+      </section>
+      <section className={clsx(ui.card, ui.cardPad)}>
+        <h3 className={clsx(ui.sectionTitle, "mb-2")}>设计风格简述</h3>
+        <p className={clsx(ui.body, "mb-2")}>
+          designSummary.styleDescription，建议保持品类中立的气质描述。
+        </p>
+        <textarea
+          value={draft.styleDescription}
+          disabled={disabled}
+          onChange={(e) =>
+            setDraft((prev) =>
+              prev ? { ...prev, styleDescription: e.target.value } : prev,
+            )
+          }
+          rows={4}
+          className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50"
+        />
+      </section>
+      <section className={clsx(ui.card, ui.cardPad)}>
+        <h3 className={clsx(ui.sectionTitle, "mb-2")}>设计提示词（通用视觉方向）</h3>
+        <p className={clsx(ui.body, "mb-2")}>
+          供下游模型套用的外观与版式约束；宜写可迁移的视觉语言，避免绑死某一行业。
+        </p>
+        <textarea
+          value={draft.designPrompt}
+          disabled={disabled}
+          onChange={(e) =>
+            setDraft((prev) =>
+              prev ? { ...prev, designPrompt: e.target.value } : prev,
+            )
+          }
+          rows={14}
+          className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs leading-relaxed text-text-primary placeholder:text-text-tertiary focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50"
+        />
+      </section>
+    </div>
+  );
+}
+
 function ResultPanel({
   data,
   tab,
@@ -449,6 +525,13 @@ export const VibeStyleLib = () => {
   >(null);
   const [savingToLibrary, setSavingToLibrary] = useState(false);
   const [deletingDetail, setDeletingDetail] = useState(false);
+  const [detailEditing, setDetailEditing] = useState(false);
+  const [detailEditDraft, setDetailEditDraft] = useState<{
+    summary: string;
+    styleDescription: string;
+    designPrompt: string;
+  } | null>(null);
+  const [detailSaving, setDetailSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** 提取器内：已成功上传且解析完成、但尚未写入灵感库的服务端 URL；离开/失败时需删盘文件 */
   const pendingExtractUploadUrlRef = useRef<string | null>(null);
@@ -486,6 +569,89 @@ export const VibeStyleLib = () => {
   useEffect(() => {
     if (detailItem) setDetailTab("summary");
   }, [detailItem?.id]);
+
+  useEffect(() => {
+    setDetailEditing(false);
+    setDetailEditDraft(null);
+  }, [detailItem?.id]);
+
+  const canEditDetail = Boolean(
+    detailItem &&
+      (detailItem.id.startsWith("vs-") ||
+        (user?.id &&
+          (detailItem.userId === user.id || detailItem.userId == null))),
+  );
+
+  const startDetailEdit = useCallback(() => {
+    if (!detailItem) return;
+    setDetailEditDraft({
+      summary: detailItem.summary,
+      styleDescription: detailItem.designSummary.styleDescription,
+      designPrompt: detailItem.designPrompt,
+    });
+    setDetailEditing(true);
+  }, [detailItem]);
+
+  const cancelDetailEdit = useCallback(() => {
+    setDetailEditing(false);
+    setDetailEditDraft(null);
+  }, []);
+
+  const saveDetailEdits = useCallback(async () => {
+    if (!detailItem || !detailEditDraft) return;
+    const designSummary = {
+      ...detailItem.designSummary,
+      styleDescription: detailEditDraft.styleDescription,
+    };
+    const mergedLocal: VibeStyleLibLibraryItem = {
+      ...detailItem,
+      summary: detailEditDraft.summary,
+      designPrompt: detailEditDraft.designPrompt.trim(),
+      designSummary,
+    };
+    setDetailSaving(true);
+    setError(null);
+    try {
+      if (detailItem.id.startsWith("vs-")) {
+        setLibrary((prev) =>
+          prev.map((x) => (x.id === detailItem.id ? mergedLocal : x)),
+        );
+        setDetailItem(mergedLocal);
+        setDetailEditing(false);
+        setDetailEditDraft(null);
+        return;
+      }
+      if (!user?.id) {
+        setError("请先登录后再保存修改");
+        return;
+      }
+      const saved = await updateVibeStyleLibLibraryItem(detailItem.id, {
+        imageUrl: detailItem.imageUrl,
+        tags: detailItem.tags,
+        colors: detailItem.colors,
+        summary: detailEditDraft.summary,
+        designSummary,
+        designPrompt: detailEditDraft.designPrompt.trim(),
+        ownerName: detailItem.ownerName,
+      });
+      const displayUrl =
+        detailItem.imageUrl.startsWith("data:") ||
+        detailItem.imageUrl.startsWith("blob:")
+          ? detailItem.imageUrl
+          : saved.imageUrl;
+      const merged: VibeStyleLibLibraryItem = { ...saved, imageUrl: displayUrl };
+      setLibrary((prev) =>
+        prev.map((x) => (x.id === detailItem.id ? merged : x)),
+      );
+      setDetailItem(merged);
+      setDetailEditing(false);
+      setDetailEditDraft(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setDetailSaving(false);
+    }
+  }, [detailItem, detailEditDraft, user?.id]);
 
   /** 离开「提取器」标签时：未保存到灵感库的临时上传从服务端删除 */
   useEffect(() => {
@@ -1018,12 +1184,44 @@ export const VibeStyleLib = () => {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {canEditDetail && !detailEditing ? (
+                <button
+                  type="button"
+                  className={ui.btnPrimary}
+                  onClick={startDetailEdit}
+                >
+                  编辑
+                </button>
+              ) : null}
+              {detailEditing ? (
+                <>
+                  <button
+                    type="button"
+                    className={ui.btnPrimary}
+                    disabled={detailSaving}
+                    onClick={() => void saveDetailEdits()}
+                  >
+                    {detailSaving ? "保存中…" : "保存"}
+                  </button>
+                  <button
+                    type="button"
+                    className={clsx(ui.btnGhost, "border border-border")}
+                    disabled={detailSaving}
+                    onClick={cancelDetailEdit}
+                  >
+                    取消
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 className={ui.btnGhost}
+                disabled={detailEditing}
                 onClick={
-                  detailItem ? () => openInExtractor(detailItem) : undefined
+                  detailItem && !detailEditing
+                    ? () => openInExtractor(detailItem)
+                    : undefined
                 }
               >
                 在提取器中打开
@@ -1032,7 +1230,7 @@ export const VibeStyleLib = () => {
                 <button
                   type="button"
                   className="border border-border-strong px-3 py-1 text-sm rounded-lg text-text-secondary hover:border-danger-300 hover:bg-danger-50 hover:text-danger-700 disabled:opacity-45 disabled:pointer-events-none"
-                  disabled={deletingDetail}
+                  disabled={deletingDetail || detailEditing}
                   onClick={confirmDeleteDetailItem}
                 >
                   {deletingDetail ? "删除中…" : "删除"}
@@ -1041,7 +1239,9 @@ export const VibeStyleLib = () => {
               <button
                 type="button"
                 className="px-2 text-text-tertiary hover:text-text-primary"
-                onClick={() => !deletingDetail && setDetailItem(null)}
+                onClick={() =>
+                  !deletingDetail && !detailSaving && setDetailItem(null)
+                }
                 aria-label="关闭"
               >
                 ×
@@ -1057,15 +1257,23 @@ export const VibeStyleLib = () => {
               />
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-5">
-              <ResultPanel
-                data={{
-                  designSummary: detailItem?.designSummary,
-                  designPrompt: detailItem?.designPrompt,
-                  libraryBlurb: detailItem?.summary,
-                }}
-                tab={detailTab}
-                setTab={setDetailTab}
-              />
+              {detailEditing && detailEditDraft ? (
+                <DetailEditForm
+                  draft={detailEditDraft}
+                  setDraft={setDetailEditDraft}
+                  disabled={detailSaving}
+                />
+              ) : (
+                <ResultPanel
+                  data={{
+                    designSummary: detailItem?.designSummary,
+                    designPrompt: detailItem?.designPrompt,
+                    libraryBlurb: detailItem?.summary,
+                  }}
+                  tab={detailTab}
+                  setTab={setDetailTab}
+                />
+              )}
             </div>
           </div>
         </ModalChrome>

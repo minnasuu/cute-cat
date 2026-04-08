@@ -45,22 +45,68 @@ export default function ResultCanvas({
   const [frameReady, setFrameReady] = useState(false);
   const [exportingPng, setExportingPng] = useState(false);
 
-  const steps = useMemo(
+  const serverSteps = useMemo(
     () => sortedRunSteps(normalizeRunSteps(displayRun?.steps)),
     [displayRun?.steps],
   );
-  const inProgress = displayRun?.status === "running";
-  const failed = displayRun?.status === "failed";
-  const lastStep = steps.length ? steps[steps.length - 1] : null;
-  const failedStep = useMemo(
-    () => steps.find((s) => s.success === false || s.status === "error"),
-    [steps],
+  const streamSteps = useMemo(
+    () => sortedRunSteps(normalizeRunSteps(streamingSteps ?? [])),
+    [streamingSteps],
   );
+  /** SSE 已与 run 结束：优先用服务端快照；执行中优先用流式 steps（与后台进度一致） */
+  const streamTerminal =
+    streamingStatus === "success" || streamingStatus === "failed";
+  const effectiveSteps = useMemo(() => {
+    const live =
+      !!streamingRunId &&
+      !streamTerminal &&
+      (streamingStatus === "running" || streamSteps.length > 0);
+    if (live) return streamSteps.length > 0 ? streamSteps : serverSteps;
+    if (serverSteps.length > 0) return serverSteps;
+    return streamSteps;
+  }, [
+    streamingRunId,
+    streamTerminal,
+    streamingStatus,
+    streamSteps,
+    serverSteps,
+  ]);
+
+  /** waitingForRunRecord 由上方专用流水线块展示，避免重复渲染两条流水线 */
+  const showPipeline =
+    !streamTerminal &&
+    !waitingForRunRecord &&
+    (!!streamingRunId || displayRun?.status === "running");
+
+  const failed =
+    streamTerminal && streamingStatus === "failed"
+      ? true
+      : displayRun?.status === "failed";
+  const lastStep = effectiveSteps.length
+    ? effectiveSteps[effectiveSteps.length - 1]
+    : null;
+  const failedStep = useMemo(
+    () => effectiveSteps.find((s) => s.success === false || s.status === "error"),
+    [effectiveSteps],
+  );
+
+  const showResultPanel =
+    !isSubmitting &&
+    !waitingForRunRecord &&
+    (streamTerminal ||
+      (displayRun != null && displayRun.status !== "running"));
+
+  const showBrowseHint =
+    !isSubmitting &&
+    !waitingForRunRecord &&
+    !displayRun &&
+    !streamingRunId &&
+    streamSteps.length === 0;
 
   const resultHeadline = failed
     ? stepDisplayTextForRunStep(failedStep) || "执行未全部成功"
     : stepDisplayTextForRunStep(lastStep) ||
-      (steps.length ? "已完成全部步骤" : "");
+      (effectiveSteps.length ? "已完成全部步骤" : "");
 
   /** 检测最后一步是否为 HTML 页面类型（历史记录） */
   const htmlPageData = useMemo(() => {
@@ -173,7 +219,7 @@ export default function ResultCanvas({
           />
         ) : null}
 
-        {!isSubmitting && !waitingForRunRecord && !displayRun ? (
+        {showBrowseHint ? (
           <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-surface-secondary/35 py-14 px-6 text-center">
             <p className="text-sm font-semibold text-text-secondary">
               在左侧点选一条历史任务可查看详情与预览
@@ -184,23 +230,21 @@ export default function ResultCanvas({
           </div>
         ) : null}
 
-        {/* 执行中：主区域只展示 WorkflowPanel 同款流水线动画 */}
-        {!isSubmitting &&
-        (displayRun || (streamingRunId && inProgress)) &&
-        inProgress ? (
+        {/* 执行中：流水线与流式 steps 对齐，无需等 workbench 轮询 */}
+        {showPipeline ? (
           <DashboardWorkflowPipeline
             workflowName={workflowName || displayRun?.workflowName || "执行中"}
             planSteps={planSteps}
             catNameById={catNameById}
             cats={cats}
             running
-            runSteps={steps}
+            runSteps={effectiveSteps}
             disableTypewriter
           />
         ) : null}
 
         {/* 已结束：结果为主；步骤明细在左侧历史卡片「查看执行过程」 */}
-        {!isSubmitting && displayRun && !inProgress ? (
+        {showResultPanel ? (
           <section className="space-y-3 w-full">
             {/* HTML 页面预览 */}
             {previewKind ? (
@@ -299,7 +343,7 @@ export default function ResultCanvas({
                 <p className="text-[10px] font-black uppercase tracking-wide text-text-tertiary mb-2">
                   {failed ? "执行结果" : "生成结果"}
                 </p>
-                {steps.length === 0 ? (
+                {effectiveSteps.length === 0 ? (
                   <p className="text-sm font-medium text-text-secondary">
                     本轮已结束（后端未写入步骤明细）。可前往历史记录查看状态。
                   </p>

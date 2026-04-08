@@ -782,15 +782,15 @@ const MAX_STYLE_REF_IMAGE_BASE64_CHARS = 14_000_000;
 const VIBE_SNAP_MOCK_EXTRACT = {
   designSummary: {
     styleDescription:
-      '现代金融科技落地页风格：高饱和紫绿渐变、玻璃拟态卡片、3D 插画与粗体标题结合，整体年轻、可信赖且富有活力。',
-    styleTags: ['现代科技感', '活力渐变', '亲和易用', '动效流畅'],
+      '现代营销落地页气质：高饱和主色与中性背景形成对比，玻璃拟态或轻卡片分层，标题字重高、正文层级清晰，整体偏年轻、干净、偏「产品展示向」而非某一细分行业。',
+    styleTags: ['现代简洁', '渐变点缀', '卡片分层', '强标题弱正文'],
     colors: [
-      { name: '主色紫', hex: '#6633FF', usage: '主按钮、品牌强调、关键 CTA' },
-      { name: '荧光绿', hex: '#B2FF00', usage: '点缀、数据高亮、次要按钮' },
-      { name: '深海军蓝', hex: '#1C1E32', usage: '深色背景、页脚、对比区块' },
-      { name: '米白背景', hex: '#F8F8FA', usage: '主背景、卡片底' },
-      { name: '石板灰', hex: '#64748B', usage: '次级正文、说明文案' },
-      { name: '纯白', hex: '#FFFFFF', usage: '卡片表面、留白' },
+      { name: '主色', hex: '#6633FF', usage: '主按钮、品牌强调、关键 CTA' },
+      { name: '强调色', hex: '#B2FF00', usage: '点缀、数据高亮、次要按钮' },
+      { name: '深色底', hex: '#1C1E32', usage: '深色背景、页脚、对比区块' },
+      { name: '浅背景', hex: '#F8F8FA', usage: '主背景、卡片底' },
+      { name: '次级文字', hex: '#64748B', usage: '说明文案、辅助信息' },
+      { name: '表面白', hex: '#FFFFFF', usage: '卡片表面、留白' },
     ],
     typography: [
       { family: 'Inter', note: '正文、按钮与界面标注' },
@@ -803,18 +803,21 @@ const VIBE_SNAP_MOCK_EXTRACT = {
       spacing: '8px 网格，常用 16 / 24 / 32 / 40px 作为区块与组件间距',
     },
   },
-  designPrompt: `请生成与参考图一致的响应式网页落地页（信用卡 / 金融科技主题）。
+  designPrompt: `【通用视觉方向 — 可套用到任意品类落地页/UI，勿绑定单一行业】
 
-Tailwind 主题扩展建议：
-colors: { primary: "#6633FF", accent: "#B2FF00", background: { light: "#F8F8FA", dark: "#1C1E32" } }
-fontFamily: { sans: ["Inter", "Plus Jakarta Sans", "system-ui", "sans-serif"] }
-圆角：rounded-lg ≈ 0.75rem；药丸用 rounded-full。
-阴影：shadow-md / shadow-lg 表现卡片层级；hover 时略加深。
-动效：可用 Framer Motion，spring stiffness 约 250、damping 25、时长 0.4s 以内。
+色彩与对比：主色 #6633FF 用于主 CTA 与关键强调；点缀色 #B2FF00 用于高亮与次要按钮；背景在 #F8F8FA 与 #1C1E32 区块间切换以形成节奏。保持 AA 级对比，避免正文与背景粘连。
 
-结构：顶栏导航 + Hero（主标题、副文案、主 CTA、产品/mockup 图）+ 信任区 logo + 功能特性栅格 + App 下载区 + 卡片展示 + 用户评价 + 页脚。保持渐变背景与玻璃卡片层次，文案为中文。`,
+字体与层级：无衬线族（如 Inter / Plus Jakarta Sans / system-ui）；H1 粗、字距略紧；正文常规字重，行高约 1.5～1.6；数字或 KPI 可略放大加粗。
+
+组件气质：卡片圆角约 rounded-lg；分割线低对比 1px；阴影柔和、分层清晰（resting 浅、hover 略加深）。可用玻璃拟态时保持边框与模糊克制，避免脏灰。
+
+布局与密度：顶栏 + 首屏 Hero + 若干信息区块纵向堆叠；栅格对齐、留白充足；模块间距用 8 的倍数。
+
+动效（可选）：过渡 200～300ms，hover 轻微位移或阴影加深；避免夸张炫光。
+
+实现提示：可用 Tailwind 语义色映射 primary/accent/background；具体业务文案、行业插图由产品侧替换，本规范只约束「长相与气质」。`,
   libraryBlurb:
-    '紫绿渐变与玻璃拟态结合的金融科技落地页，Inter + Plus Jakarta Sans 排版，强调圆角卡片与轻阴影层次。',
+    '高对比主色与浅底卡片分层，无衬线强标题排版，圆角与轻阴影定义层级；描述为通用视觉方向，不限定行业。',
 };
 
 // multer 配置：存储到 uploads/vibe-snap/
@@ -967,8 +970,8 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
 请仅输出 **一个 JSON 对象**（不要 markdown 代码围栏，不要前后解释文字），字段严格如下：
 {
   "designSummary": {
-    "styleDescription": "string，2-4 句中文，概括整体设计风格与气质",
-    "styleTags": ["3-6 个中文短语标签"],
+    "styleDescription": "string，2-4 句中文，概括整体视觉气质与版式特征（中性表述，勿断言具体行业/商品品类，除非截图上有明确品牌/行业文案可引用）",
+    "styleTags": ["3-6 个中文短语标签，描述视觉语言如极简/高对比/柔和渐变等，避免窄化到单一行业词"],
     "colors": [
       { "name": "string", "hex": "#RRGGBB", "usage": "string 简短说明用途" }
     ],
@@ -982,14 +985,15 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
       "spacing": "string，间距体系与基准"
     }
   },
-  "designPrompt": "string，一段完整的中文提示词，供文生图/代码实现复刻类似页面；可包含 Tailwind/色板/字体/区块结构建议，800-2000 字为宜",
-  "libraryBlurb": "string，80-160 字中文，用于缩略卡片上的设计总结摘要"
+  "designPrompt": "string，一段完整的中文「通用视觉方向 / 设计系统式说明」，供下游大模型在实现**任意品类**落地页或界面时套用：应写清色彩关系、排版层级、组件形态（圆角/阴影/边框）、信息密度与留白、插画/摄影/扁平倾向等；可含 Tailwind/CSS 式关键词辅助。**禁止**预设或强行绑定某一行业（如金融/电商/医疗/教育）、**禁止**臆造截图中不存在的具体业务文案、品牌名或页面结构；若需举例模块，用「首屏/内容区/页脚」等中性结构词。800-2000 字为宜",
+  "libraryBlurb": "string，80-160 字中文，用于缩略卡片上的设计总结摘要（同样保持品类中立）"
 }
 
 要求：
-- 根据截图**如实推断**配色与风格；无法确认的字体写「无衬线」类描述并列举常见替代。
+- 根据截图**如实推断**配色、对比与组件气质；无法确认的字体写「无衬线」类描述并列举常见替代。
 - hex 必须合法 6 位。
-- colors 至少 4 项，建议 5-8 项。`;
+- colors 至少 4 项，建议 5-8 项。
+- **designPrompt 必须可迁移**：像给另一位设计师/模型的「外观规范」，而不是「为某某行业写死一套 copy」。`;
 
     // 安全校验 mimeType，非法则 fallback 到 image/jpeg
     const safeMime = /^image\/(png|jpe?g|webp|gif)$/i.test(mimeType || '')
@@ -1016,7 +1020,7 @@ router.post('/vibe-snap-extract', optionalAuth, async (req, res) => {
               content: [
                 {
                   type: 'text',
-                  text: '请分析这张界面截图，输出上述 JSON。',
+                  text: '请仅依据截图中的视觉证据进行分析，输出上述 JSON。designPrompt 请写成可复用到其他主题页面的通用视觉规范，勿绑定特定行业或商品品类；不要编造截图中未出现的业务文案。',
                 },
                 {
                   type: 'image_url',
@@ -1147,6 +1151,42 @@ router.post('/vibe-snap-library', optionalAuth, async (req, res) => {
   } catch (err) {
     console.error('[vibe-snap-library] save error:', err);
     res.status(500).json({ success: false, error: '保存失败' });
+  }
+});
+
+// PUT /api/dify/vibe-snap-library/:id — 更新灵感卡片（详情弹窗编辑）
+router.put('/vibe-snap-library/:id', optionalAuth, async (req, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ success: false, error: '请先登录后再保存修改' });
+    }
+    const { id } = req.params;
+    const { tags, colors, summary, designSummary, designPrompt, ownerName } = req.body;
+    if (!designSummary || !designPrompt) {
+      return res.status(400).json({ success: false, error: '缺少 designSummary 或 designPrompt' });
+    }
+    const item = await prisma.vibeStyleItem.findUnique({ where: { id } });
+    if (!item) {
+      return res.status(404).json({ success: false, error: '卡片不存在' });
+    }
+    if (item.userId && item.userId !== req.userId) {
+      return res.status(403).json({ success: false, error: '无权修改该卡片' });
+    }
+    const updated = await prisma.vibeStyleItem.update({
+      where: { id },
+      data: {
+        tags: Array.isArray(tags) ? tags : item.tags,
+        colors: Array.isArray(colors) ? colors : item.colors,
+        summary: typeof summary === 'string' ? summary : item.summary,
+        designSummary,
+        designPrompt: String(designPrompt).trim(),
+        ownerName: typeof ownerName === 'string' ? ownerName : item.ownerName,
+      },
+    });
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('[vibe-snap-library] update error:', err);
+    res.status(500).json({ success: false, error: '更新失败' });
   }
 });
 

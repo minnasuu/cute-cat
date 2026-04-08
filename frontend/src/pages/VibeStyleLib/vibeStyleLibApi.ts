@@ -277,6 +277,40 @@ export async function saveVibeStyleLibLibraryItem(
   return result.data;
 }
 
+/** 更新已保存的灵感卡片（需登录且为卡片所有者） */
+export async function updateVibeStyleLibLibraryItem(
+  id: string,
+  body: {
+    imageUrl: string;
+    tags: string[];
+    colors: string[];
+    summary: string;
+    designSummary: VibeSnapDesignSummary;
+    designPrompt: string;
+    ownerName: string;
+  },
+): Promise<VibeStyleLibLibraryItem> {
+  const response = await fetch(
+    `${API_BASE}/vibe-snap-library/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify(body),
+    },
+  );
+
+  let result: ApiResponse<VibeStyleLibLibraryItem>;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`服务返回了无效数据（${response.status}）`);
+  }
+  if (!response.ok || !result.success || !result.data) {
+    throw new Error(result.error || `更新失败（${response.status}）`);
+  }
+  return result.data;
+}
+
 /** 删除灵感卡片；服务端 404 时静默成功（仅本地草稿等） */
 export async function deleteVibeStyleLibLibraryItem(id: string): Promise<void> {
   const response = await fetch(
