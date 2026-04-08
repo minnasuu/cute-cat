@@ -2,23 +2,41 @@
 
 const { runWithAI, extractUpstreamText } = require('../_framework');
 const { VISUAL_STYLES, getStyleCatalog } = require('../visual-prompt-library');
+const { PrismaClient } = require('@prisma/client');
 
-const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「墨墨」，岗位角色：视觉设计师。
-你的任务是根据上游内容（通常为「静态单页落地页」的模块大纲与需求）从预定义的视觉风格库中选择最匹配的风格。
+const prisma = new PrismaClient();
 
-## 视觉风格库
+function buildSystemPromptForCatalog(catalogText) {
+  return `你是 CuCaTopia 官方工作台猫猫「墨墨」，岗位角色：视觉设计师。
+你的任务是根据上游的产品架构和交互设计内容，从给定的视觉风格候选中选择最匹配的一条。
 
-${getStyleCatalog()}
+## 视觉风格候选
+
+${catalogText}
 
 ## 输出要求
 
 1. 先分析上游内容的行业属性、目标受众和产品气质
-2. 从上方风格库中选择 1 个最匹配的风格（说明选择理由）
-3. **只需输出风格编号（如"风格 1"）和选择理由，不要输出完整的设计规范**
+2. 从候选中选择 1 个最匹配的风格（说明选择理由）
+3. **只需输出两行：「选择：...」与「理由：...」，不要输出完整的设计规范**
 
-用中文输出，简洁明了。格式示例：
-选择：风格 3
-理由：该风格的现代简约设计与产品的轻量化定位高度契合...`;
+用中文输出，简洁明了。`;
+}
+
+function vibeItemCatalog(items) {
+  const head = `候选来自 Vibe Style Lib 灵感库（vibe-snap-library）。请在下列候选里选择最合适的一条。`;
+  const lines = items.map((it, idx) => {
+    const tags = Array.isArray(it.tags) ? it.tags.filter(Boolean).slice(0, 8).join('、') : '';
+    const summary = String(it.summary || '').trim();
+    return [
+      `### 候选 ${idx + 1}`,
+      `id: ${it.id}`,
+      tags ? `tags: ${tags}` : null,
+      summary ? `summary: ${summary.length > 220 ? `${summary.slice(0, 220)}…` : summary}` : 'summary: （空）',
+    ].filter(Boolean).join('\n');
+  });
+  return [head, ...lines].join('\n\n');
+}
 
 /** 与 frontend visual-designer.ts 一致：视觉风格 = 库内 prompt；用户需求 = 上游 */
 function formatVisualDesignerOutput(upstream, visualPrompt) {
@@ -46,35 +64,76 @@ module.exports = async function runVisualDesigner(ctx) {
     ? upstreamText
     : '（无上游说明，请按通用企业官网场景选择风格。）';
 
-  const fullSystemPrompt = `${SYSTEM_PROMPT}
+  // 优先从 Vibe Style Lib 灵感库读取候选（只用 summary/tags 给 AI 匹配；取最近 N 条避免上下文过长）
+  const TAKE = Math.min(
+    Math.max(Number.parseInt(process.env.VIBE_STYLE_LIB_TAKE || '20', 10) || 20, 1),
+    50,
+  );
+  let vibeItems = [];
+  try {
+    vibeItems = await prisma.vibeStyleItem.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: TAKE,
+      // designPrompt 不拼进候选目录，但需要在最终命中时返回给下游
+      select: { id: true, tags: true, summary: true, designPrompt: true },
+    });
+  } catch (e) {
+    console.warn('[visual-designer] load vibeStyleItem failed:', e?.message || String(e));
+    vibeItems = [];
+  }
+
+  const useVibeLibrary = Array.isArray(vibeItems) && vibeItems.length > 0;
+  const catalogText = useVibeLibrary ? vibeItemCatalog(vibeItems) : getStyleCatalog();
+  const systemPromptBase = buildSystemPromptForCatalog(catalogText);
+
+  const fullSystemPrompt = `${systemPromptBase}
 
 ## 上游产品 / 交互参考（仅供你内部匹配，不要在回复中复述或摘抄）
 
 ${upstreamForSystem}`;
 
-  const userText =
-    '请根据上文「上游产品 / 交互参考」与风格库，只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
+  const userText = useVibeLibrary
+    ? '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：<id>」与「理由：…」，其中 <id> 必须来自候选里的 id。'
+    : '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
 
   const result = await runWithAI('visual-designer', ctx, fullSystemPrompt, userText, {
     maxTokens: 4096,
   });
 
-  // 解析风格编号；data.text = 完整上游 + 灵感库 design prompt（与前端一致）
+  // 解析选择；data.text = 完整上游 + designPrompt（与前端一致）
   if (result.success && result.data?.text) {
     const aiResponse = result.data.text;
-    const styleMatch = aiResponse.match(/风格\s*(\d+)/);
-    let selectedIndex = styleMatch ? parseInt(styleMatch[1], 10) - 1 : 0;
-    if (selectedIndex < 0 || selectedIndex >= VISUAL_STYLES.length) {
-      console.warn(`[visual-designer] AI 返回的风格编号无效: ${styleMatch?.[1]}, 默认使用第一个`);
-      selectedIndex = 0;
+    let selectedStyleId = '';
+    let designPrompt = '';
+
+    if (useVibeLibrary) {
+      const idMatch = aiResponse.match(/选择[:：]\s*([a-zA-Z0-9_-]+)/);
+      selectedStyleId = idMatch?.[1] ? String(idMatch[1]).trim() : '';
+      const picked = vibeItems.find((x) => x.id === selectedStyleId) || vibeItems[0];
+      if (!picked) {
+        console.warn('[visual-designer] vibe library empty after selection, fallback to builtin');
+      } else {
+        selectedStyleId = picked.id;
+        designPrompt = String(picked.designPrompt || '');
+      }
     }
-    const selected = VISUAL_STYLES[selectedIndex];
-    const designPrompt = selected.prompt;
+
+    if (!designPrompt) {
+      const styleMatch = aiResponse.match(/风格\s*(\d+)/);
+      let selectedIndex = styleMatch ? parseInt(styleMatch[1], 10) - 1 : 0;
+      if (selectedIndex < 0 || selectedIndex >= VISUAL_STYLES.length) {
+        console.warn(`[visual-designer] AI 返回的风格编号无效: ${styleMatch?.[1]}, 默认使用第一个`);
+        selectedIndex = 0;
+      }
+      const selected = VISUAL_STYLES[selectedIndex];
+      selectedStyleId = selected.id;
+      designPrompt = selected.prompt;
+    }
 
     const mergedText = formatVisualDesignerOutput(upstreamFull, designPrompt);
     result.data.text = mergedText;
     result.data._resultType = 'visual-design-output';
-    result.data.selectedStyleId = selected.id;
+    result.data.selectedStyleId = selectedStyleId;
     result.summary = `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`;
   }
 

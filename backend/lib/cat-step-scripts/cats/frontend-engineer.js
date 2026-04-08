@@ -1,6 +1,6 @@
 'use strict';
 
-const { runWithAI, extractUpstreamText } = require('../_framework');
+const { runWithAIStream, extractUpstreamText } = require('../_framework');
 
 function stripMarkdownFences(text) {
   let t = text.trim();
@@ -50,7 +50,7 @@ module.exports = async function runFrontendEngineer(ctx) {
     ? upstreamText
     : '请生成一个通用企业落地页风格的静态单页 HTML（自包含），包含导航、Hero、核心卖点、社会证明、FAQ、页脚CTA。';
 
-  const result = await runWithAI('frontend-engineer', ctx, SYSTEM_PROMPT, userText, {
+  const result = await runWithAIStream('frontend-engineer', ctx, SYSTEM_PROMPT, userText, {
     maxTokens: 16384,
     _resultType: 'html-page',
   });

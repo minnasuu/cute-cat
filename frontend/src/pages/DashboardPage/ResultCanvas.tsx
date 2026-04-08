@@ -3,7 +3,7 @@ import { Download, ImageDown, Loader2, Lock } from "lucide-react";
 import html2canvas from "html2canvas";
 import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
 import ReactSandboxPreview from "./ReactSandboxPreview";
-import type { PlanStep, TeamCat, WorkflowRun } from "./workbenchTypes";
+import type { PlanStep, TeamCat, WorkflowRun, WorkflowRunStep } from "./workbenchTypes";
 import {
   normalizeRunSteps,
   sortedRunSteps,
@@ -16,6 +16,9 @@ export default function ResultCanvas({
   workflowName,
   userPrompt,
   displayRun,
+  streamingRunId,
+  streamingStatus,
+  streamingSteps,
   isSubmitting,
   waitingForRunRecord,
   planSteps,
@@ -25,6 +28,12 @@ export default function ResultCanvas({
   workflowName: string;
   userPrompt: string;
   displayRun: WorkflowRun | null;
+  /** SSE 流式执行中：后端创建的 runId */
+  streamingRunId?: string | null;
+  /** SSE 流式执行中：当前状态（running/failed/success） */
+  streamingStatus?: string | null;
+  /** SSE 流式执行中：实时 steps（含 partial 文本） */
+  streamingSteps?: WorkflowRunStep[] | null;
   isSubmitting: boolean;
   /** 已提交但尚未在列表里匹配到本轮 run */
   waitingForRunRecord: boolean;
@@ -139,7 +148,7 @@ export default function ResultCanvas({
       />
       <div className="absolute inset-0 bg-gradient-to-br from-primary-50/40 via-transparent to-accent-50/30 pointer-events-none" />
 
-      <div className="relative z-10 flex-1 overflow-y-auto space-y-4">
+      <div className="relative z-10 flex-1 overflow-y-auto space-y-4 flex flex-col justify-center items-center">
         {isSubmitting ? (
           <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
             <Loader2
@@ -176,20 +185,23 @@ export default function ResultCanvas({
         ) : null}
 
         {/* 执行中：主区域只展示 WorkflowPanel 同款流水线动画 */}
-        {!isSubmitting && displayRun && inProgress ? (
+        {!isSubmitting &&
+        (displayRun || (streamingRunId && inProgress)) &&
+        inProgress ? (
           <DashboardWorkflowPipeline
-            workflowName={workflowName || displayRun.workflowName}
+            workflowName={workflowName || displayRun?.workflowName || "执行中"}
             planSteps={planSteps}
             catNameById={catNameById}
             cats={cats}
             running
             runSteps={steps}
+            disableTypewriter
           />
         ) : null}
 
         {/* 已结束：结果为主；步骤明细在左侧历史卡片「查看执行过程」 */}
         {!isSubmitting && displayRun && !inProgress ? (
-          <section className="space-y-3">
+          <section className="space-y-3 w-full">
             {/* HTML 页面预览 */}
             {previewKind ? (
               <div className="overflow-hidden">
@@ -268,7 +280,10 @@ export default function ResultCanvas({
                     }}
                     onLoad={() => setFrameReady(true)}
                     className="w-full border-0"
-                    style={{ minHeight: "min(60vh, 520px)", height: "calc(100vh - 109px)" }}
+                    style={{
+                      minHeight: "min(60vh, 520px)",
+                      height: "calc(100vh - 109px)",
+                    }}
                     title="生成的网页预览"
                   />
                 )}
@@ -299,7 +314,6 @@ export default function ResultCanvas({
                 )}
               </div>
             )}
-
           </section>
         ) : null}
       </div>

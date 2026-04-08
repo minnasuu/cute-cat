@@ -582,7 +582,7 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  width: 150px;
+  width: 200px;
   height: 100%;
   flex-shrink: 0;
   transition: all 0.4s ease;
@@ -673,7 +673,7 @@
   .node-result {
     display: flex;
     flex-direction: column;
-    width: 130px;
+    width: 240px;
     max-height: 320px;
     margin-top: 4px;
     padding: 6px 10px;
@@ -698,6 +698,8 @@
     }
 
     .node-result-summary {
+      display: flex;
+      flex-direction: column-reverse;
       font-size: 0.78rem;
       font-weight: 500;
       color: #5D4037;
@@ -896,13 +898,11 @@
       pre {
         margin: 4px 0;
         padding: 8px 10px;
-        background: #3E2723;
         border-radius: 8px;
         overflow-x: auto;
 
         code {
           background: none;
-          color: #EFEBE9;
           padding: 0;
           font-size: 0.7rem;
           line-height: 1.5;

@@ -31,8 +31,8 @@ services:
     ports:
       - "8002:8002"
     volumes:
-      # 持久化上传的图片文件（容器内工作目录为 /app，multer 写入 /app/uploads/）
-      - ./backend/uploads:/app/uploads
+      # 持久化上传的图片文件（容器内工作目录为 /app，multer 写入 /app/backend/uploads）
+      - ./backend/uploads:/app/backend/uploads
     environment:
       PORT: 8002
       # 与 db 服务必须一致；entrypoint 优先用下面两项连库，避免从 URL 解析密码时截断（密码含 @ # : 等）

@@ -8,8 +8,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import DashboardPage from './pages/DashboardPage';
-import DashboardHistoryPage from './pages/DashboardPage/HistoryPage';
-import DashboardUsagePage from './pages/DashboardPage/UsagePage';
+import DashboardHistoryPage from "./pages/DashboardPage/HistoryPage";
 import CommunityPage from './pages/CommunityPage';
 import { ToastProvider } from './components/Toast';
 import './styles/index.css';
@@ -56,37 +55,78 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const App: React.FC = () => {
   return (
     <ToastProvider>
-    <LanguageProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* Landing - only for guests */}
-            <Route path="/" element={<LandingRoute />} />
-            <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
-            <Route path="/register" element={<GuestRoute><RegisterPage /></GuestRoute>} />
-            <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordPage /></GuestRoute>} />
-            <Route path="/community" element={<CommunityPage />} />
-            <Route path="/vibe-style-lib" element={<AdminRoute><VibeStyleLib /></AdminRoute>} />
+      <LanguageProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Landing - only for guests */}
+              <Route path="/" element={<LandingRoute />} />
+              <Route
+                path="/login"
+                element={
+                  <GuestRoute>
+                    <LoginPage />
+                  </GuestRoute>
+                }
+              />
+              <Route
+                path="/register"
+                element={
+                  <GuestRoute>
+                    <RegisterPage />
+                  </GuestRoute>
+                }
+              />
+              <Route
+                path="/forgot-password"
+                element={
+                  <GuestRoute>
+                    <ForgotPasswordPage />
+                  </GuestRoute>
+                }
+              />
+              <Route path="/community" element={<CommunityPage />} />
+              <Route
+                path="/vibe-style-lib"
+                element={
+                  <AdminRoute>
+                    <VibeStyleLib />
+                  </AdminRoute>
+                }
+              />
 
-            {/* Dashboard - requires login */}
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-            <Route path="/dashboard/history" element={<ProtectedRoute><DashboardHistoryPage /></ProtectedRoute>} />
-            <Route path="/dashboard/usage" element={<ProtectedRoute><DashboardUsagePage /></ProtectedRoute>} />
-            <Route
-              path="/teams/*"
-              element={
-                <ProtectedRoute>
-                  <Navigate to="/dashboard" replace />
-                </ProtectedRoute>
-              }
-            />
+              {/* Dashboard - requires login */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/history"
+                element={
+                  <ProtectedRoute>
+                    <DashboardHistoryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/teams/*"
+                element={
+                  <ProtectedRoute>
+                    <Navigate to="/dashboard" replace />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </LanguageProvider>
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </LanguageProvider>
     </ToastProvider>
   );
 };

@@ -125,6 +125,7 @@ export default function DashboardWorkflowPipeline({
   running,
   runSteps,
   footerHint,
+  disableTypewriter,
 }: {
   workflowName: string;
   planSteps: PlanStep[];
@@ -134,6 +135,8 @@ export default function DashboardWorkflowPipeline({
   runSteps: WorkflowRunStep[];
   /** 等待 run 记录时的副文案 */
   footerHint?: string;
+  /** SSE 真流式时禁用“逐字打字”的假流式动画 */
+  disableTypewriter?: boolean;
 }) {
   const [currentDialog, setCurrentDialog] = useState("");
   /** 跟踪哪些步骤的打字已完成，直接展示全文 */
@@ -192,11 +195,12 @@ export default function DashboardWorkflowPipeline({
 
   return (
     <div className="h-full flex flex-col items-center justify-center">
-
       <div className="stage-body scrollbar-hide">
         <div className="pipeline">
           {planSteps.map((step, i) => {
-            const cat = step.agentId ? getCatById(cats, step.agentId) : undefined;
+            const cat = step.agentId
+              ? getCatById(cats, step.agentId)
+              : undefined;
             const catColors = cat?.catColors as CatColors | undefined;
             const row = stepByIndex.get(i);
             const failed = !!(
@@ -224,10 +228,8 @@ export default function DashboardWorkflowPipeline({
 
             const resultStatus = failed ? "error" : "success";
             const outcomeText =
-              row?.resultType === "visual-design-output" && row?.resultData
-                ? row.resultData
-                : (row?.summary ?? "");
-            const showResult = (okDone || failed) && outcomeText;
+              row?.resultType && row?.resultData ? row.resultData : (row?.summary ?? "");
+            const showResult = (okDone || failed || isCurrent) && outcomeText;
             const isAlreadyTyped = typedDone.has(i);
 
             return (
@@ -245,10 +247,7 @@ export default function DashboardWorkflowPipeline({
                     className={`cat-avatar ${isCurrent && !failed ? "working" : ""}`}
                   >
                     {catColors ? (
-                      <CatSVG
-                        colors={catColors}
-                        className="pipeline-cat"
-                      />
+                      <CatSVG colors={catColors} className="pipeline-cat" />
                     ) : (
                       <div
                         className="pipeline-cat flex items-center justify-center text-4xl opacity-80"
@@ -273,15 +272,6 @@ export default function DashboardWorkflowPipeline({
                     ) : null}
                   </div>
 
-                  {isCurrent && !failed && (
-                    <div className="node-progress">
-                      <div
-                        className="node-progress-bar"
-                        style={{ animationDuration: `${STEP_DURATION}ms` }}
-                      />
-                    </div>
-                  )}
-
                   {showResult ? (
                     <div className={`node-result status-${resultStatus}`}>
                       <div className="node-result-header inline-flex items-center gap-1">
@@ -295,7 +285,11 @@ export default function DashboardWorkflowPipeline({
                         </span>
                       </div>
                       <div className="node-result-summary markdown-body">
-                        {isAlreadyTyped ? (
+                        {disableTypewriter || isCurrent ? (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {outcomeText}
+                          </ReactMarkdown>
+                        ) : isAlreadyTyped ? (
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {outcomeText}
                           </ReactMarkdown>
@@ -349,23 +343,6 @@ export default function DashboardWorkflowPipeline({
             );
           })}
         </div>
-      </div>
-
-      <div className="stage-footer">
-        {running ? (
-          <div className="exec-status">
-            <div className="exec-dots">
-              <span />
-              <span />
-              <span />
-            </div>
-            <span className="exec-label">
-              {showWaitingFooter
-                ? footerHint || "正在创建运行记录…"
-                : `步骤 ${Math.min(currentIndex + 1, planSteps.length)} / ${planSteps.length} 执行中…`}
-            </span>
-          </div>
-        ) : null}
       </div>
     </div>
   );

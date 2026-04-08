@@ -17,6 +17,7 @@ import type {
   WorkflowRow,
   WorkbenchPayload,
   WorkflowRun,
+  WorkflowRunStep,
 } from "./workbenchTypes";
 import {
   featureBlurb,
@@ -147,6 +148,11 @@ const DashboardPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   /** 提交后轮询执行进度中 → 显示流水线动画 */
   const [pollingWfId, setPollingWfId] = useState<string | null>(null);
+  /** SSE 流式执行态：实时 steps */
+  const [streamingRunId, setStreamingRunId] = useState<string | null>(null);
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
+  const [streamingSteps, setStreamingSteps] = useState<WorkflowRunStep[]>([]);
+  const streamingAbortRef = useRef<AbortController | null>(null);
   /** 点击「开始创作」后进入左右分栏：左工作台、右画布 */
   const [splitMode, setSplitMode] = useState(false);
   /** lg+ 分栏时左侧宽度占主区域比例（%），最大 40% */
@@ -367,31 +373,139 @@ const DashboardPage: React.FC = () => {
       if (running >= 3) return;
 
       const myGen = ++executeGenerationRef.current;
+      streamingAbortRef.current?.abort();
+      streamingAbortRef.current = null;
       setHistoryRunId(null);
       setRightPaneHistoryBrowse(false);
       sessionStartedAtRef.current = Date.now();
       setSessionEpoch((e) => e + 1);
       setSplitMode(true);
       setIsSubmitting(true);
+      setStreamingRunId(null);
+      setStreamingStatus("running");
+      setStreamingSteps([]);
       try {
-        await apiClient.post(`/api/workflows/${wfId}/execute`, {
-          userInput: trimmed,
+        const ac = new AbortController();
+        streamingAbortRef.current = ac;
+
+        const resp = await fetch(`/api/workflows/${wfId}/execute/stream`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userInput: trimmed }),
+          signal: ac.signal,
         });
         setIsSubmitting(false);
         setPollingWfId(wfId);
 
-        for (let i = 0; i < 48; i++) {
-          if (myGen !== executeGenerationRef.current) break;
-          const wb = await loadWorkbench({ quiet: true });
-          if (!wb) break;
-          const match = wb.runs?.find(
-            (r) =>
-              r.workflowId === wfId &&
-              new Date(r.startedAt).getTime() >=
-                sessionStartedAtRef.current - 15_000,
+        const reader = resp.body?.getReader();
+        if (!resp.ok || !reader) {
+          const errText = await resp.text().catch(() => "");
+          throw new Error(
+            errText || `HTTP ${resp.status} (${resp.statusText || "请求失败"})`,
           );
-          if (match && match.status !== "running") break;
-          await new Promise((r) => setTimeout(r, 1500));
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let currentEvent = "";
+        const accByIndex = new Map<number, string>();
+        let runIdSeen: string | null = null;
+
+        const upsertStep = (idx: number, patch: Partial<WorkflowRunStep>) => {
+          setStreamingSteps((prev) => {
+            const next = prev.slice();
+            const at = next.findIndex((s) => (s.index ?? 0) === idx);
+            const base: WorkflowRunStep =
+              at >= 0
+                ? next[at]
+                : { index: idx, agentId: patch.agentId, status: "running" };
+            const mergedStep = { ...base, ...patch, index: idx };
+            if (at >= 0) next[at] = mergedStep;
+            else next.push(mergedStep);
+            next.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+            return next;
+          });
+        };
+
+        while (true) {
+          if (myGen !== executeGenerationRef.current) break;
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) {
+              currentEvent = "";
+              continue;
+            }
+            if (trimmedLine.startsWith(":")) continue; // heartbeat
+            if (trimmedLine.startsWith("event: ")) {
+              currentEvent = trimmedLine.slice(7).trim();
+              continue;
+            }
+            if (trimmedLine.startsWith("data: ")) {
+              const raw = trimmedLine.slice(6);
+              let data: any = null;
+              try {
+                data = JSON.parse(raw);
+              } catch {
+                data = null;
+              }
+              if (!data) continue;
+
+              if (currentEvent === "runCreated") {
+                runIdSeen = String(data.runId || "");
+                setStreamingRunId(runIdSeen);
+                setStreamingStatus("running");
+              } else if (currentEvent === "stepStart") {
+                const idx = Number(data.index ?? 0);
+                upsertStep(idx, {
+                  index: idx,
+                  agentId: data.agentId,
+                  status: "running",
+                  success: undefined,
+                  summary: "",
+                });
+              } else if (currentEvent === "stepChunk") {
+                const idx = Number(data.index ?? 0);
+                const delta = String(data.textDelta || "");
+                const prevAcc = accByIndex.get(idx) || "";
+                const acc = prevAcc + delta;
+                accByIndex.set(idx, acc);
+                upsertStep(idx, { index: idx, summary: acc });
+              } else if (currentEvent === "stepDone") {
+                const idx = Number(data.index ?? 0);
+                const acc = accByIndex.get(idx) || "";
+                const ok = data.success !== false && data.status !== "error";
+                const resultType = data.resultType || undefined;
+                upsertStep(idx, {
+                  index: idx,
+                  success: ok,
+                  status: data.status,
+                  summary: data.summary || acc,
+                  ...(resultType
+                    ? { resultType, resultData: acc }
+                    : undefined),
+                });
+              } else if (currentEvent === "runDone") {
+                setStreamingStatus(String(data.status || ""));
+              } else if (currentEvent === "error") {
+                throw new Error(String(data.message || "stream error"));
+              }
+            }
+          }
+        }
+
+        if (myGen === executeGenerationRef.current) {
+          const wb = await loadWorkbench({ quiet: true });
+          if (runIdSeen && wb?.runs?.some((r) => r.id === runIdSeen)) {
+            setHistoryRunId(runIdSeen);
+          }
         }
       } catch {
         /* toast via apiClient */
@@ -399,6 +513,7 @@ const DashboardPage: React.FC = () => {
         setIsSubmitting(false);
         if (myGen === executeGenerationRef.current) {
           setPollingWfId(null);
+          streamingAbortRef.current = null;
         }
       }
     },
@@ -494,34 +609,36 @@ const DashboardPage: React.FC = () => {
               : undefined
           }
         >
-          {!splitMode &&<section
-            className="relative py-8 md:py-11 text-center max-w-2xl mx-auto"
-          >
-            {!splitMode ? (
-              <>
-                <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
-                <div className="absolute top-8 right-1/4 w-72 h-72 bg-accent-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
-              </>
-            ) : null}
-            <h1
-              className={`font-black tracking-tight text-text-primary mb-3 leading-tight ${
-                splitMode ? "text-xl md:text-2xl" : "text-2xl md:text-3xl"
-              }`}
-            >
-              选好方向，写下需求，
-              <span className="text-primary-600"> 一键开跑</span>
-            </h1>
-            <p
-              className={`text-text-secondary font-medium leading-relaxed ${
-                splitMode ? "text-xs md:text-sm" : "text-sm md:text-base"
-              } ${splitMode ? "text-left" : ""}`}
-              aria-live="polite"
-            >
-              {heroDescription ?? HERO_DESCRIPTION_DEFAULT}
-            </p>
-          </section>}
+          {!splitMode && (
+            <section className="relative py-8 md:py-11 text-center max-w-2xl mx-auto">
+              {!splitMode ? (
+                <>
+                  <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
+                  <div className="absolute top-8 right-1/4 w-72 h-72 bg-accent-100/30 rounded-full blur-[100px] -z-10 pointer-events-none" />
+                </>
+              ) : null}
+              <h1
+                className={`font-black tracking-tight text-text-primary mb-3 leading-tight ${
+                  splitMode ? "text-xl md:text-2xl" : "text-2xl md:text-3xl"
+                }`}
+              >
+                选好方向，写下需求，
+                <span className="text-primary-600"> 一键开跑</span>
+              </h1>
+              <p
+                className={`text-text-secondary font-medium leading-relaxed ${
+                  splitMode ? "text-xs md:text-sm" : "text-sm md:text-base"
+                } ${splitMode ? "text-left" : ""}`}
+                aria-live="polite"
+              >
+                {heroDescription ?? HERO_DESCRIPTION_DEFAULT}
+              </p>
+            </section>
+          )}
 
-          <section className={`w-full mb-8 justify-center ${splitMode ? "flex-1 flex flex-col h-full" : ""}`}>
+          <section
+            className={`w-full mb-8 justify-center ${splitMode ? "flex-1 flex flex-col h-full" : ""}`}
+          >
             {/* 对话区 */}
             {splitMode && (
               <div className="flex-1 min-h-0 flex flex-col mb-3 overflow-auto border-b border-border/70 pb-3">
@@ -559,10 +676,7 @@ const DashboardPage: React.FC = () => {
                         const canRetry =
                           !!run.workflowId &&
                           st !== "running" &&
-                          !!(
-                            run.userInput?.trim() ||
-                            run.workflowName?.trim()
-                          );
+                          !!(run.userInput?.trim() || run.workflowName?.trim());
                         const runSteps = sortedRunSteps(
                           normalizeRunSteps(run.steps),
                         );
@@ -621,57 +735,57 @@ const DashboardPage: React.FC = () => {
                                 </div>
                               </button>
                               <div className="flex items-center justify-between px-3">
-                              <span className="text-[11px] font-medium text-text-tertiary/85 tabular-nums">
+                                <span className="text-[11px] font-medium text-text-tertiary/85 tabular-nums">
                                   {timeStr}
                                 </span>
-                              <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1 px-3 pb-2.5 pt-1.5 border-t border-border/50">
-                                {canRetry ? (
-                                  <button
-                                    type="button"
-                                    disabled={executeBusy || atExecutionCap}
-                                    onClick={() => handleRetryHistoryRun(run)}
-                                    className="text-[11px] font-semibold text-primary-600 hover:text-primary-700 hover:bg-primary-500/10 rounded-md px-2 py-1 -my-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent cursor-pointer transition-colors"
-                                  >
-                                    {st === "failed" ? "重试" : "再跑"}
-                                  </button>
-                                ) : null}
-                                {confirmDeleteRunId === run.id ? (
-                                  <span className="flex items-center gap-1 text-[11px]">
+                                <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1 px-3 pb-2.5 pt-1.5 border-t border-border/50">
+                                  {canRetry ? (
                                     <button
                                       type="button"
-                                      disabled={deletingRunId === run.id}
-                                      onClick={() =>
-                                        void handleDeleteHistoryRun(run.id)
-                                      }
-                                      className="font-semibold text-red-600 hover:text-red-700 hover:bg-red-500/10 rounded-md px-2 py-1 -my-0.5 disabled:opacity-50 disabled:hover:bg-transparent cursor-pointer transition-colors"
+                                      disabled={executeBusy || atExecutionCap}
+                                      onClick={() => handleRetryHistoryRun(run)}
+                                      className="text-[11px] font-semibold text-primary-600 hover:text-primary-700 bg-primary-500/10 hover:bg-primary-500/20 rounded-md px-2 py-1 -my-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent cursor-pointer transition-colors"
                                     >
-                                      {deletingRunId === run.id
-                                        ? "删除中…"
-                                        : "确认"}
+                                      {st === "failed" ? "重试" : "再跑"}
                                     </button>
+                                  ) : null}
+                                  {confirmDeleteRunId === run.id ? (
+                                    <span className="flex items-center gap-1 text-[11px]">
+                                      <button
+                                        type="button"
+                                        disabled={deletingRunId === run.id}
+                                        onClick={() =>
+                                          void handleDeleteHistoryRun(run.id)
+                                        }
+                                        className="font-semibold text-red-600 hover:text-red-700 bg-red-500/10 hover:bg-red-500/20 rounded-md px-2 py-1 -my-0.5 disabled:opacity-50 disabled:hover:bg-transparent cursor-pointer transition-colors"
+                                      >
+                                        {deletingRunId === run.id
+                                          ? "删除中…"
+                                          : "确认"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={deletingRunId === run.id}
+                                        onClick={() =>
+                                          setConfirmDeleteRunId(null)
+                                        }
+                                        className="font-medium text-text-tertiary hover:text-text-secondary hover:bg-surface-secondary rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
+                                      >
+                                        取消
+                                      </button>
+                                    </span>
+                                  ) : (
                                     <button
                                       type="button"
-                                      disabled={deletingRunId === run.id}
                                       onClick={() =>
-                                        setConfirmDeleteRunId(null)
+                                        setConfirmDeleteRunId(run.id)
                                       }
-                                      className="font-medium text-text-tertiary hover:text-text-secondary hover:bg-surface-secondary rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
+                                      className="text-[11px] font-semibold text-text-tertiary hover:text-red-600 hover:bg-red-500/5 rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
                                     >
-                                      取消
+                                      删除
                                     </button>
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setConfirmDeleteRunId(run.id)
-                                    }
-                                    className="text-[11px] font-semibold text-text-tertiary hover:text-red-600 hover:bg-red-500/5 rounded-md px-2 py-1 -my-0.5 cursor-pointer transition-colors"
-                                  >
-                                    删除
-                                  </button>
-                                )}
-                              </div>
+                                  )}
+                                </div>
                               </div>
                               {runSteps.length > 0 ? (
                                 <div className="px-2 pb-2 pt-0">
@@ -734,24 +848,28 @@ const DashboardPage: React.FC = () => {
                       : "flex-1 flex flex-col min-w-0 border-t border-border lg:border-t-0 lg:border-l lg:pl-4 pt-3 lg:pt-0 lg:min-w-[12rem]"
                   }
                 >
-                  <div className={`flex gap-2 items-start min-h-[9rem] sm:min-h-[9rem] bg-gray-100 rounded-2xl ${splitMode ? "pb-16" : ""}`}>
+                  <div
+                    className={`flex gap-2 items-start min-h-[9rem] sm:min-h-[9rem] bg-gray-100 rounded-2xl ${splitMode ? "pb-16" : ""}`}
+                  >
                     <textarea
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
                       placeholder={inputPlaceholder}
                       rows={6}
                       disabled={!selectedFeature}
-                      className={`flex-1 min-h-[6rem] sm:min-h-[6rem] px-3 py-2 border-0 outline-none resize-none text-sm font-medium placeholder:text-text-tertiary disabled:opacity-50 ${splitMode ? "absolute bottom-3 right-3" : ""}`}
+                      className={`flex-1 min-h-[6rem] sm:min-h-[6rem] px-3 border-0 outline-none resize-none text-sm font-medium placeholder:text-text-tertiary disabled:opacity-50 ${splitMode ? "pt-2" : "py-2"}`}
                     />
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-1 pt-2">
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-3 px-1 pt-2 ${splitMode ? "absolute bottom-3 right-3" : ""}`}
+                  >
                     {/* <span className="text-xs text-text-tertiary font-medium max-w-[20rem]">
                     {selectedFeature
                       ? "内容会作为第一步的主题描述提交给当前模式。"
                       : "选择左侧或上方的能力后再输入。"}
                   </span> */}
-                    {(selectedFeature&&!splitMode) ? (
+                    {selectedFeature && !splitMode ? (
                       <div
                         className="shrink-0 pt-1"
                         role="status"
@@ -779,7 +897,6 @@ const DashboardPage: React.FC = () => {
                       type="button"
                       disabled={
                         !selectedWorkflowId ||
-                        loading ||
                         !userInput.trim() ||
                         atExecutionCap
                       }
@@ -797,26 +914,24 @@ const DashboardPage: React.FC = () => {
               </div>
             </div>
 
-            {!splitMode && <nav
-              className={`flex flex-wrap items-center gap-y-2 text-xs font-bold text-text-tertiary ${
-                splitMode ? "mt-2 gap-x-4 justify-start" : "mt-6 gap-x-8 justify-center"
-              }`}
-              aria-label="更多入口"
-            >
-              <button
-                type="button"
-                onClick={openHistorySplit}
-                className="hover:text-primary-600 transition-colors text-left"
+            {!splitMode && (
+              <nav
+                className={`flex flex-wrap items-center gap-y-2 text-xs font-bold text-text-tertiary ${
+                  splitMode
+                    ? "mt-2 gap-x-4 justify-start"
+                    : "mt-6 gap-x-8 justify-center"
+                }`}
+                aria-label="更多入口"
               >
-                历史记录
-              </button>
-              <Link
-                to="/dashboard/usage"
-                className="hover:text-primary-600 transition-colors"
-              >
-                角色调用次数
-              </Link>
-            </nav>}
+                <button
+                  type="button"
+                  onClick={openHistorySplit}
+                  className="hover:text-primary-600 transition-colors text-left"
+                >
+                  历史记录
+                </button>
+              </nav>
+            )}
           </section>
         </div>
 
@@ -866,9 +981,17 @@ const DashboardPage: React.FC = () => {
               }
               userPrompt={userInput.trim() || displayRun?.workflowName || ""}
               displayRun={displayRun}
+              streamingRunId={streamingRunId}
+              streamingStatus={streamingStatus}
+              streamingSteps={streamingSteps}
               isSubmitting={isSubmitting}
               waitingForRunRecord={
-                splitMode && !displayRun && !isSubmitting && !!pollingWfId
+                splitMode &&
+                !displayRun &&
+                !isSubmitting &&
+                !!pollingWfId &&
+                !streamingRunId &&
+                streamingSteps.length === 0
               }
               planSteps={planSteps}
               catNameById={catNameById}
@@ -878,16 +1001,18 @@ const DashboardPage: React.FC = () => {
         ) : null}
       </main>
 
-    {splitMode ? null :<footer className="py-4 border-t border-border">
-        <div className="w-full mx-auto px-6 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 cursor-pointer">
-            <CatLogo size={36} />
-          </Link>
-          <p className="text-text-tertiary text-xs font-medium">
-            &copy; 2026 CuCaTopia.
-          </p>
-        </div>
-      </footer>}
+      {splitMode ? null : (
+        <footer className="py-4 border-t border-border">
+          <div className="w-full mx-auto px-6 flex items-center justify-between">
+            <Link to="/" className="flex items-center gap-2 cursor-pointer">
+              <CatLogo size={36} />
+            </Link>
+            <p className="text-text-tertiary text-xs font-medium">
+              &copy; 2026 CuCaTopia.
+            </p>
+          </div>
+        </footer>
+      )}
     </div>
   );
 };
