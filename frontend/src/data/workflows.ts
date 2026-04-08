@@ -9,7 +9,7 @@ export const workflows: Workflow[] = [
     id: 'web-page-builder',
     name: '网页制作流水线',
     description:
-      '产品策划产出网站架构 → 视觉设计师定义风格与气质 → 前端工程师输出可预览页面（全程 AIGC；交互设计步默认不纳入本流水线）。',
+      '一句话生成静态单页落地页：策划梳理模块 → 视觉确定风格 → 前端生成可预览 HTML，并支持一键导出 HTML / 图片。',
     steps: [
       {
         stepId: 'wpb_arch',

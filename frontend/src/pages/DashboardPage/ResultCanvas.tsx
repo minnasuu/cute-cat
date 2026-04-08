@@ -1,5 +1,6 @@
-import { useMemo } from "react";
-import { Loader2, Lock } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Download, ImageDown, Loader2, Lock } from "lucide-react";
+import html2canvas from "html2canvas";
 import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
 import ReactSandboxPreview from "./ReactSandboxPreview";
 import type { PlanStep, TeamCat, WorkflowRun } from "./workbenchTypes";
@@ -31,6 +32,10 @@ export default function ResultCanvas({
   catNameById: Record<string, string>;
   cats: TeamCat[];
 }) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [frameReady, setFrameReady] = useState(false);
+  const [exportingPng, setExportingPng] = useState(false);
+
   const steps = useMemo(
     () => sortedRunSteps(normalizeRunSteps(displayRun?.steps)),
     [displayRun?.steps],
@@ -74,6 +79,50 @@ export default function ResultCanvas({
     : htmlPageData
       ? "html"
       : null;
+
+  const downloadBlob = useCallback((blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }, []);
+
+  const onDownloadHtml = useCallback(() => {
+    if (!htmlPageData) return;
+    const blob = new Blob([htmlPageData], { type: "text/html;charset=utf-8" });
+    downloadBlob(blob, "landing.html");
+  }, [downloadBlob, htmlPageData]);
+
+  const onExportPng = useCallback(async () => {
+    const iframe = iframeRef.current;
+    if (!iframe || !frameReady) return;
+    const doc = iframe.contentDocument;
+    const el = doc?.documentElement || doc?.body;
+    if (!el) return;
+
+    setExportingPng(true);
+    try {
+      const canvas = await html2canvas(el as unknown as HTMLElement, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: false,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob((blob: Blob | null) => {
+          if (!blob) return reject(new Error("toBlob failed"));
+          downloadBlob(blob, "landing.png");
+          resolve();
+        }, "image/png");
+      });
+    } finally {
+      setExportingPng(false);
+    }
+  }, [downloadBlob, frameReady]);
 
   return (
     <div
@@ -171,13 +220,53 @@ export default function ResultCanvas({
                       字符
                     </span>
                   </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {previewKind === "html" ? (
+                      <button
+                        type="button"
+                        onClick={onDownloadHtml}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
+                        title="下载 HTML"
+                      >
+                        <Download className="size-3.5" aria-hidden />
+                        HTML
+                      </button>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={onExportPng}
+                      disabled={!frameReady || exportingPng}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
+                      title={!frameReady ? "预览加载完成后可导出图片" : "导出整页 PNG"}
+                    >
+                      {exportingPng ? (
+                        <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <ImageDown className="size-3.5" aria-hidden />
+                      )}
+                      PNG
+                    </button>
+                  </div>
                 </div>
                 {previewKind === "react" ? (
-                  <ReactSandboxPreview code={reactSandboxCode!} />
+                  <ReactSandboxPreview
+                    code={reactSandboxCode!}
+                    iframeRef={(el) => {
+                      iframeRef.current = el;
+                      if (el) setFrameReady(false);
+                    }}
+                    onLoad={() => setFrameReady(true)}
+                  />
                 ) : (
                   <iframe
                     srcDoc={htmlPageData!}
                     sandbox="allow-scripts allow-same-origin"
+                    ref={(el) => {
+                      iframeRef.current = el;
+                    }}
+                    onLoad={() => setFrameReady(true)}
                     className="w-full border-0"
                     style={{ minHeight: "min(60vh, 520px)", height: "calc(100vh - 109px)" }}
                     title="生成的网页预览"

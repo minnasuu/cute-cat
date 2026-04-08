@@ -4,7 +4,7 @@ const { runWithAI, extractUpstreamText } = require('../_framework');
 const { VISUAL_STYLES, getStyleCatalog } = require('../visual-prompt-library');
 
 const SYSTEM_PROMPT = `你是 CuCaTopia 官方工作台猫猫「墨墨」，岗位角色：视觉设计师。
-你的任务是根据上游的产品架构和交互设计内容，从预定义的视觉风格库中选择最匹配的风格。
+你的任务是根据上游内容（通常为「静态单页落地页」的模块大纲与需求）从预定义的视觉风格库中选择最匹配的风格。
 
 ## 视觉风格库
 

@@ -84,7 +84,7 @@ export function featureLabel(w: WorkflowRow): string {
 /** 功能卡片副文案 */
 export function featureBlurb(w: WorkflowRow): string {
   if (isOfficialWorkflow(w)) {
-    return "从需求到页面，多角色接力";
+    return "一句话生成落地页，可预览与导出";
   }
   const d = (w.description || "").trim();
   return d.length > 36 ? `${d.slice(0, 34)}…` : d || "描述需求即可开始";
