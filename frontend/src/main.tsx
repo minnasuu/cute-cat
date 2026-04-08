@@ -12,7 +12,7 @@ import DashboardHistoryPage from "./pages/DashboardPage/HistoryPage";
 import CommunityPage from './pages/CommunityPage';
 import { ToastProvider } from './components/Toast';
 import './styles/index.css';
-import { VibeStyleLib } from './pages/VibeStyleLib';
+import { VibeAssets } from './pages/VibeAssets';
 import AdminWorkflowsPage from './pages/AdminWorkflowsPage';
 
 const LoadingScreen = () => (
@@ -88,13 +88,14 @@ const App: React.FC = () => {
               />
               <Route path="/community" element={<CommunityPage />} />
               <Route
-                path="/vibe-style-lib"
+                path="/vibe-assets"
                 element={
-                  <AdminRoute>
-                    <VibeStyleLib />
-                  </AdminRoute>
+                  <ProtectedRoute>
+                    <VibeAssets />
+                  </ProtectedRoute>
                 }
               />
+              <Route path="/vibe-style-lib" element={<Navigate to="/vibe-assets" replace />} />
               <Route
                 path="/admin/workflows"
                 element={

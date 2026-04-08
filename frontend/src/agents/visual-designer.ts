@@ -1,7 +1,7 @@
 import type { AgentContext, AgentResult } from './types';
 import { extractUpstreamText } from './_framework';
 import { callDifySkillStream } from '../utils/backendClient';
-import { listVibeStyleLibLibrary } from '../pages/VibeStyleLib/vibeStyleLibApi';
+import { listVibeAssetsStyles } from '../pages/VibeAssets/vibeAssetsApi';
 
 /**
  * 下游约定格式：视觉风格 = 灵感库 designPrompt（由 AI 选风格后取出，非整段 AI 自由生成）；
@@ -26,9 +26,10 @@ export default async function runVisualDesigner(ctx: AgentContext): Promise<Agen
 
   try {
     // 1. 获取灵感库数据（加超时保护，避免 API 不可用时永久卡住）
-    let libraryItems: Awaited<ReturnType<typeof listVibeStyleLibLibrary>> = [];
+    let libraryItems: Awaited<ReturnType<typeof listVibeAssetsStyles>> = [];
     try {
-      const libPromise = listVibeStyleLibLibrary();
+      // 仅使用 AI 可用的风格
+      const libPromise = listVibeAssetsStyles({ scope: 'all', aiEnabled: true });
       const libTimeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('灵感库 API 超时')), 10_000)
       );

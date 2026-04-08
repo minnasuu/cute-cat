@@ -151,6 +151,8 @@ model AICallLog {
 model VibeStyleItem {
   id             String   @id @default(uuid())
   userId         String?
+  isOfficial     Boolean  @default(false)
+  aiEnabled      Boolean  @default(true)
   imageUrl       String
   tags           Json     // string[]
   colors         Json     // string[]
@@ -161,4 +163,25 @@ model VibeStyleItem {
   createdAt      DateTime @default(now())
 
   @@index([userId])
+}
+
+// ==================== Vibe Assets: Fonts ====================
+
+model VibeFontAsset {
+  id         String   @id @default(uuid())
+  userId     String?
+  isOfficial Boolean  @default(false)
+  aiEnabled  Boolean  @default(true)
+
+  fileUrl    String   // /uploads/vibe-assets/fonts/<filename>
+  filename   String
+  mimeType   String
+  sizeBytes  Int
+  family     String   @default("")
+  tags       Json     // string[]
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([aiEnabled])
+  @@index([isOfficial])
 }
