@@ -49,6 +49,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/teams', require('./routes/teams'));
 app.use('/api/cats', require('./routes/cats'));
 app.use('/api/workflows', require('./routes/workflows'));
+app.use('/api/uploads', require('./routes/uploads'));
 app.use('/api/dify', require('./routes/dify'));
 app.use('/api/email', require('./routes/email'));
 app.use('/health', require('./routes/health'));

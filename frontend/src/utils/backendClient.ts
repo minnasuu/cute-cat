@@ -595,6 +595,64 @@ export const batchCreateWorkflowRuns = async (runs: CreateWorkflowRunRequest[]):
   }
 };
 
+// ==================== Workbench Run Update (for landing page editor) ====================
+
+export interface UpdateWorkflowRunRequest {
+  status?: string;
+  steps?: unknown;
+  completedAt?: string;
+  totalDuration?: number | null;
+}
+
+export const updateWorkflowRun = async (
+  runId: string,
+  payload: UpdateWorkflowRunRequest,
+): Promise<any> => {
+  const backendUrl = getBackendUrl();
+  const url = `${backendUrl}/api/workflows/runs/${encodeURIComponent(runId)}`;
+
+  const response = await fetch(url, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Failed to update workflow run: HTTP ${response.status} ${text.slice(0, 200)}`);
+  }
+  return response.json().catch(() => ({}));
+};
+
+// ==================== Uploads ====================
+
+export interface UploadImageResponse {
+  url: string;
+}
+
+export const uploadImage = async (args: {
+  file: File;
+  runId?: string;
+}): Promise<UploadImageResponse> => {
+  const backendUrl = getBackendUrl();
+  const url = `${backendUrl}/api/uploads/image`;
+
+  const form = new FormData();
+  form.append("image", args.file);
+  if (args.runId) form.append("runId", args.runId);
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Failed to upload image: HTTP ${response.status} ${text.slice(0, 200)}`);
+  }
+  return response.json();
+};
+
 // ==================== Articles & Crafts (simplified stubs) ====================
 
 export const fetchArticles = async (): Promise<any[]> => {
@@ -618,3 +676,6 @@ export const fetchCrafts = async (): Promise<any[]> => {
     return [];
   }
 };
+
+// Explicit re-exports for TS consumers (editor / lint tool stability)
+export { updateWorkflowRun, uploadImage };

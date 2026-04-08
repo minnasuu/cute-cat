@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, ImageDown, Loader2, Lock } from "lucide-react";
 import html2canvas from "html2canvas";
 import DashboardWorkflowPipeline from "../../components/DashboardWorkflowPipeline";
@@ -41,9 +41,50 @@ export default function ResultCanvas({
   catNameById: Record<string, string>;
   cats: TeamCat[];
 }) {
+  // NOTE: keep these local to avoid module export resolution flakiness in tooling.
+  const updateWorkflowRunLocal = useCallback(
+    async (runId: string, payload: { steps: unknown }) => {
+      const response = await fetch(`/api/workflows/runs/${encodeURIComponent(runId)}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(
+          `Failed to update workflow run: HTTP ${response.status} ${text.slice(0, 200)}`,
+        );
+      }
+      return response.json().catch(() => ({}));
+    },
+    [],
+  );
+
+  const uploadImageLocal = useCallback(async (args: { file: File; runId?: string }) => {
+    const form = new FormData();
+    form.append("image", args.file);
+    if (args.runId) form.append("runId", args.runId);
+    const response = await fetch("/api/uploads/image", {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Failed to upload image: HTTP ${response.status} ${text.slice(0, 200)}`);
+    }
+    return (await response.json()) as { url: string };
+  }, []);
+
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [frameReady, setFrameReady] = useState(false);
   const [exportingPng, setExportingPng] = useState(false);
+  const [editEnabled, setEditEnabled] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editedHtml, setEditedHtml] = useState<string | null>(null);
+  const [pendingImageToken, setPendingImageToken] = useState<string | null>(null);
+  const imgFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const serverSteps = useMemo(
     () => sortedRunSteps(normalizeRunSteps(displayRun?.steps)),
@@ -120,6 +161,8 @@ export default function ResultCanvas({
     return null;
   }, [lastStep, failed]);
 
+  const effectiveHtml = editedHtml ?? htmlPageData;
+
   /** React 沙箱源码（shadcn 风格 + Tailwind，由前端工程师步骤产出） */
   const reactSandboxCode = useMemo(() => {
     if (!lastStep || failed) return null;
@@ -131,7 +174,7 @@ export default function ResultCanvas({
 
   const previewKind = reactSandboxCode
     ? "react"
-    : htmlPageData
+    : effectiveHtml
       ? "html"
       : null;
 
@@ -145,10 +188,10 @@ export default function ResultCanvas({
   }, []);
 
   const onDownloadHtml = useCallback(() => {
-    if (!htmlPageData) return;
-    const blob = new Blob([htmlPageData], { type: "text/html;charset=utf-8" });
+    if (!effectiveHtml) return;
+    const blob = new Blob([effectiveHtml], { type: "text/html;charset=utf-8" });
     downloadBlob(blob, "landing.html");
-  }, [downloadBlob, htmlPageData]);
+  }, [downloadBlob, effectiveHtml]);
 
   const onExportPng = useCallback(async () => {
     const iframe = iframeRef.current;
@@ -178,6 +221,226 @@ export default function ResultCanvas({
       setExportingPng(false);
     }
   }, [downloadBlob, frameReady]);
+
+  // 切换到其它 run 时重置编辑态，避免串 run
+  useEffect(() => {
+    setEditEnabled(false);
+    setSaving(false);
+    setEditedHtml(null);
+    setPendingImageToken(null);
+  }, [displayRun?.id]);
+
+  const injectEditCapabilities = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !frameReady) return;
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+    if (!doc || !win) return;
+
+    // 注入轻量样式（不影响布局）
+    const styleId = "cuca-editor-style";
+    if (!doc.getElementById(styleId)) {
+      const styleEl = doc.createElement("style");
+      styleEl.id = styleId;
+      styleEl.textContent = `
+        [data-cuca-editable="1"][contenteditable="true"]:focus {
+          outline: 2px solid rgba(59, 130, 246, 0.7);
+          outline-offset: 2px;
+        }
+        img[data-cuca-img-token] {
+          cursor: pointer;
+        }
+        img[data-cuca-img-token]:hover {
+          outline: 2px dashed rgba(59, 130, 246, 0.55);
+          outline-offset: 2px;
+        }
+      `;
+      doc.head.appendChild(styleEl);
+    }
+
+    // 让常见文本承载元素可编辑（不改 class/style）
+    const editableSelector = [
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "p",
+      "span",
+      "a",
+      "li",
+      "blockquote",
+      "figcaption",
+      "label",
+      "button",
+      "small",
+      "strong",
+      "em",
+      "dt",
+      "dd",
+    ].join(",");
+
+    doc.querySelectorAll<HTMLElement>(editableSelector).forEach((el) => {
+      if (el.closest("[contenteditable]")) return;
+      // 不编辑脚本/样式标签
+      const tag = el.tagName.toLowerCase();
+      if (tag === "script" || tag === "style") return;
+      el.setAttribute("contenteditable", "true");
+      el.setAttribute("data-cuca-editable", "1");
+    });
+
+    // 为所有图片打 token，并通过 postMessage 通知父级打开文件选择
+    const imgs = Array.from(doc.querySelectorAll<HTMLImageElement>("img"));
+    imgs.forEach((img, idx) => {
+      if (!img.getAttribute("data-cuca-img-token")) {
+        img.setAttribute("data-cuca-img-token", String(idx + 1));
+      }
+    });
+
+    const msgHandler = (ev: MessageEvent) => {
+      if (ev.source !== win) return;
+      const data = ev.data as any;
+      if (!data || data.__cuca_editor__ !== true) return;
+      if (data.type === "pickImage" && typeof data.token === "string") {
+        setPendingImageToken(data.token);
+        imgFileInputRef.current?.click();
+      }
+    };
+
+    // 避免重复注册：先清理再注册
+    window.removeEventListener("message", msgHandler);
+    window.addEventListener("message", msgHandler);
+
+    // 在 iframe 内注册 click 监听（用捕获，尽量早点拦截）
+    const clickKey = "__cuca_img_click_bound__";
+    if (!(win as any)[clickKey]) {
+      (win as any)[clickKey] = true;
+      doc.addEventListener(
+        "click",
+        (e) => {
+          const t = e.target as HTMLElement | null;
+          if (!t) return;
+          if (t.tagName?.toLowerCase() !== "img") return;
+          const img = t as HTMLImageElement;
+          const token = img.getAttribute("data-cuca-img-token");
+          if (!token) return;
+          e.preventDefault();
+          e.stopPropagation();
+          win.parent.postMessage(
+            { __cuca_editor__: true, type: "pickImage", token },
+            "*",
+          );
+        },
+        true,
+      );
+    }
+  }, [frameReady]);
+
+  const removeEditCapabilities = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    doc
+      .querySelectorAll<HTMLElement>('[data-cuca-editable="1"][contenteditable="true"]')
+      .forEach((el) => {
+        el.removeAttribute("contenteditable");
+      });
+  }, []);
+
+  useEffect(() => {
+    if (previewKind !== "html") return;
+    if (!editEnabled) {
+      removeEditCapabilities();
+      return;
+    }
+    injectEditCapabilities();
+  }, [editEnabled, injectEditCapabilities, previewKind, removeEditCapabilities]);
+
+  const serializeIframeHtml = useCallback((): string | null => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc) return null;
+    const doctype = doc.doctype
+      ? `<!DOCTYPE ${doc.doctype.name}${
+          doc.doctype.publicId ? ` PUBLIC "${doc.doctype.publicId}"` : ""
+        }${doc.doctype.systemId ? ` "${doc.doctype.systemId}"` : ""}>`
+      : "<!DOCTYPE html>";
+    const html = doc.documentElement?.outerHTML;
+    if (!html) return null;
+    return `${doctype}\n${html}`;
+  }, []);
+
+  const onSaveEdits = useCallback(async () => {
+    if (previewKind !== "html") return;
+    if (!displayRun?.id) return;
+    if (!displayRun.steps || displayRun.steps.length === 0) return;
+    const newHtml = serializeIframeHtml();
+    if (!newHtml) return;
+
+    // 找到要写回的 step（优先 lastStep.index；fallback：最后一个 html-page）
+    const targetIndex =
+      typeof lastStep?.index === "number"
+        ? lastStep.index
+        : [...displayRun.steps]
+            .reverse()
+            .find((s) => s.resultType === "html-page")?.index ?? null;
+    if (targetIndex == null) return;
+
+    const nextSteps = displayRun.steps.map((s) => {
+      if (s.index !== targetIndex) return s;
+      return {
+        ...s,
+        resultType: "html-page",
+        resultData: newHtml,
+        // summary 保持原值（summary 更像给列表/步骤展示的短文本）
+      };
+    });
+
+    setSaving(true);
+    try {
+      await updateWorkflowRunLocal(displayRun.id, { steps: nextSteps });
+      setEditedHtml(newHtml);
+      setEditEnabled(false);
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    displayRun?.id,
+    displayRun?.steps,
+    lastStep?.index,
+    previewKind,
+    serializeIframeHtml,
+    updateWorkflowRunLocal,
+  ]);
+
+  const onToggleEdit = useCallback(() => {
+    if (previewKind !== "html") return;
+    setEditEnabled((v) => !v);
+  }, [previewKind]);
+
+  const onImageFilePicked = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      if (!pendingImageToken) return;
+      const iframe = iframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (!doc) return;
+
+      const { url } = await uploadImageLocal({
+        file,
+        runId: displayRun?.id ?? undefined,
+      });
+      const img = doc.querySelector<HTMLImageElement>(
+        `img[data-cuca-img-token="${CSS.escape(pendingImageToken)}"]`,
+      );
+      if (img) img.src = url;
+      setPendingImageToken(null);
+      if (imgFileInputRef.current) imgFileInputRef.current.value = "";
+    },
+    [displayRun?.id, pendingImageToken, uploadImageLocal],
+  );
 
   return (
     <div
@@ -271,7 +534,7 @@ export default function ResultCanvas({
                     <span className="shrink-0 text-[10px] font-medium tabular-nums text-neutral-400">
                       {(previewKind === "react"
                         ? reactSandboxCode!
-                        : htmlPageData!
+                        : effectiveHtml!
                       ).length.toLocaleString()}{" "}
                       字符
                     </span>
@@ -279,15 +542,40 @@ export default function ResultCanvas({
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     {previewKind === "html" ? (
-                      <button
-                        type="button"
-                        onClick={onDownloadHtml}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
-                        title="下载 HTML"
-                      >
-                        <Download className="size-3.5" aria-hidden />
-                        HTML
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={onToggleEdit}
+                          disabled={!displayRun?.id}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
+                          title={!displayRun?.id ? "仅历史 run 可保存回写" : editEnabled ? "退出编辑" : "进入编辑"}
+                        >
+                          {editEnabled ? "退出编辑" : "编辑"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={onSaveEdits}
+                          disabled={!editEnabled || saving || !displayRun?.id}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
+                          title={!editEnabled ? "开启编辑后可保存" : saving ? "保存中…" : "保存并回写到当前任务"}
+                        >
+                          {saving ? (
+                            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                          ) : null}
+                          保存
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={onDownloadHtml}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors"
+                          title="下载 HTML"
+                        >
+                          <Download className="size-3.5" aria-hidden />
+                          HTML
+                        </button>
+                      </>
                     ) : null}
 
                     <button
@@ -317,7 +605,7 @@ export default function ResultCanvas({
                   />
                 ) : (
                   <iframe
-                    srcDoc={htmlPageData!}
+                    srcDoc={effectiveHtml!}
                     sandbox="allow-scripts allow-same-origin"
                     ref={(el) => {
                       iframeRef.current = el;
@@ -361,6 +649,18 @@ export default function ResultCanvas({
           </section>
         ) : null}
       </div>
+
+      {/* 隐藏的图片上传 input：由 iframe 内点击 img 触发 */}
+      <input
+        ref={imgFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0] ?? null;
+          void onImageFilePicked(f);
+        }}
+      />
     </div>
   );
 }

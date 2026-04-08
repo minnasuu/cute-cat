@@ -911,7 +911,7 @@ export const VibeStyleLib = () => {
   return (
     <div className={ui.page}>
       <Navbar variant="sticky" />
-      <div className="w-full mx-auto mt-4 flex justify-center">
+      <div className="w-full mx-auto py-4 flex justify-center">
         <nav className="flex items-center gap-px sm:gap-0 sm:rounded-xl sm:overflow-hidden overflow-hidden rounded-xl bg-gray-50 p-1">
           <button
             type="button"
@@ -976,7 +976,7 @@ export const VibeStyleLib = () => {
       )}
 
       {mainTab === "library" && (
-        <main className="mx-auto h-px w-full max-w-[1600px] flex-1 overflow-y-auto px-6 py-8 pb-20 sm:px-10">
+        <main className="mx-auto h-px w-full max-w-[1600px] flex-1 overflow-y-auto px-6 pb-8 pb-20 sm:px-10">
 
           {library.length === 0 ? (
             <div
