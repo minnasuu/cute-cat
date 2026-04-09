@@ -104,10 +104,10 @@ module.exports = async function runFrontendEngineer(ctx) {
   const { merged } = ctx;
   const upstreamText = extractUpstreamText(merged).trim();
 
-  // 优先：视觉步骤若已输出结构化 payload（landing-visual-v1），直接消费
+  // 优先：视觉步骤若已输出结构化 payload（landing-visual-v2 / v1），直接消费
   const visualPayload = tryParseJsonObject(upstreamText);
   const landingVisual =
-    visualPayload && visualPayload.kind === 'landing-visual-v1'
+    visualPayload && (visualPayload.kind === 'landing-visual-v2' || visualPayload.kind === 'landing-visual-v1')
       ? visualPayload
       : null;
 
@@ -115,11 +115,32 @@ module.exports = async function runFrontendEngineer(ctx) {
   const userText = upstreamText
     ? (landingVisual
         ? [
-            '你将生成 3 个差异明显的“完整落地页”候选版本（同一内容，不同版式/视觉语言）。',
+            '请生成 1 份“完整落地页”单文件 HTML（只输出 HTML，不要解释）。',
             '输出格式要求：',
-            '- 依次输出 3 份完整 HTML 文档，每份都必须从 `<!DOCTYPE html>` 开始，到 `</html>` 结束。',
-            '- 三份 HTML 之间用一个空行分隔即可（不要加解释/标题/Markdown）。',
+            '- 必须从 `<!DOCTYPE html>` 开始，到 `</html>` 结束。',
+            '- 禁止输出标题/注释/Markdown/说明文字。',
             '',
+            // v2 三段结构：用户需求 / 匹配风格 / 通用prompt（可为空）
+            landingVisual.kind === 'landing-visual-v2'
+              ? [
+                  '【用户需求】',
+                  String(landingVisual.userNeed || '').trim() || '（无）',
+                  '',
+                  '【匹配的视觉风格（vibe-style-lib）】',
+                  landingVisual.matchedStyle
+                    ? `id: ${landingVisual.matchedStyle.id || ''}\n` +
+                      (Array.isArray(landingVisual.matchedStyle.tags) && landingVisual.matchedStyle.tags.length
+                        ? `tags: ${landingVisual.matchedStyle.tags.join('、')}\n`
+                        : '') +
+                      (landingVisual.matchedStyle.summary ? `summary: ${landingVisual.matchedStyle.summary}\n` : '') +
+                      (landingVisual.matchedStyle.designPrompt ? `designPrompt: ${landingVisual.matchedStyle.designPrompt}` : '')
+                    : '（无）',
+                  '',
+                  '【通用视觉prompt（可为空）】',
+                  String(landingVisual.genericVisualPrompt || '').trim() || '（空）',
+                  '',
+                ].join('\n')
+              : '',
             '【内容模型（JSON）】',
             JSON.stringify(landingVisual.contentModel || {}, null, 2),
             '',
@@ -131,7 +152,7 @@ module.exports = async function runFrontendEngineer(ctx) {
             '',
             '【设计 tokens（可控变体）】',
             JSON.stringify(landingVisual.designTokens || {}, null, 2),
-          ].join('\n')
+          ].filter(Boolean).join('\n')
         : (parsed
             ? [
                 '请严格按以下信息生成单文件 HTML（只输出 HTML）：',
@@ -154,26 +175,17 @@ module.exports = async function runFrontendEngineer(ctx) {
   if (result.success && result.data?.text) {
     const rawOut = String(result.data.text || '');
     const multi = splitHtmlCandidates(rawOut);
-    // 多候选：打包成 bundle，让前端切换预览（每个 candidate 仍需独立通过 normalize/约束）
+    // 默认只生成 1 份：若模型意外输出了多份 HTML，则取第一份
     if (multi && multi.length >= 2) {
-      const cleaned = multi
-        .map((x) => normalizeHtmlDoc(x))
-        .filter((x) => looksLikeHtmlDoc(x))
-        .slice(0, 3);
-      if (cleaned.length >= 2) {
-        const candidates = cleaned.map((html, i) => ({
-          id: String(i + 1),
-          title: `方案 ${i + 1}`,
-          html,
-        }));
-        result.data.text = JSON.stringify({ candidates });
-        result.data._resultType = 'html-page-bundle';
-        result.summary = `落地页候选已生成（${candidates.length} 份，可切换预览）`;
-        return result;
+      const first = normalizeHtmlDoc(multi[0]);
+      if (looksLikeHtmlDoc(first)) {
+        // 继续走下方通用约束（外链校验、注入样式等）
+        result.data.text = first;
       }
     }
 
-    let html = normalizeHtmlDoc(rawOut);
+    // 若上面已把 result.data.text 置为第一份 HTML，这里优先用它
+    let html = normalizeHtmlDoc(result.data.text || rawOut);
     if (!looksLikeHtmlDoc(html)) {
       // 自动“强约束”重试一次：当模型输出了说明/要点但没给 HTML 时，常见于被上游长文带偏或没遵守格式约束
       const retrySystemPrompt = `${systemPrompt}
