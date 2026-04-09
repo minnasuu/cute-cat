@@ -192,7 +192,7 @@ export default function AdminWorkflowsPage() {
               </button>
             </div>
             <p className="text-sm text-text-tertiary mt-1">
-              点击“同步工作台官方工作流”会把工作台默认三条能力更新到最新模板（并禁用简历）。
+              点击“同步工作台官方工作流”会把工作台默认能力更新到最新模板。
             </p>
           </div>
 

@@ -81,7 +81,7 @@ const LandingPage: React.FC = () => {
           
           <p className="text-lg md:text-xl text-text-secondary max-w-2xl mx-auto leading-relaxed mb-12 font-medium px-6">
             告别繁琐，让可爱的 AI 猫猫们各司其职。<br className="hidden md:block" />
-            基于团队协作的可视化自动化平台：落地页、简历，一键生成可编辑成果并导出。
+            基于团队协作的可视化自动化平台：落地页、海报、品牌卡，一键生成可编辑成果并导出。
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-6">

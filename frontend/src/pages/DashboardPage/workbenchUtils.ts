@@ -68,7 +68,7 @@ export function parseSteps(
   return [];
 }
 
-/** 官方种子工作流（工作台内置能力，如：落地页/简历） */
+/** 官方种子工作流（工作台内置能力，如：落地页/海报/品牌气质卡） */
 export function isOfficialWorkflow(w: WorkflowRow): boolean {
   if (w.name === "落地页" || w.name === "海报制作" || w.name === "品牌气质卡") return true;
   return parseSteps(w.steps).some((s) =>

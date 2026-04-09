@@ -83,7 +83,6 @@ async function ensureWorkbenchTeam(prisma, userId) {
     // 如需强制对齐种子步骤（仅运维场景），显式开启 WORKBENCH_REPAIR_WORKFLOWS=1
     if (process.env.WORKBENCH_REPAIR_WORKFLOWS === '1') {
       await repairWebPageBuilderWorkflowIfNeeded(prisma, team.id, byTemplate);
-      await disableResumeWorkflowIfNeeded(prisma, team.id);
       await repairBrandKitWorkflowIfNeeded(prisma, team.id, byTemplate);
       await repairPosterWorkflowIfNeeded(prisma, team.id, byTemplate);
     }
@@ -274,22 +273,6 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
 }
 
 /**
- * 线上已有工作台团队时，下线「简历」：
- * - 将 enabled=false（保留历史 run 关联）
- * - 不再 repair/新增该工作流
- * @param {import('@prisma/client').PrismaClient} prisma
- * @param {string} teamId
- */
-async function disableResumeWorkflowIfNeeded(prisma, teamId) {
-  const wfs = await prisma.workflow.findMany({ where: { teamId, name: '简历' } });
-  for (const wf of wfs) {
-    if (wf.enabled === false) continue;
-    await prisma.workflow.update({ where: { id: wf.id }, data: { enabled: false } });
-    console.log('[workbench-seed] disabled 简历 workflow');
-  }
-}
-
-/**
  * 线上已有工作台团队时，补齐/修正「品牌气质卡」为与 seed 一致（运营→文案→视觉→前端）。
  * @param {import('@prisma/client').PrismaClient} prisma
  * @param {string} teamId
@@ -476,7 +459,6 @@ async function repairWorkbenchWorkflowsForTeam(prisma, teamId) {
   );
 
   await repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, byTemplate);
-  await disableResumeWorkflowIfNeeded(prisma, teamId);
   await repairBrandKitWorkflowIfNeeded(prisma, teamId, byTemplate);
   await repairPosterWorkflowIfNeeded(prisma, teamId, byTemplate);
 }
