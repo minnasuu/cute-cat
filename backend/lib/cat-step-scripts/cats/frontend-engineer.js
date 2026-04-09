@@ -24,6 +24,54 @@ function looksLikeHtmlDoc(html) {
   return /^<!doctype\b/i.test(s) || /^<html\b/i.test(s);
 }
 
+function extractVisualAndNeed(text) {
+  const s = String(text || '');
+  const visIdx = s.indexOf('视觉风格：');
+  const needIdx = s.indexOf('用户需求：');
+  if (visIdx < 0 && needIdx < 0) return null;
+  const visual = visIdx >= 0
+    ? s.slice(visIdx + '视觉风格：'.length, needIdx >= 0 ? needIdx : undefined).trim()
+    : '';
+  const need = needIdx >= 0 ? s.slice(needIdx + '用户需求：'.length).trim() : '';
+  return { visual, need };
+}
+
+function tryParseJsonObject(text) {
+  try {
+    const v = JSON.parse(String(text || '').trim());
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+function splitHtmlCandidates(text) {
+  const s = String(text || '').trim();
+  const idxs = [];
+  const re = /<!DOCTYPE\s+html>/gi;
+  let m;
+  while ((m = re.exec(s))) idxs.push(m.index);
+  if (idxs.length <= 1) return null;
+  const parts = [];
+  for (let i = 0; i < idxs.length; i++) {
+    const start = idxs[i];
+    const end = i + 1 < idxs.length ? idxs[i + 1] : s.length;
+    const html = s.slice(start, end).trim();
+    if (html) parts.push(html);
+  }
+  return parts.length > 1 ? parts : null;
+}
+
+function containsExternalResources(html) {
+  const s = String(html || '');
+  // hard block common external resource usage
+  if (/\bsrc\s*=\s*["']https?:\/\//i.test(s)) return true;
+  if (/\bhref\s*=\s*["']https?:\/\//i.test(s)) return true;
+  if (/@import\s+url\(\s*["']?https?:\/\//i.test(s)) return true;
+  return false;
+}
+
 function injectHeadStyle(html, cssText) {
   const css = String(cssText || '').trim();
   if (!css) return html;
@@ -56,24 +104,148 @@ module.exports = async function runFrontendEngineer(ctx) {
   const { merged } = ctx;
   const upstreamText = extractUpstreamText(merged).trim();
 
+  // 优先：视觉步骤若已输出结构化 payload（landing-visual-v1），直接消费
+  const visualPayload = tryParseJsonObject(upstreamText);
+  const landingVisual =
+    visualPayload && visualPayload.kind === 'landing-visual-v1'
+      ? visualPayload
+      : null;
+
+  const parsed = extractVisualAndNeed(upstreamText);
   const userText = upstreamText
-    ? upstreamText
+    ? (landingVisual
+        ? [
+            '你将生成 3 个差异明显的“完整落地页”候选版本（同一内容，不同版式/视觉语言）。',
+            '输出格式要求：',
+            '- 依次输出 3 份完整 HTML 文档，每份都必须从 `<!DOCTYPE html>` 开始，到 `</html>` 结束。',
+            '- 三份 HTML 之间用一个空行分隔即可（不要加解释/标题/Markdown）。',
+            '',
+            '【内容模型（JSON）】',
+            JSON.stringify(landingVisual.contentModel || {}, null, 2),
+            '',
+            '【交互说明（可选）】',
+            String(landingVisual.uxNotes || '').trim() || '（无）',
+            '',
+            '【视觉风格提示词】',
+            String(landingVisual.visualPrompt || '').trim() || '（无）',
+            '',
+            '【设计 tokens（可控变体）】',
+            JSON.stringify(landingVisual.designTokens || {}, null, 2),
+          ].join('\n')
+        : (parsed
+            ? [
+                '请严格按以下信息生成单文件 HTML（只输出 HTML）：',
+                '',
+                '【视觉风格提示词】',
+                parsed.visual || '（无）',
+                '',
+                '【用户需求】',
+                parsed.need || '（无）',
+              ].join('\n')
+            : upstreamText))
     : '请生成一个通用企业落地页风格的静态单页 HTML（自包含），包含导航、Hero、核心卖点、社会证明、FAQ、页脚CTA。';
 
-  const result = await runWithAIStream('frontend-engineer', ctx, resolveSystemPrompt(SYSTEM_PROMPT, ctx), userText, {
+  const systemPrompt = resolveSystemPrompt(SYSTEM_PROMPT, ctx);
+  const result = await runWithAIStream('frontend-engineer', ctx, systemPrompt, userText, {
     maxTokens: 16384,
     _resultType: 'html-page',
   });
 
   if (result.success && result.data?.text) {
-    let html = normalizeHtmlDoc(result.data.text);
+    const rawOut = String(result.data.text || '');
+    const multi = splitHtmlCandidates(rawOut);
+    // 多候选：打包成 bundle，让前端切换预览（每个 candidate 仍需独立通过 normalize/约束）
+    if (multi && multi.length >= 2) {
+      const cleaned = multi
+        .map((x) => normalizeHtmlDoc(x))
+        .filter((x) => looksLikeHtmlDoc(x))
+        .slice(0, 3);
+      if (cleaned.length >= 2) {
+        const candidates = cleaned.map((html, i) => ({
+          id: String(i + 1),
+          title: `方案 ${i + 1}`,
+          html,
+        }));
+        result.data.text = JSON.stringify({ candidates });
+        result.data._resultType = 'html-page-bundle';
+        result.summary = `落地页候选已生成（${candidates.length} 份，可切换预览）`;
+        return result;
+      }
+    }
+
+    let html = normalizeHtmlDoc(rawOut);
     if (!looksLikeHtmlDoc(html)) {
-      return {
-        success: false,
-        data: { text: '', _resultType: 'html-page' },
-        summary: '模型未返回可解析的 HTML 文档（需以 <!DOCTYPE html> 或 <html> 开头），请重试该步骤',
-        status: 'error',
-      };
+      // 自动“强约束”重试一次：当模型输出了说明/要点但没给 HTML 时，常见于被上游长文带偏或没遵守格式约束
+      const retrySystemPrompt = `${systemPrompt}
+
+## 🚨格式纠错（最高优先级）
+你上一轮没有输出合法 HTML。现在你必须严格只输出完整 HTML 文档：
+- 第一行必须是 <!DOCTYPE html>
+- 最后一行必须是 </html>
+- 禁止任何解释、前言、总结、列表、Markdown
+- 必须自包含（<style> 内联），禁止外链资源`;
+
+      const retryUserText = parsed
+        ? [
+            '请基于以下信息重新生成，并严格只输出 HTML：',
+            '',
+            '【视觉风格提示词】',
+            parsed.visual || '（无）',
+            '',
+            '【用户需求】',
+            parsed.need || '（无）',
+          ].join('\n')
+        : userText;
+
+      const retry = await runWithAIStream('frontend-engineer', ctx, retrySystemPrompt, retryUserText, {
+        maxTokens: 16384,
+        _resultType: 'html-page',
+      });
+
+      if (!retry.success || !retry.data?.text) {
+        return {
+          success: false,
+          data: { text: '', _resultType: 'html-page' },
+          summary: '模型未返回可解析的 HTML 文档（需以 <!DOCTYPE html> 或 <html> 开头），请重试该步骤',
+          status: 'error',
+        };
+      }
+
+      html = normalizeHtmlDoc(retry.data.text);
+      if (!looksLikeHtmlDoc(html)) {
+        return {
+          success: false,
+          data: { text: '', _resultType: 'html-page' },
+          summary: '模型未返回可解析的 HTML 文档（需以 <!DOCTYPE html> 或 <html> 开头），请重试该步骤',
+          status: 'error',
+        };
+      }
+
+      // 将重试结果回写到 result（保持 workflow-executor 的数据结构不变）
+      result.data.text = html;
+    }
+
+    // 规则校验：禁止外链资源（截图/导出稳定性）
+    if (containsExternalResources(html)) {
+      const retrySystemPrompt = `${systemPrompt}
+
+## 🚨资源纠错（最高优先级）
+你上一轮包含了外链资源（http/https）。现在你必须：
+- 禁止任何外链图片/CSS/字体/脚本
+- 图标与装饰只能用内联 SVG / CSS 渐变 / 纯形状
+- 仍然只输出完整 HTML（<!DOCTYPE html> ... </html>）`;
+
+      const retry = await runWithAIStream('frontend-engineer', ctx, retrySystemPrompt, userText, {
+        maxTokens: 16384,
+        _resultType: 'html-page',
+      });
+      if (retry.success && retry.data?.text) {
+        const next = normalizeHtmlDoc(retry.data.text);
+        if (looksLikeHtmlDoc(next) && !containsExternalResources(next)) {
+          html = next;
+          result.data.text = html;
+        }
+      }
     }
 
     // 强制约束：无背景、宽度 100%，便于导出/截图时保持透明画布

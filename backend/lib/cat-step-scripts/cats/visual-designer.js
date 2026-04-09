@@ -6,6 +6,32 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+const LAYOUT_ARCHETYPES = [
+  'editorial',
+  'bentoGrid',
+  'splitHero',
+  'centeredMinimal',
+  'neoBrutal',
+  'glassmorphism',
+  'gradientMesh',
+];
+
+function safeJsonParseObject(text) {
+  try {
+    const v = JSON.parse(String(text || '').trim());
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+function coerceLandingContentModel(upstreamFullText) {
+  const obj = safeJsonParseObject(upstreamFullText);
+  if (obj && Array.isArray(obj.sections)) return obj;
+  return null;
+}
+
 function buildSystemPromptForCatalog(catalogText) {
   return `你是 CuCaTopia 官方工作台猫猫「墨墨」，岗位角色：视觉设计师。
 你的任务是根据上游的产品架构和交互设计内容，从给定的视觉风格候选中选择最匹配的一条。
@@ -53,6 +79,7 @@ module.exports = async function runVisualDesigner(ctx) {
   const { merged } = ctx;
   const upstreamFull = extractUpstreamText(merged);
   let upstreamText = upstreamFull;
+  const stepId = ctx?.step?.stepId || '';
 
   // 限制上游文本长度（仅用于喂给模型），返回给下游仍用完整 upstreamFull 拼接
   if (upstreamText.length > 3000) {
@@ -98,15 +125,16 @@ ${upstreamForSystem}`;
     ? '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：<id>」与「理由：…」，其中 <id> 必须来自候选里的 id。'
     : '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
 
-  // 支持管理员在 step 上覆盖 system prompt：
+  // 支持管理员仅在「step」上覆盖 system prompt：
+  // - 注意：不要把猫实例的 catSystemPrompt 当作覆盖，否则会导致落地页视觉步骤永远走“自由生成”分支
   // - 覆盖后按覆盖提示词执行（更适合“海报制作”等直出风格提示词的场景），避免被“候选选择”格式约束导致不稳定
-  const sysOverride = resolveSystemPrompt('', ctx);
+  const stepPromptOverride = typeof ctx?.context?.stepSystemPrompt === 'string' ? ctx.context.stepSystemPrompt.trim() : '';
   let result;
-  if (sysOverride) {
+  if (stepPromptOverride) {
     const directUserText = upstreamText.trim()
       ? upstreamText
       : '（无上游说明，请输出可被前端直接采用的视觉风格提示词。）';
-    result = await runWithAI('visual-designer', ctx, sysOverride, directUserText, {
+    result = await runWithAI('visual-designer', ctx, stepPromptOverride, directUserText, {
       maxTokens: 4096,
     });
     if (!result.success) {
@@ -153,7 +181,7 @@ ${upstreamForSystem}`;
     };
   }
 
-  // 解析选择；data.text = 完整上游 + designPrompt（与前端一致）
+  // 解析选择；data.text = 落地页（wpb_visual）输出结构化 JSON，其它工作流保持旧格式
   if (result.success && result.data?.text) {
     const aiResponse = result.data.text;
     let selectedStyleId = '';
@@ -183,11 +211,40 @@ ${upstreamForSystem}`;
       designPrompt = selected.prompt;
     }
 
-    const mergedText = formatVisualDesignerOutput(upstreamFull, designPrompt);
-    result.data.text = mergedText;
-    result.data._resultType = 'visual-design-output';
-    result.data.selectedStyleId = selectedStyleId;
-    result.summary = `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`;
+    // 落地页：将上游 contentModel 与 uxNotes 一并打包输出，供前端工程师稳定消费
+    if (stepId === 'wpb_visual') {
+      const contentModel = coerceLandingContentModel(upstreamFull);
+      const layoutArchetype = LAYOUT_ARCHETYPES[Math.floor(Math.random() * LAYOUT_ARCHETYPES.length)];
+      const designTokens = {
+        layoutArchetype,
+        // tokens 由前端工程师基于 prompt 推断，视觉步骤先给“可控意图”而非强行细化到每个 px
+        componentVariants: {
+          button: ['pill', 'softShadow', 'outline'][Math.floor(Math.random() * 3)],
+          card: ['soft', 'outline', 'glass'][Math.floor(Math.random() * 3)],
+          background: ['grid', 'mesh', 'none'][Math.floor(Math.random() * 3)],
+        },
+      };
+      const payload = {
+        kind: 'landing-visual-v1',
+        selectedStyleId,
+        visualPrompt: designPrompt,
+        designTokens,
+        // 上游可能是 ux-designer 的 Markdown；若不是 JSON 则仍保留为 notes
+        uxNotes: typeof upstreamFull === 'string' && !contentModel ? String(upstreamFull).trim() : undefined,
+        contentModel: contentModel || undefined,
+      };
+      const text = JSON.stringify(payload);
+      result.data.text = text;
+      result.data._resultType = 'visual-design-output';
+      result.data.selectedStyleId = selectedStyleId;
+      result.summary = `墨墨·视觉设计：已输出视觉风格与 tokens（${text.length} 字符）`;
+    } else {
+      const mergedText = formatVisualDesignerOutput(upstreamFull, designPrompt);
+      result.data.text = mergedText;
+      result.data._resultType = 'visual-design-output';
+      result.data.selectedStyleId = selectedStyleId;
+      result.summary = `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`;
+    }
   }
 
   return result;

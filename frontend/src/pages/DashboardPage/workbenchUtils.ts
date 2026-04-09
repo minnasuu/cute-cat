@@ -81,7 +81,7 @@ export function isOfficialWorkflow(w: WorkflowRow): boolean {
 /** 对用户展示的功能名（不强调后端工作流概念） */
 export function featureLabel(w: WorkflowRow): string {
   // 产品侧展示名收口：避免用户误以为会生成“全站/多页”
-  if (w.name === "落地页") return "落地页首屏（Hero）";
+  if (w.name === "落地页") return "落地页（完整单页）";
   return w.name;
 }
 

@@ -12,6 +12,35 @@ import {
 
 export type { PlanStep } from "./workbenchTypes";
 
+type HtmlBundle = {
+  candidates: Array<{
+    id: string;
+    title?: string;
+    html: string;
+  }>;
+};
+
+function tryParseHtmlBundle(raw: unknown): HtmlBundle | null {
+  if (typeof raw !== "string" || raw.trim().length === 0) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (!v || typeof v !== "object") return null;
+    const cands = (v as any).candidates;
+    if (!Array.isArray(cands) || cands.length === 0) return null;
+    const normalized = cands
+      .map((c: any, i: number) => ({
+        id: typeof c?.id === "string" ? c.id : String(i + 1),
+        title: typeof c?.title === "string" ? c.title : undefined,
+        html: typeof c?.html === "string" ? c.html : "",
+      }))
+      .filter((c: any) => c.html.trim().length > 0);
+    if (normalized.length === 0) return null;
+    return { candidates: normalized };
+  } catch {
+    return null;
+  }
+}
+
 export default function ResultCanvas({
   workflowName,
   userPrompt,
@@ -159,9 +188,26 @@ export default function ResultCanvas({
     : stepDisplayTextForRunStep(lastStep) ||
       (effectiveSteps.length ? "已完成全部步骤" : "");
 
+  const [selectedHtmlCandidateId, setSelectedHtmlCandidateId] = useState<string | null>(null);
+
   /** 检测最后一步是否为 HTML 页面类型（历史记录） */
+  const htmlBundle = useMemo(() => {
+    if (!lastStep || failed) return null;
+    if (lastStep.resultType === "html-page-bundle" && lastStep.resultData) {
+      return tryParseHtmlBundle(lastStep.resultData);
+    }
+    return null;
+  }, [lastStep, failed]);
+
   const htmlPageData = useMemo(() => {
     if (!lastStep || failed) return null;
+    if (htmlBundle?.candidates?.length) {
+      const preferred =
+        (selectedHtmlCandidateId
+          ? htmlBundle.candidates.find((c) => c.id === selectedHtmlCandidateId)
+          : null) ?? htmlBundle.candidates[0];
+      return preferred?.html ?? null;
+    }
     if (lastStep.resultType === "html-page" && lastStep.resultData) {
       return lastStep.resultData;
     }
@@ -169,7 +215,7 @@ export default function ResultCanvas({
     const s = (lastStep.summary || "").trim();
     if (s.startsWith("<!DOCTYPE") || s.startsWith("<html")) return s;
     return null;
-  }, [lastStep, failed]);
+  }, [htmlBundle, lastStep, failed, selectedHtmlCandidateId]);
 
   const effectiveHtml = editedHtml ?? htmlPageData;
 
@@ -263,6 +309,7 @@ export default function ResultCanvas({
     setEditedHtml(null);
     setPendingImageToken(null);
     setShowExecutionBack(false);
+    setSelectedHtmlCandidateId(null);
   }, [displayRun?.id]);
 
   useEffect(() => {
@@ -592,6 +639,30 @@ export default function ResultCanvas({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {previewKind === "html" && htmlBundle?.candidates?.length ? (
+                      <div className="flex items-center gap-1.5 pr-1">
+                        {htmlBundle.candidates.slice(0, 3).map((c) => {
+                          const active =
+                            (selectedHtmlCandidateId ?? htmlBundle.candidates[0]?.id) ===
+                            c.id;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => setSelectedHtmlCandidateId(c.id)}
+                              className={`inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold ring-1 ring-black/[0.08] shadow-sm transition-colors ${
+                                active
+                                  ? "bg-primary-600 text-white"
+                                  : "bg-white/80 hover:bg-white text-neutral-700"
+                              }`}
+                              title={c.title || `方案 ${c.id}`}
+                            >
+                              {c.title || `方案 ${c.id}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                     {hasExecutionSteps ? (
                       <button
                         type="button"

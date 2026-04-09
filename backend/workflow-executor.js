@@ -144,6 +144,7 @@ async function executeWorkflowIntoExistingRun(workflow, run, triggeredBy, option
   const hooks = options.hooks || {};
   const userInputRaw = typeof options.userInput === 'string' ? options.userInput.trim() : '';
   const userInput = userInputRaw || (typeof run.userInput === 'string' ? run.userInput.trim() : '');
+  const qualityMode = options.qualityMode === true;
 
   // 重置 run 为 running（保留 runId，不新增）
   await prisma.workflowRun.update({
@@ -188,6 +189,12 @@ async function executeWorkflowIntoExistingRun(workflow, run, triggeredBy, option
 
   let steps = Array.isArray(workflow.steps) ? workflow.steps : (typeof workflow.steps === 'string' ? JSON.parse(workflow.steps) : []);
   steps = JSON.parse(JSON.stringify(steps));
+
+  // 快速模式：默认跳过交互步骤（仅落地页）
+  const skipStepIds = new Set();
+  if (!qualityMode && workflow?.name === '落地页') {
+    skipStepIds.add('wpb_ix');
+  }
 
   const parentIndex = [];
   for (let i = 0; i < steps.length; i++) {
@@ -234,6 +241,43 @@ async function executeWorkflowIntoExistingRun(workflow, run, triggeredBy, option
     const pi = parentIndex[i];
     const upstreamText = pi < 0 ? userInput : String(stepResults[pi]?.data?.text ?? '');
     const merged = { text: upstreamText };
+
+    if (step?.stepId && skipStepIds.has(step.stepId)) {
+      const skippedResult = {
+        success: true,
+        data: { text: upstreamText },
+        summary: '已跳过（快速模式）',
+        status: 'success',
+      };
+      stepResults[i] = skippedResult;
+      try {
+        await hooks.onStepStart?.({ index: i, stepId: step.stepId, agentId: step.agentId });
+      } catch { /* ignore hooks */ }
+      const stepEntry = {
+        index: i,
+        agentId: steps[i].agentId,
+        success: true,
+        status: 'skipped',
+        summary: '已跳过（快速模式）',
+      };
+      stepsData.push(stepEntry);
+      try {
+        await hooks.onStepDone?.({
+          index: i,
+          success: true,
+          status: 'skipped',
+          summary: stepEntry.summary,
+          resultType: null,
+          resultData: null,
+        });
+      } catch { /* ignore hooks */ }
+      const sortedSnapshot = [...stepsData].sort((a, b) => a.index - b.index);
+      await prisma.workflowRun.update({
+        where: { id: run.id },
+        data: { steps: sortedSnapshot },
+      }).catch((err) => console.error('[executor] incremental step update error:', err.message));
+      continue;
+    }
 
     let catTemplateId = '';
     let catName = '';

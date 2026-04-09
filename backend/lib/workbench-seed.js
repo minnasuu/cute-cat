@@ -109,7 +109,7 @@ function buildSeedWorkflowSteps(catByTemplateId) {
       name: '落地页',
       icon: 'Globe',
       description:
-        '一句话生成可编辑的“落地页首屏 Hero”：提炼卖点 → 视觉确定风格 → 前端输出可预览 HTML（适合分享与导出）。',
+        '一句话生成可编辑的“完整落地页”：信息架构 → 交互路径 → 视觉风格 → 前端输出可预览 HTML（适合分享与导出）。',
       placeholder: '描述你的产品/活动：一句话定位 + 目标人群 + 想强调的卖点…',
       trigger: 'manual',
       persistent: false,
@@ -118,19 +118,26 @@ function buildSeedWorkflowSteps(catByTemplateId) {
           stepId: 'wpb_arch',
           agentId: C('product-architect'),
           systemPrompt:
-            '你是落地页策划/产品架构师。只为“首屏Hero”输出结构 JSON（必须可解析）。只允许输出 4~6 个字段：主标题/副标题/三条卖点/信任背书/CTA（可选价格/限时）。输出必须是 JSON 对象，禁止 markdown，禁止解释文字。',
+            '你是落地页策划/产品架构师。输出“完整落地页”的信息架构 JSON（必须可解析）。用 JSON 描述页面 sections（从上到下），包括：Hero、卖点/场景、社会证明、FAQ（可选价格/保障择一）、页脚CTA。输出必须是 JSON 对象，禁止 markdown，禁止解释文字。',
+        },
+        {
+          stepId: 'wpb_ix',
+          agentId: C('ux-designer'),
+          inputFrom: 'wpb_arch',
+          systemPrompt:
+            '你是交互设计师。基于上游落地页信息架构（JSON），输出结构化的交互说明 Markdown：每个 section 一段，写清楚用户路径、锚点导航、关键组件交互（FAQ折叠、表单校验的静态表现）、响应式策略。禁止寒暄与总结。',
         },
         {
           stepId: 'wpb_visual',
           agentId: C('visual-designer'),
-          inputFrom: 'wpb_arch',
+          inputFrom: 'wpb_ix',
         },
         {
           stepId: 'wpb_fe',
           agentId: C('frontend-engineer'),
           inputFrom: 'wpb_visual',
           systemPrompt:
-            '你是前端工程师。生成“落地页首屏Hero”静态单页 HTML（自包含、移动端优先）：包含主标题/副标题/卖点列表/信任背书/CTA按钮（2个）。必须适合导出 PNG/PDF，并且正文可被 contenteditable 编辑（避免把文字渲染进图片）。只输出完整 HTML。',
+            '你是前端工程师。生成“完整落地页”静态单页 HTML（自包含、移动端优先）：包含导航（页内锚点）、Hero、至少 3 个内容 section（卖点/场景/案例/FAQ/价格/保障等）、页脚CTA。必须适合导出 PNG/PDF，并且正文可被 contenteditable 编辑（避免把文字渲染进图片）。只输出完整 HTML。',
         },
       ],
     },
@@ -220,7 +227,7 @@ function buildSeedWorkflowSteps(catByTemplateId) {
  * @param {Record<string, { id: string }>} catByTemplateId
  */
 async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
-  for (const tid of ['product-architect', 'visual-designer', 'frontend-engineer']) {
+  for (const tid of ['product-architect', 'ux-designer', 'visual-designer', 'frontend-engineer']) {
     if (!catByTemplateId[tid]?.id) return;
   }
   const want = buildSeedWorkflowSteps(catByTemplateId)[0];
@@ -261,7 +268,7 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
       },
     });
     console.log(
-      '[workbench-seed] repaired 落地页: steps → wpb_arch → wpb_visual → wpb_fe（与 workflows.ts 对齐）',
+      '[workbench-seed] repaired 落地页: steps → wpb_arch → wpb_ix → wpb_visual → wpb_fe（与 workflows.ts 对齐）',
     );
   }
 }
