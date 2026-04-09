@@ -118,14 +118,14 @@ function buildSeedWorkflowSteps(catByTemplateId) {
           stepId: 'wpb_arch',
           agentId: C('product-architect'),
           systemPrompt:
-            '你是落地页策划/产品架构师。输出“完整落地页”的信息架构 JSON（必须可解析）。用 JSON 描述页面 sections（从上到下），包括：Hero、卖点/场景、社会证明、FAQ（可选价格/保障择一）、页脚CTA。输出必须是 JSON 对象，禁止 markdown，禁止解释文字。',
+            '你是落地页策划/产品架构师。输出“完整落地页”的页面架构大纲（不要求严格 JSON，但必须结构清晰、可直接被下游消费）。\n\n要求：\n- 只输出 Markdown（不要寒暄与总结）\n- 给出 sections 从上到下的顺序（至少：Hero、卖点/场景、社会证明、FAQ 或 价格/保障择一、页脚CTA）\n- 每个 section 写清：目的（1 句）、内容要点（≤3 条）、主要 CTA（可选）\n- 整体转化路径清晰，避免多页面/Tab/路由',
         },
         {
           stepId: 'wpb_ix',
           agentId: C('ux-designer'),
           inputFrom: 'wpb_arch',
           systemPrompt:
-            '你是交互设计师。基于上游落地页信息架构（JSON），输出结构化的交互说明 Markdown：每个 section 一段，写清楚用户路径、锚点导航、关键组件交互（FAQ折叠、表单校验的静态表现）、响应式策略。禁止寒暄与总结。',
+            '你是交互设计师。基于上游落地页页面架构大纲（Markdown），输出结构化的交互说明 Markdown：每个 section 一段，写清楚用户路径、锚点导航、关键组件交互（FAQ折叠、表单校验的静态表现）、响应式策略。禁止寒暄与总结。',
         },
         {
           stepId: 'wpb_visual',

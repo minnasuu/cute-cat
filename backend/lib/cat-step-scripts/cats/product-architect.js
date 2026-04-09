@@ -2,109 +2,62 @@
 
 const { runWithAI, extractUpstreamText, resolveSystemPrompt } = require('../_framework');
 
-const FALLBACK_LANDING_CONTENT_MODEL = JSON.stringify({
-  version: 1,
-  meta: {
-    language: 'zh',
-    industry: '通用',
-    audience: '通用用户',
-    conversionGoal: '咨询/购买/报名',
-    brandTone: ['清晰', '可信', '现代'],
-  },
-  sections: [
-    {
-      id: 'hero',
-      type: 'hero',
-      headline: '一句话说清楚你的价值',
-      subhead: '用清晰的卖点与可信的背书促成转化',
-      bullets: ['卖点一（短）', '卖点二（短）', '卖点三（短）'],
-      cta: { primary: '立即咨询', secondary: '查看案例' },
-    },
-    { id: 'benefits', type: 'benefits', headline: '核心卖点', bullets: ['点1', '点2', '点3'] },
-    { id: 'proof', type: 'socialProof', headline: '口碑与信任', bullets: ['数据/Logo墙', '用户证言'] },
-    { id: 'faq', type: 'faq', headline: '常见问题', faq: [{ q: 'Q1', a: 'A1' }, { q: 'Q2', a: 'A2' }] },
-    { id: 'footerCta', type: 'footerCta', headline: '现在就开始', subhead: '给用户一个明确的下一步', cta: { primary: '开始使用' } },
-  ],
-  constraints: {
-    selfContained: true,
-    noExternalImages: true,
-    editableText: true,
-    mobileFirst: true,
-  },
-  variantsHint: {
-    candidateCount: 3,
-    preferHighDiversity: true,
-  },
-});
+const FALLBACK_LANDING_OUTLINE_MD = `## 落地页架构（兜底）
 
-const SYSTEM_PROMPT = `你是落地页策划/产品架构师，将用户一句话需求转化为「静态单页落地页」的内容模型 JSON（对象）。
+### 1) Hero（首屏）
+- **目的**：一句话讲清价值与对象，建立第一印象
+- **内容要点**：主标题 / 副标题 / 3 条卖点
+- **CTA**：立即咨询（主）｜查看案例（次）
 
-## 🚨🚨🚨 最高优先级：短而完整、必须可解析 🚨🚨🚨
+### 2) 核心卖点
+- **目的**：把价值拆成可感知的 3 点
+- **内容要点**：能力/优势/结果（各 1 条）
 
-- **宁可 sections 少一点、字段少一点，也必须在一次回复内输出完整、可解析的 JSON**，禁止写到一半截断。
-- sections 控制在 **5～8 段**；每段 bullets/FAQ 等列表 **最多 3 条**，避免超长。
+### 3) 场景与流程（或 产品如何工作）
+- **目的**：让用户快速代入使用场景，降低理解成本
+- **内容要点**：3 步流程 / 典型场景 / 适用人群
+
+### 4) 信任背书（社会证明）
+- **目的**：消除风险与不确定性
+- **内容要点**：关键数据 / 客户 Logo（文字占位）/ 证言（1-2 条）
+
+### 5) FAQ（或 价格/保障 二选一）
+- **目的**：回答关键疑虑，推动决策
+- **内容要点**：2-3 个最关键问题（短问短答）
+
+### 6) 页脚 CTA
+- **目的**：明确下一步行动
+- **内容要点**：一句强化承诺 + 联系方式占位
+- **CTA**：开始使用 / 预约演示`;
+
+const SYSTEM_PROMPT = `你是落地页策划/产品架构师。将用户一句话需求转化为「静态单页落地页」的页面架构大纲（不要求严格 JSON）。
+
+## 最高优先级：结构清晰、可直接落地
+
+- 输出必须能让下游直接生成页面：section 顺序明确、每段目标明确、内容要点精炼。
+- sections 控制在 **5～8 段**；每段要点 **最多 3 条**，避免超长。
 - 若需求复杂：只保留转化主路径（Hero→卖点/场景→信任→FAQ/价格择一→Footer CTA），其余省略。
 
-## 🚨🚨🚨 只输出 JSON 🚨🚨🚨
+## 🚨只输出 Markdown 大纲（禁止寒暄/总结）
 
-你的回复必须**只包含 JSON 对象本身**，不允许包含任何其他内容：
-- 回复的第一个字符必须是 \`{\`
-- 回复的最后一个字符必须是 \`}\`
-- **绝对禁止**在 JSON 前面或后面写任何文字
-- **绝对禁止**使用 markdown 代码块 \`\`\`json ... \`\`\` 包裹
-- **绝对禁止**输出任何非 JSON 的解释、说明、总结、注释
+- 直接从标题开始（例如：\`## 落地页架构\`）
+- 禁止在正文前后输出任何客套话
+- 禁止输出代码块包裹整段内容
 
-## 🚨 禁止追问与澄清（与「只输出 JSON」同等重要）
+## 输出格式（必须遵守）
 
-- **绝对禁止**向用户提问、索要补充信息、列举「您可能指的是 A/B/C」、或输出任何对话式引导。
-- 即使用户只给了一个词、短语或行业名，也**必须**立刻推断并输出完整 JSON 树。
-- 信息不足时：用**精简**通用落地页结构（首屏→卖点→信任→CTA→页脚），**不要**用文字说明「假设」或「待确认」。
+## 落地页架构
 
-## 输出 schema（必须遵守）
+### 1) <SectionName>
+- **目的**：一句话
+- **内容要点**：要点1；要点2；要点3（最多3条）
+- **CTA**：主CTA（可选）｜次CTA（可选）
 
-{
-  "version": 1,
-  "meta": {
-    "language": "zh",
-    "industry": "…",
-    "audience": "…",
-    "conversionGoal": "…",
-    "brandTone": ["…", "…"]
-  },
-  "sections": [
-    {
-      "id": "hero",
-      "type": "hero",
-      "headline": "…",
-      "subhead": "…",
-      "bullets": ["…", "…"],
-      "cta": { "primary": "…", "secondary": "…" }
-    }
-    // ... 其它 section（5~8 段内）
-  ],
-  "constraints": {
-    "selfContained": true,
-    "noExternalImages": true,
-    "editableText": true,
-    "mobileFirst": true
-  },
-  "variantsHint": {
-    "candidateCount": 3,
-    "preferHighDiversity": true
-  }
-}
+（重复到 5~8 段）
 
 ## 通用规则
-
-- sections：单页上的独立模块（section），从上到下阅读顺序
-- 文案用中文，短句优先；避免技术术语堆砌
-- 必须是「静态单页落地页」：**绝对禁止** Tab、多页面、路由、后台管理台、数据看板、列表管理等 IA
-
-## 输出格式
-
-- 仅返回纯 JSON 对象，以 { 开头 } 结尾
-- 禁止 markdown、代码块、注释、说明文字
-- 字段仅限 schema 中列出的字段（允许某些可选字段缺省）`;
+- 必须是单页：**禁止** Tab、多页面、路由、后台管理、列表管理
+- 文案中文、短句优先；避免术语堆砌`;
 
 function repairUnclosedJsonContainers(s) {
   let t = String(s || '').trim();
@@ -178,49 +131,45 @@ function normalizeProductArchitectJson(raw) {
   const codeMatch = text.match(/```(?:json|JSON)?\s*\n?([\s\S]*?)\n?\s*```/);
   if (codeMatch) text = codeMatch[1].trim();
 
-  // 优先提取数组；若工作流要求 JSON 对象（如 Hero 结构）则允许对象直通
-  const bracketStart = text.indexOf('[');
-  if (bracketStart >= 0) {
-    if (bracketStart > 0) text = text.substring(bracketStart);
-    const bracketEnd = text.lastIndexOf(']');
-    if (bracketEnd >= 0) text = text.substring(0, bracketEnd + 1);
-  } else {
-    const braceStart = text.indexOf('{');
-    if (braceStart > 0) text = text.substring(braceStart);
-    const braceEnd = text.lastIndexOf('}');
-    if (braceEnd >= 0) text = text.substring(0, braceEnd + 1);
+  // 兼容：若模型仍然输出了 JSON（对象/数组），尽量提取出来；否则直接按 Markdown 大纲原样返回
+  const braceStart0 = text.indexOf('{');
+  const bracketStart0 = text.indexOf('[');
+  const firstNonSpace = text.match(/\S/)?.[0] || '';
+  const looksLikeJson =
+    firstNonSpace === '{' ||
+    firstNonSpace === '[' ||
+    (braceStart0 >= 0 && braceStart0 < 10) ||
+    (bracketStart0 >= 0 && bracketStart0 < 10);
+
+  if (looksLikeJson) {
+    // 尝试对象
+    if (braceStart0 >= 0) {
+      const t = braceStart0 > 0 ? text.substring(braceStart0) : text;
+      const braceEnd = t.lastIndexOf('}');
+      if (braceEnd >= 0) {
+        const slice = t.substring(0, braceEnd + 1);
+        const objOk = tryParseJsonObject(slice.replace(/,\s*([\]}])/g, '$1'));
+        if (objOk) return { text: objOk, usedFallback: false, repairedBrackets: false };
+      }
+    }
+    // 尝试数组（含轻修补）
+    if (bracketStart0 >= 0) {
+      const t = bracketStart0 > 0 ? text.substring(bracketStart0) : text;
+      const bracketEnd = t.lastIndexOf(']');
+      if (bracketEnd >= 0) {
+        const slice = t.substring(0, bracketEnd + 1);
+        const commaFixed = slice.replace(/,\s*([\]}])/g, '$1');
+        const ok = tryParseJsonArray(commaFixed);
+        if (ok) return { text: ok, usedFallback: false, repairedBrackets: false };
+        const repaired = repairUnclosedJsonContainers(slice);
+        const ok2 = tryParseJsonArray(repaired.replace(/,\s*([\]}])/g, '$1'));
+        if (ok2) return { text: ok2, usedFallback: false, repairedBrackets: true };
+      }
+    }
   }
 
-  let repairedBrackets = false;
-  const commaFixed = text.replace(/,\s*([\]}])/g, '$1');
-  let ok = tryParseJsonArray(commaFixed);
-  if (ok) {
-    return { text: ok, usedFallback: false, repairedBrackets };
-  }
-
-  const objOk = tryParseJsonObject(commaFixed);
-  if (objOk) {
-    return { text: objOk, usedFallback: false, repairedBrackets };
-  }
-
-  const repaired = repairUnclosedJsonContainers(text);
-  if (repaired !== text) repairedBrackets = true;
-  const repairedComma = repaired.replace(/,\s*([\]}])/g, '$1');
-  ok = tryParseJsonArray(repairedComma);
-  if (ok) {
-    return { text: ok, usedFallback: false, repairedBrackets };
-  }
-
-  const repairedObjOk = tryParseJsonObject(repairedComma);
-  if (repairedObjOk) {
-    return { text: repairedObjOk, usedFallback: false, repairedBrackets };
-  }
-
-  return {
-    text: FALLBACK_LANDING_CONTENT_MODEL,
-    usedFallback: true,
-    repairedBrackets,
-  };
+  // Markdown / 自由文本：不做 parse，只要结构清晰即可
+  return { text: text.trim(), usedFallback: false, repairedBrackets: false };
 }
 
 module.exports = async function runProductArchitect(ctx) {
@@ -236,13 +185,12 @@ module.exports = async function runProductArchitect(ctx) {
     result.data.text = text;
     if (usedFallback) {
       result.status = 'warning';
-      result.summary =
-        '模型输出未能解析为合法 JSON，已自动使用精简兜底模块大纲（仍可继续生成落地页）';
+      result.summary = '已使用兜底落地页架构（仍可继续生成网页）';
     } else if (repairedBrackets) {
       result.status = result.status === 'warning' ? 'warning' : 'success';
-      result.summary = `落地页模块大纲已生成（${text.length} 字符，已自动补全未闭合括号）`;
+      result.summary = `落地页架构已生成（${text.length} 字符，已自动补全未闭合括号）`;
     } else {
-      result.summary = `落地页模块大纲已生成（${text.length} 字符）`;
+      result.summary = `落地页架构已生成（${text.length} 字符）`;
     }
   }
 
