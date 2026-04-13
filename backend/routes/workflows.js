@@ -38,7 +38,7 @@ router.post('/team/:teamId', async (req, res) => {
       return res.status(403).json({ error: '官方创作空间的工作流由系统维护，不可新增' });
     }
 
-    const { name, description, placeholder, steps, icon, trigger, cron, scheduled, startTime, endTime, persistent, enabled } = req.body;
+    const { name, description, placeholder, steps, icon, category, trigger, cron, scheduled, startTime, endTime, persistent, enabled } = req.body;
     if (!name || !steps) return res.status(400).json({ error: '请填写工作流名称和步骤' });
 
     const resolvedTrigger = trigger || (scheduled ? 'cron' : 'manual');
@@ -46,6 +46,7 @@ router.post('/team/:teamId', async (req, res) => {
       data: {
         teamId: req.params.teamId,
         name,
+        category: typeof category === 'string' && category.trim() ? category.trim() : 'ecommerce',
         icon: icon || 'ClipboardList',
         description: description || '',
         placeholder: typeof placeholder === 'string' ? placeholder : null,
@@ -89,7 +90,7 @@ router.put('/:id', async (req, res) => {
       return res.status(403).json({ error: '官方创作空间的工作流不可修改' });
     }
 
-    const { name, description, placeholder, steps, trigger, cron, scheduled, scheduledEnabled, startTime, endTime, persistent, enabled } = req.body;
+    const { name, description, placeholder, steps, trigger, cron, scheduled, scheduledEnabled, startTime, endTime, persistent, enabled, category } = req.body;
     const resolvedTrigger = trigger || (scheduled ? 'cron' : 'manual');
     const updated = await prisma.workflow.update({
       where: { id: req.params.id },
@@ -97,6 +98,7 @@ router.put('/:id', async (req, res) => {
         ...(name && { name }),
         ...(description !== undefined && { description }),
         ...(placeholder !== undefined && { placeholder: typeof placeholder === 'string' ? placeholder : null }),
+        ...(category !== undefined && { category: typeof category === 'string' && category.trim() ? category.trim() : 'ecommerce' }),
         ...(steps && { steps }),
         trigger: resolvedTrigger,
         ...(cron !== undefined && { cron: cron || null }),

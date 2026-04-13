@@ -19,6 +19,8 @@ export interface TeamCat {
 export interface WorkflowRow {
   id: string;
   name: string;
+  /** 分类：ecommerce | selfmedia | internet */
+  category?: string;
   icon: string;
   description: string;
   placeholder?: string | null;

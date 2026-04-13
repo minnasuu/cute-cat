@@ -300,6 +300,9 @@ async function executeWorkflowIntoExistingRun(workflow, run, triggeredBy, option
     try {
       const executePromise = executeStep(step, merged, userEmail, {
         ...executionContext,
+        runId: run.id,
+        teamId: workflow.teamId,
+        triggeredBy: triggeredBy || null,
         catTemplateId,
         catName,
         catSystemPrompt,

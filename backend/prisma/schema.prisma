@@ -93,6 +93,8 @@ model Workflow {
   icon              String   @default("📋")
   description       String   @db.Text
   placeholder       String?  @db.Text
+  /** 前端分类用：ecommerce | selfmedia | internet */
+  category          String   @default("ecommerce")
   steps             Json
   trigger           String   @default("manual") // manual / cron / webhook
   cron              String?

@@ -9,6 +9,7 @@ type Workflow = {
   name: string;
   icon: string;
   description: string;
+  category?: string;
   placeholder?: string | null;
   steps: any;
   enabled: boolean;

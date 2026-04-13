@@ -126,6 +126,111 @@ function FeatureCard({
   );
 }
 
+type TeamOption = { id: string; label: string };
+
+function TeamSelect({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  variant = "default",
+}: {
+  value: string;
+  options: readonly TeamOption[];
+  onChange: (next: string) => void;
+  ariaLabel: string;
+  variant?: "default" | "compact";
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const activeLabel = options.find((o) => o.id === value)?.label ?? value;
+
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  const buttonClass =
+    variant === "compact"
+      ? "cursor-pointer rounded-xl border border-border bg-surface px-3 py-1.5 text-xs font-bold text-text-primary  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/35"
+      : "inline-flex max-w-full cursor-pointer rounded-2xl border border-border bg-surface px-4 py-2 text-sm md:text-base font-black tracking-tight text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/35";
+
+  return (
+    <div ref={ref} className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-2 ${buttonClass}`}
+      >
+        <span className="truncate">{activeLabel}</span>
+        <svg
+          className={`w-3.5 h-3.5 text-text-tertiary transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {open ? (
+        <div
+          role="menu"
+          aria-label={ariaLabel}
+          className={`absolute z-50 mt-2 overflow-hidden rounded-[18px] border border-border bg-surface shadow-xl ${
+            variant === "compact"
+              ? "right-0 top-full w-44"
+              : "left-0 top-full w-56"
+          }`}
+        >
+          <div className="p-1">
+            {options.map((o) => {
+              const active = o.id === value;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onChange(o.id);
+                    setOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
+                    active
+                      ? "bg-primary-50 text-primary-700"
+                      : "text-text-secondary hover:bg-surface-secondary hover:text-text-primary"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * 创作主页交互要点：
  * - splitMode：是否进入左（输入+历史）右（ResultCanvas）分栏；首次「开始创作」、点「历史记录」或带 ?runId= 进入时为 true。
@@ -140,6 +245,36 @@ const DashboardPage: React.FC = () => {
   const [workbench, setWorkbench] = useState<WorkbenchPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [userInput, setUserInput] = useState("");
+  const TEAM_OPTIONS = [
+    { id: "ecommerce", label: "电商团队" },
+    { id: "selfmedia", label: "自媒体团队" },
+    { id: "internet", label: "互联网团队" },
+  ] as const;
+  type TeamId = (typeof TEAM_OPTIONS)[number]["id"];
+  const [teamId, setTeamId] = useState<TeamId>("ecommerce");
+
+  // 从工作流数据库字段 category 分类（不再依赖固定 workflow id）
+  const TEAM_CATEGORIES: Record<TeamId, string[]> = {
+    ecommerce: ["ecommerce"],
+    selfmedia: ["selfmedia"],
+    internet: ["internet"],
+  };
+
+  const teamIdForWorkflowId = useCallback(
+    (wfId: string | null): TeamId | null => {
+      if (!wfId) return null;
+      const wf = (workbench?.workflows ?? []).find((w) => w.id === wfId);
+      const cat = (wf?.category || "").trim();
+      if (cat === "internet") return "internet";
+      if (cat === "selfmedia") return "selfmedia";
+      if (cat === "ecommerce") return "ecommerce";
+      // 兼容未迁移/老数据：用 name 兜底推断
+      if (wf?.name === "落地页") return "internet";
+      if (wf?.name === "海报制作" || wf?.name === "品牌气质卡") return "ecommerce";
+      return null;
+    },
+    [workbench?.workflows],
+  );
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
     null,
   );
@@ -185,10 +320,25 @@ const DashboardPage: React.FC = () => {
     [workbench],
   );
 
+  const visibleOfficialWorkflows = useMemo(() => {
+    const allowedCats = new Set(TEAM_CATEGORIES[teamId]);
+    return officialWorkflows.filter((w) => {
+      const cat = (w.category || "").trim();
+      if (cat) return allowedCats.has(cat);
+      // 兼容未迁移/老数据：用 name 兜底
+      if (w.name === "落地页") return teamId === "internet";
+      if (w.name === "海报制作" || w.name === "品牌气质卡")
+        return teamId === "ecommerce";
+      return false;
+    });
+  }, [officialWorkflows, teamId]);
+
   const selectedFeature = useMemo((): WorkflowRow | null => {
     if (!selectedWorkflowId) return null;
-    return officialWorkflows.find((w) => w.id === selectedWorkflowId) ?? null;
-  }, [officialWorkflows, selectedWorkflowId]);
+    return (
+      visibleOfficialWorkflows.find((w) => w.id === selectedWorkflowId) ?? null
+    );
+  }, [visibleOfficialWorkflows, selectedWorkflowId]);
 
   const heroDescription = useMemo(() => {
     if (!selectedFeature) return null;
@@ -250,6 +400,24 @@ const DashboardPage: React.FC = () => {
     loadWorkbench();
   }, [loadWorkbench]);
 
+  // 当选中的 workflow 属于另一个团队时，自动切换团队（比如点了历史记录/URL 进来）
+  useEffect(() => {
+    const inferred = teamIdForWorkflowId(selectedWorkflowId);
+    if (inferred && inferred !== teamId) {
+      setTeamId(inferred);
+    }
+    // 注意：不要把 teamId 放进依赖，否则用户手动切换团队时会被这个“自动推断”立刻覆盖回去
+  }, [selectedWorkflowId, teamIdForWorkflowId]);
+
+  // 切换团队后，若当前能力不在可见列表里则切到该团队默认能力；自媒体团队暂无能力则置空
+  useEffect(() => {
+    setSelectedWorkflowId((prev) =>
+      prev && visibleOfficialWorkflows.some((w) => w.id === prev)
+        ? prev
+        : (visibleOfficialWorkflows[0]?.id ?? null),
+    );
+  }, [visibleOfficialWorkflows]);
+
   // 须先于「能力不一致则清 history」：否则 ?runId= 首屏会因 selectedWorkflowId 尚未对齐而误清 historyRunId
   useEffect(() => {
     if (!historyRunId || !workbench?.runs?.length) return;
@@ -267,7 +435,8 @@ const DashboardPage: React.FC = () => {
 
   /** 用户改选能力卡片时，若当前 history 指向另一工作流的 run，则退出历史查看态 */
   useEffect(() => {
-    if (!historyRunId || !workbench?.runs?.length || !selectedWorkflowId) return;
+    if (!historyRunId || !workbench?.runs?.length || !selectedWorkflowId)
+      return;
     const r = workbench.runs.find((x) => x.id === historyRunId);
     if (r && r.workflowId !== selectedWorkflowId) {
       setHistoryRunId(null);
@@ -370,8 +539,9 @@ const DashboardPage: React.FC = () => {
       const trimmed = prompt.trim();
       if (!wfId || !trimmed) return;
       if (isSubmitting) return;
-      const running =
-        (workbench?.runs ?? []).filter((r) => r.status === "running").length;
+      const running = (workbench?.runs ?? []).filter(
+        (r) => r.status === "running",
+      ).length;
       if (running >= 3) return;
 
       const myGen = ++executeGenerationRef.current;
@@ -492,7 +662,8 @@ const DashboardPage: React.FC = () => {
                 const ok = data.success !== false && data.status !== "error";
                 const resultType = data.resultType || undefined;
                 const payloadData =
-                  typeof data.resultData === "string" && data.resultData.length > 0
+                  typeof data.resultData === "string" &&
+                  data.resultData.length > 0
                     ? data.resultData
                     : acc;
                 upsertStep(idx, {
@@ -679,7 +850,8 @@ const DashboardPage: React.FC = () => {
                 const ok = data.success !== false && data.status !== "error";
                 const resultType = data.resultType || undefined;
                 const payloadData =
-                  typeof data.resultData === "string" && data.resultData.length > 0
+                  typeof data.resultData === "string" &&
+                  data.resultData.length > 0
                     ? data.resultData
                     : acc;
                 upsertStep(idx, {
@@ -761,8 +933,8 @@ const DashboardPage: React.FC = () => {
   );
 
   const inputPlaceholder = selectedFeature
-    ? (selectedFeature.placeholder?.trim() ||
-        "描述你的页面或站点：目标用户、必备模块、风格气质…")
+    ? selectedFeature.placeholder?.trim() ||
+      "描述你的页面或站点：目标用户、必备模块、风格气质…"
     : "请先点选上方一个创作方向";
 
   const executeBusy = isSubmitting || !!pollingWfId;
@@ -821,17 +993,22 @@ const DashboardPage: React.FC = () => {
                   splitMode ? "text-xl md:text-2xl" : "text-2xl md:text-3xl"
                 }`}
               >
-                选好方向，写下需求，
-                <span className="text-primary-600"> 一键开跑</span>
+                <span className="sr-only">团队选择</span>
+                <TeamSelect
+                  value={teamId}
+                  options={TEAM_OPTIONS}
+                  onChange={(next) => setTeamId(next as TeamId)}
+                  ariaLabel="选择团队"
+                />
               </h1>
-              <p
+              {/* <p
                 className={`text-text-secondary font-medium leading-relaxed ${
                   splitMode ? "text-xs md:text-sm" : "text-sm md:text-base"
                 } ${splitMode ? "text-left" : ""}`}
                 aria-live="polite"
               >
                 {heroDescription ?? HERO_DESCRIPTION_DEFAULT}
-              </p>
+              </p> */}
             </section>
           )}
 
@@ -1012,6 +1189,20 @@ const DashboardPage: React.FC = () => {
             )}
             <div className="rounded-[28px] border border-border-strong bg-surface-secondary/40 p-3 sm:p-4 mx-6 mb-6">
               <div className={`flex flex-col ${splitMode ? "gap-2" : "gap-4"}`}>
+                {splitMode ? (
+                  <div className="flex items-center justify-between gap-3 px-1">
+                    <span className="text-xs font-bold text-text-tertiary">
+                      当前团队
+                    </span>
+                    <TeamSelect
+                      value={teamId}
+                      options={TEAM_OPTIONS}
+                      onChange={(next) => setTeamId(next as TeamId)}
+                      ariaLabel="选择团队"
+                      variant="compact"
+                    />
+                  </div>
+                ) : null}
                 {/* 功能卡片：横向排列，与输入区在同一行（大屏） */}
                 <div
                   className="flex gap-2 content-start shrink-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-x-auto pb-1 lg:overflow-x-visible lg:pb-0 overflow-auto scrollbar-hide"
@@ -1026,8 +1217,12 @@ const DashboardPage: React.FC = () => {
                     <div className="text-xs text-text-tertiary font-medium py-4 px-2">
                       暂无官方创作能力
                     </div>
+                  ) : !visibleOfficialWorkflows.length ? (
+                    <div className="text-xs text-text-tertiary font-medium py-4 px-2">
+                      暂无该团队创作能力
+                    </div>
                   ) : (
-                    officialWorkflows.map((wf) => (
+                    visibleOfficialWorkflows.map((wf) => (
                       <FeatureCard
                         key={wf.id}
                         icon={wf.icon}
@@ -1352,6 +1547,6 @@ const DashboardPage: React.FC = () => {
       )} */}
     </div>
   );
-};
+};;;;;
 
 export default DashboardPage;

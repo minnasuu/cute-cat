@@ -182,11 +182,21 @@ export default function ResultCanvas({
     return null;
   }, [lastStep, failed]);
 
+  const imageUrl = useMemo(() => {
+    if (!lastStep || failed) return null;
+    if (lastStep.resultType === "image" && lastStep.resultData) {
+      return lastStep.resultData;
+    }
+    return null;
+  }, [lastStep, failed]);
+
   const previewKind = reactSandboxCode
     ? "react"
     : effectiveHtml
       ? "html"
-      : null;
+      : imageUrl
+        ? "image"
+        : null;
 
   const actionBtnClass =
     "inline-flex items-center gap-1.5 rounded-md bg-white/80 hover:bg-white disabled:hover:bg-white/80 disabled:opacity-60 px-2.5 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-black/[0.08] shadow-sm transition-colors";
@@ -210,6 +220,22 @@ export default function ResultCanvas({
       .replace(/\s+/g, " ");
     downloadBlob(blob, `${safe || "document"}.html`);
   }, [downloadBlob, effectiveHtml, workflowName]);
+
+  const onDownloadImage = useCallback(async () => {
+    if (!imageUrl) return;
+    try {
+      const resp = await fetch(imageUrl, { credentials: "include" });
+      const blob = await resp.blob();
+      const safe = (workflowName || "image")
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, "-")
+        .replace(/\s+/g, " ");
+      const ext = blob.type === "image/webp" ? "webp" : blob.type === "image/jpeg" ? "jpg" : "png";
+      downloadBlob(blob, `${safe || "image"}.${ext}`);
+    } catch {
+      // ignore
+    }
+  }, [downloadBlob, imageUrl, workflowName]);
 
   const onExportPdf = useCallback(() => {
     const iframe = iframeRef.current;
@@ -661,6 +687,18 @@ export default function ResultCanvas({
                           <button
                             type="button"
                             role="menuitem"
+                            disabled={!imageUrl}
+                            onClick={() => {
+                              setExportMenuOpen(false);
+                              void onDownloadImage();
+                            }}
+                            className="w-full px-3 py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-secondary text-left disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer transition-colors"
+                          >
+                            下载图片
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
                             disabled={!frameReady || exportingPng}
                             onClick={() => {
                               setExportMenuOpen(false);
@@ -723,6 +761,20 @@ export default function ResultCanvas({
                           }}
                           onLoad={() => setFrameReady(true)}
                         />
+                      ) : previewKind === "image" ? (
+                        <div
+                          className="w-full flex items-center justify-center bg-surface"
+                          style={{
+                            minHeight: "min(60vh, 520px)",
+                            height: "calc(100vh - 109px)",
+                          }}
+                        >
+                          <img
+                            src={imageUrl!}
+                            alt={workflowName || "生成图片"}
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        </div>
                       ) : (
                         <iframe
                           srcDoc={effectiveHtml!}
