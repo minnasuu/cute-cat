@@ -6,6 +6,62 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+const LAYOUT_ARCHETYPES = [
+  'editorial',
+  'bentoGrid',
+  'splitHero',
+  'centeredMinimal',
+  'neoBrutal',
+  'glassmorphism',
+  'gradientMesh',
+];
+
+function normalizeText(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scoreVibeItem(item, queryText) {
+  const q = normalizeText(queryText);
+  if (!q) return 0;
+  let score = 0;
+  const summary = normalizeText(item?.summary);
+  const tags = Array.isArray(item?.tags) ? item.tags.map((t) => normalizeText(t)).filter(Boolean) : [];
+  for (const t of tags) {
+    if (!t) continue;
+    if (q.includes(t)) score += 6;
+  }
+  if (summary) {
+    // summary 里出现的关键词（弱信号）
+    const tokens = summary.split(/[^a-z0-9\u4e00-\u9fff]+/).filter(Boolean).slice(0, 40);
+    for (const tok of tokens) {
+      if (tok.length < 2) continue;
+      if (q.includes(tok)) score += 1;
+    }
+  }
+  // official 微加权
+  if (item?.isOfficial) score += 2;
+  return score;
+}
+
+function safeJsonParseObject(text) {
+  try {
+    const v = JSON.parse(String(text || '').trim());
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+function coerceLandingContentModel(upstreamFullText) {
+  const obj = safeJsonParseObject(upstreamFullText);
+  if (obj && Array.isArray(obj.sections)) return obj;
+  return null;
+}
+
 function buildSystemPromptForCatalog(catalogText) {
   return `你是 CuCaTopia 官方工作台猫猫「墨墨」，岗位角色：视觉设计师。
 你的任务是根据上游的产品架构和交互设计内容，从给定的视觉风格候选中选择最匹配的一条。
@@ -53,6 +109,8 @@ module.exports = async function runVisualDesigner(ctx) {
   const { merged } = ctx;
   const upstreamFull = extractUpstreamText(merged);
   let upstreamText = upstreamFull;
+  const stepId = ctx?.step?.stepId || '';
+  const userNeed = String(ctx?.context?.userInput || '').trim() || '（未提供）';
 
   // 限制上游文本长度（仅用于喂给模型），返回给下游仍用完整 upstreamFull 拼接
   if (upstreamText.length > 3000) {
@@ -77,7 +135,7 @@ module.exports = async function runVisualDesigner(ctx) {
       orderBy: [{ isOfficial: 'desc' }, { createdAt: 'desc' }],
       take: TAKE,
       // designPrompt 不拼进候选目录，但需要在最终命中时返回给下游
-      select: { id: true, tags: true, summary: true, designPrompt: true },
+      select: { id: true, tags: true, summary: true, designPrompt: true, isOfficial: true },
     });
   } catch (e) {
     console.warn('[visual-designer] load vibeStyleItem failed:', e?.message || String(e));
@@ -85,7 +143,18 @@ module.exports = async function runVisualDesigner(ctx) {
   }
 
   const useVibeLibrary = Array.isArray(vibeItems) && vibeItems.length > 0;
-  const catalogText = useVibeLibrary ? vibeItemCatalog(vibeItems) : getStyleCatalog();
+  // 尽量匹配成功：先用规则打分选 TopK，再让模型只在 TopK 内选 id
+  const matchQuery = `${userNeed}\n\n${upstreamText}`;
+  const ranked = useVibeLibrary
+    ? vibeItems
+        .map((it) => ({ it, score: scoreVibeItem(it, matchQuery) }))
+        .sort((a, b) => b.score - a.score)
+        .map((x) => x.it)
+    : [];
+  const TOPK = Math.min(8, ranked.length || 0);
+  const vibeCandidates = useVibeLibrary ? ranked.slice(0, Math.max(3, TOPK)) : [];
+
+  const catalogText = useVibeLibrary ? vibeItemCatalog(vibeCandidates) : getStyleCatalog();
   const systemPromptBase = buildSystemPromptForCatalog(catalogText);
 
   const fullSystemPrompt = `${systemPromptBase}
@@ -95,18 +164,19 @@ module.exports = async function runVisualDesigner(ctx) {
 ${upstreamForSystem}`;
 
   const userText = useVibeLibrary
-    ? '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：<id>」与「理由：…」，其中 <id> 必须来自候选里的 id。'
+    ? '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：<id>」与「理由：…」，其中 <id> 必须来自候选里的 id（只允许从候选列表选择）。'
     : '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
 
-  // 支持管理员在 step 上覆盖 system prompt：
+  // 支持管理员仅在「step」上覆盖 system prompt：
+  // - 注意：不要把猫实例的 catSystemPrompt 当作覆盖，否则会导致落地页视觉步骤永远走“自由生成”分支
   // - 覆盖后按覆盖提示词执行（更适合“海报制作”等直出风格提示词的场景），避免被“候选选择”格式约束导致不稳定
-  const sysOverride = resolveSystemPrompt('', ctx);
+  const stepPromptOverride = typeof ctx?.context?.stepSystemPrompt === 'string' ? ctx.context.stepSystemPrompt.trim() : '';
   let result;
-  if (sysOverride) {
+  if (stepPromptOverride) {
     const directUserText = upstreamText.trim()
       ? upstreamText
       : '（无上游说明，请输出可被前端直接采用的视觉风格提示词。）';
-    result = await runWithAI('visual-designer', ctx, sysOverride, directUserText, {
+    result = await runWithAI('visual-designer', ctx, stepPromptOverride, directUserText, {
       maxTokens: 4096,
     });
     if (!result.success) {
@@ -153,21 +223,29 @@ ${upstreamForSystem}`;
     };
   }
 
-  // 解析选择；data.text = 完整上游 + designPrompt（与前端一致）
+  // 解析选择；data.text = 落地页（wpb_visual）输出结构化 JSON，其它工作流保持旧格式
   if (result.success && result.data?.text) {
     const aiResponse = result.data.text;
     let selectedStyleId = '';
     let designPrompt = '';
+    let matchedStyleSummary = '';
+    let matchedStyleTags = [];
 
     if (useVibeLibrary) {
       const idMatch = aiResponse.match(/选择[:：]\s*([a-zA-Z0-9_-]+)/);
       selectedStyleId = idMatch?.[1] ? String(idMatch[1]).trim() : '';
-      const picked = vibeItems.find((x) => x.id === selectedStyleId) || vibeItems[0];
+      const picked =
+        vibeCandidates.find((x) => x.id === selectedStyleId) ||
+        vibeCandidates[0] ||
+        vibeItems.find((x) => x.id === selectedStyleId) ||
+        vibeItems[0];
       if (!picked) {
         console.warn('[visual-designer] vibe library empty after selection, fallback to builtin');
       } else {
         selectedStyleId = picked.id;
         designPrompt = String(picked.designPrompt || '');
+        matchedStyleSummary = String(picked.summary || '').trim();
+        matchedStyleTags = Array.isArray(picked.tags) ? picked.tags : [];
       }
     }
 
@@ -183,11 +261,53 @@ ${upstreamForSystem}`;
       designPrompt = selected.prompt;
     }
 
-    const mergedText = formatVisualDesignerOutput(upstreamFull, designPrompt);
-    result.data.text = mergedText;
-    result.data._resultType = 'visual-design-output';
-    result.data.selectedStyleId = selectedStyleId;
-    result.summary = `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`;
+    // 落地页：将上游 contentModel 与 uxNotes 一并打包输出，供前端工程师稳定消费
+    if (stepId === 'wpb_visual') {
+      const contentModel = coerceLandingContentModel(upstreamFull);
+      const layoutArchetype = LAYOUT_ARCHETYPES[Math.floor(Math.random() * LAYOUT_ARCHETYPES.length)];
+      const designTokens = {
+        layoutArchetype,
+        // tokens 由前端工程师基于 prompt 推断，视觉步骤先给“可控意图”而非强行细化到每个 px
+        componentVariants: {
+          button: ['pill', 'softShadow', 'outline'][Math.floor(Math.random() * 3)],
+          card: ['soft', 'outline', 'glass'][Math.floor(Math.random() * 3)],
+          background: ['grid', 'mesh', 'none'][Math.floor(Math.random() * 3)],
+        },
+      };
+      const payload = {
+        kind: 'landing-visual-v2',
+        // 1) 用户需求（来自 workflow context 的原始 userInput）
+        userNeed,
+        // 2) vibe-style-lib 匹配风格（尽量匹配成功）
+        matchedStyle: useVibeLibrary
+          ? {
+              id: selectedStyleId,
+              tags: matchedStyleTags,
+              summary: matchedStyleSummary,
+              designPrompt: designPrompt,
+            }
+          : null,
+        // 3) 通用视觉 prompt（留空，后续你补充）
+        genericVisualPrompt: '',
+        // 供下游渲染差异化
+        visualPrompt: designPrompt,
+        designTokens,
+        // 上游可能是 ux-designer 的 Markdown；若不是 JSON 则仍保留为 notes
+        uxNotes: typeof upstreamFull === 'string' && !contentModel ? String(upstreamFull).trim() : undefined,
+        contentModel: contentModel || undefined,
+      };
+      const text = JSON.stringify(payload);
+      result.data.text = text;
+      result.data._resultType = 'visual-design-output';
+      result.data.selectedStyleId = selectedStyleId;
+      result.summary = `墨墨·视觉设计：已输出用户需求/匹配风格/通用prompt（${text.length} 字符）`;
+    } else {
+      const mergedText = formatVisualDesignerOutput(upstreamFull, designPrompt);
+      result.data.text = mergedText;
+      result.data._resultType = 'visual-design-output';
+      result.data.selectedStyleId = selectedStyleId;
+      result.summary = `墨墨·视觉设计：已输出视觉风格与用户需求（${mergedText.length} 字）`;
+    }
   }
 
   return result;

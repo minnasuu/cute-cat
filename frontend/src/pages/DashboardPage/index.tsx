@@ -278,6 +278,8 @@ const DashboardPage: React.FC = () => {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
     null,
   );
+  /** 落地页：高质量模式（包含交互步骤） */
+  const [landingHighQuality, setLandingHighQuality] = useState(false);
   /** 提交 API 中（尚未返回）→ 显示"正在提交任务…" */
   const [isSubmitting, setIsSubmitting] = useState(false);
   /** 提交后轮询执行进度中 → 显示流水线动画 */
@@ -357,8 +359,12 @@ const DashboardPage: React.FC = () => {
     const wf =
       selectedFeature ??
       workbench?.workflows.find((w) => w.id === selectedWorkflowId);
-    return parseSteps(wf?.steps);
-  }, [selectedFeature, selectedWorkflowId, workbench?.workflows]);
+    const steps = parseSteps(wf?.steps);
+    if (wf?.name === "落地页" && !landingHighQuality) {
+      return steps.filter((s) => s.stepId !== "wpb_ix");
+    }
+    return steps;
+  }, [selectedFeature, selectedWorkflowId, workbench?.workflows, landingHighQuality]);
 
   const catNameById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -565,7 +571,11 @@ const DashboardPage: React.FC = () => {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userInput: trimmed }),
+          body: JSON.stringify({
+            userInput: trimmed,
+            qualityMode:
+              selectedFeature?.name === "落地页" ? landingHighQuality : false,
+          }),
           signal: ac.signal,
         });
         setIsSubmitting(false);
@@ -750,7 +760,11 @@ const DashboardPage: React.FC = () => {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userInput: prompt }),
+            body: JSON.stringify({
+              userInput: prompt,
+              qualityMode:
+                selectedFeature?.name === "落地页" ? landingHighQuality : false,
+            }),
             signal: ac.signal,
           },
         );
@@ -1243,6 +1257,20 @@ const DashboardPage: React.FC = () => {
                       : "flex-1 flex flex-col min-w-0 border-t border-border lg:border-t-0 pt-3 lg:pt-0 lg:min-w-[12rem]"
                   }
                 >
+                  {selectedFeature?.name === "落地页" ? (
+                    <label className="flex items-center gap-2 px-1 pb-2 select-none">
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-primary-600"
+                        checked={landingHighQuality}
+                        onChange={(e) => setLandingHighQuality(e.target.checked)}
+                        disabled={executeBusy}
+                      />
+                      <span className="text-xs font-semibold text-text-secondary">
+                        高质量模式（加入交互步骤，耗时更长）
+                      </span>
+                    </label>
+                  ) : null}
                   <div
                     className={`flex gap-2 items-start min-h-[9rem] sm:min-h-[9rem] bg-gray-100 rounded-2xl ${splitMode ? "pb-16" : ""}`}
                   >
@@ -1351,7 +1379,24 @@ const DashboardPage: React.FC = () => {
                     const htmlPageData =
                       st === "failed" || !lastStep
                         ? null
-                        : lastStep.resultType === "html-page" &&
+                        : lastStep.resultType === "html-page-bundle" &&
+                            lastStep.resultData
+                          ? (() => {
+                              try {
+                                const v = JSON.parse(lastStep.resultData);
+                                const cands = Array.isArray(v?.candidates)
+                                  ? v.candidates
+                                  : [];
+                                const first = cands?.[0];
+                                if (first && typeof first.html === "string") {
+                                  return first.html;
+                                }
+                              } catch {
+                                /* ignore */
+                              }
+                              return null;
+                            })()
+                          : lastStep.resultType === "html-page" &&
                             lastStep.resultData
                           ? lastStep.resultData
                           : (() => {

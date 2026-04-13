@@ -84,7 +84,6 @@ async function ensureWorkbenchTeam(prisma, userId) {
     // 如需强制对齐种子步骤（仅运维场景），显式开启 WORKBENCH_REPAIR_WORKFLOWS=1
     if (process.env.WORKBENCH_REPAIR_WORKFLOWS === '1') {
       await repairWebPageBuilderWorkflowIfNeeded(prisma, team.id, byTemplate);
-      await disableResumeWorkflowIfNeeded(prisma, team.id);
       await repairBrandKitWorkflowIfNeeded(prisma, team.id, byTemplate);
       await repairPosterWorkflowIfNeeded(prisma, team.id, byTemplate);
     }
@@ -111,7 +110,7 @@ function buildSeedWorkflowSteps(catByTemplateId) {
       category: 'internet',
       icon: 'Globe',
       description:
-        '一句话生成可编辑的“落地页首屏 Hero”：提炼卖点 → 视觉确定风格 → 前端输出可预览 HTML（适合分享与导出）。',
+        '一句话生成可编辑的“完整落地页”：信息架构 → 交互路径 → 视觉风格 → 前端输出可预览 HTML（适合分享与导出）。',
       placeholder: '描述你的产品/活动：一句话定位 + 目标人群 + 想强调的卖点…',
       trigger: 'manual',
       persistent: false,
@@ -120,19 +119,26 @@ function buildSeedWorkflowSteps(catByTemplateId) {
           stepId: 'wpb_arch',
           agentId: C('product-architect'),
           systemPrompt:
-            '你是落地页策划/产品架构师。只为“首屏Hero”输出结构 JSON（必须可解析）。只允许输出 4~6 个字段：主标题/副标题/三条卖点/信任背书/CTA（可选价格/限时）。输出必须是 JSON 对象，禁止 markdown，禁止解释文字。',
+            '你是落地页策划/产品架构师。输出“完整落地页”的页面架构大纲（不要求严格 JSON，但必须结构清晰、可直接被下游消费）。\n\n要求：\n- 只输出 Markdown（不要寒暄与总结）\n- 给出 sections 从上到下的顺序（至少：Hero、卖点/场景、社会证明、FAQ 或 价格/保障择一、页脚CTA）\n- 每个 section 写清：目的（1 句）、内容要点（≤3 条）、主要 CTA（可选）\n- 整体转化路径清晰，避免多页面/Tab/路由',
+        },
+        {
+          stepId: 'wpb_ix',
+          agentId: C('ux-designer'),
+          inputFrom: 'wpb_arch',
+          systemPrompt:
+            '你是交互设计师。基于上游落地页页面架构大纲（Markdown），输出结构化的交互说明 Markdown：每个 section 一段，写清楚用户路径、锚点导航、关键组件交互（FAQ折叠、表单校验的静态表现）、响应式策略。禁止寒暄与总结。',
         },
         {
           stepId: 'wpb_visual',
           agentId: C('visual-designer'),
-          inputFrom: 'wpb_arch',
+          inputFrom: 'wpb_ix',
         },
         {
           stepId: 'wpb_fe',
           agentId: C('frontend-engineer'),
           inputFrom: 'wpb_visual',
           systemPrompt:
-            '你是前端工程师。生成“落地页首屏Hero”静态单页 HTML（自包含、移动端优先）：包含主标题/副标题/卖点列表/信任背书/CTA按钮（2个）。必须适合导出 PNG/PDF，并且正文可被 contenteditable 编辑（避免把文字渲染进图片）。只输出完整 HTML。',
+            '你是前端工程师。生成“完整落地页”静态单页 HTML（自包含、移动端优先）：包含导航（页内锚点）、Hero、至少 3 个内容 section（卖点/场景/案例/FAQ/价格/保障等）、页脚CTA。必须适合导出 PNG/PDF，并且正文可被 contenteditable 编辑（避免把文字渲染进图片）。只输出完整 HTML。',
         },
       ],
     },
@@ -371,7 +377,7 @@ async function repairIllustrationDesignWorkflowIfNeeded(prisma, teamId, catByTem
  * @param {Record<string, { id: string }>} catByTemplateId
  */
 async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplateId) {
-  for (const tid of ['product-architect', 'visual-designer', 'frontend-engineer']) {
+  for (const tid of ['product-architect', 'ux-designer', 'visual-designer', 'frontend-engineer']) {
     if (!catByTemplateId[tid]?.id) return;
   }
   const want = buildSeedWorkflowSteps(catByTemplateId)[0];
@@ -413,24 +419,8 @@ async function repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, catByTemplat
       },
     });
     console.log(
-      '[workbench-seed] repaired 落地页: steps → wpb_arch → wpb_visual → wpb_fe（与 workflows.ts 对齐）',
+      '[workbench-seed] repaired 落地页: steps → wpb_arch → wpb_ix → wpb_visual → wpb_fe（与 workflows.ts 对齐）',
     );
-  }
-}
-
-/**
- * 线上已有工作台团队时，下线「简历」：
- * - 将 enabled=false（保留历史 run 关联）
- * - 不再 repair/新增该工作流
- * @param {import('@prisma/client').PrismaClient} prisma
- * @param {string} teamId
- */
-async function disableResumeWorkflowIfNeeded(prisma, teamId) {
-  const wfs = await prisma.workflow.findMany({ where: { teamId, name: '简历' } });
-  for (const wf of wfs) {
-    if (wf.enabled === false) continue;
-    await prisma.workflow.update({ where: { id: wf.id }, data: { enabled: false } });
-    console.log('[workbench-seed] disabled 简历 workflow');
   }
 }
 
@@ -625,7 +615,6 @@ async function repairWorkbenchWorkflowsForTeam(prisma, teamId) {
   );
 
   await repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, byTemplate);
-  await disableResumeWorkflowIfNeeded(prisma, teamId);
   await repairBrandKitWorkflowIfNeeded(prisma, teamId, byTemplate);
   await repairPosterWorkflowIfNeeded(prisma, teamId, byTemplate);
   await repairFashionDesignWorkflowIfNeeded(prisma, teamId, byTemplate);

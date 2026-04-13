@@ -144,6 +144,7 @@ router.post('/:id/execute', async (req, res) => {
 
     const { executeWorkflow } = require('../workflow-executor');
     const userInput = typeof req.body?.userInput === 'string' ? req.body.userInput : '';
+    const qualityMode = req.body?.qualityMode === true;
 
     // 异步执行，立即返回
     res.json({ message: '工作流已开始执行', workflowId: workflow.id });
@@ -199,6 +200,7 @@ router.post('/:id/execute/stream', async (req, res) => {
 
     await executeWorkflow(workflow, req.userId, {
       userInput,
+      qualityMode,
       hooks: {
         onRunCreated: ({ runId, workflowId }) => sendSSE('runCreated', { runId, workflowId }),
         onStepStart: ({ index, stepId, agentId }) => sendSSE('stepStart', { index, stepId, agentId }),
@@ -275,9 +277,11 @@ router.post('/runs/:runId/retry/stream', async (req, res) => {
 
     const { executeWorkflowIntoExistingRun } = require('../workflow-executor');
     const userInput = typeof req.body?.userInput === 'string' ? req.body.userInput : '';
+    const qualityMode = req.body?.qualityMode === true;
 
     await executeWorkflowIntoExistingRun(workflow, run, req.userId, {
       userInput,
+      qualityMode,
       hooks: {
         onRunCreated: ({ runId, workflowId }) => sendSSE('runCreated', { runId, workflowId }),
         onStepStart: ({ index, stepId, agentId }) => sendSSE('stepStart', { index, stepId, agentId }),

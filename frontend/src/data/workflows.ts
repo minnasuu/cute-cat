@@ -9,22 +9,21 @@ export const workflows: Workflow[] = [
     id: 'landing-page',
     name: '落地页',
     description:
-      '一句话生成可编辑的“落地页首屏 Hero”：提炼卖点 → 视觉确定风格 → 前端输出可预览 HTML（适合分享与导出）。',
+      '一句话生成可编辑的“完整落地页”：信息架构 → 交互路径 → 视觉风格 → 前端输出可预览 HTML（适合分享与导出）。',
     steps: [
       {
         stepId: 'wpb_arch',
         agentId: 'product-architect',
       },
-      // {
-      //   stepId: 'wpb_ix',
-      //   agentId: 'ux-designer',
-      //   inputFrom: 'wpb_arch',
-      // },
+      {
+        stepId: 'wpb_ix',
+        agentId: 'ux-designer',
+        inputFrom: 'wpb_arch',
+      },
       {
         stepId: 'wpb_visual',
         agentId: 'visual-designer',
-        // 交互步骤未启用时直接承接产品架构（勿引用已注释的 wpb_ix）
-        inputFrom: 'wpb_arch',
+        inputFrom: 'wpb_ix',
       },
       {
         stepId: 'wpb_fe',
