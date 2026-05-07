@@ -138,7 +138,7 @@ async function runWithAIStream(templateId, ctx, systemPrompt, userText, options 
       const apiKey = process.env.QWEN_API_KEY;
       if (!apiKey) throw new Error('QWEN_API_KEY not set');
       const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-      const model = process.env.QWEN_MODEL || 'qwen3.5-plus';
+      const model = process.env.QWEN_MODEL || 'qwen3.6-plus';
 
       const controller = new AbortController();
       const timeoutMs = Number.parseInt(process.env.QWEN_STREAM_TIMEOUT_MS || '', 10);
