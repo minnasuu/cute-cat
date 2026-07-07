@@ -4,7 +4,7 @@
  * Seeds once on first load when the collection is empty.
  */
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
-import { apiClient } from "../../../../utils/apiClient";
+import { apiClient } from "../lib/api";
 import type { SkillArticle } from "../types/skill";
 
 interface ContextValue {

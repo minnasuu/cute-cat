@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiClient } from "../../../utils/apiClient";
+import { apiClient } from "../lib/api";
 import { Modal } from "../components/ui";
 
 interface MaterialRow {

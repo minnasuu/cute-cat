@@ -4,7 +4,7 @@
  * Drop-in replacement for the localStorage store used by the original Laisse Ancie SPA.
  */
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
-import { apiClient } from "../../../../utils/apiClient";
+import { apiClient } from "../lib/api";
 import type { Collection, Product } from "../types/design";
 
 interface ContextValue {

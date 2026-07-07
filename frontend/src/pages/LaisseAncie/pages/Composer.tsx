@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useDesignStore } from "../store/design";
 import { useSkillStore } from "../store/skill";
 import { PromptBar } from "../components/PromptBar";
-import { apiClient } from "../../../utils/apiClient";
+import { apiClient } from "../lib/api";
 import { MODE_LABEL, type DesignMode, type Product } from "../types/design";
 import { skillHintsFor } from "../lib/skill-hints";
 
