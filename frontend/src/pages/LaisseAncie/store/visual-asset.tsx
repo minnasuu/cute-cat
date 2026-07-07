@@ -4,7 +4,7 @@
  * Stores metadata via /api/laisse-ancie/visual-assets; src = data URI or URL.
  */
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
-import { apiClient } from "../../../../utils/apiClient";
+import { apiClient } from "../lib/api";
 import type { VisualAsset } from "../types/visual-asset";
 
 interface ContextValue {

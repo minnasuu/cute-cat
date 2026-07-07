@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useVisualAssetStore } from "../store/visual-asset";
-import { apiClient } from "../../../utils/apiClient";
+import { apiClient } from "../lib/api";
 import {
   VISUAL_KIND_META, type VisualAsset, type VisualAssetKind,
 } from "../types/visual-asset";
