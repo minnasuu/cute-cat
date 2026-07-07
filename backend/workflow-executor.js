@@ -26,7 +26,48 @@ async function createGeminiClient(apiKey) {
   return new GoogleGenAI(opts);
 }
 
-// ─── Qwen 调用 ───
+// ─── LongCat-2.0 (Anthropic‑compatible) ───────────────────────
+async function callLongcat(systemPrompt, userText, maxTokens = 4096) {
+  const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('LONGCAT_API_KEY (or ANTHROPIC_API_KEY) not set');
+  const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+  const model = process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
+  try {
+    const response = await fetch(`${baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userText }],
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`LongCat API ${response.status}: ${errText}`);
+    }
+    const data = await response.json();
+    // Anthropic returns content[] of blocks; emit text blocks
+    return (data.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// ─── Qwen 调用 (仍保留，可 fallback) ─────────────────────────
 async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
@@ -58,7 +99,7 @@ async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   }
 }
 
-// ─── Gemini 调用 ───
+// ─── Gemini 调用 (仍保留，可 fallback) ────────────────────────
 async function callGemini(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set');
@@ -71,11 +112,12 @@ async function callGemini(systemPrompt, userText, maxTokens = 4096) {
   return response.text || '';
 }
 
-// ─── 通用 AI 调用 ───
+// ─── 通用 AI 调用 (默认 longcat) ──────────────────────────────
 async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
-  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
+  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'longcat';
   if (selectedModel === 'qwen') return callQwen(systemPrompt, userText, maxTokens);
-  return callGemini(systemPrompt, userText, maxTokens);
+  if (selectedModel === 'gemini') return callGemini(systemPrompt, userText, maxTokens);
+  return callLongcat(systemPrompt, userText, maxTokens);
 }
 
 // ─── 单步执行：merged 仅为 { text: 本步 user 正文 } ───
