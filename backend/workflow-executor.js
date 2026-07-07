@@ -67,6 +67,72 @@ async function callLongcat(systemPrompt, userText, maxTokens = 4096) {
   }
 }
 
+// ─── 流式 LongCat 调用 (Anthropic‑compatible SSE) ────────────
+// Anthropic streaming 事件流：content_block_delta → delta.text_delta.text
+async function callLongcatStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
+  const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('LONGCAT_API_KEY (or ANTHROPIC_API_KEY) not set');
+  const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+  const model = process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
+
+  const controller = new AbortController();
+  const hardTimeout = Number.parseInt(process.env.LONGCAT_STREAM_TIMEOUT_MS || '', 10) || 180000;
+  const timeout = setTimeout(() => controller.abort(), hardTimeout);
+  // 外部 signal（路由级）也允许中断
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+  try {
+    const response = await fetch(`${baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userText }],
+        stream: true,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`LongCat API ${response.status}: ${errText}`);
+    }
+    const reader = response.body;
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+    for await (const chunk of reader) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          // Anthropic delta: {"type":"content_block_delta","delta":{"type":"text_delta","text":"..."}}
+          const delta = json.delta?.text || (json.type === 'content_block_delta' ? json.delta?.text : '');
+          if (delta) {
+            fullText += delta;
+            onDelta?.(delta);
+          }
+        } catch { /* skip malformed */ }
+      }
+    }
+    return fullText;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // ─── Qwen 调用 (仍保留，可 fallback) ─────────────────────────
 async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.QWEN_API_KEY;
@@ -560,6 +626,7 @@ module.exports = {
   executeWorkflowIntoExistingRun,
   executeStep,
   callAI,
+  callLongcatStream,
   callQwenStream,
   callGeminiStream,
 };

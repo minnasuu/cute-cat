@@ -16,7 +16,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { authMiddleware } = require('../middleware/auth');
 const { callAI } = require('../lib/cat-step-scripts/ai-bridge');
-const { callQwenStream, callGeminiStream } = require('../workflow-executor');
+const { callLongcatStream, callQwenStream, callGeminiStream } = require('../workflow-executor');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -572,6 +572,8 @@ router.post('/chat', async (req, res) => {
     console.log(`[laisse-ancie] chat stream: model=${requestedModel}, maxTokens=${maxTokens}, system=${system.length}c, prompt=${prompt.length}c, timeout=${CHAT_TIMEOUT_MS}ms`);
     if (requestedModel === 'qwen') {
       await callQwenStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+    } else if (requestedModel === 'longcat') {
+      await callLongcatStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     } else {
       await callGeminiStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     }
