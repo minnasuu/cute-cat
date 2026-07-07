@@ -1,32 +1,33 @@
-‘use strict’;
+'use strict';
 
 /**
  * Laisse Ancie — fashion atelier routes.
  *
  * Mounted at /api/laisse-ancie by the host index.js.
  * Every request flows through authMiddleware, which sets req.userId.
- * After this we look up the user’s default team and attach it to req.team.
+ * After this we look up the user's default team and attach it to req.team.
  */
 
-const express = require(‘express’);
-const path = require(‘path’);
-const multer = require(‘multer’);
-const { PrismaClient } = require(‘@prisma/client’);
+const express = require('express');
+const path = require('path');
+const multer = require('multer');
+const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
-const { authMiddleware } = require(‘../middleware/auth’);
-const { callAI } = require(‘../lib/cat-step-scripts/ai-bridge’);
+const { authMiddleware } = require('../middleware/auth');
+const { callAI } = require('../lib/cat-step-scripts/ai-bridge');
+const { callQwenStream, callGeminiStream } = require('../workflow-executor');
 
 const router = express.Router();
 router.use(authMiddleware);
 
-// resolve req.team from the user’s default __cuca_workbench_v1__ team
+// resolve req.team from the user's default __cuca_workbench_v1__ team
 router.use(async (req, res, next) => {
   try {
     const team = await prisma.team.findFirst({
-      where: { ownerId: req.userId, description: ‘__cuca_workbench_v1__’ },
+      where: { ownerId: req.userId, description: '__cuca_workbench_v1__' },
     });
-    if (!team) return res.status(400).json({ error: ‘no workbench team’ });
+    if (!team) return res.status(400).json({ error: 'no workbench team' });
     req.team = team;
     next();
   } catch (err) {
@@ -34,14 +35,14 @@ router.use(async (req, res, next) => {
   }
 });
 
-const UPLOAD_ROOT = path.resolve(__dirname, ‘..’, ‘uploads’, ‘laisse-ancie’);
+const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads', 'laisse-ancie');
 
 const storage = multer.diskStorage({
   destination: async (req, _file, cb) => {
     try {
       const dir = path.join(UPLOAD_ROOT, String(req.team.id));
       await new Promise((resolve, reject) =>
-        require(‘fs’).mkdir(dir, { recursive: true }, (err) => (err ? reject(err) : resolve())),
+        require('fs').mkdir(dir, { recursive: true }, (err) => (err ? reject(err) : resolve())),
       );
       cb(null, dir);
     } catch (err) {
@@ -59,7 +60,7 @@ const upload = multer({
   limits: { fileSize: 12 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpe?g|png|webp|avif|gif)$/i.test(file.mimetype)) cb(null, true);
-    else cb(new Error(‘unsupported mime’));
+    else cb(new Error('unsupported mime'));
   },
 });
 
@@ -514,21 +515,78 @@ router.delete('/collections/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-/* ─── chat proxy → callAI ────────────────────────────────────── */
+/* ─── chat proxy → SSE 流式 ───────────────────────────────────── */
 
-// POST /api/laisse-ancie/chat   body: { system, prompt, model? }
+// POST /api/laisse-ancie/chat   body: { system, prompt, model?, maxTokens? }
+//
+// 阻塞、非流式的旧实现在外层网关（nginx / LB）的 read_timeout 内若无法
+// 拿到完整响应就会返回 504 Gateway Timeout。改成 SSE 流式后：
+//   - 响应头立即下发 → 网关 timeout 从第一个字节起算
+//   - 每 8s 心跳注释行 → nginx 判定连接活跃
+//   - 每个 token 实时送到前端 → 用户看到实时生成
+// Events: chunk { text } · done { text, model } · error { error }
+const CHAT_TIMEOUT_MS = Number.parseInt(process.env.LAISSE_ANCIE_CHAT_TIMEOUT_MS || '', 10) || 180000;
+const CHAT_HEARTBEAT_MS = Number.parseInt(process.env.LAISSE_ANCIE_CHAT_HEARTBEAT_MS || '', 10) || 8000;
+
 router.post('/chat', async (req, res) => {
   const system = String(req.body.system || '');
   const prompt = String(req.body.prompt || '');
-  const model = req.body.model || undefined;
+  const requestedModel = req.body.model || process.env.DEFAULT_AI_MODEL || 'qwen';
+  const maxTokens = Math.min(Number(req.body.maxTokens) || 2048, 8192);
   if (!system && !prompt) return res.status(400).json({ error: 'system or prompt required' });
-  try {
-    const text = await callAI(system, prompt, model, 2048);
-    res.json({ text });
-  } catch (err) {
-    console.error('[laisse-ancie] chat error', err);
-    res.status(500).json({ error: err.message });
+
+  // --- SSE 响应头 ---
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // 关闭 nginx 代理缓冲
+  res.flushHeaders();
+
+  // 心跳定时器：周期性下发注释行，防 nginx proxy_read_timeout 504
+  const heartbeat = setInterval(() => {
+    try { res.write(':heartbeat\n\n'); } catch { /* 连接已关闭 */ }
+  }, CHAT_HEARTBEAT_MS);
+
+  // 客户端断开时清理
+  req.on('close', () => clearInterval(heartbeat));
+
+  function sendSSE(event, data) {
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* 连接已关闭 */ }
   }
+  function endSSE() {
+    clearInterval(heartbeat);
+    try { res.end(); } catch { /* 连接已关闭 */ }
+  }
+
+  // 硬超时：整个会话级的 AbortController（覆盖 AI 调用 + 心跳周期）
+  const controller = new AbortController();
+  const hardTimeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+
+  let fullText = '';
+  const onDelta = (delta) => {
+    fullText += delta;
+    sendSSE('chunk', { text: delta });
+  };
+
+  try {
+    console.log(`[laisse-ancie] chat stream: model=${requestedModel}, maxTokens=${maxTokens}, system=${system.length}c, prompt=${prompt.length}c, timeout=${CHAT_TIMEOUT_MS}ms`);
+    if (requestedModel === 'qwen') {
+      await callQwenStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+    } else {
+      await callGeminiStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+    }
+    sendSSE('done', { text: fullText, model: requestedModel });
+    console.log(`[laisse-ancie] chat stream done: model=${requestedModel}, length=${fullText.length}`);
+  } catch (err) {
+    console.error('[laisse-ancie] chat stream error', err.name, err.message);
+    const msg = err.name === 'AbortError'
+      ? `生成超时（当前上限 ${Math.round(CHAT_TIMEOUT_MS / 1000)}s，可通过环境变量 LAISSE_ANCIE_CHAT_TIMEOUT_MS 调大）`
+      : (err.message || String(err));
+    sendSSE('error', { error: msg });
+  } finally {
+    clearTimeout(hardTimeout);
+  }
+  endSSE();
 });
 
 /* ─── helpers ─────────────────────────────────────────────────── */

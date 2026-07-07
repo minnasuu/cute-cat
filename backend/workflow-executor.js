@@ -63,12 +63,99 @@ async function callGemini(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set');
   const ai = await createGeminiClient(apiKey);
-  const response = await ai.models.generateContent({
+
+  // 超时保护：与 callQwen 一致，避免无超时导致 nginx 504
+  const controller = new AbortController();
+  const timeoutMs = Number.parseInt(process.env.GEMINI_TIMEOUT_MS || '', 10) || 90000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+      contents: userText,
+      config: { systemInstruction: systemPrompt, maxOutputTokens: maxTokens, temperature: 0.7 },
+      // @google/genai 支持 signal 以中断请求
+      ...(controller.signal ? { signal: controller.signal } : {}),
+    });
+    return response.text || '';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// ─── 流式 Qwen 调用 ───
+// onDelta(delta: string) 每收到一个 token 回调；signal 用于中断
+async function callQwenStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
+  const apiKey = process.env.QWEN_API_KEY;
+  if (!apiKey) throw new Error('QWEN_API_KEY not set');
+  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+  const model = process.env.QWEN_MODEL || 'qwen3.6-plus';
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+      max_tokens: maxTokens,
+      temperature: 0.7,
+      stream: true,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Qwen API ${response.status}: ${errText}`);
+  }
+
+  const reader = response.body;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+
+  for await (const chunk of reader) {
+    buffer += decoder.decode(chunk, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'data: [DONE]') continue;
+      if (!trimmed.startsWith('data: ')) continue;
+      try {
+        const json = JSON.parse(trimmed.slice(6));
+        const delta = json.choices?.[0]?.delta?.content || '';
+        if (delta) {
+          fullText += delta;
+          onDelta?.(delta);
+        }
+      } catch { /* skip malformed line */ }
+    }
+  }
+  return fullText;
+}
+
+// ─── 流式 Gemini 调用 ───
+async function callGeminiStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+  const ai = await createGeminiClient(apiKey);
+
+  const stream = await ai.models.generateContentStream({
     model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
     contents: userText,
     config: { systemInstruction: systemPrompt, maxOutputTokens: maxTokens, temperature: 0.7 },
   });
-  return response.text || '';
+
+  let fullText = '';
+  for await (const chunk of stream) {
+    if (signal?.aborted) break;
+    const delta = chunk.text || '';
+    if (delta) {
+      fullText += delta;
+      onDelta?.(delta);
+    }
+  }
+  return fullText;
 }
 
 // ─── 通用 AI 调用 ───
@@ -426,4 +513,11 @@ async function executeWorkflowIntoExistingRun(workflow, run, triggeredBy, option
   return { runId: run.id, status: hasFailed ? 'failed' : 'success', steps: stepsData };
 }
 
-module.exports = { executeWorkflow, executeWorkflowIntoExistingRun, executeStep, callAI };
+module.exports = {
+  executeWorkflow,
+  executeWorkflowIntoExistingRun,
+  executeStep,
+  callAI,
+  callQwenStream,
+  callGeminiStream,
+};

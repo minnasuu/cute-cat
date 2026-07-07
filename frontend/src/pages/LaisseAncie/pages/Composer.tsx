@@ -139,30 +139,104 @@ export default function ComposerPage() {
   async function send(raw: string) {
     if (!raw.trim() || busy) return;
     const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", text: raw.trim() };
+    const history = [...msgs, userMsg].map((m) => ({ role: m.role, content: m.text }));
+    const userPrompt = history.map((h) => `[${h.role}] ${h.content}`).join("\n\n");
     setMsgs((xs) => [...xs, userMsg]);
     setBusy(true);
+
+    // 预创建一条空的 assistant 消息，流式过程中增量更新它的 text
+    const assistantId = crypto.randomUUID();
+    setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "" }]);
+
+    const hints = skillHintsFor(userPrompt + " " + raw, skillStore.articles, {
+      n: 2,
+      categoryBoost:
+        mode === "single" ? { design: 2, fabric: 1 } :
+        mode === "collection" ? { design: 2, brand: 1 } :
+        { brand: 2, sourcing: 1 },
+    });
+    const system = hints ? `${spec.sys}\n\n${hints}` : spec.sys;
+
+    // 流式 SSE 消费：手动 fetch（apiClient 当前只支持 JSON 非流式）
+    const streamTimeoutMs = 290_000; // 与 nginx proxy_read_timeout 300s 留余量
+    const ac = new AbortController();
+    const timeoutId = globalThis.setTimeout(() => ac.abort(), streamTimeoutMs);
+
     try {
-      const history = [...msgs, userMsg].map((m) => ({ role: m.role, content: m.text }));
-      const userPrompt = history.map((h) => `[${h.role}] ${h.content}`).join("\n\n");
-      const hints = skillHintsFor(userPrompt + " " + raw, skillStore.articles, {
-        n: 2,
-        categoryBoost:
-          mode === "single" ? { design: 2, fabric: 1 } :
-          mode === "collection" ? { design: 2, brand: 1 } :
-          { brand: 2, sourcing: 1 },
+      const res = await fetch("/api/laisse-ancie/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ system, prompt: userPrompt, model: undefined, maxTokens: 2048 }),
+        signal: ac.signal,
       });
-      const system = hints ? `${spec.sys}\n\n${hints}` : spec.sys;
-      const res = await apiClient.post<{ text: string }>("/api/laisse-ancie/chat", {
-        system, prompt: userPrompt, model: undefined,
-      });
-      const json = parseJsonBlock(res.text);
-      const prod = json ? draftFromObject(json, mode ?? "single") : null;
-      const aiMsg: ChatMsg = { id: crypto.randomUUID(), role: "assistant", text: res.text, product: prod ?? undefined };
-      setMsgs((xs) => [...xs, aiMsg]);
-      if (prod) setDraft(prod);
+
+      if (!res.ok) {
+        // 兼容后端非流式的错误 JSON（如 400）
+        let errMsg = `请求失败（HTTP ${res.status}）`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.error) errMsg = errJson.error;
+        } catch { /* 非 JSON 响应 */ }
+        setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ ${errMsg}` } : m));
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) {
+        setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: "⚠ 当前浏览器不支持流式响应" } : m));
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let currentEvent = "";
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) { currentEvent = ""; continue; } // 事件边界
+          if (trimmed.startsWith(":")) continue; // heartbeat 注释行
+          if (trimmed.startsWith("event: ")) { currentEvent = trimmed.slice(7).trim(); continue; }
+          if (trimmed.startsWith("data: ")) {
+            let payload: any = null;
+            try { payload = JSON.parse(trimmed.slice(6)); } catch { continue; }
+
+            if (currentEvent === "chunk" && payload?.text) {
+              accumulated += payload.text;
+              // 增量更新 assistant 消息文本（函数式更新避免覆盖）
+              const snap = accumulated;
+              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: snap } : m));
+            } else if (currentEvent === "done") {
+              const finalText = payload?.text ?? accumulated;
+              const json = parseJsonBlock(finalText);
+              const prod = json ? draftFromObject(json, mode ?? "single") : null;
+              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: finalText, product: prod ?? undefined } : m));
+              if (prod) setDraft(prod);
+            } else if (currentEvent === "error") {
+              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ 生成失败：${payload?.error ?? "未知错误"}` } : m));
+            }
+          }
+        }
+      }
     } catch (err: any) {
-      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 生成失败：${err.message}` }]);
+      let msg = err?.message || "未知错误";
+      if (err instanceof DOMException && err.name === "AbortError") {
+        msg = "生成超时（当前上限约 290s），请稍后重试或精简 prompt";
+      } else if (/aborted/i.test(msg)) {
+        msg = "连接已中断（常见于网络波动或反向代理超时），请重试";
+      }
+      setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ ${msg}` } : m));
     } finally {
+      globalThis.clearTimeout(timeoutId);
       setBusy(false);
     }
   }
