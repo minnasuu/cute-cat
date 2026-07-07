@@ -94,6 +94,11 @@ if [ $MIGRATE_EXIT -ne 0 ]; then
   npx prisma migrate resolve --applied 20260307000000_v2_multitenancy 2>/dev/null || true
   npx prisma migrate resolve --applied 20260308000000_add_workflow_fields 2>/dev/null || true
   npx prisma migrate resolve --applied 20260405000000_add_vibe_style_item 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260406000000_add_workflow_run_user_input 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260408000000_add_workflow_placeholder 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260408010000_add_vibe_assets_style_ai_and_fonts 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260413000000_add_workflow_category 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260708000000_laisse_ancie_add 2>/dev/null || true
   # Try again
   npx prisma migrate deploy 2>&1
   MIGRATE_EXIT2=$?

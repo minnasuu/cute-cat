@@ -1,0 +1,31 @@
+// @ts-nocheck
+import { forwardRef, TextareaHTMLAttributes } from "react";
+
+interface Props extends TextareaHTMLAttributes<HTMLTextAreaElement> {}
+
+export const Textarea = forwardRef<HTMLTextAreaElement, Props>(({ className = "", onKeyDown, ...rest }, ref) => {
+  function autoGrow(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const el = e.currentTarget;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }
+  return (
+    <textarea
+      ref={ref}
+      spellCheck={false}
+      rows={1}
+      onInput={autoGrow}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          const form = e.currentTarget.closest("form");
+          if (form && !e.nativeEvent.isComposing) { e.preventDefault(); form.requestSubmit(); }
+        }
+        onKeyDown?.(e);
+      }}
+      className={`w-full resize-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20 transition-colors ${className}`}
+      {...rest}
+    />
+  );
+});
+
+Textarea.displayName = "Textarea";

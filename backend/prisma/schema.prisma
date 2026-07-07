@@ -187,3 +187,187 @@ model VibeFontAsset {
   @@index([aiEnabled])
   @@index([isOfficial])
 }
+
+// ==================== Laisse Ancie 品牌服装工作室 ====================
+
+model LABrandProfile {
+  id              String   @id @default(uuid())
+  teamId          String   @unique
+  nameZh          String
+  nameEn          String
+  cnFont          String   @default("站酷xiaowei体")
+  enFont          String   @default("Poller One")
+  sloganZh        String
+  sloganEn        String
+  greetingEn      String?
+  voice           Json     @default("[\"优雅\",\"松弛\",\"乐趣\"]")
+  audienceAgeMin  Int      @default(18)
+  audienceAgeMax  Int      @default(30)
+  priceMin        Int      @default(20)
+  priceMax        Int      @default(500)
+  systemSnippet   String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model LAColorPair {
+  id        String   @id @default(uuid())
+  teamId    String
+  bg        String
+  fg        String
+  usage     String?
+  createdAt DateTime @default(now())
+  @@index([teamId])
+}
+
+model LAVisualAsset {
+  id          String   @id @default(uuid())
+  teamId      String
+  kind        String
+  title       String
+  description String?  @db.Text
+  src         String
+  tags        Json     @default("[]")
+  seasons     Json?
+  pinned      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  @@index([teamId])
+  @@index([kind])
+}
+
+model LAInspirationAsset {
+  id            String   @id @default(uuid())
+  teamId        String
+  url           String
+  thumbUrl      String?
+  mime          String
+  bytes         Int
+  width         Int      @default(0)
+  height        Int      @default(0)
+  category      String?
+  silhouette    String?
+  colors        Json     @default("[]")
+  brandAnalysis String?  @db.Text
+  useCount      Int      @default(0)
+  createdAt     DateTime @default(now())
+  @@index([teamId])
+  @@index([category])
+}
+
+model LAMaterial {
+  id          String   @id @default(uuid())
+  teamId      String
+  slug        String
+  category    String
+  name        String
+  code        String
+  supplier    String?
+  origin      String?
+  colors      Json
+  composition String?
+  weight      String?
+  texture     String?
+  finish      String?
+  width       String?
+  thickness   String?
+  diameter    String?
+  size        String?
+  tex         String?
+  shape       String?
+  originNote  String?  @db.Text
+  care        Json     @default("[]")
+  uses        Json     @default("[]")
+  seasons     Json     @default("[]")
+  notes       String?  @db.Text
+  priceAmount Float?
+  priceCur    String?
+  priceUnit   String?
+  priceNote   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([teamId])
+  @@index([category])
+}
+
+model LASkillArticle {
+  id               String   @id @default(uuid())
+  teamId           String
+  category         String
+  title            String
+  zhTitle          String
+  body             String   @db.Text
+  tags             Json     @default("[]")
+  relatedProducts  Json     @default("[]")
+  relatedMaterials Json     @default("[]")
+  systemHint       String?  @db.Text
+  pinned           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  @@index([teamId])
+  @@index([category])
+}
+
+model LAProduct {
+  id                String   @id @default(uuid())
+  teamId            String
+  mode              String
+  collectionId      String?
+  collection        LACollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  title             String
+  description       String   @db.Text
+  seasons           Json     @default("[]")
+  category          String?
+  colors            Json     @default("[]")
+  targetPriceNum    Int?
+  silhouette        String?
+  fabricId          String?
+  fabricComposition String?
+  liningId          String?
+  liningComposition String?
+  trimIds           Json?
+  stitchNotes       String?  @db.Text
+  measureTable      String?  @db.Text
+  gradingNotes      String?  @db.Text
+  patternUrl        String?
+  techPackUrl       String?
+  aiDraftRaw        String?  @db.Text
+  fitAcknowledge    String?
+  fitDetail         String?  @db.Text
+  patternFinalUrl   String?
+  factory           String?
+  factoryContact    String?
+  moq               Int?
+  qty               Int?
+  unitCostNum       Float?
+  leadDays          Int?
+  fabricSource      String?
+  trimSource        String?
+  fqcResult         String?
+  sku               String?
+  barcode           String?
+  whLocation        String?
+  status            String   @default("draft")
+  statusHistory     Json     @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@index([teamId])
+  @@index([mode])
+  @@index([status])
+  @@index([collectionId])
+}
+
+model LACollection {
+  id           String   @id @default(uuid())
+  teamId       String
+  mode         String
+  title        String
+  occasion     String?
+  theme        String?
+  seasons      Json     @default("[]")
+  palette      Json     @default("[]")
+  designerNote String?  @db.Text
+  products     LAProduct[]
+  createdAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([teamId])
+}

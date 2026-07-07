@@ -54,6 +54,7 @@ app.use('/api/uploads', require('./routes/uploads'));
 app.use('/api/dify', require('./routes/dify'));
 app.use('/api/assets', require('./routes/assets'));
 app.use('/api/email', require('./routes/email'));
+app.use('/api/laisse-ancie', require('./routes/laisse-ancie'));
 app.use('/health', require('./routes/health'));
 
 if (process.env.NODE_ENV === 'production') {

@@ -13,6 +13,7 @@ import CommunityPage from './pages/CommunityPage';
 import { ToastProvider } from './components/Toast';
 import './styles/index.css';
 import { VibeAssets } from './pages/VibeAssets';
+import { LaisseAncieApp } from './pages/LaisseAncie';
 import AdminWorkflowsPage from './pages/AdminWorkflowsPage';
 
 const LoadingScreen = () => (
@@ -102,6 +103,16 @@ const App: React.FC = () => {
                   <AdminRoute>
                     <AdminWorkflowsPage />
                   </AdminRoute>
+                }
+              />
+
+              {/* Laisse Ancie — fashion atelier (requires auth) */}
+              <Route
+                path="/laisse-ancie/*"
+                element={
+                  <ProtectedRoute>
+                    <LaisseAncieApp />
+                  </ProtectedRoute>
                 }
               />
 
