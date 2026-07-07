@@ -1,32 +1,32 @@
-‘use strict’;
+'use strict';
 
 /**
  * Laisse Ancie — fashion atelier routes.
  *
  * Mounted at /api/laisse-ancie by the host index.js.
  * Every request flows through authMiddleware, which sets req.userId.
- * After this we look up the user’s default team and attach it to req.team.
+ * After this we look up the user's default team and attach it to req.team.
  */
 
-const express = require(‘express’);
-const path = require(‘path’);
-const multer = require(‘multer’);
-const { PrismaClient } = require(‘@prisma/client’);
+const express = require('express');
+const path = require('path');
+const multer = require('multer');
+const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
-const { authMiddleware } = require(‘../middleware/auth’);
-const { callAI } = require(‘../lib/cat-step-scripts/ai-bridge’);
+const { authMiddleware } = require('../middleware/auth');
+const { callAI } = require('../lib/cat-step-scripts/ai-bridge');
 
 const router = express.Router();
 router.use(authMiddleware);
 
-// resolve req.team from the user’s default __cuca_workbench_v1__ team
+// resolve req.team from the user's default __cuca_workbench_v1__ team
 router.use(async (req, res, next) => {
   try {
     const team = await prisma.team.findFirst({
-      where: { ownerId: req.userId, description: ‘__cuca_workbench_v1__’ },
+      where: { ownerId: req.userId, description: '__cuca_workbench_v1__' },
     });
-    if (!team) return res.status(400).json({ error: ‘no workbench team’ });
+    if (!team) return res.status(400).json({ error: 'no workbench team' });
     req.team = team;
     next();
   } catch (err) {
@@ -34,14 +34,14 @@ router.use(async (req, res, next) => {
   }
 });
 
-const UPLOAD_ROOT = path.resolve(__dirname, ‘..’, ‘uploads’, ‘laisse-ancie’);
+const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads', 'laisse-ancie');
 
 const storage = multer.diskStorage({
   destination: async (req, _file, cb) => {
     try {
       const dir = path.join(UPLOAD_ROOT, String(req.team.id));
       await new Promise((resolve, reject) =>
-        require(‘fs’).mkdir(dir, { recursive: true }, (err) => (err ? reject(err) : resolve())),
+        require('fs').mkdir(dir, { recursive: true }, (err) => (err ? reject(err) : resolve())),
       );
       cb(null, dir);
     } catch (err) {
@@ -59,7 +59,7 @@ const upload = multer({
   limits: { fileSize: 12 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpe?g|png|webp|avif|gif)$/i.test(file.mimetype)) cb(null, true);
-    else cb(new Error(‘unsupported mime’));
+    else cb(new Error('unsupported mime'));
   },
 });
 
