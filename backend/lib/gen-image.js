@@ -1,8 +1,9 @@
 /**
  * gen-image —— 智谱 CogView 文生图公共 helper。
  *
- * generateImage(prompt, { teamId, aspectRatio, safeName }) → 成功 { url, prompt, model }
- * 失败返回 null(不抛异常)。
+ * generateImage(prompt, { teamId, aspectRatio, safeName }) →
+ *   成功 { url, prompt, model }
+ *   失败 { error }(具体错误信息,便于前端/日志定位)
  *
  * 接口:OpenAI 兼容 /images/generations (智谱开放平台),返回临时 URL → 下载落盘。
  * 供设计工作流/旧流水线共用。
@@ -16,7 +17,7 @@ const crypto = require('crypto');
 
 /**
  * 把设计工作流的 aspectRatio 映射到 CogView 支持的 size。
- * CogView-3 常用:1024x1024 / 864x1152(3:4) / 1440x720(≈16:9) / 768x1344 等。
+ * CogView-3/3-Plus 常用:1024x1024 / 864x1152(3:4) / 1440x720(≈16:9) / 768x1344 等。
  * 未匹配到的退回 1024x1024(全模型支持)。
  */
 function aspectRatioToSize(aspectRatio) {
@@ -38,22 +39,19 @@ function aspectRatioToSize(aspectRatio) {
  * @param {string} [opts.aspectRatio='1:1'] 设计工作流比例(自动映射到 CogView size)
  * @param {string} [opts.safeName='image'] 文件名前缀
  * @param {number} [opts.numberOfImages=1] 张数(CogView 单张生成,>1 时只取 1)
- * @returns {Promise<{ url: string, prompt: string, model: string } | null>}
+ * @returns {Promise<{ url: string, prompt: string, model: string } | { error: string }>}
  */
 async function generateImage(prompt, opts) {
   const { teamId, aspectRatio = '1:1', safeName = 'image', numberOfImages = 1 } = opts || {};
   if (!prompt || !prompt.trim()) {
-    console.warn('[gen-image] empty prompt');
-    return null;
+    return { error: 'empty prompt' };
   }
   const apiKey = process.env.GLM_API_KEY;
   if (!apiKey) {
-    console.warn('[gen-image] GLM_API_KEY not set');
-    return null;
+    return { error: 'GLM_API_KEY not set' };
   }
   if (!teamId) {
-    console.warn('[gen-image] teamId required');
-    return null;
+    return { error: 'teamId required' };
   }
 
   const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
@@ -61,6 +59,7 @@ async function generateImage(prompt, opts) {
   const size = aspectRatioToSize(aspectRatio);
   // CogView 单张生成;调用方 numberOfImages 通常为 1
   const n = Math.min(Math.max(Number(numberOfImages) || 1, 1), 1);
+  const source = `${model}/${size}`;
 
   // 单张生成超时(默认 120s)——CogView 通常 30~90s
   const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 120000;
@@ -82,29 +81,30 @@ async function generateImage(prompt, opts) {
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error(`[gen-image] CogView API ${res.status}: ${errText.slice(0, 200)}`);
-      return null;
+      console.error(`[gen-image] CogView API ${res.status} (${source}): ${errText.slice(0, 300)}`);
+      return { error: `CogView HTTP ${res.status}: ${errText.slice(0, 200)}` };
     }
 
     const data = await res.json();
     imageUrl = data?.data?.[0]?.url || null;
     if (!imageUrl) {
       console.error('[gen-image] CogView returned no image URL:', JSON.stringify(data).slice(0, 200));
-      return null;
+      return { error: `CogView 返回无图片 URL: ${JSON.stringify(data).slice(0, 120)}` };
     }
   } catch (e) {
-    console.error('[gen-image] CogView call failed:', e?.message || String(e));
-    return null;
+    const msg = e?.name === 'AbortError' ? `生成超时(${IMAGE_TIMEOUT_MS}ms)` : (e?.message || String(e));
+    console.error('[gen-image] CogView call failed:', msg);
+    return { error: msg };
   } finally {
     clearTimeout(timer);
   }
 
   // CogView 返回的 URL 是临时的,立即下载落盘到本地 uploads,保持与旧逻辑一致的 /uploads/… 服务
   try {
-    const imgRes = await fetch(imageUrl, { signal: controller.signal });
+    const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) {
       console.error(`[gen-image] download image failed: HTTP ${imgRes.status}`);
-      return null;
+      return { error: `下载图片失败(HTTP ${imgRes.status})` };
     }
     const buf = Buffer.from(await imgRes.arrayBuffer());
 
@@ -118,11 +118,11 @@ async function generateImage(prompt, opts) {
     fs.writeFileSync(absPath, buf);
 
     const url = `/uploads/${teamId}/design/${filename}`;
-    console.log(`[gen-image] done: model=${model}, size=${size}, saved=${filename}`);
+    console.log(`[gen-image] done: ${source}, saved=${filename}`);
     return { url, prompt, model };
   } catch (e) {
     console.error('[gen-image] save image failed:', e?.message || String(e));
-    return null;
+    return { error: `保存图片失败: ${e?.message || e}` };
   }
 }
 

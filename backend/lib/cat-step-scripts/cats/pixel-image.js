@@ -44,18 +44,18 @@ module.exports = async function runPixelImage(ctx) {
     };
   }
 
-  // 2) 调用 Imagen 生成图片
+  // 2) 调用 CogView 生成图片
   const result = await generateImage(prompt, {
     teamId: teamId || 'anonymous',
     aspectRatio: '1:1',
     safeName: workflowName || 'image',
   });
-  if (!result) {
+  if (!result?.url) {
     return {
       success: false,
       status: 'error',
       data: { text: '' },
-      summary: '[pixel-image] Imagen 调用失败',
+      summary: `[pixel-image] 图片生成失败: ${result?.error || '未知错误'}`,
     };
   }
 

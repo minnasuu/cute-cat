@@ -70,11 +70,12 @@ router.post('/generate', async (req, res) => {
         aspectRatio: slot.aspectRatio,
         safeName: slot.slot,
       });
-      if (r) return { slot: slot.slot, label: slot.label, url: r.url, prompt: r.prompt };
-      return { slot: slot.slot, label: slot.label, error: '生成失败', prompt: slot.prompt };
+      // gen-image 成功返回 {url},失败返回 {error}(已含 CogView 真实原因)
+      if (r?.url) return { slot: slot.slot, label: slot.label, url: r.url, prompt: r.prompt };
+      return { slot: slot.slot, label: slot.label, error: r?.error || '生成失败', prompt: slot.prompt };
     } catch (e) {
       console.error(`[design-generator] slot ${slot.slot} error:`, e?.message || String(e));
-      return { slot: slot.slot, label: slot.label, error: '生成失败', prompt: slot.prompt };
+      return { slot: slot.slot, label: slot.label, error: e?.message || '生成失败', prompt: slot.prompt };
     }
   }));
   res.json({ mode, images: results });
@@ -101,10 +102,10 @@ router.post('/regenerate', async (req, res) => {
     aspectRatio: base.aspectRatio,
     safeName: slot,
   });
-  if (r) {
-    res.json({ slot, label: r ? label : label, url: r.url, prompt: r.prompt });
+  if (r?.url) {
+    res.json({ slot, label, url: r.url, prompt: r.prompt });
   } else {
-    res.status(500).json({ slot, label, error: '生成失败', prompt: finalPrompt });
+    res.status(500).json({ slot, label, error: r?.error || '生成失败', prompt: finalPrompt });
   }
 });
 
