@@ -12,7 +12,7 @@ interface ToastContextValue {
   toast: (message: string, type?: ToastType) => void
 }
 
-const ToastContext = createContext<ToastContextValue>({ toast: () => {} })
+const ToastContext = createContext<ToastContextValue>({ toast: () => { } })
 
 export const useToast = () => useContext(ToastContext)
 
@@ -32,10 +32,10 @@ const ICONS: Record<ToastType, string> = {
 }
 
 const COLORS: Record<ToastType, { bg: string; border: string; text: string; icon: string }> = {
-  error:   { bg: 'bg-danger-50',    border: 'border-red-200',    text: 'text-danger-700',    icon: 'bg-danger-500' },
-  success: { bg: 'bg-green-50',     border: 'border-green-200',     text: 'text-green-700',     icon: 'bg-green-500' },
-  info:    { bg: 'bg-blue-50',      border: 'border-blue-200',      text: 'text-blue-700',      icon: 'bg-blue-500' },
-  warning: { bg: 'bg-yellow-50',    border: 'border-yellow-200',    text: 'text-yellow-700',    icon: 'bg-yellow-500' },
+  error: { bg: 'bg-danger-50', border: 'border-red-200', text: 'text-danger-700', icon: 'bg-danger-500' },
+  success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', icon: 'bg-green-500' },
+  info: { bg: 'bg-blue-50', border: 'border-primary-200', text: 'text-primary-600', icon: 'bg-blue-500' },
+  warning: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', icon: 'bg-yellow-500' },
 }
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

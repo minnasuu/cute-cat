@@ -25,10 +25,20 @@ import type { VisualAsset } from "../types/visual-asset";
 import type { InspirationItem, MaterialRow } from "../store/resource";
 import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
+import { Markdown } from "../lib/markdown";
 
 type DesignStage = "greeting" | "aligning" | "brainstorming" | "planning" | "generating" | "presenting";
 
 const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
+
+// 可选 AI 模型列表(与后端 workflow-executor 的 stream 函数对应)
+const MODELS = [
+  { id: "longcat", label: "LongCat-2.0", hint: "Anthropic 兼容" },
+  { id: "glm", label: "GLM", hint: "智谱" },
+  { id: "qwen", label: "Qwen", hint: "通义千问" },
+  { id: "gemini", label: "Gemini", hint: "Google" },
+] as const;
+type ModelId = typeof MODELS[number]["id"];
 
 /** 设计顾问总 prompt:引导 AI 走完多阶段工作流。 */
 const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总监。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套完整的设计流程。
@@ -131,6 +141,11 @@ export default function ComposerPage({
   const [planText, setPlanText] = useState("");
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [model, setModelState] = useState<ModelId>(() => {
+    const saved = localStorage.getItem("laisse-ancie:model");
+    return (MODELS.some((m) => m.id === saved) ? saved : "longcat") as ModelId;
+  });
+  const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -179,7 +194,7 @@ export default function ComposerPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ system, prompt: history, model: undefined, maxTokens: 2048 }),
+        body: JSON.stringify({ system, prompt: history, model, maxTokens: 2048 }),
         signal: ac.signal,
       });
 
@@ -257,6 +272,11 @@ export default function ComposerPage({
         credentials: "include",
         body: JSON.stringify({ mode, plan: planText }),
       });
+      // 504/代理层返回 HTML 时,res.json() 会抛 "Unexpected token '<'" —— 先校验避免无意义报错
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`服务暂不可用 (HTTP ${res.status})${errText.slice(0, 80) ? `: ${errText.slice(0, 80)}` : ''}`);
+      }
       const data = await res.json();
       setImages(data.images || []);
       setStage("presenting");
@@ -281,6 +301,10 @@ export default function ComposerPage({
         credentials: "include",
         body: JSON.stringify({ slot, label, plan: planText, instruction }),
       });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`服务暂不可用 (HTTP ${res.status})${errText.slice(0, 80) ? `: ${errText.slice(0, 80)}` : ''}`);
+      }
       const data = await res.json();
       if (data.url) {
         setImages((prev) => prev.map((im) => im.slot === slot ? { ...im, url: data.url, prompt: data.prompt } : im));
@@ -337,13 +361,25 @@ export default function ComposerPage({
             <button onClick={() => navigateTab("__design__")} className="text-sm text-gray-500 hover:text-gray-800">←</button>
             <span className="text-2xl font-semibold text-blue-600">设计工作室</span>
           </div>
+          {/* 模型切换下拉 */}
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value as ModelId)}
+            disabled={busy || generating}
+            title="切换 AI 模型"
+            className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-blue-400 disabled:opacity-40"
+          >
+            {MODELS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
           <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
           {msgs.map((m) => (
-            <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[80%] text-[13.5px] leading-relaxed whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white ml-auto rounded-br-sm" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
-              {m.text}
+            <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[80%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-blue-600 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
+              {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
             </div>
           ))}
           {busy && (
@@ -353,7 +389,7 @@ export default function ComposerPage({
           {/* 生成按钮(企划确认后) */}
           {canGenerate && (
             <div className="flex justify-center">
-              <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm shadow-lg transition-colors">
+              <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
                 确认方案,开始生成设计图
               </button>
             </div>
@@ -372,7 +408,7 @@ export default function ComposerPage({
               <div className="flex items-center justify-between">
                 <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
                 {stage === "presenting" && (
-                  <button onClick={saveToLookbook} className="text-[12px] bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg font-medium transition-colors">
+                  <button onClick={saveToLookbook} className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1 rounded-lg font-medium transition-colors">
                     录入 Lookbook
                   </button>
                 )}

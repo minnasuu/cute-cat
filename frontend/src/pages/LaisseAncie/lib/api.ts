@@ -76,6 +76,7 @@ export function teamApi(teamId: string) {
         return r.json();
       }),
     touchInspiration: (id: string) => _apiClient.post(pre(`/inspirations/${id}/touch`), {}),
+    analyzeInspiration: (id: string) => _apiClient.post(pre(`/inspirations/${id}/analyze`), {}),
     deleteInspiration: (id: string) => _apiClient.delete(pre(`/inspirations/${id}`)),
 
     // materials

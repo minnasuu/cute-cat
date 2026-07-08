@@ -47,49 +47,61 @@ const CATEGORIES = [
 
 // Fallback seed when backend hasn't any data yet — mirrors the original materials.ts subset
 const SEED: MaterialRow[] = [
-  { id: "fabric-silk-001", slug: "lashed-silk-satin", category: "面料", name: "水洗真丝贡丝锦",
+  {
+    id: "fabric-silk-001", slug: "lashed-silk-satin", category: "面料", name: "水洗真丝贡丝锦",
     code: "HK-SS-21", supplier: "Silk Workshop Hangzhou", origin: "Hangzhou · China",
     composition: "100% mulberry silk · 19 momme satin ground", weight: "19 momme", texture: "washed matte satin",
     finish: "garment-washed stone", care: ["hand-wash ≤30 °C", "no bleach", "iron reverse-side"],
     uses: ["bias-cut slip dresses", "tailored camp-collar shirting"], seasons: ["SS", "Resort"],
     priceAmount: 86, priceCur: "CNY", priceUnit: "/ metre · 135 cm", priceNote: "MOQ 100 m · lead 30 days",
-    colors: ["#d8c9a3", "#a89274", "#9b6a3a", "#1f3a44"] },
+    colors: ["#d8c9a3", "#a89274", "#9b6a3a", "#1f3a44"]
+  },
 
-  { id: "fabric-wool-001", slug: "double-face-merino", category: "面料", name: "双面美利奴法兰绒",
+  {
+    id: "fabric-wool-001", slug: "double-face-merino", category: "面料", name: "双面美利奴法兰绒",
     code: "BC-DF-1403", supplier: "Biella Textile Co.", origin: "Biella · Italy",
     composition: "100% extra-fine ZQ Merino · 310 g/m² double-face", weight: "310 g/m²", texture: "rounded, brushed on both faces",
     finish: "double-face, ready-to-cut selvedge",
     care: ["dry-clean recommended", "steam only"], uses: ["unlined blazers", "duster coats"], seasons: ["FW", "Pre-fall"],
     priceAmount: 112, priceCur: "EUR", priceUnit: "/ metre · 150 cm",
-    colors: ["#2c2a2d", "#8a8580", "#d3c4a9", "#c59289"] },
+    colors: ["#2c2a2d", "#8a8580", "#d3c4a9", "#c59289"]
+  },
 
-  { id: "trim-silk-lining-001", slug: "cupro-twill-lining", category: "工艺", name: "人丝斜纹里布",
+  {
+    id: "trim-silk-lining-001", slug: "cupro-twill-lining", category: "工艺", name: "人丝斜纹里布",
     code: "BP-SL-174", supplier: "Beppetex Premium", origin: "Como · Italy",
     composition: "100% cupro · 74 g/m² twill weave", weight: "74 g/m²", texture: "slippery, low-friction",
     care: ["dry-clean"], uses: ["blazer lining", "trouser waistbags"], seasons: ["all"],
     priceAmount: 24, priceCur: "EUR", priceUnit: "/ metre · 148 cm",
-    colors: ["#caa97c", "#73332e", "#0e0e0e", "#ece4d2"] },
+    colors: ["#caa97c", "#73332e", "#0e0e0e", "#ece4d2"]
+  },
 
-  { id: "brand-label-001", slug: "woven-logo-label", category: "品牌标志", name: "机织领标",
+  {
+    id: "brand-label-001", slug: "woven-logo-label", category: "品牌标志", name: "机织领标",
     code: "OWL-ER-PVC", supplier: "Orwell & Rose Wovens", origin: "Macclesfield · UK",
     composition: "poly-silk twill · woven jacquard · 100% PVC-free", size: "28 × 45 mm",
     care: ["sewn in · dry-clean"], uses: ["interior neck label"], seasons: ["all"],
     priceAmount: 0.55, priceCur: "GBP", priceUnit: "/ piece · 28 × 45 mm",
-    colors: ["#ece1c5", "#0e0e10"] },
+    colors: ["#ece1c5", "#0e0e10"]
+  },
 
-  { id: "pkg-tissue-001", slug: "acid-etched-tissue", category: "包装", name: "酸蚀薄页纸",
+  {
+    id: "pkg-tissue-001", slug: "acid-etched-tissue", category: "包装", name: "酸蚀薄页纸",
     code: "C-POST-17", supplier: "Como白鹭纸业", origin: "Como · Italy",
     composition: "100% TCF woodpulp · 17 g/m² acid-etched", weight: "17 g/m²",
     care: ["n/a"], uses: ["interior wrapping", "box void-fill"], seasons: ["all"],
     priceAmount: 1.6, priceCur: "EUR", priceUnit: "/ metre · 50 cm",
-    colors: ["#e7dcc1", "#c4a571", "#0e0e0e"] },
+    colors: ["#e7dcc1", "#c4a571", "#0e0e0e"]
+  },
 
-  { id: "yarn-alpaca-001", slug: "baby-alpaca-worsted", category: "毛线", name: "宝宝阿尔帕卡粗纺纱",
+  {
+    id: "yarn-alpaca-001", slug: "baby-alpaca-worsted", category: "毛线", name: "宝宝阿尔帕卡粗纺纱",
     code: "PE-BA-4000", supplier: "Micuzu Suri & Alpaca", origin: "Arequipa · Peru",
     composition: "100% baby alpaca · 25/2 Nm worsted-spun",
     care: ["hand-wash ≤30 °C", "dry flat"], uses: ["cabled cardigans", "ribbed beanies"], seasons: ["FW", "Midwinter"],
     priceAmount: 56, priceCur: "EUR", priceUnit: "/ 100 g ball · 400 m",
-    colors: ["#d8c39c", "#a08c74", "#473b31", "#1c2c4a", "#c2483f", "#5a4638"] },
+    colors: ["#d8c39c", "#a08c74", "#473b31", "#1c2c4a", "#c2483f", "#5a4638"]
+  },
 ];
 
 export default function MaterialsPage() {
@@ -141,7 +153,7 @@ export default function MaterialsPage() {
             const active = cat === c.key;
             return (
               <button key={c.key} onClick={() => setCat(c.key)}
-                className={`text-left flex items-baseline justify-between rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-blue-600/10 text-gray-800 border border-blue-200" : "text-gray-600 hover:bg-gray-100"}`}>
+                className={`text-left flex items-baseline justify-between rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-primary-200 text-gray-800 border border-primary-200" : "text-gray-600 hover:bg-gray-100"}`}>
                 <span className="text-[13px] font-medium">{c.label}</span>
                 <span className="text-[10px] opacity-60">{count}</span>
               </button>

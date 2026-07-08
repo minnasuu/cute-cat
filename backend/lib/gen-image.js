@@ -66,16 +66,23 @@ async function generateImage(prompt, opts) {
 
   const model = process.env.IMAGEN_MODEL || 'imagen-4.0-generate-001';
 
+  // 单张 Imagen 调用超时(默认 120s)——避免单次卡死拖垮整批请求/撑过 nginx proxy_read_timeout
+  const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 120000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+
   let response;
   try {
     response = await ai.models.generateImages({
       model,
       prompt,
-      config: { numberOfImages, aspectRatio },
+      config: { numberOfImages, aspectRatio, abortSignal: controller.signal },
     });
   } catch (e) {
     console.error('[gen-image] Imagen call failed:', e?.message || String(e));
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 
   const first = response?.generatedImages?.[0];

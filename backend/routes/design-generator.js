@@ -62,19 +62,21 @@ router.post('/generate', async (req, res) => {
   if (!plan) return res.status(400).json({ error: 'plan required' });
 
   const slots = planImages(mode, plan);
-  const results = [];
-  for (const slot of slots) {
-    const r = await generateImage(slot.prompt, {
-      teamId: req.team.id,
-      aspectRatio: slot.aspectRatio,
-      safeName: slot.slot,
-    });
-    if (r) {
-      results.push({ slot: slot.slot, label: slot.label, url: r.url, prompt: r.prompt });
-    } else {
-      results.push({ slot: slot.slot, label: slot.slot, error: '生成失败', prompt: slot.prompt });
+  // 并行生成——总耗时取决于最慢的单张(而非 N 张串联),避免撑过 nginx proxy_read_timeout
+  const results = await Promise.all(slots.map(async (slot) => {
+    try {
+      const r = await generateImage(slot.prompt, {
+        teamId: req.team.id,
+        aspectRatio: slot.aspectRatio,
+        safeName: slot.slot,
+      });
+      if (r) return { slot: slot.slot, label: slot.label, url: r.url, prompt: r.prompt };
+      return { slot: slot.slot, label: slot.label, error: '生成失败', prompt: slot.prompt };
+    } catch (e) {
+      console.error(`[design-generator] slot ${slot.slot} error:`, e?.message || String(e));
+      return { slot: slot.slot, label: slot.label, error: '生成失败', prompt: slot.prompt };
     }
-  }
+  }));
   res.json({ mode, images: results });
 });
 

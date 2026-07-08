@@ -48,6 +48,9 @@ services:
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen3.5-plus}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      GLM_BASE_URL: ${GLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+      GLM_MODEL: ${GLM_MODEL:-glm-4-flash}
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-longcat}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
       BETA_CODES: ${BETA_CODES:-CAT2026}

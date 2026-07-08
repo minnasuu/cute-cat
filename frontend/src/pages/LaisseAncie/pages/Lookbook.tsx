@@ -110,7 +110,7 @@ function SkillsBadge({ productId }: { productId: string }) {
   const skills = useSkillStore();
   const n = skills.articles.filter((a) => (a.relatedProducts ?? []).includes(productId)).length;
   if (n === 0) return <span className="text-[11px] text-gray-400">—</span>;
-  return <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-600">ⓢ {n}</span>;
+  return <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary-100 text-blue-600">ⓢ {n}</span>;
 }
 
 function StageEditor({ product, onClose, onSave }: { product: Product; onClose: () => void; onSave: (p: Product) => Promise<void> }) {
@@ -187,7 +187,7 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={onClose} className="rounded-xl border border-gray-200 text-gray-700 font-medium py-2 px-4 text-sm hover:border-gray-800">关闭</button>
               <button disabled={submitting} onClick={advance}
-                className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-5 text-sm transition-colors disabled:opacity-50">
+                className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-medium py-2.5 px-5 text-sm transition-colors disabled:opacity-50">
                 确认推进 → {STATUS_LABEL[target]}
               </button>
             </div>

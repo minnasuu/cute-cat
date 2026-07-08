@@ -131,7 +131,7 @@ function CatBtn({ current, onClick, icon, label, sublabel, count, disabled }: {
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`text-left flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${disabled ? "opacity-60 cursor-not-allowed" : ""} ${current ? "bg-blue-600/10 text-blue-700 border border-blue-200" : "text-gray-600 hover:bg-gray-100"}`}>
+      className={`text-left flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${disabled ? "opacity-60 cursor-not-allowed" : ""} ${current ? "bg-primary-200 text-primary-600 border border-primary-200" : "text-gray-600 hover:bg-gray-100"}`}>
       <span className="w-5 text-center text-base">{icon}</span>
       <span className="flex-1 min-w-0">
         <span className="text-[13px] font-medium block">{label}</span>
@@ -146,7 +146,7 @@ function ArticleCard({ a, onClick }: { a: SkillArticle; onClick: () => void }) {
   return (
     <button onClick={onClick} className="text-left">
       {a.pinned ? (
-        <article className="rounded-2xl border-2 border-blue-500/40 bg-gray-50 p-5 shadow-sm min-h-[150px] hover:shadow-md transition-shadow cursor-pointer relative">
+        <article className="rounded-2xl border-2 border-primary-500/40 bg-gray-50 p-5 shadow-sm min-h-[150px] hover:shadow-md transition-shadow cursor-pointer relative">
           <PinBadge />
           <Inner a={a} />
         </article>
@@ -240,7 +240,7 @@ function ArticleModal({ article, onClose }: { article: SkillArticle; onClose: ()
           <div className="text-[13px]">
             <Markdown source={draft.body} />
             <div className="mt-5 flex flex-wrap gap-1.5">
-              {draft.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-600">#{t}</span>)}
+              {draft.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-primary-100 text-blue-600">#{t}</span>)}
             </div>
           </div>
         )}
@@ -277,7 +277,7 @@ function AddArticleButton() {
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm font-medium shadow-sm">+ 新增</button>
+      <button onClick={() => setOpen(true)} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-sm">+ 新增</button>
       {open && (
         <Modal open onClose={() => setOpen(false)} title="新增知识条目">
           <div className="space-y-3">

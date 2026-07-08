@@ -16,7 +16,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { authMiddleware } = require('../middleware/auth');
 const { callAI } = require('../lib/cat-step-scripts/ai-bridge');
-const { callLongcatStream, callQwenStream, callGeminiStream } = require('../workflow-executor');
+const { callLongcatStream, callQwenStream, callGeminiStream, callGlmStream } = require('../workflow-executor');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -219,6 +219,7 @@ router.post('/inspirations', upload.single('file'), async (req, res) => {
       silhouette: req.body.silhouette || null,
       colors: tryParseJson(req.body.colors, []),
       brandAnalysis: req.body.brandAnalysis || null,
+      analysisStatus: 'success', // 旧表单上传视为已完成(用户手动填写了分类)
     },
   });
   res.status(201).json(asset);
@@ -574,6 +575,8 @@ router.post('/chat', async (req, res) => {
       await callQwenStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     } else if (requestedModel === 'longcat') {
       await callLongcatStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+    } else if (requestedModel === 'glm') {
+      await callGlmStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     } else {
       await callGeminiStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     }

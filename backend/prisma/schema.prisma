@@ -250,10 +250,13 @@ model LAInspirationAsset {
   brandAnalysis String?  @db.Text
   designHighlights Json  @default("[]")
   styleFeatures    Json  @default("[]")
+  // AI 分析状态: pending(待分析) | success(完成) | failed(失败) —— 用于前端 polling 与重试
+  analysisStatus  String   @default("pending")
   useCount      Int      @default(0)
   createdAt     DateTime @default(now())
   @@index([teamId])
   @@index([category])
+  @@index([teamId, analysisStatus])
 }
 
 model LAMaterial {

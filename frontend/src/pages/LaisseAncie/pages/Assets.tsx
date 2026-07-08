@@ -65,46 +65,57 @@ function BrandInfoAssets() {
   };
 
   const grouped: { group: string; rows: { label: string; value: ReactNode }[] }[] = [
-    { group: "基本信息", rows: [
-      { label: "中文名", value: <span className="text-2xl font-medium">{profileFields.nameZh}</span> },
-      { label: "英文名", value: <span className="italic text-2xl text-blue-600">{profileFields.nameEn}</span> },
-      { label: "中文字体", value: profileFields.cnFont },
-      { label: "英文字体", value: profileFields.enFont },
-    ]},
-    { group: "标识系统", rows: [
-      { label: "图形标识", value: <div className="w-24 h-24 rounded-xl border border-gray-200 bg-white p-2 flex items-center justify-center overflow-hidden"><BrandLogo /></div> },
-      { label: "中文理念", value: <span className="text-xl font-medium">{profileFields.sloganZh}</span> },
-      { label: "English concept", value: <span className="text-lg">{profileFields.sloganEn}</span> },
-      { label: "Morning greeting", value: <span className="text-blue-700">{profileFields.greetingEn}</span> },
-    ]},
-    { group: "调性 · 定位", rows: [
-      { label: "品牌调性", value: <div className="flex gap-2">{(profileFields.voice ?? ["优雅", "松弛", "乐趣"]).map((v: string) => <span key={v} className="text-[30px] text-blue-600">{v}</span>)}</div> },
-      { label: "目标客群", value: `${profileFields.audienceAgeMin}-${profileFields.audienceAgeMax} 岁 · 独立自我的年轻女性` },
-      { label: "价格带", value: `¥${profileFields.priceMin} — ¥${profileFields.priceMax} · 根据产品成本调控` },
-    ]},
-    { group: "品牌色", rows: [
-      { label: "色彩对照表", value:
-        <table className="w-full text-[12px] border-collapse mt-1">
-          <thead><tr className="text-left text-gray-500"><Th>用途</Th><Th>背景</Th><Th>字色</Th><Th>预览</Th></tr></thead>
-          <tbody>
-            {colors.map((p: any) => (
-              <tr key={p.bg + p.fg} className="border-t border-gray-200">
-                <Td className="text-gray-600">{p.usage}</Td>
-                <Td className="font-mono">{p.bg}</Td>
-                <Td className="font-mono">{p.fg}</Td>
-                <Td><span className="inline-flex rounded-lg overflow-hidden border border-gray-200">
-                  <span className="px-3 py-1.5" style={{ background: p.bg, color: p.fg }}>Laisse</span>
-                  <span className="px-3 py-1.5" style={{ background: p.fg, color: p.bg }}>Ancie</span>
-                </span></Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      },
-    ]},
-    { group: "下游配置", rows: [
-      { label: "AI 系统提示片段", value: <pre className="text-[11px] leading-relaxed text-gray-600 whitespace-pre-wrap font-sans bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-72 overflow-auto">{profileFields.systemSnippet}</pre> },
-    ]},
+    {
+      group: "基本信息", rows: [
+        { label: "中文名", value: <span className="text-2xl font-medium">{profileFields.nameZh}</span> },
+        { label: "英文名", value: <span className="italic text-2xl text-blue-600">{profileFields.nameEn}</span> },
+        { label: "中文字体", value: profileFields.cnFont },
+        { label: "英文字体", value: profileFields.enFont },
+      ]
+    },
+    {
+      group: "标识系统", rows: [
+        { label: "图形标识", value: <div className="w-24 h-24 rounded-xl border border-gray-200 bg-white p-2 flex items-center justify-center overflow-hidden"><BrandLogo /></div> },
+        { label: "中文理念", value: <span className="text-xl font-medium">{profileFields.sloganZh}</span> },
+        { label: "English concept", value: <span className="text-lg">{profileFields.sloganEn}</span> },
+        { label: "Morning greeting", value: <span className="text-primary-600">{profileFields.greetingEn}</span> },
+      ]
+    },
+    {
+      group: "调性 · 定位", rows: [
+        { label: "品牌调性", value: <div className="flex gap-2">{(profileFields.voice ?? ["优雅", "松弛", "乐趣"]).map((v: string) => <span key={v} className="text-[30px] text-blue-600">{v}</span>)}</div> },
+        { label: "目标客群", value: `${profileFields.audienceAgeMin}-${profileFields.audienceAgeMax} 岁 · 独立自我的年轻女性` },
+        { label: "价格带", value: `¥${profileFields.priceMin} — ¥${profileFields.priceMax} · 根据产品成本调控` },
+      ]
+    },
+    {
+      group: "品牌色", rows: [
+        {
+          label: "色彩对照表", value:
+            <table className="w-full text-[12px] border-collapse mt-1">
+              <thead><tr className="text-left text-gray-500"><Th>用途</Th><Th>背景</Th><Th>字色</Th><Th>预览</Th></tr></thead>
+              <tbody>
+                {colors.map((p: any) => (
+                  <tr key={p.bg + p.fg} className="border-t border-gray-200">
+                    <Td className="text-gray-600">{p.usage}</Td>
+                    <Td className="font-mono">{p.bg}</Td>
+                    <Td className="font-mono">{p.fg}</Td>
+                    <Td><span className="inline-flex rounded-lg overflow-hidden border border-gray-200">
+                      <span className="px-3 py-1.5" style={{ background: p.bg, color: p.fg }}>Laisse</span>
+                      <span className="px-3 py-1.5" style={{ background: p.fg, color: p.bg }}>Ancie</span>
+                    </span></Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+        },
+      ]
+    },
+    {
+      group: "下游配置", rows: [
+        { label: "AI 系统提示片段", value: <pre className="text-[11px] leading-relaxed text-gray-600 whitespace-pre-wrap font-sans bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-72 overflow-auto">{profileFields.systemSnippet}</pre> },
+      ]
+    },
   ];
 
   if (loading) return <div className="text-gray-500">加载中…</div>;
@@ -162,7 +173,7 @@ function VisualAssets() {
           <h2 className="text-3xl font-semibold text-blue-600 tracking-tight">Visual Assets</h2>
           <p className="text-sm text-gray-500 mt-1">印花 · 插画 · 主视觉 · 模板 · Lookbook · 包装</p>
         </div>
-        <button onClick={() => setPicker(true)} className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm font-medium shadow-sm">+ 新增</button>
+        <button onClick={() => setPicker(true)} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-sm">+ 新增</button>
       </header>
       <div className="flex flex-wrap gap-1.5 mb-6">
         <FilterPill current={filter === "all"} onClick={() => setFilter("all")} icon="✦" label="全部" count={store.assets.length} />
@@ -282,7 +293,7 @@ function AssetViewer({ asset, onClose, onSave }: { asset: VisualAsset; onClose: 
             {asset.description && <p className="text-[13px] text-gray-600 mb-4">{asset.description}</p>}
             <div className="text-[11px] text-gray-500 mb-2">{asset.seasons?.length ? `季节 · ${asset.seasons.join(", ")}` : "季节 · —"}</div>
             <div className="flex flex-wrap gap-1.5">
-              {asset.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-600">#{t}</span>)}
+              {asset.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-primary-100 text-blue-600">#{t}</span>)}
             </div>
           </div>
         )}

@@ -20,6 +20,7 @@ export interface InspirationItem {
   brandAnalysis?: string | null;
   designHighlights?: string[];
   styleFeatures?: string[];
+  analysisStatus?: "pending" | "success" | "failed" | null;
   useCount?: number;
   createdAt: string;
 }

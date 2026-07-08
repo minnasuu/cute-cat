@@ -265,6 +265,58 @@ async function callGeminiStream(systemPrompt, userText, maxTokens = 4096, { onDe
   return fullText;
 }
 
+// ─── 流式 GLM 调用 (智谱, OpenAI 兼容) ───────────────────────
+// 文档: https://open.bigmodel.cn/dev/api   ——  /chat/completions SSE,格式与 OpenAI 一致
+async function callGlmStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
+  const apiKey = process.env.GLM_API_KEY;
+  if (!apiKey) throw new Error('GLM_API_KEY not set');
+  const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
+  const model = process.env.GLM_MODEL || 'glm-4-flash';
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+      max_tokens: maxTokens,
+      temperature: 0.7,
+      stream: true,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`GLM API ${response.status}: ${errText}`);
+  }
+
+  const reader = response.body;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+
+  for await (const chunk of reader) {
+    buffer += decoder.decode(chunk, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'data: [DONE]') continue;
+      if (!trimmed.startsWith('data: ')) continue;
+      try {
+        const json = JSON.parse(trimmed.slice(6));
+        const delta = json.choices?.[0]?.delta?.content || '';
+        if (delta) {
+          fullText += delta;
+          onDelta?.(delta);
+        }
+      } catch { /* skip malformed line */ }
+    }
+  }
+  return fullText;
+}
+
 // ─── 通用 AI 调用 (默认 longcat) ──────────────────────────────
 async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
   const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'longcat';
@@ -629,4 +681,5 @@ module.exports = {
   callLongcatStream,
   callQwenStream,
   callGeminiStream,
+  callGlmStream,
 };

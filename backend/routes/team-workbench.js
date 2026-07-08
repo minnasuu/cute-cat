@@ -19,7 +19,7 @@ const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
-const { callLongcatStream, callQwenStream, callGeminiStream } = require('../workflow-executor');
+const { callLongcatStream, callQwenStream, callGeminiStream, callGlmStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const designGeneratorRouter = require('./design-generator');
 const {
@@ -247,10 +247,16 @@ async function runInspirationAnalysis(id, urlPath) {
       : ext === '.webp' ? 'image/webp'
       : 'image/jpeg';
     const result = await analyzeInspiration(buf, mime);
-    if (!result) return;
+    if (!result) {
+      // AI 返回空(模型无输出 / 解析失败)→ 标记 failed,避免前端永久 "analysing…"
+      await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed' } }).catch(() => {});
+      console.warn(`[team-workbench] inspiration ${id} analysis returned empty → marked failed`);
+      return;
+    }
     await prisma.lAInspirationAsset.update({
       where: { id },
       data: {
+        analysisStatus: 'success',
         category: result.category || null,
         silhouette: result.silhouette || null,
         colors: Array.isArray(result.colors) ? result.colors : [],
@@ -261,9 +267,20 @@ async function runInspirationAnalysis(id, urlPath) {
     });
     console.log(`[team-workbench] inspiration ${id} analyzed: category=${result.category}`);
   } catch (err) {
+    // 网络/超时/AbortError → 同样标记 failed
     console.error('[team-workbench] analyze inspiration failed:', err.message);
+    await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed' } }).catch(() => {});
   }
 }
+
+// POST /api/teams/:teamId/inspirations/:id/analyze —— 重试 AI 分析(把 failed 重置为 pending 再触发)
+router.post('/inspirations/:id/analyze', async (req, res) => {
+  const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data: { analysisStatus: 'pending' } });
+  res.json({ ok: true });
+  void runInspirationAnalysis(owned.id, owned.url);
+});
 
 // PATCH /api/teams/:teamId/inspirations/:id — 更新 AI 分析/归类字段
 router.patch('/inspirations/:id', async (req, res) => {
@@ -627,6 +644,8 @@ router.post('/chat', async (req, res) => {
       await callQwenStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     } else if (requestedModel === 'longcat') {
       await callLongcatStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+    } else if (requestedModel === 'glm') {
+      await callGlmStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     } else {
       await callGeminiStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     }

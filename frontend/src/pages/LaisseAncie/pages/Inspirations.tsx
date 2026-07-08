@@ -16,6 +16,9 @@ interface InspirationItem {
   silhouette?: string | null;
   colors?: string[];
   brandAnalysis?: string | null;
+  designHighlights?: string[];
+  styleFeatures?: string[];
+  analysisStatus?: "pending" | "success" | "failed" | null;
   useCount: number;
   createdAt: string;
 }
@@ -63,7 +66,7 @@ export default function InspinationsPage() {
           if (it.silhouette) sils.add(it.silhouette);
         }
         setCatalog({ categories: Array.from(cats), silhouettes: Array.from(sils) });
-      }).catch(() => {});
+      }).catch(() => { });
   }, [total, teamId]);
 
   const loadMore = () => { if (!loading && cursorRef.current) void fetchList(true, cursorRef.current); };
@@ -91,6 +94,45 @@ export default function InspinationsPage() {
   }
 
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files); };
+
+  // 重试 AI 分析
+  async function handleRetry(id: string) {
+    if (!teamId) return;
+    // 乐观更新:立刻把状态拨回 pending,UI 同步响应
+    setItems((prev) => prev.map((it) => it.id === id ? { ...it, analysisStatus: 'pending' } : it));
+    try {
+      await teamApi(teamId).analyzeInspiration(id);
+    } catch (err) {
+      // 请求本身失败 → 改回 failed
+      console.error("[retry] failed", err);
+      setItems((prev) => prev.map((it) => it.id === id ? { ...it, analysisStatus: 'failed' } : it));
+    }
+  }
+
+  // 上传/重试后轮询:只要还有 pending 的图,就每 3s 拉一次列表,直到全部出结果(或超时 3 分钟)
+  const pendingIds = items.filter((it) => it.analysisStatus === 'pending').map((it) => it.id);
+  useEffect(() => {
+    if (pendingIds.length === 0 || !teamId) return;
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 60; // ~3 分钟上限
+    const tick = async () => {
+      if (cancelled || attempts >= maxAttempts) return;
+      attempts += 1;
+      try {
+        const data = await teamApi(teamId).listInspirations({ q, category: filter.category, take: TAKE });
+        setItems(data.items ?? []);
+        setTotal(data.total);
+      } catch { /* 轮询失败静默 */ }
+      // 还有 pending 就继续
+      const stillPending = (data?.items ?? []).some((it) => it.analysisStatus === 'pending');
+      if (stillPending && !cancelled && attempts < maxAttempts) {
+        setTimeout(tick, 3000);
+      }
+    };
+    const t = setTimeout(tick, 3000);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [teamId, q, filter.category, pendingIds.join(',')]);
 
   async function handleDelete(id: string) {
     if (!teamId) return;
@@ -155,7 +197,7 @@ export default function InspinationsPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {items.map((it) => <AssetCard key={it.id} asset={it} onDelete={handleDelete} onEdit={(a) => setEditing(a)} />)}
+            {items.map((it) => <AssetCard key={it.id} asset={it} onDelete={handleDelete} onEdit={(a) => setEditing(a)} onRetry={handleRetry} />)}
           </div>
           {cursor && (
             <div className="flex justify-center mt-8">
@@ -170,15 +212,27 @@ export default function InspinationsPage() {
   );
 }
 
-function AssetCard({ asset, onDelete, onEdit }: { asset: InspirationItem; onDelete: (id: string) => void; onEdit: (asset: InspirationItem) => void; }) {
+function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationItem; onDelete: (id: string) => void; onEdit: (asset: InspirationItem) => void; onRetry: (id: string) => void; }) {
   const hasAnalysis = asset.category || asset.brandAnalysis || (asset.styleFeatures?.length ?? 0) > 0;
+  // 分类标签:优先 category; pending 显示 analysing; failed 显示失败+重试
+  const categoryLabel = asset.analysisStatus === 'failed'
+    ? '分析失败'
+    : asset.category || (asset.analysisStatus === 'pending' ? 'analysing…' : '未分类');
   return (
     <figure className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer group">
       <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
         <img src={asset.thumbUrl || asset.url} alt={asset.brandAnalysis ?? asset.category ?? "inspiration"} loading="lazy"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.05]" />
+        {/* pending 时左上角转圈提示 */}
+        {asset.analysisStatus === 'pending' && (
+          <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 border-white/70 border-t-blue-500 animate-spin" title="分析中…" />
+        )}
         {/* 操作按钮(hover 显示) */}
         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+          {asset.analysisStatus === 'failed' && (
+            <button onClick={(e) => { e.stopPropagation(); onRetry(asset.id); }}
+              className="w-7 h-7 rounded-full bg-amber-500/90 hover:bg-amber-500 text-white text-xs flex items-center justify-center shadow-sm" title="重试分析">⟳</button>
+          )}
           <button onClick={(e) => { e.stopPropagation(); onEdit(asset); }}
             className="w-7 h-7 rounded-full bg-white/90 hover:bg-white text-gray-700 text-xs flex items-center justify-center shadow-sm" title="编辑">✎</button>
           <button onClick={(e) => { e.stopPropagation(); if (confirm("删除这张灵感图?")) onDelete(asset.id); }}
@@ -187,7 +241,7 @@ function AssetCard({ asset, onDelete, onEdit }: { asset: InspirationItem; onDele
         {/* 基础信息(始终可见) */}
         <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/30 to-transparent text-white">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] uppercase tracking-wider opacity-90">{asset.category || "analysing…"}</span>
+            <span className={`text-[11px] uppercase tracking-wider ${asset.analysisStatus === 'failed' ? 'text-amber-300' : 'opacity-90'}`}>{categoryLabel}</span>
             {asset.useCount > 0 && <span className="text-[11px] bg-white/15 backdrop-blur px-1.5 py-0.5 rounded-full">{asset.useCount} uses</span>}
           </div>
           {asset.colors?.length > 0 && (
@@ -313,7 +367,7 @@ function UploadButton({ onFiles }: { onFiles: (f: FileList | File[]) => void }) 
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button onClick={() => ref.current?.click()} className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm font-medium shadow-sm">+ Upload</button>
+      <button onClick={() => ref.current?.click()} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-sm">+ Upload</button>
       <input ref={ref} type="file" accept="image/*" multiple className="hidden"
         onChange={(e) => { if (e.target.files?.length) onFiles(e.target.files); e.target.value = ""; }} />
     </>
@@ -326,7 +380,7 @@ function EmptyDrop({ onDrop, onFiles }: { onDrop: (e: React.DragEvent) => void; 
     <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
       className="border-2 border-dashed border-gray-300 rounded-2xl py-20 text-center hover:border-blue-400 transition-colors">
       <div className="text-gray-500 text-sm">Drag & drop inspiration images here, or</div>
-      <button onClick={() => ref.current?.click()} className="mt-3 inline-flex rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 text-sm font-medium">Choose files</button>
+      <button onClick={() => ref.current?.click()} className="mt-3 inline-flex rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-5 py-2 text-sm font-medium">Choose files</button>
       <input ref={ref} type="file" accept="image/*" multiple className="hidden"
         onChange={(e) => { if (e.target.files) onFiles(e.target.files); e.target.value = ""; }} />
       <p className="text-[11px] text-gray-500 mt-4 max-w-md mx-auto leading-relaxed">
