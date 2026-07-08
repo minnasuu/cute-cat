@@ -1,0 +1,5 @@
+# 提交前检查:前端 TypeScript 编译必须通过
+# 不通过则阻止提交,避免把编译错误的代码推上去
+# 用 tsc -b (build mode) 而非 tsc --noEmit:根 tsconfig.json 只有 references,
+# --noEmit 不直接检查文件,-b 才会真正跑每个 project 的完整类型检查
+cd "$(dirname "$0")/../frontend" && npx tsc -b
