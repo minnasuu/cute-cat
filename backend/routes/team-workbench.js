@@ -370,11 +370,20 @@ router.delete('/materials/:id', async (req, res) => {
 });
 
 /* ─── skills 知识库(团队级通用) ──────────────────────────────── */
+/* 引入 10 phase taxonomy 的校验 + 旧 6 key 兼容 */
+const {
+  normalizeCategory, VALID_PHASE_SET, WRITEABLE_PHASE_SET,
+} = require('../data/skill-phases');
 
 router.get('/skills', async (req, res) => {
   const { category } = req.query;
   const where = { teamId: req.team.id };
-  if (category && category !== 'all') where.category = String(category);
+  if (category && category !== 'all') {
+    // 兼容旧 Laisse Ancie 6 key（design/craft/...）：映射到新 phase id
+    const normalized = normalizeCategory(category);
+    if (!normalized) return res.status(400).json({ error: `unknown category: ${category}` });
+    where.category = normalized;
+  }
   const rows = await prisma.lASkillArticle.findMany({ where, orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }] });
   res.json(rows);
 });
@@ -387,10 +396,15 @@ router.post('/skills', async (req, res) => {
   if (!data.title || !data.zhTitle || !data.category) {
     return res.status(400).json({ error: 'title, zhTitle, category required' });
   }
+  const normalized = normalizeCategory(data.category);
+  if (!normalized) return res.status(400).json({ error: `unknown category: ${data.category}` });
+  if (!WRITEABLE_PHASE_SET.has(normalized)) {
+    return res.status(400).json({ error: `category is read-only (coming soon): ${normalized}` });
+  }
   const a = await prisma.lASkillArticle.create({
     data: {
       teamId: req.team.id,
-      category: String(data.category),
+      category: normalized,
       title: String(data.title),
       zhTitle: String(data.zhTitle),
       body: data.body || '',
@@ -411,6 +425,14 @@ router.patch('/skills/:id', async (req, res) => {
     'category', 'title', 'zhTitle', 'body', 'tags',
     'relatedProducts', 'relatedMaterials', 'systemHint', 'pinned',
   ]);
+  if (data.category !== undefined) {
+    const normalized = normalizeCategory(data.category);
+    if (!normalized) return res.status(400).json({ error: `unknown category: ${data.category}` });
+    if (!WRITEABLE_PHASE_SET.has(normalized)) {
+      return res.status(400).json({ error: `category is read-only (coming soon): ${normalized}` });
+    }
+    data.category = normalized;
+  }
   const a = await prisma.lASkillArticle.update({ where: { id: owned.id }, data });
   res.json(a);
 });

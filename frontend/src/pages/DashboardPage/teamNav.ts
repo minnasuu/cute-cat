@@ -6,7 +6,7 @@
  *   ─────
  *   资源  ▾ (灵感 / Lookbook / 材料)     ← 合并为一组,作为设计调用的素材库
  *   ─────
- *   知识底座 ▾ (技能 / 资产)             ← 团队通用知识,注入 AI 的 system prompt
+ *   知识底座 ▾ (知识库 / 资产)           ← 团队通用知识(10 phase),注入 AI 的 system prompt
  *
  * 未来新团队可覆写此配置:在「资源」或「知识底座」下增删子 tab。
  */
@@ -58,7 +58,7 @@ export const KNOWLEDGE_SECTIONS: NavSection[] = [
     icon: "✎",
     defaultExpanded: true,
     tabs: [
-      { id: "skills", label: "技能", icon: "✎" },
+      { id: "skills", label: "知识库", icon: "✎" },
       { id: "assets", label: "资产", icon: "◻" },
     ],
   },

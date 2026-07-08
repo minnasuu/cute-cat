@@ -7,16 +7,6 @@ const APPEARANCE_PALETTE = require('./official-appearance-palette');
 /** 默认/占位：狸花加白（palette[0]） */
 const OFFICIAL_BRAND_CAT_COLORS = APPEARANCE_PALETTE[0];
 
-/** 全平台官方猫唯一能力标识（存储层保留一项，产品侧不再强调「技能」概念） */
-const OFFICIAL_AIGC_SKILL = {
-  id: 'aigc',
-  name: 'AIGC',
-  icon: 'Sparkles',
-  description: '统一生成式能力入口（文本/图像等多模态将在此聚合；当前为占位）',
-  input: 'text',
-  output: 'text',
-};
-
 function cloneAppearance(index) {
   return JSON.parse(JSON.stringify(APPEARANCE_PALETTE[index % APPEARANCE_PALETTE.length]));
 }
@@ -34,7 +24,6 @@ function cloneAppearance(index) {
 function officialCat(templateId, name, roleTitle, accent, item, messages, description, appearanceIndex) {
   return {
     id: templateId,
-    skills: [OFFICIAL_AIGC_SKILL],
     name,
     role: roleTitle,
     accent,
@@ -42,8 +31,7 @@ function officialCat(templateId, name, roleTitle, accent, item, messages, descri
     description,
     systemPrompt:
       `你是 CuCaTopia 官方工作台猫猫「${name}」，岗位角色：${roleTitle}。\n` +
-      `全平台猫猫以 AIGC（生成式内容：文案、视觉创意、数据叙事、代码草稿等）为核心方向。\n` +
-      `当前版本执行管道为占位：承接上下文与任务说明，完整多模态生成将在后续统一接入。用中文协作。`,
+      `按岗位角色承接上下文与任务说明，用中文协作。`,
     messages,
     catColors: cloneAppearance(appearanceIndex),
   };
@@ -79,7 +67,6 @@ const OFFICIAL_TEMPLATE_IDS = CAT_TEMPLATES.map((t) => t.id);
 
 module.exports = {
   OFFICIAL_BRAND_CAT_COLORS,
-  OFFICIAL_AIGC_SKILL,
   CAT_TEMPLATES,
   OFFICIAL_TEMPLATE_IDS,
 };

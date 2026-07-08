@@ -42,11 +42,11 @@ export interface KnowledgeDeps {
 
 type Injector = (prompt: string, deps: KnowledgeDeps) => string;
 
-/** 技能知识注入(直接复用 skill-hints) */
+/** 技能知识注入(直接复用 skill-hints)。Boost 按 Fashion 10 phase 设定。 */
 const skillInjector: Injector = (prompt, deps) =>
   skillHintsFor(prompt, deps.skills, {
     n: 2,
-    categoryBoost: { design: 2, fabric: 1, brand: 1 },
+    categoryBoost: { "phase-03-design": 2, "phase-04-textile": 1, "phase-07-qa": 1 },
   });
 
 /** 资产(visual assets)注入:按 title/description/tag/season 关键词匹配 */

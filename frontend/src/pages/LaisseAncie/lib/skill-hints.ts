@@ -1,5 +1,6 @@
 // @ts-nocheck
 import type { SkillArticle } from "../types/skill";
+import { SKILL_PHASE_META } from "../types/skill";
 
 export function skillHintsFor(
   prompt: string,
@@ -24,7 +25,9 @@ export function skillHintsFor(
   if (scored.length === 0) return "";
   const blocks = scored
     .map(({ a }) => {
-      const head = `[Knowledge · ${a.category}] ${a.zhTitle} — ${a.title}`;
+      const phaseMeta = SKILL_PHASE_META[a.category as keyof typeof SKILL_PHASE_META];
+      const phaseLabel = phaseMeta ? `${phaseMeta.labelZh}(${phaseMeta.labelEn})` : a.category;
+      const head = `[Knowledge · ${phaseLabel}] ${a.zhTitle} — ${a.title}`;
       const body = a.systemHint ?? a.body.slice(0, 300);
       return `### ${head}\n${body}`;
     })

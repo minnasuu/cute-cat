@@ -69,7 +69,6 @@ router.post('/team/:teamId', async (req, res) => {
       description: template.description,
       catColors: template.catColors,
       systemPrompt: template.systemPrompt,
-      skills: template.skills,
       accent: template.accent,
       item: template.item,
       messages: template.messages,
@@ -80,12 +79,6 @@ router.post('/team/:teamId', async (req, res) => {
     if (description !== undefined) data.description = description;
     if (catColors) data.catColors = catColors;
     if (systemPrompt !== undefined) data.systemPrompt = systemPrompt;
-    if (skills) {
-      if (!Array.isArray(skills) || skills.length !== 1 || skills[0]?.id !== 'aigc') {
-        return res.status(400).json({ error: '官方猫猫仅保留内置 AIGC 能力标识（aigc），与模板保持一致' });
-      }
-      data.skills = skills;
-    }
     if (aiModel) data.aiModel = aiModel;
     if (temperature !== undefined) data.temperature = temperature;
     if (maxTokens !== undefined) data.maxTokens = maxTokens;
