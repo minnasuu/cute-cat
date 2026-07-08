@@ -123,6 +123,10 @@ class ApiClient {
     return this.request<T>(url, { method: 'PUT', body: body ? JSON.stringify(body) : undefined });
   }
 
+  patch<T = any>(url: string, body?: any) {
+    return this.request<T>(url, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined });
+  }
+
   delete<T = any>(url: string) {
     return this.request<T>(url, { method: 'DELETE' });
   }
