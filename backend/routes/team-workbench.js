@@ -265,6 +265,17 @@ async function runInspirationAnalysis(id, urlPath) {
   }
 }
 
+// PATCH /api/teams/:teamId/inspirations/:id — 更新 AI 分析/归类字段
+router.patch('/inspirations/:id', async (req, res) => {
+  const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const data = pickDefined(req.body ?? {}, [
+    'category', 'silhouette', 'colors', 'brandAnalysis', 'designHighlights', 'styleFeatures',
+  ]);
+  const row = await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data });
+  res.json(row);
+});
+
 router.post('/inspirations/:id/touch', async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
