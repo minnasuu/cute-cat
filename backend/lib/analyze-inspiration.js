@@ -46,11 +46,11 @@ function mediaTypeToExtension(mimeType) {
 }
 
 // ─── OpenAI‑compatible (Qwen/LongCat/OpenAI) ───────────────────
-async function analyzeOpenAi({ baseUrl, apiKey, model, dataUrl, mimeType, timeoutMs }) {
+async function analyzeOpenAi({ endpoint, apiKey, model, dataUrl, mimeType, timeoutMs }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/chat/completions`, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -131,24 +131,36 @@ async function analyzeInspiration(imageBuffer, mimeType) {
   const forced = (process.env.INSPIRATION_AI_PROVIDER || '').toLowerCase().trim();
 
   // openai 大类 (qwen/openai/longcat 都走同一路径,只是 env var 名不同)
+  // QWEN_BASE_URL 通常已含 /v1 尾巴(如 .../compatible-mode/v1),OpenAI 端点只需要 /chat/completions;
+  // OpenAI 官方 base 只到主机(https://api.openai.com),需要 /v1/chat/completions。
+  const explicitModel = (process.env.INSPIRATION_AI_MODEL || '').trim();
+
+  // 组合出完整 OpenAI 端点:如果 base 已经以 /v1 结尾,只追加 /chat/completions;否则追加 /v1/chat/completions
+  function openAiEndpoint(base) {
+    const b = base.replace(/\/+$/, '');
+    return b.endsWith('/v1') ? `${b}/chat/completions` : `${b}/v1/chat/completions`;
+  }
+
   const openVariants = [
     { name: 'qwen',  base: process.env.QWEN_BASE_URL,  key: process.env.QWEN_API_KEY,  model: process.env.QWEN_MODEL },
     { name: 'openai', base: process.env.OPENAI_BASE_URL, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL },
     { name: 'longcat', base: process.env.LONGCAT_BASE_URL, key: process.env.LONGCAT_API_KEY, model: process.env.LONGCAT_MODEL },
   ].filter((v) => v.key && v.base);
-  // 没配 base 的 openai/openai 默认补 https://api.openai.com
   for (const v of openVariants) {
     if (!v.base) v.base = 'https://api.openai.com';
   }
-  // 显式模型名优先级最高
-  const explicitModel = (process.env.INSPIRATION_AI_MODEL || '').trim();
 
   for (const v of openVariants) {
     const model = explicitModel || v.model || (v.name === 'openai' ? 'gpt-4o-mini' : '');
     if (!model) continue;
     providers.push({
       name: v.name,
-      run: () => analyzeOpenAi({ baseUrl: v.base, apiKey: v.key, model, dataUrl: `data:${mimeType};base64,${imageBuffer.toString('base64')}`, mimeType, timeoutMs }),
+      run: () => analyzeOpenAi({
+        endpoint: openAiEndpoint(v.base),
+        apiKey: v.key, model,
+        dataUrl: `data:${mimeType};base64,${imageBuffer.toString('base64')}`,
+        mimeType, timeoutMs,
+      }),
     });
   }
 

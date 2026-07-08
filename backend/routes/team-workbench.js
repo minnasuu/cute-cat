@@ -199,6 +199,10 @@ router.get('/inspirations/debug', async (req, res) => {
   try {
     const prefs = ['qwen', 'openai', 'longcat'];
     const providers = [];
+    const openAiEndpoint = (base) => {
+      const b = (base || '').replace(/\/+$/, '');
+      return b.endsWith('/v1') ? `${b}/chat/completions` : `${b}/v1/chat/completions`;
+    };
     for (const name of prefs) {
       const upper = name.toUpperCase();
       const key = process.env[`${upper}_API_KEY`];
@@ -208,9 +212,10 @@ router.get('/inspirations/debug', async (req, res) => {
         providers.push({ name, ok: 'no-config' });
         continue;
       }
-      let probe = { ok: false, status: null, body: null };
+      const endpoint = openAiEndpoint(base);
+      let probe = { endpoint, ok: false, status: null, body: null };
       try {
-        const r = await fetch(`${base.replace(/\/+$/, '')}/v1/chat/completions`, {
+        const r = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
           body: JSON.stringify({ model: model || 'gpt-4o-mini', max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] }),
@@ -224,7 +229,6 @@ router.get('/inspirations/debug', async (req, res) => {
       }
       providers.push({ name, ok: probe.ok ? 'ok' : 'fail', model, baseUrl: base.replace(/^https?:\/\/[^/]+/, '***'), probe });
     }
-    // gemini
     if (process.env.GEMINI_API_KEY) {
       providers.push({ name: 'gemini', ok: 'sdk-only', model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' });
     }
