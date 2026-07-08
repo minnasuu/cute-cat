@@ -11,7 +11,7 @@ import { MODE_LABEL, type DesignMode, type Product } from "../types/design";
 import type { VisualAsset } from "../types/visual-asset";
 import type { InspirationItem, MaterialRow } from "../store/resource";
 import type { SkillArticle } from "../types/skill";
-import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../../DashboardPage/knowledge-injectors";
+import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../../../DashboardPage/knowledge-injectors";
 
 const MODE_SPEC: Record<DesignMode, { sys: string; example_json: object }> = {
   illustration: {
