@@ -1,4 +1,17 @@
 // @ts-nocheck
+/**
+ * Composer —— Laisse Ancie 时尚设计主工作台(多阶段工作流)。
+ *
+ * 阶段流程:
+ *   greeting      → 开场,确认设计类别
+ *   aligning      → 咨询对齐,逐步确认设计要素(面料/色彩/廓形/灵感/客群)
+ *   brainstorming → 头脑风暴,给出多个设计方向
+ *   planning      → 输出完整设计企划书,等待用户确认
+ *   generating    → 调用 Imagen 批量生成设计图
+ *   presenting    → 展示图片 + 可 chat 修图
+ *
+ * 每轮 AI 回复末尾用 <!--STAGE:xxx--> 标记当前阶段,前端解析推进 UI。
+ */
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useDesignStore } from "../store/design";
@@ -13,109 +26,67 @@ import type { InspirationItem, MaterialRow } from "../store/resource";
 import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 
-const MODE_SPEC: Record<DesignMode, { sys: string; example_json: object }> = {
-  illustration: {
-    sys: `你是 Laisse Ancie 的视觉插画师。我们围绕 Lookbook / 印花 / 主视觉 / 包装等用途创作原创插画/图形作品。
-输出一段详细的英文 prompt，可用于图像生成工具（Midjourney / Stable Diffusion / 内部素材与像素生成）。
-最后用 \`\`\`json 输出此作品的结构化 record：
+type DesignStage = "greeting" | "aligning" | "brainstorming" | "planning" | "generating" | "presenting";
 
-{
-  "title": "string",
-  "zhTitle": "string (中文作品名)",
-  "kind": "illustration | print | keyvisual | template | lookbook | packaging",
-  "prompt": "string (image-generation prompt, 英文, 含媒材 · 构图 · 色彩 · 氛围 · 参考)",
-  "palette": ["#hex"],
-  "aspect": "3:4",
-  "usage": "lookbook | packaging | kv | template",
-  "description": "string (用途叙述, 100字以内)"
+const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
+
+/** 设计顾问总 prompt:引导 AI 走完多阶段工作流。 */
+const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总监。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套完整的设计流程。
+
+## 工作流阶段
+
+### 阶段 1 · greeting(开场)
+开场问候,询问用户本次要设计的类别:
+- 插画设计(illustration): 一张艺术插画
+- 单品(single): 一件具体服装,输出 4 张图(白底效果 / 款式版型 / 细节 / 摄影效果)
+- 系列(collection): 一个系列(含系列总览 + 每款 4 张图)
+
+回复末尾加 <!--STAGE:greeting-->。
+
+### 阶段 2 · aligning(咨询对齐)
+用户选定类别后,通过 2-3 轮专业提问确认设计要素:
+- 季节(SS26/FW26 等) · 目标客群 · 面料偏好 · 色彩方向 · 灵感来源 · 穿着场合
+- 每轮只问 1-2 个关键问题,体现专业度
+回复末尾加 <!--STAGE:aligning-->。
+
+### 阶段 3 · brainstorming(头脑风暴)
+基于收集的信息,给出 2-3 个设计方向,每个方向包含:
+- 方向名 + 核心概念(一句话)
+- 关键设计元素(面料/色彩/廓形/细节)
+- 与品牌调性(优雅/松弛/乐趣)的关联
+回复末尾加 <!--STAGE:brainstorming-->。
+
+### 阶段 4 · planning(设计企划)
+用户选定方向后,输出完整「设计企划书」:
+- 产品名 + 季节 + 主题叙述
+- 面料与色彩方案(具体色板)
+- 廓形与结构细节
+- 工艺与细节亮点
+- 目标价格带
+末尾问用户「确认这份企划,开始生成设计图吗?」并加 <!--STAGE:planning-->。
+
+### 阶段 5 · generating(生成中)
+用户确认后,回复「开始生成设计图…」并加 <!--STAGE:generating-->。
+前端会自动调起图片生成,你不需要做其他事。
+
+### 阶段 6 · presenting(展示与迭代)
+图片生成后,展示给用户,并主动询问是否需要调整。
+用户描述修改意见后,给出专业反馈并加 <!--STAGE:presenting-->。
+前端会自动重新生成修改的那张图。
+
+## 重要规则
+- 每轮回复末尾必须加 <!--STAGE:当前阶段--> 标记
+- 用中文对话,专业但不生硬,体现 Laisse Ancie 的「优雅·松弛·乐趣」调性
+- 不要一次性问太多问题,每轮 1-2 个
+- 不要输出 JSON(前端不再解析 JSON,只解析阶段标记)`;
+
+function parseStage(text: string): DesignStage | null {
+  const m = text.match(STAGE_MARKER);
+  return m ? (m[1] as DesignStage) : null;
 }
 
-先问 1 个关键方向问题，然后输出 prompt + json。`,
-    example_json: { title: "Spring Tide · 潮汐新娘插画", zhTitle: "Spring Tide · 插画", kind: "illustration", prompt: "...", palette: ["#1f3a44", "#d8c9a3", "#9b6a3a"], aspect: "3:4", usage: "lookbook", description: "Spring Tide 主题季刊封面插画" },
-  },
-  single: {
-    sys: `你是 Laisse Ancie 的设计师助理。我们围绕一件具体的单品做设计对话。
-用户会随对话逐步给出灵感调整。每一轮你都需要在末尾用 \`\`\`json 代码块回复
-当前这个产品的完整 JSON 草稿，字段如下：
-
-{
-  "title": "string (产品名)",
-  "seasons": ["SS26"],
-  "category": "string",
-  "silhouette": "string",
-  "colors": ["#hex"],
-  "targetPriceNum": 0,
-  "fabricComposition": "string",
-  "liningComposition": "(可选)",
-  "stitchNotes": "string",
-  "measureTable": "string (markdown表格)",
-  "gradingNotes": "string",
-  "description": "string (150字以内的产品叙述，用于Lookbook文案)"
-}
-
-对话开始前先问用户 1 个关键问题；然后根据回答输出完整 JSON。`,
-    example_json: { title: "Spring Tide · 水洗真丝挂肩裙", seasons: ["SS26"], category: "dress", silhouette: "19 momme 水洗真丝，挂肩斜裁，窄袖", colors: ["#1f3a44", "#d8c9a3", "#9b6a3a"], targetPriceNum: 368 },
-  },
-  collection: {
-    sys: `你是 Laisse Ancie 的系列设计师。我们围绕一个季节主题来做多品系列的规划对话。
-用户在每轮给出方向调整，但每一轮你都需要把整个系列以 \`\`\`json 的形式落地：
-
-{
-  "collection": { "title": "string", "season": "SS26", "theme": "string", "palette": ["#hex"], "designerNote": "string" },
-  "products": [ { 单品 draft 字段, 同 single 模式, required targetPriceNum } ]
-}
-
-第一次回复先问 1 个关键方向问题，之后每轮更新整个系列定义。`,
-    example_json: { collection: { title: "Spring Tide", season: "SS26", theme: "潮汐 — 以潮汐色水洗真丝为主", palette: ["#1f3a44", "#d8c9a3", "#9b6a3a"], designerNote: "一次温柔潮汐，用 three drops 讲述潮汐起落。" }, products: [{ title: "Spring Tide · 水洗真丝挂肩裙", seasons: ["SS26"], category: "dress", colors: ["#1f3a44"], targetPriceNum: 368, silhouette: "挂肩斜裁" }] },
-  },
-  occasion: {
-    sys: `你是 Laisse Ancie 的专题系列设计师。我们围绕一个特定节日（春节 / 情人节 / 圣诞 …）做有主题的对齐创作。
-每轮末尾都需要用 \`\`\`json 输出专题系列 + 产品：
-
-{
-  "collection": { "occasion": "string", "occasion_cn": "春节", "season": "SS26 / FW26", "theme": "string", "palette": ["#hex"], "designerNote": "string" },
-  "products": [ 单品 draft 字段, 同 single 模式 ]
-}
-
-首次提问问 1 个关键方向问题。`,
-    example_json: { collection: { occasion: "Valentine", occasion_cn: "情人节", season: "SS26", theme: "心跳色 — 红粉卵石色 + 水洗蓝", palette: ["#c26273", "#ead7d1", "#e5eeff"], designerNote: "第一次见面那天的心跳，做成可穿戴的礼物。" }, products: [] },
-  },
-};
-
-function draftFromObject(o: any, mode: DesignMode): Product | null {
-  if (!o || typeof o !== "object") return null;
-  const now = new Date().toISOString();
-  if (mode === "single" || mode === "illustration") return normalizeSingle(o, now, mode);
-  const products = Array.isArray(o.products) ? o.products : [];
-  const c = o.collection ?? {};
-  return normalizeSingle(products[0] ?? o, now, "single", c.title || c.occasion || "untitled");
-}
-
-function normalizeSingle(o: any, now: string, mode: DesignMode = "single", titleOverride?: string): Product {
-  return {
-    id: crypto.randomUUID(),
-    mode,
-    title: titleOverride || o.title || o.zhTitle || "untitled",
-    description: (o.description || "") + (o.prompt ? `\n\n${o.prompt}` : ""),
-    seasons: o.seasons ?? [],
-    category: o.kind === "illustration" ? "illustration" : (o.category || ""),
-    colors: Array.isArray(o.colors) ? o.colors : Array.isArray(o.palette) ? o.palette : [],
-    targetPriceNum: typeof o.targetPriceNum === "number" ? o.targetPriceNum : undefined,
-    silhouette: o.aspect ? `${o.aspect} ${o.usage ?? ""}` : (o.silhouette),
-    fabricComposition: o.fabricComposition || (o.kind ? `kind: ${o.kind}` : undefined),
-    tech_pack_url: o.prompt ? `prompt: ${o.prompt.slice(0, 200)}` : undefined,
-    aiDraftRaw: typeof o === "string" ? o : JSON.stringify(o),
-    status: "draft",
-    statusHistory: [],
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-function parseJsonBlock(s: string): any {
-  const m = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  const candidate = m ? m[1] : s;
-  try { return JSON.parse(candidate); } catch { return null; }
+function stripStageMarker(text: string): string {
+  return text.replace(STAGE_MARKER, "").trim();
 }
 
 interface ChatMsg {
@@ -123,6 +94,14 @@ interface ChatMsg {
   role: "user" | "assistant";
   text: string;
   product?: Product;
+}
+
+interface GeneratedImage {
+  slot: string;
+  label: string;
+  url?: string;
+  prompt?: string;
+  error?: string;
 }
 
 export default function ComposerPage({
@@ -133,8 +112,7 @@ export default function ComposerPage({
   knowledge?: KnowledgeDeps;
 }) {
   const params = useParams<{ mode: DesignMode }>();
-  const mode = modeProp ?? params.mode;
-  const spec = MODE_SPEC[mode ?? "single"];
+  const mode = modeProp ?? params.mode ?? "single";
   const store = useDesignStore();
   const skillStore = useSkillStore();
   const { teamId, navigateTab } = useCurrentTeam();
@@ -142,35 +120,50 @@ export default function ComposerPage({
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Product | null>(null);
+  const [stage, setStage] = useState<DesignStage>("greeting");
+  const [planText, setPlanText] = useState("");
+  const [images, setImages] = useState<GeneratedImage[]>([]);
+  const [generating, setGenerating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs, busy]);
 
+  // 开场自动发一条 assistant 消息
+  useEffect(() => {
+    if (msgs.length === 0 && !busy) {
+      setMsgs([{
+        id: "greeting",
+        role: "assistant",
+        text: "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n我是你的设计总监,让我们一起把灵感变成可穿戴的艺术。\n\n这次你想设计什么?\n\n- **插画设计** — 一张艺术插画(Lookbook / 印花 / 主视觉)\n- **单品** — 一件具体服装(输出 4 张设计图)\n- **系列** — 一个完整系列(系列总览 + 每款 4 张图)",
+      }]);
+      setStage("greeting");
+    }
+  }, []);
+
   async function send(raw: string) {
     if (!raw.trim() || busy) return;
     const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", text: raw.trim() };
-    const history = [...msgs, userMsg].map((m) => ({ role: m.role, content: m.text }));
-    const userPrompt = history.map((h) => `[${h.role}] ${h.content}`).join("\n\n");
     setMsgs((xs) => [...xs, userMsg]);
     setBusy(true);
 
-    // 预创建一条空的 assistant 消息，流式过程中增量更新它的 text
     const assistantId = crypto.randomUUID();
     setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "" }]);
 
-    // 自动从「资源 + 知识底座」按相关性注入 chat 的 system prompt
+    // 构造 system prompt(设计顾问 + 知识注入)
+    const history = [...msgs, userMsg].map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
     const knowledgeBlock = knowledge
       ? buildKnowledgeInjectors(knowledge)
-          .map((injector) => injector(userPrompt + " " + raw, knowledge))
+          .map((inj) => inj(raw, knowledge))
           .filter(Boolean)
           .join("\n\n")
       : "";
-    const system = knowledgeBlock ? `${spec.sys}\n\n${knowledgeBlock}` : spec.sys;
+    const system = knowledgeBlock
+      ? `${DESIGNER_SYSTEM}\n\n## 团队知识库(自动注入)\n${knowledgeBlock}`
+      : DESIGNER_SYSTEM;
 
-    // 流式 SSE 消费：手动 fetch（apiClient 当前只支持 JSON 非流式）
-    const streamTimeoutMs = 290_000; // 与 nginx proxy_read_timeout 300s 留余量
+    const streamTimeoutMs = 290_000;
     const ac = new AbortController();
     const timeoutId = globalThis.setTimeout(() => ac.abort(), streamTimeoutMs);
 
@@ -179,17 +172,13 @@ export default function ComposerPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ system, prompt: userPrompt, model: undefined, maxTokens: 2048 }),
+        body: JSON.stringify({ system, prompt: history, model: undefined, maxTokens: 2048 }),
         signal: ac.signal,
       });
 
       if (!res.ok) {
-        // 兼容后端非流式的错误 JSON（如 400）
-        let errMsg = `请求失败（HTTP ${res.status}）`;
-        try {
-          const errJson = await res.json();
-          if (errJson?.error) errMsg = errJson.error;
-        } catch { /* 非 JSON 响应 */ }
+        let errMsg = `请求失败(HTTP ${res.status})`;
+        try { const j = await res.json(); if (j?.error) errMsg = j.error; } catch { /* */ }
         setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ ${errMsg}` } : m));
         return;
       }
@@ -208,44 +197,39 @@ export default function ComposerPage({
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed) { currentEvent = ""; continue; } // 事件边界
-          if (trimmed.startsWith(":")) continue; // heartbeat 注释行
+          if (!trimmed) { currentEvent = ""; continue; }
+          if (trimmed.startsWith(":")) continue;
           if (trimmed.startsWith("event: ")) { currentEvent = trimmed.slice(7).trim(); continue; }
           if (trimmed.startsWith("data: ")) {
             let payload: any = null;
             try { payload = JSON.parse(trimmed.slice(6)); } catch { continue; }
-
             if (currentEvent === "chunk" && payload?.text) {
               accumulated += payload.text;
-              // 增量更新 assistant 消息文本（函数式更新避免覆盖）
-              const snap = accumulated;
-              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: snap } : m));
+              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: stripStageMarker(accumulated) } : m));
             } else if (currentEvent === "done") {
-              const finalText = payload?.text ?? accumulated;
-              const json = parseJsonBlock(finalText);
-              const prod = json ? draftFromObject(json, mode ?? "single") : null;
-              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: finalText, product: prod ?? undefined } : m));
-              if (prod) setDraft(prod);
+              const finalText = stripStageMarker(payload?.text ?? accumulated);
+              const newStage = parseStage(payload?.text ?? accumulated) || stage;
+              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: finalText } : m));
+              setStage(newStage);
+              // 保存 plan text(用于后续图片生成)
+              if (newStage === "planning" || newStage === "brainstorming") {
+                setPlanText(finalText);
+              }
             } else if (currentEvent === "error") {
-              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ 生成失败：${payload?.error ?? "未知错误"}` } : m));
+              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ 生成失败: ${payload?.error ?? "未知错误"}` } : m));
             }
           }
         }
       }
     } catch (err: any) {
       let msg = err?.message || "未知错误";
-      if (err instanceof DOMException && err.name === "AbortError") {
-        msg = "生成超时（当前上限约 290s），请稍后重试或精简 prompt";
-      } else if (/aborted/i.test(msg)) {
-        msg = "连接已中断（常见于网络波动或反向代理超时），请重试";
-      }
+      if (err instanceof DOMException && err.name === "AbortError") msg = "生成超时(当前上限约 290s),请稍后重试或精简 prompt";
       setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ ${msg}` } : m));
     } finally {
       globalThis.clearTimeout(timeoutId);
@@ -253,21 +237,66 @@ export default function ComposerPage({
     }
   }
 
+  // 用户确认企划 → 批量生成设计图
+  async function startGeneration() {
+    if (generating) return;
+    setGenerating(true);
+    setStage("generating");
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "🎨 开始生成设计图…" }]);
+    try {
+      const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/generate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode, plan: planText }),
+      });
+      const data = await res.json();
+      setImages(data.images || []);
+      setStage("presenting");
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "✨ 设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。" }]);
+    } catch (e: any) {
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 生成失败: ${e.message}` }]);
+      setStage("planning");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // 单图修图
+  async function regenerateOne(slot: string, label: string, instruction: string) {
+    if (!instruction.trim()) return;
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "user", text: `修改「${label}」: ${instruction}` }]);
+    setBusy(true);
+    try {
+      const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/regenerate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ slot, label, plan: planText, instruction }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        setImages((prev) => prev.map((im) => im.slot === slot ? { ...im, url: data.url, prompt: data.prompt } : im));
+        setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `✅ 已更新「${label}」` }]);
+      } else {
+        setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 修图失败: ${data.error || "未知错误"}` }]);
+      }
+    } catch (e: any) {
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 修图失败: ${e.message}` }]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitDraft() {
     if (!draft) return;
     const now = new Date().toISOString();
-    const withStatus: Product = {
-      ...draft,
-      status: "submitted",
-      statusHistory: [
-        { id: crypto.randomUUID(), status: "draft", at: draft.createdAt, actor: "atelier" },
-        { id: crypto.randomUUID(), status: "submitted", at: now, actor: "atelier" },
-      ],
-      updatedAt: now,
-    };
-    await store.upsertProduct(withStatus);
+    await store.upsertProduct({ ...draft, status: "submitted", updatedAt: now });
     navigateTab("lookbook");
   }
+
+  const canGenerate = stage === "planning" && !generating;
+  const showImages = stage === "presenting" || (stage === "generating" && images.length > 0);
 
   return (
     <div className="grid grid-cols-[1fr_360px] h-[calc(100vh-64px)] min-h-0">
@@ -275,22 +304,12 @@ export default function ComposerPage({
         <header className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white">
           <div className="flex items-baseline gap-2">
             <button onClick={() => navigateTab("__design__")} className="text-sm text-gray-500 hover:text-gray-800">←</button>
-            <span className="text-2xl font-semibold text-blue-600">{MODE_LABEL[mode ?? "single"]}</span>
+            <span className="text-2xl font-semibold text-blue-600">设计工作室</span>
           </div>
-          <span className="text-[11px] text-gray-500 font-mono">{mode}</span>
+          <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
-          {msgs.length === 0 && (
-            <div className="text-gray-500 text-sm max-w-lg">
-              <p className="mb-2 font-medium text-gray-700">本次对话 · 你将与 LongCat 一起创作</p>
-              <ul className="list-disc pl-5 space-y-1 text-[13px]">
-                <li>先简要描述你的灵感 · 灵感图 · 色板 · 季节</li>
-                <li>AI 每轮回复末尾会更新此产品的 JSON</li>
-                <li>满意后按下「录入 Lookbook」将产品送下道工序</li>
-              </ul>
-            </div>
-          )}
           {msgs.map((m) => (
             <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[80%] text-[13.5px] leading-relaxed whitespace-pre-wrap ${m.role === "user" ? "bg-blue-600 text-white ml-auto rounded-br-sm" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
               {m.text}
@@ -299,41 +318,84 @@ export default function ComposerPage({
           {busy && (
             <div className="rounded-2xl px-4 py-3 bg-white border border-gray-200 text-gray-500 max-w-[80%] inline-block">生成中…</div>
           )}
+
+          {/* 生成按钮(企划确认后) */}
+          {canGenerate && (
+            <div className="flex justify-center">
+              <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm shadow-lg transition-colors">
+                🎨 确认企划,开始生成设计图
+              </button>
+            </div>
+          )}
+
+          {/* 生成中 */}
+          {generating && (
+            <div className="flex justify-center">
+              <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">🎨 正在生成设计图…</div>
+            </div>
+          )}
+
+          {/* 设计图展示 */}
+          {showImages && images.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+              <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
+              <div className="grid grid-cols-2 gap-3">
+                {images.map((im) => (
+                  <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        <PromptBar placeholder="描述产品 · 灵感 · 季节性 · 颜色 · 面料 …" onSubmit={send} />
+
+        <PromptBar
+          placeholder={
+            stage === "greeting" ? "我想设计…(插画/单品/系列)" :
+            stage === "aligning" ? "回答设计师的问题…" :
+            stage === "brainstorming" ? "选一个方向,或提出自己的想法…" :
+            stage === "planning" ? "确认企划,或提出修改意见…" :
+            stage === "presenting" ? "描述你想修改的地方…" :
+            "输入…"
+          }
+          onSubmit={send}
+        />
       </div>
 
       <aside className="border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">当前草稿</div>
-        {!draft && <p className="text-sm text-gray-500">AI 回复中若包含 JSON 则会在此预览。</p>}
-        {draft && (
-          <>
-            <h3 className="text-2xl font-semibold text-gray-900 mb-3">{draft.title || "未命名"}</h3>
-            <div className="space-y-3 text-[13px]">
-              {draft.category && <Field label="品类" value={draft.category} />}
-              {draft.seasons?.length > 0 && <Field label="季节" value={draft.seasons.join(", ")} />}
-              {draft.silhouette && <Field label="版型" value={draft.silhouette} />}
-              {draft.colors?.length > 0 && (
-                <div>
-                  <div className="text-gray-500 text-[10px] mb-1">色板</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {draft.colors.map((c) => <span key={c} className="w-6 h-6 rounded border border-gray-200" style={{ background: c }} />)}
-                  </div>
-                </div>
-              )}
-              {typeof draft.targetPriceNum === "number" && <Field label="目标价" value={`¥${draft.targetPriceNum}`} />}
-              {draft.fabricComposition && <Field label="面料" value={draft.fabricComposition} />}
-              {draft.description && <Field label="描述" value={draft.description.slice(0, 300)} />}
-            </div>
-            <button onClick={submitDraft} className="w-full mt-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 text-sm transition-colors">
-              ✓ 录入 Lookbook
-            </button>
-            <button onClick={() => navigateTab("lookbook")} className="w-full mt-2 rounded-xl border border-gray-200 text-gray-700 font-medium py-2 text-sm hover:border-blue-500 hover:text-blue-600 transition-colors">
-              先不下发 · 直接进入 Lookbook
-            </button>
-          </>
-        )}
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
+        {!planText && <p className="text-sm text-gray-500">完成咨询对齐后,这里会显示设计企划。</p>}
+        {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
       </aside>
+    </div>
+  );
+}
+
+/** 单张设计图卡片 + 修图输入 */
+function ImageCard({ image, onRegenerate }: { image: GeneratedImage; onRegenerate: (inst: string) => void }) {
+  const [inst, setInst] = useState("");
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+      <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+        {image.url ? (
+          <img src={image.url} alt={image.label} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">{image.error || "生成失败"}</div>
+        )}
+      </div>
+      <div className="p-2">
+        <div className="text-[11px] text-gray-600 font-medium mb-1">{image.label}</div>
+        {!open ? (
+          <button onClick={() => setOpen(true)} className="text-[10px] text-blue-600 hover:underline">修改</button>
+        ) : (
+          <div className="flex gap-1">
+            <input value={inst} onChange={(e) => setInst(e.target.value)} placeholder="修改意见…"
+              className="flex-1 text-[11px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500" />
+            <button onClick={() => { onRegenerate(inst); setInst(""); setOpen(false); }}
+              className="text-[10px] bg-blue-600 text-white px-2 rounded hover:bg-blue-500">生成</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

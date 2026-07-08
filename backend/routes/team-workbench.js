@@ -21,6 +21,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { callLongcatStream, callQwenStream, callGeminiStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
+const designGeneratorRouter = require('./design-generator');
 const {
   defaultBrand, findOwned, pickDefined, tryParseJson, slugify,
 } = require('../lib/laisse-ancie-helpers');
@@ -60,6 +61,9 @@ const upload = multer({
  * teams.js 已经校验团队所有权;这里额外处理"尚未有 Laisse Ancie 团队"的首次访问:
  * 自动建队 + 品牌信息 seed,保证"进来就能用"。
  */
+// 挂载设计工作流(/design/generate, /design/regenerate)
+router.use('/design', designGeneratorRouter);
+
 router.use(async (req, res, next) => {
   try {
     const teamId = req.params.teamId;
