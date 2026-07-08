@@ -1,21 +1,38 @@
 // @ts-nocheck
+/**
+ * TeamWorkbench —— 通用团队工作台主组件。
+ *
+ * 左栏结构:
+ *   ★ 设计(主工作台,带 单品/插画/系列 模式切换子菜单)
+ *   ─────
+ *   资源  ▾ (灵感 / Lookbook / 材料)     ← 合并为一组,作为设计调用的素材库
+ *   ─────
+ *   知识底座 ▾ (技能 / 资产)             ← 团队通用知识,注入 AI 的 system prompt
+ *
+ * 设计主工作台会自动读取「资源」和「知识底座」的内容,按相关性注入 chat 的
+ * system prompt,让 AI 在生成成品时参考团队的素材与知识。
+ */
 import React, { useState, lazy, Suspense } from 'react';
 import Navbar from '../../components/Navbar';
 import { TeamSelect } from '../../components/TeamSelect';
 import { useCurrentTeam } from '../../contexts/CurrentTeamContext';
-import { EXTENSION_REGISTRY, KNOWLEDGE_REGISTRY } from './teamNav';
+import { useSkillStore } from '../LaisseAncie/store/skill';
+import { useVisualAssetStore } from '../LaisseAncie/store/visual-asset';
+import { useDesignStore } from '../LaisseAncie/store/design';
+import { useResourceStore } from '../LaisseAncie/store/resource';
+import { DESIGN_MODES, RESOURCE_SECTIONS, KNOWLEDGE_SECTIONS, ALL_DATA_TABS, type DesignMode } from './teamNav';
 
 /** 设计 Composer —— 团队主页/主流程(默认展示)。 */
 import ComposerPage from '../LaisseAncie/pages/Composer';
 
-/** 扩展 tab 懒加载(避免首屏过大)。 */
+/** 数据 tab 懒加载(避免首屏过大)。 */
 const InspirationsPage = lazy(() => import('../LaisseAncie/pages/Inspirations'));
 const LookbookPage = lazy(() => import('../LaisseAncie/pages/Lookbook'));
 const MaterialsPage = lazy(() => import('../LaisseAncie/pages/Materials'));
 const SkillsPage = lazy(() => import('../LaisseAncie/pages/Skills'));
 const AssetsPage = lazy(() => import('../LaisseAncie/pages/Assets'));
 
-const EXTENSION_COMPONENTS: Record<string, React.LazyExoticComponent<ComponentType<any>>> = {
+const DATA_COMPONENTS: Record<string, React.LazyExoticComponent<ComponentType<any>>> = {
   inspirations: InspirationsPage,
   lookbook: LookbookPage,
   materials: MaterialsPage,
@@ -24,19 +41,17 @@ const EXTENSION_COMPONENTS: Record<string, React.LazyExoticComponent<ComponentTy
 };
 
 /** 团队主页默认展示设计 Composer(主流程)。 */
-const HOME_EXTENSION_ID = '__design__';
-
-/** 设计模式(单件/插画/系列),可在左侧导航下方切换。 */
-type DesignMode = 'single' | 'illustration' | 'collection';
-const DESIGN_MODES: { id: DesignMode; label: string }[] = [
-  { id: 'single', label: '单品' },
-  { id: 'illustration', label: '插画' },
-  { id: 'collection', label: '系列' },
-];
+const HOME_ID = '__design__';
 
 export default function TeamWorkbench() {
   const { teamId, team, teams, loading: teamLoading, setTeamId, activeTab, navigateTab } = useCurrentTeam();
   const [designMode, setDesignMode] = useState<DesignMode>('single');
+
+  // 预加载资源 + 知识底座数据,传给 Composer 用于自动注入 system prompt
+  const skillStore = useSkillStore();
+  const visualAssetStore = useVisualAssetStore();
+  const designStore = useDesignStore();
+  const resourceStore = useResourceStore();
 
   if (teamLoading || !teamId) {
     return (
@@ -46,24 +61,52 @@ export default function TeamWorkbench() {
     );
   }
 
-  const extensionTabs = Object.entries(EXTENSION_REGISTRY).map(([id, meta]) => ({
-    id, label: meta.label, icon: meta.icon,
-  }));
-  const knowledgeTabs = Object.entries(KNOWLEDGE_REGISTRY).map(([id, meta]) => ({
-    id, label: meta.label, icon: meta.icon,
-  }));
-
   function renderActive() {
-    if (activeTab === HOME_EXTENSION_ID) {
-      return <ComposerPage mode={designMode} />;
+    if (activeTab === HOME_ID) {
+      return (
+        <ComposerPage
+          mode={designMode}
+          knowledge={{
+            skills: skillStore.articles,
+            assets: visualAssetStore.assets,
+            inspirations: resourceStore.inspirations,
+            materials: resourceStore.materials,
+            products: designStore.products,
+          }}
+        />
+      );
     }
-    const Comp = EXTENSION_COMPONENTS[activeTab];
-    if (!Comp) return <div className="p-8 text-gray-500">未找到该扩展</div>;
+    const Comp = DATA_COMPONENTS[activeTab];
+    if (!Comp) return <div className="p-8 text-gray-500">未找到该 tab</div>;
     return (
       <Suspense fallback={<div className="p-8 text-gray-500">加载中…</div>}>
         <Comp />
       </Suspense>
     );
+  }
+
+  function switchTab(tabId: string) {
+    navigateTab(tabId);
+  }
+
+  function renderNavSections() {
+    const sections = [
+      { key: 'resources' as const, data: RESOURCE_SECTIONS },
+      { key: 'knowledge' as const, data: KNOWLEDGE_SECTIONS },
+    ];
+    return sections.map(({ key, data }) => (
+      <React.Fragment key={key}>
+        {data.map((section) => (
+          <NavSection
+            key={section.id}
+            section={section}
+            activeTab={activeTab}
+            onSwitch={switchTab}
+          />
+        ))}
+        <div className="my-3 border-t border-gray-200" />
+      </React.Fragment>
+    ));
   }
 
   return (
@@ -75,7 +118,7 @@ export default function TeamWorkbench() {
               value={teamId}
               options={teams.map((t) => ({ id: t.id, label: t.name }))}
               onChange={(id) => {
-                navigateTab(HOME_EXTENSION_ID);
+                navigateTab(HOME_ID);
                 setTeamId(id);
               }}
               ariaLabel="选择团队"
@@ -91,13 +134,13 @@ export default function TeamWorkbench() {
           <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">工作台</div>
           <nav className="flex flex-col gap-0.5">
             <NavBtn
-              current={activeTab === HOME_EXTENSION_ID}
-              onClick={() => navigateTab(HOME_EXTENSION_ID)}
+              current={activeTab === HOME_ID}
+              onClick={() => navigateTab(HOME_ID)}
               icon="★"
               label="设计"
             />
             {/* 设计模式子菜单(选中"设计"时显示) */}
-            {activeTab === HOME_EXTENSION_ID && (
+            {activeTab === HOME_ID && (
               <div className="ml-4 flex flex-col gap-0.5 mt-0.5">
                 {DESIGN_MODES.map((m) => (
                   <button
@@ -114,31 +157,9 @@ export default function TeamWorkbench() {
                 ))}
               </div>
             )}
-            {extensionTabs.map((t) => (
-              <NavBtn
-                key={t.id}
-                current={activeTab === t.id}
-                onClick={() => navigateTab(t.id)}
-                icon={t.icon}
-                label={t.label}
-              />
-            ))}
           </nav>
 
-          <div className="my-3 border-t border-gray-200" />
-
-          <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">知识底座</div>
-          <nav className="flex flex-col gap-0.5">
-            {knowledgeTabs.map((t) => (
-              <NavBtn
-                key={t.id}
-                current={activeTab === t.id}
-                onClick={() => navigateTab(t.id)}
-                icon={t.icon}
-                label={t.label}
-              />
-            ))}
-          </nav>
+          {renderNavSections()}
         </aside>
 
         {/* 主内容区 */}
@@ -146,6 +167,38 @@ export default function TeamWorkbench() {
           {renderActive()}
         </main>
       </div>
+    </div>
+  );
+}
+
+/** 一个导航分类(资源 / 知识底座)及其子 tab 列表。 */
+function NavSection({
+  section,
+  activeTab,
+  onSwitch,
+}: {
+  section: { id: string; label: string; icon?: string; tabs: { id: string; label: string; icon?: string }[] };
+  activeTab: string;
+  onSwitch: (id: string) => void;
+}) {
+  const hasActive = section.tabs.some((t) => t.id === activeTab);
+  return (
+    <div>
+      <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500 flex items-center gap-1">
+        {section.icon && <span>{section.icon}</span>}
+        {section.label}
+      </div>
+      <nav className="flex flex-col gap-0.5">
+        {section.tabs.map((t) => (
+          <NavBtn
+            key={t.id}
+            current={activeTab === t.id}
+            onClick={() => onSwitch(t.id)}
+            icon={t.icon}
+            label={t.label}
+          />
+        ))}
+      </nav>
     </div>
   );
 }

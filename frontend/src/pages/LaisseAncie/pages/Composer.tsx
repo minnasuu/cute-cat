@@ -8,7 +8,10 @@ import { teamApi } from "../lib/api";
 import { PromptBar } from "../components/PromptBar";
 import { apiClient } from "../lib/api";
 import { MODE_LABEL, type DesignMode, type Product } from "../types/design";
-import { skillHintsFor } from "../lib/skill-hints";
+import type { VisualAsset } from "../types/visual-asset";
+import type { InspirationItem, MaterialRow } from "../store/resource";
+import type { SkillArticle } from "../types/skill";
+import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../../DashboardPage/knowledge-injectors";
 
 const MODE_SPEC: Record<DesignMode, { sys: string; example_json: object }> = {
   illustration: {
@@ -122,7 +125,13 @@ interface ChatMsg {
   product?: Product;
 }
 
-export default function ComposerPage({ mode: modeProp }: { mode?: DesignMode }) {
+export default function ComposerPage({
+  mode: modeProp,
+  knowledge,
+}: {
+  mode?: DesignMode;
+  knowledge?: KnowledgeDeps;
+}) {
   const params = useParams<{ mode: DesignMode }>();
   const mode = modeProp ?? params.mode;
   const spec = MODE_SPEC[mode ?? "single"];
@@ -151,14 +160,14 @@ export default function ComposerPage({ mode: modeProp }: { mode?: DesignMode }) 
     const assistantId = crypto.randomUUID();
     setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "" }]);
 
-    const hints = skillHintsFor(userPrompt + " " + raw, skillStore.articles, {
-      n: 2,
-      categoryBoost:
-        mode === "single" ? { design: 2, fabric: 1 } :
-        mode === "collection" ? { design: 2, brand: 1 } :
-        { brand: 2, sourcing: 1 },
-    });
-    const system = hints ? `${spec.sys}\n\n${hints}` : spec.sys;
+    // 自动从「资源 + 知识底座」按相关性注入 chat 的 system prompt
+    const knowledgeBlock = knowledge
+      ? buildKnowledgeInjectors(knowledge)
+          .map((injector) => injector(userPrompt + " " + raw, knowledge))
+          .filter(Boolean)
+          .join("\n\n")
+      : "";
+    const system = knowledgeBlock ? `${spec.sys}\n\n${knowledgeBlock}` : spec.sys;
 
     // 流式 SSE 消费：手动 fetch（apiClient 当前只支持 JSON 非流式）
     const streamTimeoutMs = 290_000; // 与 nginx proxy_read_timeout 300s 留余量
