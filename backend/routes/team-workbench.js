@@ -190,10 +190,13 @@ router.get('/inspirations', async (req, res) => {
 router.post('/inspirations', (req, res) => {
   upload.single('file')(req, res, async (err) => {
     if (err) {
-      console.error('[team-workbench] upload error:', err.message);
+      console.error('[team-workbench] upload multer error:', err.message, err.code, err.field);
       return res.status(400).json({ error: `上传失败: ${err.message}` });
     }
-    if (!req.file) return res.status(400).json({ error: 'no file' });
+    if (!req.file) {
+      console.error('[team-workbench] no file in request; content-type:', req.headers['content-type']);
+      return res.status(400).json({ error: 'no file' });
+    }
     try {
       const url = `/uploads/${req.team.id}/${req.file.filename}`;
       const asset = await prisma.lAInspirationAsset.create({

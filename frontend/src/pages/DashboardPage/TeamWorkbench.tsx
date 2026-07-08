@@ -159,6 +159,8 @@ export default function TeamWorkbench() {
             )}
           </nav>
 
+          <div className="my-3 border-t border-gray-200" />
+
           {renderNavSections()}
         </aside>
 
