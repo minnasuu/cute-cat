@@ -99,6 +99,9 @@ if [ $MIGRATE_EXIT -ne 0 ]; then
   npx prisma migrate resolve --applied 20260408010000_add_vibe_assets_style_ai_and_fonts 2>/dev/null || true
   npx prisma migrate resolve --applied 20260413000000_add_workflow_category 2>/dev/null || true
   npx prisma migrate resolve --applied 20260708000000_laisse_ancie_add 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260709000000_inspiration_ai_analysis 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260710000000_inspiration_analysis_status 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260711000000_inspiration_analysis_error 2>/dev/null || true
   # Try again
   npx prisma migrate deploy 2>&1
   MIGRATE_EXIT2=$?

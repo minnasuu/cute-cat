@@ -19,6 +19,7 @@ interface InspirationItem {
   designHighlights?: string[];
   styleFeatures?: string[];
   analysisStatus?: "pending" | "success" | "failed" | null;
+  analysisError?: string | null;
   useCount: number;
   createdAt: string;
 }
@@ -99,13 +100,27 @@ export default function InspinationsPage() {
   async function handleRetry(id: string) {
     if (!teamId) return;
     // 乐观更新:立刻把状态拨回 pending,UI 同步响应
-    setItems((prev) => prev.map((it) => it.id === id ? { ...it, analysisStatus: 'pending' } : it));
+    setItems((prev) => prev.map((it) => it.id === id ? { ...it, analysisStatus: 'pending', analysisError: undefined } : it));
     try {
-      await teamApi(teamId).analyzeInspiration(id);
+      const res = await teamApi(teamId).analyzeInspiration(id) as {
+        status?: string;
+        analysisStatus?: string;
+        analysisError?: string | null;
+        category?: string | null;
+      };
+      if (res?.status === 'failed') {
+        // 后端分析失败 → 把分析错误回写到该 item 上
+        setItems((prev) => prev.map((it) => it.id === id ? {
+          ...it,
+          analysisStatus: 'failed' as const,
+          analysisError: res.analysisError || 'unknown',
+        } : it));
+      }
+      // status === 'success' 无需处理,后续 polling 轮会拿到新状态
     } catch (err) {
-      // 请求本身失败 → 改回 failed
+      // 请求本身失败(网络/5xx) → 改回 failed
       console.error("[retry] failed", err);
-      setItems((prev) => prev.map((it) => it.id === id ? { ...it, analysisStatus: 'failed' } : it));
+      setItems((prev) => prev.map((it) => it.id === id ? { ...it, analysisStatus: 'failed', analysisError: 'network' } : it));
     }
   }
 
@@ -217,7 +232,7 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
   const hasAnalysis = asset.category || asset.brandAnalysis || (asset.styleFeatures?.length ?? 0) > 0;
   // 分类标签:优先 category; pending 显示 analysing; failed 显示失败+重试
   const categoryLabel = asset.analysisStatus === 'failed'
-    ? '分析失败'
+    ? `分析失败(${asset.analysisError || 'unknown'})`
     : asset.category || (asset.analysisStatus === 'pending' ? 'analysing…' : '未分类');
   return (
     <figure className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer group">

@@ -252,6 +252,8 @@ model LAInspirationAsset {
   styleFeatures    Json  @default("[]")
   // AI 分析状态: pending(待分析) | success(完成) | failed(失败) —— 用于前端 polling 与重试
   analysisStatus  String   @default("pending")
+  // AI 分析失败原因(key | file | mime | api:xxx | json)—— 重试接口返回给前端用于排错
+  analysisError   String?
   useCount      Int      @default(0)
   createdAt     DateTime @default(now())
   @@index([teamId])

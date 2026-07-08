@@ -230,18 +230,20 @@ router.post('/inspirations', (req, res) => {
   });
 });
 
-// 异步分析灵感图片,失败只记录日志不阻塞
+// 异步分析灵感图片,失败把原因写入 analysisError(供前端重试接口返回)
+// 返回 'success' | 'failed',调用方可据此响应前端
 async function runInspirationAnalysis(id, urlPath) {
   try {
     // urlPath = /uploads/{teamId}/{filename}
     // 注意:urlPath 以 '/' 开头时 path.resolve 会把它当绝对路径、把前面的 __dirname 全部丢弃;
-    // 因此必须用 path.join + resolve,或手动剥离前导 slash。
+    // 因此必须剥离前导 slash 后再 resolve。
     const relPath = urlPath.replace(/^\/+/, '');
     const filePath = path.resolve(__dirname, '..', relPath);
     if (!fs.existsSync(filePath)) {
+      const reason = `file:${filePath}`;
       console.warn(`[team-workbench] image file not found: ${filePath}`);
-      await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed' } }).catch(() => {});
-      return;
+      await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: reason } }).catch(() => {});
+      return 'failed';
     }
     const buf = fs.readFileSync(filePath);
     // 从 url 中解析 mime: 取文件扩展名
@@ -250,17 +252,18 @@ async function runInspirationAnalysis(id, urlPath) {
       : ext === '.png' ? 'image/png'
       : ext === '.webp' ? 'image/webp'
       : 'image/jpeg';
-    const result = await analyzeInspiration(buf, mime);
+    const { result, error } = await analyzeInspiration(buf, mime);
     if (!result) {
-      // AI 返回空(模型无输出 / 解析失败)→ 标记 failed,避免前端永久 "analysing…"
-      await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed' } }).catch(() => {});
-      console.warn(`[team-workbench] inspiration ${id} analysis returned empty → marked failed`);
-      return;
+      // AI 接口失败 / 返回空 / JSON 解析失败 → 写 failed + analysisError,避免前端永久 "analysing…"
+      console.warn(`[team-workbench] inspiration ${id} analysis failed: ${error}`);
+      await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: error || 'unknown' } }).catch(() => {});
+      return 'failed';
     }
     await prisma.lAInspirationAsset.update({
       where: { id },
       data: {
         analysisStatus: 'success',
+        analysisError: null,
         category: result.category || null,
         silhouette: result.silhouette || null,
         colors: Array.isArray(result.colors) ? result.colors : [],
@@ -270,20 +273,27 @@ async function runInspirationAnalysis(id, urlPath) {
       },
     });
     console.log(`[team-workbench] inspiration ${id} analyzed: category=${result.category}`);
+    return 'success';
   } catch (err) {
-    // 网络/超时/AbortError → 同样标记 failed
-    console.error('[team-workbench] analyze inspiration failed:', err.message);
-    await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed' } }).catch(() => {});
+    // 未知异常(不应到达)→ 同样标记 failed
+    console.error('[team-workbench] analyze inspiration exception:', err.message);
+    await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: `exception:${err.message}` } }).catch(() => {});
+    return 'failed';
   }
 }
 
-// POST /api/teams/:teamId/inspirations/:id/analyze —— 重试 AI 分析(把 failed 重置为 pending 再触发)
+// POST /api/teams/:teamId/inspirations/:id/analyze —— 重试 AI 分析(同步等待,返回详细状态给前端排错)
 router.post('/inspirations/:id/analyze', async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
-  await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data: { analysisStatus: 'pending' } });
-  res.json({ ok: true });
-  void runInspirationAnalysis(owned.id, owned.url);
+  // 清除上次失败原因,重置为 pending
+  await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data: { analysisStatus: 'pending', analysisError: null } });
+  const status = await runInspirationAnalysis(owned.id, owned.url);
+  const updated = await prisma.lAInspirationAsset.findUnique({
+    where: { id: owned.id },
+    select: { id: true, analysisStatus: true, analysisError: true, category: true },
+  });
+  res.json({ ok: true, status, ...updated });
 });
 
 // PATCH /api/teams/:teamId/inspirations/:id — 更新 AI 分析/归类字段

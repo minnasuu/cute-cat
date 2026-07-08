@@ -2,7 +2,10 @@
  * analyze-inspiration —— 用 AI 视觉模型分析灵感图片,提取归类 + 设计信息。
  *
  * 输入:图片 buffer + mime。
- * 输出:结构化分析结果(JSON),失败返回 null(调用方不阻塞)。
+ * 输出:{ result, error }:
+ *   - 成功 → { result: {...}, error: null }
+ *   - 失败 → { result: null, error: 'key' | 'mime' | 'file' | 'api:xxx' | 'json' | 'empty' }
+ *     调用方可把 error 记录到 DB 并反馈给用户,用于排错。
  *
  * 模型:复用 LongCat(Anthropic 兼容),通过 image content block 传图。
  */
@@ -34,7 +37,7 @@ async function analyzeInspiration(imageBuffer, mimeType) {
   const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.warn('[analyze-inspiration] LONGCAT_API_KEY/ANTHROPIC_API_KEY not set, skip AI analysis');
-    return null;
+    return { result: null, error: 'key' };
   }
 
   const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
@@ -49,7 +52,7 @@ async function analyzeInspiration(imageBuffer, mimeType) {
     : null;
   if (!mediaType) {
     console.warn(`[analyze-inspiration] unsupported mime: ${mimeType}`);
-    return null;
+    return { result: null, error: 'mime' };
   }
 
   const b64 = imageBuffer.toString('base64');
@@ -82,19 +85,25 @@ async function analyzeInspiration(imageBuffer, mimeType) {
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`API ${res.status}: ${errText}`);
+      console.error(`[analyze-inspiration] API ${res.status}: ${errText}`);
+      return { result: null, error: `api:${res.status}` };
     }
 
     const data = await res.json();
     const raw = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-    if (!raw) throw new Error('model returned empty text');
+    if (!raw) {
+      console.error('[analyze-inspiration] model returned empty text');
+      return { result: null, error: 'empty' };
+    }
 
     const parsed = JSON.parse(extractJson(raw));
     console.log(`[analyze-inspiration] done: category=${parsed.category}, style=${parsed.styleFeatures && parsed.styleFeatures.join('/')}`);
-    return parsed;
+    return { result: parsed, error: null };
   } catch (err) {
-    console.error('[analyze-inspiration] failed:', err.name === 'AbortError' ? `timeout(${timeoutMs}ms)` : err.message);
-    return null;
+    const reason = err.name === 'AbortError' ? `timeout(${timeoutMs}ms)` : err.message;
+    console.error('[analyze-inspiration] failed:', reason);
+    if (err instanceof SyntaxError) return { result: null, error: 'json' };
+    return { result: null, error: `net:${err.name || 'unknown'}` };
   } finally {
     clearTimeout(timer);
   }
