@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * TeamWorkbench —— 通用团队工作台主组件。
  *
@@ -12,15 +11,17 @@
  * 设计主工作台会自动读取「资源」和「知识底座」的内容,按相关性注入 chat 的
  * system prompt,让 AI 在生成成品时参考团队的素材与知识。
  */
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, lazy, Suspense, useEffect, type ComponentType } from 'react';
 import Navbar from '../../components/Navbar';
 import { TeamSelect } from '../../components/TeamSelect';
+import { apiClient } from '../../utils/apiClient';
 import { useCurrentTeam } from '../../contexts/CurrentTeamContext';
 import { useSkillStore } from '../LaisseAncie/store/skill';
 import { useVisualAssetStore } from '../LaisseAncie/store/visual-asset';
 import { useDesignStore } from '../LaisseAncie/store/design';
 import { useResourceStore } from '../LaisseAncie/store/resource';
 import { DESIGN_MODES, RESOURCE_SECTIONS, KNOWLEDGE_SECTIONS, ALL_DATA_TABS, type DesignMode } from './teamNav';
+import type { KnowledgeDeps } from './knowledge-injectors';
 
 /** 设计 Composer —— 团队主页/主流程(默认展示)。 */
 import ComposerPage from '../LaisseAncie/pages/Composer';
@@ -161,11 +162,10 @@ export default function TeamWorkbench() {
                   <button
                     key={m.id}
                     onClick={() => setDesignMode(m.id)}
-                    className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors ${
-                      designMode === m.id
-                        ? 'bg-blue-100 text-blue-700 font-medium'
-                        : 'text-gray-500 hover:text-blue-600'
-                    }`}
+                    className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors ${designMode === m.id
+                      ? 'bg-blue-100 text-blue-700 font-medium'
+                      : 'text-gray-500 hover:text-blue-600'
+                      }`}
                   >
                     {m.label}
                   </button>
@@ -231,11 +231,10 @@ function NavBtn({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-        current
-          ? 'bg-blue-600 text-white font-medium'
-          : 'text-gray-600 hover:bg-blue-50 hover:text-blue-700'
-      }`}
+      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${current
+        ? 'bg-blue-600 text-white font-medium'
+        : 'text-gray-600 hover:bg-blue-50 hover:text-blue-700'
+        }`}
     >
       {icon && <span className="text-xs">{icon}</span>}
       <span>{label}</span>
