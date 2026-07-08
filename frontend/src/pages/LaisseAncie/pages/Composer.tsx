@@ -74,6 +74,11 @@ const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总�
 用户描述修改意见后,给出专业反馈并加 <!--STAGE:presenting-->。
 前端会自动重新生成修改的那张图。
 
+## 贴近叙事与素材
+- 每轮给出的设计方向必须贴近「材料库」中的面料与工艺 — 从真实可用的面料出发,而不是空想。
+- 风格方向必须参考「灵感图」的 AI 分析结果(归类 / 廓形 / 配色 / 设计亮点 / 风格特色),做出一脉相承的延展,而不是另起炉灶。
+- 成衣描述里要具体指出「用哪款材料库的面料」+「呼应哪张灵感图的什么元素」,让用户看到可追溯的素材链路。
+
 ## 重要规则
 - 每轮回复末尾必须加 <!--STAGE:当前阶段--> 标记
 - 用中文对话,专业但不生硬,体现 Laisse Ancie 的「优雅·松弛·乐趣」调性
@@ -107,9 +112,11 @@ interface GeneratedImage {
 export default function ComposerPage({
   mode: modeProp,
   knowledge,
+  brandLoading,
 }: {
   mode?: DesignMode;
   knowledge?: KnowledgeDeps;
+  brandLoading?: boolean;
 }) {
   const params = useParams<{ mode: DesignMode }>();
   const mode = modeProp ?? params.mode ?? "single";
@@ -288,11 +295,35 @@ export default function ComposerPage({
     }
   }
 
-  async function submitDraft() {
-    if (!draft) return;
+  // 把本次设计(图片+企划)录入 Lookbook
+  async function saveToLookbook() {
+    if (images.length === 0) return;
     const now = new Date().toISOString();
-    await store.upsertProduct({ ...draft, status: "submitted", updatedAt: now });
-    navigateTab("lookbook");
+    const mainImage = images.find((im) => im.url);
+    // 收集所有可访问的图片 URL
+    const imageUrls = images.filter((im) => im.url).map((im) => im.url);
+    const product: Product = {
+      id: crypto.randomUUID(),
+      mode,
+      title: `Design ${now.slice(0, 10)}`,
+      description: planText,
+      seasons: [],
+      category: mode,
+      colors: [],
+      tech_pack_url: mainImage?.url,
+      aiDraftRaw: JSON.stringify({ plan: planText, images }),
+      status: "draft",
+      statusHistory: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      await store.upsertProduct(product);
+      // 录入成功 → 跳转到 Lookbook
+      navigateTab("lookbook");
+    } catch (e: any) {
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 录入失败: ${e.message}` }]);
+    }
   }
 
   const canGenerate = stage === "planning" && !generating;
@@ -338,7 +369,14 @@ export default function ComposerPage({
           {/* 设计图展示 */}
           {showImages && images.length > 0 && (
             <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-              <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
+                {stage === "presenting" && (
+                  <button onClick={saveToLookbook} className="text-[12px] bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg font-medium transition-colors">
+                    ✓ 录入 Lookbook
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {images.map((im) => (
                   <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />

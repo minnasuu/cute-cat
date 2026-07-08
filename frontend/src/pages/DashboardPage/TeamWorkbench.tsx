@@ -46,12 +46,25 @@ const HOME_ID = '__design__';
 export default function TeamWorkbench() {
   const { teamId, team, teams, loading: teamLoading, setTeamId, activeTab, navigateTab } = useCurrentTeam();
   const [designMode, setDesignMode] = useState<DesignMode>('single');
+  const [brand, setBrand] = useState<KnowledgeDeps["brand"]>(undefined);
+  const [brandLoading, setBrandLoading] = useState(true);
 
   // 预加载资源 + 知识底座数据,传给 Composer 用于自动注入 system prompt
   const skillStore = useSkillStore();
   const visualAssetStore = useVisualAssetStore();
   const designStore = useDesignStore();
   const resourceStore = useResourceStore();
+
+  // 预加载品牌资产
+  useEffect(() => {
+    if (!teamId) { setBrandLoading(false); return; }
+    apiClient.get(`/api/teams/${teamId}/brand`).then((r) => {
+      if (r.profile) setBrand({
+        ...r.profile,
+        colors: r.colors || [],
+      });
+    }).catch(() => { /* ignore */ }).finally(() => setBrandLoading(false));
+  }, [teamId]);
 
   if (teamLoading || !teamId) {
     return (
@@ -66,12 +79,14 @@ export default function TeamWorkbench() {
       return (
         <ComposerPage
           mode={designMode}
+          brandLoading={brandLoading}
           knowledge={{
             skills: skillStore.articles,
             assets: visualAssetStore.assets,
             inspirations: resourceStore.inspirations,
             materials: resourceStore.materials,
             products: designStore.products,
+            brand,
           }}
         />
       );

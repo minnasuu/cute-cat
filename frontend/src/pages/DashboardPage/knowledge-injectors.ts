@@ -15,12 +15,29 @@ import type { InspirationItem, MaterialRow } from "../LaisseAncie/store/resource
 import type { SkillArticle } from "../LaisseAncie/types/skill";
 import type { Product } from "../LaisseAncie/types/design";
 
+export interface BrandProfile {
+  nameZh?: string;
+  nameEn?: string;
+  sloganZh?: string;
+  sloganEn?: string;
+  voice?: string[];
+  audienceAgeMin?: number;
+  audienceAgeMax?: number;
+  priceMin?: number;
+  priceMax?: number;
+  cnFont?: string;
+  enFont?: string;
+  systemSnippet?: string;
+  colors?: Array<{ bg: string; fg: string; usage?: string }>;
+}
+
 export interface KnowledgeDeps {
   skills: SkillArticle[];
   assets: VisualAsset[];
   inspirations: InspirationItem[];
   materials: MaterialRow[];
   products: Product[];
+  brand?: BrandProfile;
 }
 
 type Injector = (prompt: string, deps: KnowledgeDeps) => string;
@@ -108,6 +125,27 @@ const materialInjector: Injector = (prompt, deps) => {
   return `## Materials (reference these in your reply)\n${blocks}`;
 };
 
+/** 品牌资产注入:作为设计基调约束(不按相关性打分,始终注入) */
+const brandInjector: Injector = (_prompt, deps) => {
+  const b = deps.brand;
+  if (!b) return "";
+  const voice = b.voice?.length ? b.voice.join(" / ") : "优雅 · 松弛 · 乐趣";
+  const lines: string[] = [
+    "## Brand(baseline — every design must echo this)",
+    `Brand: ${b.nameZh || "来兮·安兮"} / ${b.nameEn || "Laisse Ancie"}`,
+    `Voice: ${voice}`,
+    `Slogan: ${b.sloganZh || "既来之，则安之"} — ${b.sloganEn || "Come, be at ease."}`,
+  ];
+  if (b.audienceAgeMin != null && b.audienceAgeMax != null) lines.push(`Audience: ${b.audienceAgeMin}-${b.audienceAgeMax} 岁 · 独立自我的年轻女性`);
+  if (b.priceMin != null && b.priceMax != null) lines.push(`Price band: ¥${b.priceMin} — ¥${b.priceMax}`);
+  if (b.systemSnippet) lines.push(`\n${b.systemSnippet}`);
+  const palette = (b.colors || []).filter((c) => c.bg && c.fg);
+  if (palette.length) {
+    lines.push(`Brand palette: ${palette.map((c) => `${c.bg}/${c.fg}${c.usage ? ` (${c.usage})` : ""}`).join(", ")}`);
+  }
+  return lines.join("\n");
+};
+
 /** 系列作品注入:按 category/colors/description 匹配 */
 const productInjector: Injector = (prompt, deps) => {
   if (!deps.products.length) return "";
@@ -141,5 +179,5 @@ function tokenize(prompt: string): Set<string> {
 
 /** 构建所有 injector。调用方在每次 chat 发送时遍历它们。 */
 export function buildKnowledgeInjectors(deps: KnowledgeDeps): Injector[] {
-  return [skillInjector, assetInjector, inspirationInjector, materialInjector, productInjector];
+  return [brandInjector, skillInjector, assetInjector, inspirationInjector, materialInjector, productInjector];
 }
