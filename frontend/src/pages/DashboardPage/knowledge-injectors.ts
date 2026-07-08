@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * knowledge-injectors —— 把「资源 + 知识底座」按相关性注入 chat 的 system prompt。
  *
