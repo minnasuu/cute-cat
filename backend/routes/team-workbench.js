@@ -187,23 +187,34 @@ router.get('/inspirations', async (req, res) => {
 });
 
 // POST /api/teams/:teamId/inspirations — multipart form-data with field "file"
-router.post('/inspirations', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'no file' });
-  const url = `/uploads/${req.team.id}/${req.file.filename}`;
-  const asset = await prisma.lAInspirationAsset.create({
-    data: {
-      teamId: req.team.id,
-      url,
-      thumbUrl: url,
-      mime: req.file.mimetype,
-      bytes: req.file.size,
-      category: req.body.category || null,
-      silhouette: req.body.silhouette || null,
-      colors: tryParseJson(req.body.colors, []),
-      brandAnalysis: req.body.brandAnalysis || null,
-    },
+router.post('/inspirations', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('[team-workbench] upload error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    if (!req.file) return res.status(400).json({ error: 'no file' });
+    try {
+      const url = `/uploads/${req.team.id}/${req.file.filename}`;
+      const asset = await prisma.lAInspirationAsset.create({
+        data: {
+          teamId: req.team.id,
+          url,
+          thumbUrl: url,
+          mime: req.file.mimetype,
+          bytes: req.file.size,
+          category: req.body.category || null,
+          silhouette: req.body.silhouette || null,
+          colors: tryParseJson(req.body.colors, []),
+          brandAnalysis: req.body.brandAnalysis || null,
+        },
+      });
+      res.status(201).json(asset);
+    } catch (e) {
+      console.error('[team-workbench] create inspiration failed:', e);
+      res.status(500).json({ error: `写入失败: ${e.message}` });
+    }
   });
-  res.status(201).json(asset);
 });
 
 router.post('/inspirations/:id/touch', async (req, res) => {

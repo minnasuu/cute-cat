@@ -26,8 +26,17 @@ const EXTENSION_COMPONENTS: Record<string, React.LazyExoticComponent<ComponentTy
 /** 团队主页默认展示设计 Composer(主流程)。 */
 const HOME_EXTENSION_ID = '__design__';
 
+/** 设计模式(单件/插画/系列),可在左侧导航下方切换。 */
+type DesignMode = 'single' | 'illustration' | 'collection';
+const DESIGN_MODES: { id: DesignMode; label: string }[] = [
+  { id: 'single', label: '单品' },
+  { id: 'illustration', label: '插画' },
+  { id: 'collection', label: '系列' },
+];
+
 export default function TeamWorkbench() {
   const { teamId, team, teams, loading: teamLoading, setTeamId, activeTab, navigateTab } = useCurrentTeam();
+  const [designMode, setDesignMode] = useState<DesignMode>('single');
 
   if (teamLoading || !teamId) {
     return (
@@ -46,7 +55,7 @@ export default function TeamWorkbench() {
 
   function renderActive() {
     if (activeTab === HOME_EXTENSION_ID) {
-      return <ComposerPage />;
+      return <ComposerPage mode={designMode} />;
     }
     const Comp = EXTENSION_COMPONENTS[activeTab];
     if (!Comp) return <div className="p-8 text-gray-500">未找到该扩展</div>;
@@ -87,6 +96,24 @@ export default function TeamWorkbench() {
               icon="★"
               label="设计"
             />
+            {/* 设计模式子菜单(选中"设计"时显示) */}
+            {activeTab === HOME_EXTENSION_ID && (
+              <div className="ml-4 flex flex-col gap-0.5 mt-0.5">
+                {DESIGN_MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setDesignMode(m.id)}
+                    className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors ${
+                      designMode === m.id
+                        ? 'bg-blue-100 text-blue-700 font-medium'
+                        : 'text-gray-500 hover:text-blue-600'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {extensionTabs.map((t) => (
               <NavBtn
                 key={t.id}

@@ -122,8 +122,9 @@ interface ChatMsg {
   product?: Product;
 }
 
-export default function ComposerPage() {
-  const { mode } = useParams<{ mode: DesignMode }>();
+export default function ComposerPage({ mode: modeProp }: { mode?: DesignMode }) {
+  const params = useParams<{ mode: DesignMode }>();
+  const mode = modeProp ?? params.mode;
   const spec = MODE_SPEC[mode ?? "single"];
   const store = useDesignStore();
   const skillStore = useSkillStore();

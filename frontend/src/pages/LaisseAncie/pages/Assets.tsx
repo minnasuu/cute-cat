@@ -40,6 +40,7 @@ function TabBtn({ current, onClick, label }: { current: boolean; onClick: () => 
 /* ── 品牌信息资产 ─────────────────────────────────────────────── */
 
 function BrandInfoAssets() {
+  const { teamId } = useCurrentTeam();
   const [profile, setProfile] = useState<any>(null);
   const [colors, setColors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
