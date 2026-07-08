@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useVisualAssetStore } from "../store/visual-asset";
-import { apiClient } from "../lib/api";
+import { apiClient, teamApi } from "../lib/api";
+import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import {
   VISUAL_KIND_META, type VisualAsset, type VisualAssetKind,
 } from "../types/visual-asset";
@@ -11,6 +12,7 @@ import { BrandLogo } from "../components/ui";
 type Tab = "brand" | "visual";
 
 export default function AssetsPage() {
+  const { teamId } = useCurrentTeam();
   const [tab, setTab] = useState<Tab>("brand");
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-10 py-10">
@@ -43,7 +45,8 @@ function BrandInfoAssets() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient.get("/api/laisse-ancie/brand").then((r) => {
+    if (!teamId) return;
+    teamApi(teamId).getBrand().then((r) => {
       setProfile(r.profile);
       setColors(r.colors || []);
     }).catch(() => {
@@ -305,7 +308,7 @@ function AssetPicker({ onClose, onSave }: { onClose: () => void; onSave: (a: Vis
     if (f.size > 8 * 1024 * 1024) { alert("单张不超过 8 MB"); return; }
     setBusy(true);
     try {
-      // multipart POST to /api/laisse-ancie/inspirations?kind=visual-asset or keep as data URL for now
+      // multipart POST to /api/teams/:teamId/inspirations?kind=visual-asset or keep as data URL for now
       // Simple path: store data URI in src for now (v1)
       const reader = new FileReader();
       reader.onload = () => setSrc(reader.result as string);

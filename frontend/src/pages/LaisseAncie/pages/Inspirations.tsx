@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compressForUpload } from "../lib/images";
+import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
+import { teamApi } from "../lib/api";
 
 const TAKE = 24;
 
@@ -21,6 +23,7 @@ interface InspirationItem {
 type Filter = { category?: string; silhouette?: string; sort: "recent" | "uses" };
 
 export default function InspirationsPage() {
+  const { teamId } = useCurrentTeam();
   const [items, setItems] = useState<InspirationItem[]>([]);
   const [total, setTotal] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -34,27 +37,23 @@ export default function InspirationsPage() {
   useEffect(() => { cursorRef.current = cursor; }, [cursor]);
 
   const fetchList = useCallback(async (append: boolean, appendCursor: string | null) => {
+    if (!teamId) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (q) params.set("q", q);
-      if (filter.category) params.set("category", filter.category);
-      if (filter.silhouette) params.set("silhouette", filter.silhouette);
-      params.set("take", String(TAKE));
-      if (appendCursor) params.set("cursor", appendCursor);
-      const res = await fetch(`/api/laisse-ancie/inspirations?${params}`, { credentials: "include" });
-      const data = await res.json();
+      const data = await teamApi(teamId).listInspirations({
+        q, category: filter.category, take: TAKE, cursor: appendCursor ?? undefined,
+      });
       setItems((prev) => append ? [...prev, ...data.items] : data.items);
       setCursor(data.nextCursor);
       setTotal(data.total);
     } finally { setLoading(false); }
-  }, [q, filter]);
+  }, [teamId, q, filter.category]);
 
-  useEffect(() => { void fetchList(false, null); }, [q, filter.category, filter.silhouette, filter.sort]);
+  useEffect(() => { void fetchList(false, null); }, [q, filter.category, filter.silhouette, filter.sort, fetchList]);
 
   useEffect(() => {
-    fetch(`/api/laisse-ancie/inspirations?take=96`, { credentials: "include" })
-      .then((r) => r.json())
+    if (!teamId) return;
+    teamApi(teamId).listInspirations({ take: 96 })
       .then((all: { items: InspirationItem[] }) => {
         const cats = new Set<string>();
         const sils = new Set<string>();
@@ -64,7 +63,7 @@ export default function InspirationsPage() {
         }
         setCatalog({ categories: Array.from(cats), silhouettes: Array.from(sils) });
       }).catch(() => {});
-  }, [total]);
+  }, [total, teamId]);
 
   const loadMore = () => { if (!loading && cursorRef.current) void fetchList(true, cursorRef.current); };
 
@@ -78,10 +77,9 @@ export default function InspirationsPage() {
         setUploads((u) => u.map((e) => e.id === id ? { ...e, status: "uploading" } : e));
         const fd = new FormData();
         fd.append("file", compressed);
-        const res = await fetch("/api/laisse-ancie/inspirations", {
-          method: "POST", body: fd, credentials: "include",
-        });
-        if (!res.ok) throw new Error(`failed: ${res.status}`);
+        if (!teamId) return;
+        const res = await teamApi(teamId).uploadInspiration(fd);
+        if (!res) throw new Error("upload failed");
         setUploads((u) => u.filter((e) => e.id !== id));
         void fetchList(false, null);
       } catch (err) {

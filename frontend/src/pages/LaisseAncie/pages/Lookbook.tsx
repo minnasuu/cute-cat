@@ -2,6 +2,8 @@
 import { useMemo, useState } from "react";
 import { useDesignStore } from "../store/design";
 import { useSkillStore } from "../store/skill";
+import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
+import { teamApi } from "../lib/api";
 import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type Product, type ProductStatus } from "../types/design";
 
 const ALL_MODES = ["illustration", "single", "collection", "occasion"] as const;
@@ -13,6 +15,7 @@ function nextStatus(s: ProductStatus): ProductStatus | null {
 }
 
 export default function LookbookPage() {
+  const { teamId } = useCurrentTeam();
   const store = useDesignStore();
   const [tab, setTab] = useState<TabKey>("all");
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
@@ -122,9 +125,9 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
       const now = new Date().toISOString();
       const entry = { id: crypto.randomUUID(), status: target, at: now, actor: "atelier", note: note.trim() || undefined };
       const updated = { ...product, status: target, statusHistory: [...(product.statusHistory || []), entry], updatedAt: now };
-      // Use advance endpoint via apiClient.patch simple update
-      const { apiClient } = await import("../../../utils/apiClient");
-      await apiClient.post(`/api/laisse-ancie/products/${product.id}/advance`, { status: target, note });
+      // Use advance endpoint via teamApi
+      if (!teamId) return;
+      await teamApi(teamId).advanceProduct(product.id, { status: target, note });
       await onSave(updated);
     } finally { setSubmitting(false); }
   }

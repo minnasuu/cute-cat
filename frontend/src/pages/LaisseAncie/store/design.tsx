@@ -1,10 +1,11 @@
 // @ts-nocheck
 /**
- * HTTP-backed DesignStore — talks /api/laisse-ancie/products & /collections.
- * Drop-in replacement for the localStorage store used by the original Laisse Ancie SPA.
+ * HTTP-backed DesignStore — 团队作用域。
+ * 路径:/api/teams/:teamId/products & /collections,teamId 来自 CurrentTeamContext。
  */
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
-import { apiClient } from "../lib/api";
+import { teamApi } from "../lib/api";
+import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import type { Collection, Product } from "../types/design";
 
 interface ContextValue {
@@ -21,17 +22,16 @@ interface ContextValue {
 const Ctx = createContext<ContextValue | null>(null);
 
 export function DesignStoreProvider({ children }: { children: ReactNode }) {
+  const { teamId } = useCurrentTeam();
   const [products, setProducts] = useState<Product[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (tid: string) => {
     setLoading(true);
     try {
-      const [p, c] = await Promise.all([
-        apiClient.get<Product[]>("/api/laisse-ancie/products"),
-        apiClient.get<Collection[]>("/api/laisse-ancie/collections"),
-      ]);
+      const api = teamApi(tid);
+      const [p, c] = await Promise.all([api.listProducts(), api.listCollections()]);
       setProducts(p);
       setCollections(c);
     } catch (err) {
@@ -41,35 +41,41 @@ export function DesignStoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { if (teamId) void refresh(teamId); }, [refresh, teamId]);
 
   const upsertProduct = useCallback(async (p: Product) => {
+    if (!teamId) return;
+    const api = teamApi(teamId);
     if (p.id && products.some((x) => x.id === p.id)) {
-      await apiClient.patch<Product>(`/api/laisse-ancie/products/${p.id}`, p);
+      await api.updateProduct(p.id, p);
     } else {
-      await apiClient.post<Product>("/api/laisse-ancie/products", p);
+      await api.createProduct(p);
     }
-    await refresh();
-  }, [products, refresh]);
+    await refresh(teamId);
+  }, [teamId, products, refresh]);
 
   const removeProduct = useCallback(async (id: string) => {
-    await apiClient.delete(`/api/laisse-ancie/products/${id}`);
-    await refresh();
-  }, [refresh]);
+    if (!teamId) return;
+    await teamApi(teamId).deleteProduct(id);
+    await refresh(teamId);
+  }, [teamId, refresh]);
 
   const upsertCollection = useCallback(async (c: Collection) => {
+    if (!teamId) return;
+    const api = teamApi(teamId);
     if (c.id && collections.some((x) => x.id === c.id)) {
-      await apiClient.patch<Collection>(`/api/laisse-ancie/collections/${c.id}`, c);
+      await api.updateCollection(c.id, c);
     } else {
-      await apiClient.post<Collection>("/api/laisse-ancie/collections", c);
+      await api.createCollection(c);
     }
-    await refresh();
-  }, [collections, refresh]);
+    await refresh(teamId);
+  }, [teamId, collections, refresh]);
 
   const removeCollection = useCallback(async (id: string) => {
-    await apiClient.delete(`/api/laisse-ancie/collections/${id}`);
-    await refresh();
-  }, [refresh]);
+    if (!teamId) return;
+    await teamApi(teamId).deleteCollection(id);
+    await refresh(teamId);
+  }, [teamId, refresh]);
 
   const value = useMemo<ContextValue>(() => ({
     products, collections, upsertProduct, removeProduct,

@@ -84,6 +84,19 @@ router.get('/workbench', async (req, res) => {
   }
 });
 
+// ======================== 通用团队工作台(/:teamId) ========================
+/*
+ * 注册在 /api/teams/:teamId,由 `routes/team-workbench.js` 提供
+ * 「技能 / 资产 / 灵感 / 材料 / 设计作品 / 系列 / 品牌 / 设计主流程 chat」模块。
+ *
+ * 顺序约束(重要):
+ *   1. teams.js 顶部已注册的 `/workbench`、`/:id`、`/:id/ai-stats` 优先匹配;
+ *   2. 未匹配到的 `/api/teams/:teamId/*` 自动落到本 子路由。
+ * 不可把本 子路由移到 teams.js 顶部,否则 `:teamId` 会吞掉 `workbench` 等保留路径。
+ */
+const teamWorkbenchRouter = require('./team-workbench');
+router.use('/:teamId', teamWorkbenchRouter);
+
 // ======================== 团队 AI 调用统计（按猫聚合） ========================
 router.get('/:id/ai-stats', async (req, res) => {
   try {

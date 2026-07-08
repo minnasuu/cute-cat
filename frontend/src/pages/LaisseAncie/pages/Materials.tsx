@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../lib/api";
+import { teamApi } from "../lib/api";
+import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { Modal } from "../components/ui";
 
 interface MaterialRow {
@@ -91,16 +93,17 @@ const SEED: MaterialRow[] = [
 ];
 
 export default function MaterialsPage() {
+  const { teamId } = useCurrentTeam();
   const [cat, setCat] = useState("面料");
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [rows, setRows] = useState<MaterialRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (tid: string) => {
     setLoading(true);
     try {
-      const r = await apiClient.get<MaterialRow[]>("/api/laisse-ancie/materials");
+      const r = await teamApi(tid).listMaterials();
       if (!r || r.length === 0) { setRows(SEED); }
       else {
         // seed one row if collection empty attempt first backend row save; otherwise show rows
@@ -111,7 +114,7 @@ export default function MaterialsPage() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { if (teamId) void refresh(teamId); }, [refresh, teamId]);
 
   const visible = useMemo(() => {
     const base = rows.filter((m) => m.category === cat);

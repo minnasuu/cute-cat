@@ -1,10 +1,12 @@
 // @ts-nocheck
 /**
- * HTTP-backed SkillStore — talks /api/laisse-ancie/skills.
- * Seeds once on first load when the collection is empty.
+ * HTTP-backed SkillStore — 团队作用域技能知识库。
+ * 路径:/api/teams/:teamId/skills,teamId 来自 CurrentTeamContext。
+ * 首次进入空集合时自动 seed 6 篇示例文章(与旧 Laisse Ancie 行为一致)。
  */
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
-import { apiClient } from "../lib/api";
+import { teamApi } from "../lib/api";
+import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import type { SkillArticle } from "../types/skill";
 
 interface ContextValue {
@@ -60,20 +62,22 @@ const SEED: SkillArticle[] = [
 ];
 
 export function SkillStoreProvider({ children }: { children: ReactNode }) {
+  const { teamId } = useCurrentTeam();
   const [articles, setArticles] = useState<SkillArticle[]>([]);
   const [loading, setLoading] = useState(true);
   let didInit = false;
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (tid: string) => {
     setLoading(true);
     try {
-      const rows = await apiClient.get<SkillArticle[]>("/api/laisse-ancie/skills");
+      const api = teamApi(tid);
+      const rows = await api.listSkills();
       if (rows.length === 0) {
         // seed
         for (const a of SEED) {
-          try { await apiClient.post("/api/laisse-ancie/skills", a); } catch { /* ignore */ }
+          try { await api.createSkill(a); } catch { /* ignore */ }
         }
-        const seeded = await apiClient.get<SkillArticle[]>("/api/laisse-ancie/skills");
+        const seeded = await api.listSkills();
         setArticles(seeded);
       } else {
         setArticles(rows);
@@ -87,22 +91,25 @@ export function SkillStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!didInit) { didInit = true; void refresh(); }
-  }, [refresh]);
+    if (!didInit && teamId) { didInit = true; void refresh(teamId); }
+  }, [refresh, teamId]);
 
   const upsert = useCallback(async (a: SkillArticle) => {
+    if (!teamId) return;
+    const api = teamApi(teamId);
     if (articles.some((x) => x.id === a.id)) {
-      await apiClient.patch<SkillArticle>(`/api/laisse-ancie/skills/${a.id}`, a);
+      await api.updateSkill(a.id, a);
     } else {
-      await apiClient.post<SkillArticle>("/api/laisse-ancie/skills", a);
+      await api.createSkill(a);
     }
-    await refresh();
-  }, [articles, refresh]);
+    await refresh(teamId);
+  }, [teamId, articles, refresh]);
 
   const remove = useCallback(async (id: string) => {
-    await apiClient.delete(`/api/laisse-ancie/skills/${id}`);
-    await refresh();
-  }, [refresh]);
+    if (!teamId) return;
+    await teamApi(teamId).deleteSkill(id);
+    await refresh(teamId);
+  }, [teamId, refresh]);
 
   const value = useMemo<ContextValue>(() => ({ articles, upsert, remove, refresh, loading }), [articles, upsert, remove, refresh, loading]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

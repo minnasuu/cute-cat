@@ -1,8 +1,10 @@
 // @ts-nocheck
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useDesignStore } from "../store/design";
 import { useSkillStore } from "../store/skill";
+import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
+import { teamApi } from "../lib/api";
 import { PromptBar } from "../components/PromptBar";
 import { apiClient } from "../lib/api";
 import { MODE_LABEL, type DesignMode, type Product } from "../types/design";
@@ -121,11 +123,11 @@ interface ChatMsg {
 }
 
 export default function ComposerPage() {
-  const navigate = useNavigate();
   const { mode } = useParams<{ mode: DesignMode }>();
   const spec = MODE_SPEC[mode ?? "single"];
   const store = useDesignStore();
   const skillStore = useSkillStore();
+  const { teamId, navigateTab } = useCurrentTeam();
 
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [busy, setBusy] = useState(false);
@@ -163,7 +165,7 @@ export default function ComposerPage() {
     const timeoutId = globalThis.setTimeout(() => ac.abort(), streamTimeoutMs);
 
     try {
-      const res = await fetch("/api/laisse-ancie/chat", {
+      const res = await fetch(teamApi(teamId ?? "").chatUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -254,7 +256,7 @@ export default function ComposerPage() {
       updatedAt: now,
     };
     await store.upsertProduct(withStatus);
-    navigate("/laisse-ancie/lookbook");
+    navigateTab("lookbook");
   }
 
   return (
@@ -262,7 +264,7 @@ export default function ComposerPage() {
       <div className="flex flex-col min-h-0">
         <header className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white">
           <div className="flex items-baseline gap-2">
-            <button onClick={() => navigate("/laisse-ancie/design")} className="text-sm text-gray-500 hover:text-gray-800">←</button>
+            <button onClick={() => navigateTab("__design__")} className="text-sm text-gray-500 hover:text-gray-800">←</button>
             <span className="text-2xl font-semibold text-blue-600">{MODE_LABEL[mode ?? "single"]}</span>
           </div>
           <span className="text-[11px] text-gray-500 font-mono">{mode}</span>
@@ -316,7 +318,7 @@ export default function ComposerPage() {
             <button onClick={submitDraft} className="w-full mt-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 text-sm transition-colors">
               ✓ 录入 Lookbook
             </button>
-            <button onClick={() => navigate("/laisse-ancie/lookbook")} className="w-full mt-2 rounded-xl border border-gray-200 text-gray-700 font-medium py-2 text-sm hover:border-blue-500 hover:text-blue-600 transition-colors">
+            <button onClick={() => navigateTab("lookbook")} className="w-full mt-2 rounded-xl border border-gray-200 text-gray-700 font-medium py-2 text-sm hover:border-blue-500 hover:text-blue-600 transition-colors">
               先不下发 · 直接进入 Lookbook
             </button>
           </>

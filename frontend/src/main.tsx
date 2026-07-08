@@ -106,7 +106,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* Laisse Ancie — fashion atelier (requires auth) */}
+              {/* Laisse Ancie — 已合并到通用团队工作台,重定向到 /dashboard */}
               <Route
                 path="/laisse-ancie/*"
                 element={

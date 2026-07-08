@@ -12,10 +12,10 @@ interface User {
 
 interface UserProfileDropdownProps {
   user: User;
-  /** 工作流累计执行记录数 */
-  workflowRuns: number;
-  /** AI 调用日志按猫聚合总和 */
-  totalAiCalls: number;
+  /** 工作流累计执行记录数(可选,通用团队工作台下不传) */
+  workflowRuns?: number;
+  /** AI 调用日志按猫聚合总和(可选,通用团队工作台下不传) */
+  totalAiCalls?: number;
   onLogout: () => void | Promise<void>;
 }
 
