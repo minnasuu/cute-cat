@@ -193,36 +193,44 @@ router.get('/inspirations', async (req, res) => {
   res.json({ items, nextCursor: hasMore ? items[items.length - 1].id : null, total });
 });
 
-// GET /api/teams/:teamId/inspirations/debug —— AI 配置诊断(返回当前 env + 试请求结果)
+// GET /api/teams/:teamId/inspirations/debug —— AI 配置诊断(返回各 provider 可用性)
 // 注意:上线后应删除或加 admin 校验
 router.get('/inspirations/debug', async (req, res) => {
   try {
-    const apiKey = process.env.LONGCAT_API_KEY || process.env.OPENAI_API_KEY;
-    const baseUrl = (process.env.LONGCAT_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, '');
-    const model = process.env.INSPIRATION_AI_MODEL || process.env.LONGCAT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
-    // 文本试请求(不带图,排除 vision 问题和图片大小问题)
-    let probe = { ok: false, status: null, body: null };
-    try {
-      const r = await fetch(`${baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] }),
-        signal: AbortSignal.timeout(10000),
-      });
-      probe.status = r.status;
-      probe.ok = r.ok;
-      probe.body = await r.text().then((t) => t.slice(0, 300));
-    } catch (e) {
-      probe.body = `fetch error: ${e.message}`;
+    const prefs = ['qwen', 'openai', 'longcat'];
+    const providers = [];
+    for (const name of prefs) {
+      const upper = name.toUpperCase();
+      const key = process.env[`${upper}_API_KEY`];
+      const base = name === 'openai' && !process.env[`${upper}_BASE_URL`] ? 'https://api.openai.com' : process.env[`${upper}_BASE_URL`];
+      const model = process.env[`${upper}_MODEL`];
+      if (!key || !base) {
+        providers.push({ name, ok: 'no-config' });
+        continue;
+      }
+      let probe = { ok: false, status: null, body: null };
+      try {
+        const r = await fetch(`${base.replace(/\/+$/, '')}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+          body: JSON.stringify({ model: model || 'gpt-4o-mini', max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] }),
+          signal: AbortSignal.timeout(10000),
+        });
+        probe.status = r.status;
+        probe.ok = r.ok;
+        probe.body = await r.text().then((t) => t.slice(0, 300));
+      } catch (e) {
+        probe.body = `fetch error: ${e.message}`;
+      }
+      providers.push({ name, ok: probe.ok ? 'ok' : 'fail', model, baseUrl: base.replace(/^https?:\/\/[^/]+/, '***'), probe });
+    }
+    // gemini
+    if (process.env.GEMINI_API_KEY) {
+      providers.push({ name: 'gemini', ok: 'sdk-only', model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' });
     }
     res.json({
-      env: {
-        hasApiKey: !!apiKey,
-        apiKeyPrefix: apiKey ? `${apiKey.slice(0, 6)}…${apiKey.slice(-4)}` : null,
-        baseUrl,
-        model,
-      },
-      probe,
+      INSPIRATION_AI_PROVIDER: process.env.INSPIRATION_AI_PROVIDER || '(未设置,按 qwen→openai→gemini 顺序回退)',
+      providers,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -4,10 +4,13 @@
  * 输入:图片 buffer + mime。
  * 输出:{ result, error }:
  *   - 成功 → { result: {...}, error: null }
- *   - 失败 → { result: null, error: 'key' | 'mime' | 'file' | 'api:xxx' | 'json' | 'empty' }
- *     调用方可把 error 记录到 DB 并反馈给用户,用于排错。
+ *   - 失败 → { result: null, error: 'key' | 'mime' | 'file' | 'api:xxx' | 'json:...' | 'empty' }
  *
- * 模型:复用 LongCat(OpenAI 兼容,走 /v1/chat/completions + Bearer <REDACTED>),通过 image_url data-URI 传图。
+ * provider(INSPIRATION_AI_PROVIDER):
+ *   - openai(LONGCAT_BASE_URL/LONGCAT_API_KEY/LONGCAT_MODEL 或 OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL)
+ *   - qwen(QWEN_BASE_URL/QWEN_API_KEY/QWEN_MODEL)
+ *   - gemini(GEMINI_BASE_URL/GEMINI_API_KEY/GEMINI_MODEL)  -- 通过 @google/genai SDK,支持 inline image
+ * 默认:打开可用 key 的第一个(qwen → gemini → openai)
  */
 
 'use strict';
@@ -25,6 +28,7 @@ const PROMPT = `你是一位时尚品牌 Laisse Ancie (来兮·安兮)的资深�
 只输出 JSON,不要寒暄,不要代码块标记:`;
 
 function extractJson(text) {
+  if (!text) return '';
   const fence = text.match(/`{3}(?:json)?\s*([\s\S]*?)\s*`{3}/);
   if (fence) return fence[1].trim();
   const start = text.indexOf('{');
@@ -33,45 +37,24 @@ function extractJson(text) {
   return text;
 }
 
-async function analyzeInspiration(imageBuffer, mimeType) {
-  const apiKey = process.env.LONGCAT_API_KEY || process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    console.warn('[analyze-inspiration] LONGCAT_API_KEY/OPENAI_API_KEY not set, skip AI analysis');
-    return { result: null, error: 'key' };
-  }
-
-  const baseUrl = (process.env.LONGCAT_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, '');
-  const model = process.env.INSPIRATION_AI_MODEL || process.env.LONGCAT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const maxTokens = 1024;
-  const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 30000;
-
-  const mediaType = mimeType === 'image/jpeg' ? 'image/jpeg'
-    : mimeType === 'image/png' ? 'image/png'
-    : mimeType === 'image/webp' ? 'image/webp'
-    : mimeType === 'image/gif' ? 'image/gif'
+function mediaTypeToExtension(mimeType) {
+  return mimeType === 'image/jpeg' ? 'jpeg'
+    : mimeType === 'image/png' ? 'png'
+    : mimeType === 'image/webp' ? 'webp'
+    : mimeType === 'image/gif' ? 'gif'
     : null;
-  if (!mediaType) {
-    console.warn(`[analyze-inspiration] unsupported mime: ${mimeType}`);
-    return { result: null, error: 'mime' };
-  }
+}
 
-  const b64 = imageBuffer.toString('base64');
-  const dataUrl = `data:${mediaType};base64,${b64}`;
-
+// ─── OpenAI‑compatible (Qwen/LongCat/OpenAI) ───────────────────
+async function analyzeOpenAi({ baseUrl, apiKey, model, dataUrl, mimeType, timeoutMs }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    console.log(`[analyze-inspiration] analyzing image (${imageBuffer.length} bytes, ${mediaType}, model=${model}, baseUrl=${baseUrl})`);
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
+        model, max_tokens: 1024,
         messages: [{
           role: 'user',
           content: [
@@ -82,33 +65,143 @@ async function analyzeInspiration(imageBuffer, mimeType) {
       }),
       signal: controller.signal,
     });
-
     if (!res.ok) {
-      const errText = await res.text();
-      // 把响应体裁到 200 字符内,拼进 error 里——前端可以直接看到 API 真实拒绝原因
-      const reason = errText.replace(/\s+/g, ' ').slice(0, 200);
-      console.error(`[analyze-inspiration] API ${res.status}: ${errText}`);
-      return { result: null, error: `api:${res.status}:${reason}` };
+      const t = (await res.text()).replace(/\s+/g, ' ').slice(0, 200);
+      return { error: `api:${res.status}:${t}` };
     }
-
     const data = await res.json();
     const raw = data?.choices?.[0]?.message?.content || '';
-    if (!raw) {
-      console.error('[analyze-inspiration] model returned empty content');
-      return { result: null, error: 'empty' };
-    }
-
-    const parsed = JSON.parse(extractJson(raw));
-    console.log(`[analyze-inspiration] done: category=${parsed.category}, style=${parsed.styleFeatures && parsed.styleFeatures.join('/')}`);
-    return { result: parsed, error: null };
+    if (!raw) return { error: 'empty' };
+    return { raw };
   } catch (err) {
-    const reason = err.name === 'AbortError' ? `timeout(${timeoutMs}ms)` : err.message;
-    console.error('[analyze-inspiration] failed:', reason);
-    if (err instanceof SyntaxError) return { result: null, error: 'json' };
-    return { result: null, error: `net:${err.name || 'unknown'}` };
+    if (err.name === 'AbortError') return { error: `net:timeout(${timeoutMs}ms)` };
+    return { error: `net:${err.name || 'unknown'}` };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ─── Gemini (原生 SDK,内联 base64 小图) ───────────────────────
+async function analyzeGemini({ apiKey, model, imageBuffer, mimeType, timeoutMs }) {
+  let GoogleGenAI;
+  try {
+    GoogleGenAI = (await import('@google/genai')).GoogleGenAI;
+  } catch (e) {
+    return { error: `no-sdk:@google/genai` };
+  }
+  const ext = mediaTypeToExtension(mimeType);
+  if (!ext) return { error: 'mime' };
+  const client = new GoogleGenAI({ apiKey });
+
+  const timer = setTimeout(() => {}, timeoutMs);
+  try {
+    const resp = await client.models.generateContent({
+      model,
+      contents: [
+        { inlineData: { mimeType, data: imageBuffer.toString('base64') } },
+        { text: PROMPT },
+      ],
+      generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
+    });
+    const raw = resp?.text || '';
+    if (!raw) return { error: 'empty' };
+    return { raw };
+  } catch (err) {
+    if (err.name === 'AbortError') return { error: `net:timeout(${timeoutMs}ms)` };
+    return { error: `net:${err.name || 'unknown'}:${(err.message || '').slice(0, 100)}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function analyzeInspiration(imageBuffer, mimeType) {
+  if (!imageBuffer || !imageBuffer.length) {
+    return { result: null, error: 'file' };
+  }
+  const ext = mediaTypeToExtension(mimeType);
+  if (!ext) {
+    return { result: null, error: 'mime' };
+  }
+  const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 30000;
+
+  /** @type {Array<{name:string,run:Function}>} */
+  const providers = [];
+
+  // 优先级 1: INSPIRATION_AI_PROVIDER 显式指定
+  const forced = (process.env.INSPIRATION_AI_PROVIDER || '').toLowerCase().trim();
+
+  // openai 大类 (qwen/openai/longcat 都走同一路径,只是 env var 名不同)
+  const openVariants = [
+    { name: 'qwen',  base: process.env.QWEN_BASE_URL,  key: process.env.QWEN_API_KEY,  model: process.env.QWEN_MODEL },
+    { name: 'openai', base: process.env.OPENAI_BASE_URL, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL },
+    { name: 'longcat', base: process.env.LONGCAT_BASE_URL, key: process.env.LONGCAT_API_KEY, model: process.env.LONGCAT_MODEL },
+  ].filter((v) => v.key && v.base);
+  // 没配 base 的 openai/openai 默认补 https://api.openai.com
+  for (const v of openVariants) {
+    if (!v.base) v.base = 'https://api.openai.com';
+  }
+  // 显式模型名优先级最高
+  const explicitModel = (process.env.INSPIRATION_AI_MODEL || '').trim();
+
+  for (const v of openVariants) {
+    const model = explicitModel || v.model || (v.name === 'openai' ? 'gpt-4o-mini' : '');
+    if (!model) continue;
+    providers.push({
+      name: v.name,
+      run: () => analyzeOpenAi({ baseUrl: v.base, apiKey: v.key, model, dataUrl: `data:${mimeType};base64,${imageBuffer.toString('base64')}`, mimeType, timeoutMs }),
+    });
+  }
+
+  // gemini
+  if (process.env.GEMINI_API_KEY) {
+    providers.push({
+      name: 'gemini',
+      run: () => analyzeGemini({
+        apiKey: process.env.GEMINI_API_KEY,
+        model: explicitModel || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+        imageBuffer, mimeType, timeoutMs,
+      }),
+    });
+  }
+
+  if (forced) {
+    const match = providers.filter((p) => p.name === forced);
+    if (match.length === 0) {
+      return { result: null, error: `no-provider:${forced}` };
+    }
+    providers.splice(0, providers.length, ...match);
+  }
+
+  if (providers.length === 0) {
+    console.warn('[analyze-inspiration] no AI provider (qwen/openai/gemini) configured with both key + base');
+    return { result: null, error: 'key' };
+  }
+
+  let lastError = 'key';
+  for (const p of providers) {
+    try {
+      console.log(`[analyze-inspiration] try provider=${p.name}`);
+      const { raw, error } = await p.run();
+      if (error) {
+        lastError = `${p.name}:${error}`;
+        console.warn(`[analyze-inspiration] provider=${p.name} failed: ${error}`);
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(extractJson(raw));
+        console.log(`[analyze-inspiration] done via ${p.name}: category=${parsed.category}`);
+        return { result: parsed, error: null };
+      } catch (e) {
+        console.error(`[analyze-inspiration] provider=${p.name} JSON parse fail: ${e.message}; raw=${raw.slice(0, 120)}`);
+        lastError = `${p.name}:json`;
+        continue;
+      }
+    } catch (err) {
+      lastError = `${p.name}:exception:${err.message}`;
+      console.error(`[analyze-inspiration] provider=${p.name} threw: ${err.message}`);
+    }
+  }
+  return { result: null, error: lastError };
 }
 
 module.exports = { analyzeInspiration };
