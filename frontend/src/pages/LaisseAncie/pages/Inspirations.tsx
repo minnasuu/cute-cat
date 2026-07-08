@@ -119,8 +119,9 @@ export default function InspinationsPage() {
     const tick = async () => {
       if (cancelled || attempts >= maxAttempts) return;
       attempts += 1;
+      let data;
       try {
-        const data = await teamApi(teamId).listInspirations({ q, category: filter.category, take: TAKE });
+        data = await teamApi(teamId).listInspirations({ q, category: filter.category, take: TAKE });
         setItems(data.items ?? []);
         setTotal(data.total);
       } catch { /* 轮询失败静默 */ }
