@@ -85,8 +85,10 @@ async function analyzeInspiration(imageBuffer, mimeType) {
 
     if (!res.ok) {
       const errText = await res.text();
+      // 把响应体裁到 200 字符内,拼进 error 里——前端可以直接看到 API 真实拒绝原因
+      const reason = errText.replace(/\s+/g, ' ').slice(0, 200);
       console.error(`[analyze-inspiration] API ${res.status}: ${errText}`);
-      return { result: null, error: `api:${res.status}` };
+      return { result: null, error: `api:${res.status}:${reason}` };
     }
 
     const data = await res.json();
