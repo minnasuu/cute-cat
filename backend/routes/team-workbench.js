@@ -13,12 +13,14 @@
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const { callLongcatStream, callQwenStream, callGeminiStream } = require('../workflow-executor');
+const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const {
   defaultBrand, findOwned, pickDefined, tryParseJson, slugify,
 } = require('../lib/laisse-ancie-helpers');
@@ -214,12 +216,50 @@ router.post('/inspirations', (req, res) => {
         },
       });
       res.status(201).json(asset);
+
+      // 异步 AI 视觉分析(不阻塞上传响应)
+      void runInspirationAnalysis(asset.id, asset.url);
     } catch (e) {
       console.error('[team-workbench] create inspiration failed:', e);
       res.status(500).json({ error: `写入失败: ${e.message}` });
     }
   });
 });
+
+// 异步分析灵感图片,失败只记录日志不阻塞
+async function runInspirationAnalysis(id, urlPath) {
+  try {
+    // urlPath = /uploads/{teamId}/{filename}
+    const filePath = path.resolve(__dirname, '..', urlPath);
+    if (!fs.existsSync(filePath)) {
+      console.warn(`[team-workbench] image file not found: ${filePath}`);
+      return;
+    }
+    const buf = fs.readFileSync(filePath);
+    // 从 url 中解析 mime: 取文件扩展名
+    const ext = path.extname(filePath).toLowerCase();
+    const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
+      : ext === '.png' ? 'image/png'
+      : ext === '.webp' ? 'image/webp'
+      : 'image/jpeg';
+    const result = await analyzeInspiration(buf, mime);
+    if (!result) return;
+    await prisma.lAInspirationAsset.update({
+      where: { id },
+      data: {
+        category: result.category || null,
+        silhouette: result.silhouette || null,
+        colors: Array.isArray(result.colors) ? result.colors : [],
+        brandAnalysis: result.brandAnalysis || null,
+        designHighlights: Array.isArray(result.designHighlights) ? result.designHighlights : [],
+        styleFeatures: Array.isArray(result.styleFeatures) ? result.styleFeatures : [],
+      },
+    });
+    console.log(`[team-workbench] inspiration ${id} analyzed: category=${result.category}`);
+  } catch (err) {
+    console.error('[team-workbench] analyze inspiration failed:', err.message);
+  }
+}
 
 router.post('/inspirations/:id/touch', async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);

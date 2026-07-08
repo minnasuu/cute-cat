@@ -149,23 +149,40 @@ export default function InspirationsPage() {
 }
 
 function AssetCard({ asset }: { asset: InspirationItem }) {
-  const [hover, setHover] = useState(false);
+  const hasAnalysis = asset.category || asset.brandAnalysis || (asset.styleFeatures?.length ?? 0) > 0;
   return (
-    <figure onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer">
+    <figure className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer group">
       <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
         <img src={asset.thumbUrl || asset.url} alt={asset.brandAnalysis ?? asset.category ?? "inspiration"} loading="lazy"
-          className={`w-full h-full object-cover transition-transform duration-500 ${hover ? "scale-[1.05]" : "scale-100"}`} />
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.05]" />
+        {/* 基础信息(始终可见) */}
         <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/30 to-transparent text-white">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] uppercase tracking-wider opacity-90">{asset.category || "analysing…"}</span>
-            <span className="text-[11px] bg-white/15 backdrop-blur px-1.5 py-0.5 rounded-full">{asset.useCount} AI uses</span>
+            {asset.useCount > 0 && <span className="text-[11px] bg-white/15 backdrop-blur px-1.5 py-0.5 rounded-full">{asset.useCount} uses</span>}
           </div>
           {asset.colors?.length > 0 && (
             <div className="flex gap-1 mt-1.5">{asset.colors.map((c) => <span key={c} className="w-3 h-3 rounded-full border border-white/40" style={{ background: c }} />)}</div>
           )}
           <figcaption className="text-[10px] opacity-75 mt-1 font-mono">{new Date(asset.createdAt).toLocaleDateString()}</figcaption>
         </div>
+        {/* Hover 展开:AI 分析详情 */}
+        {hasAnalysis && (
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-3 text-white flex flex-col gap-2 overflow-y-auto">
+            {asset.silhouette && <div className="text-[11px]"><span className="opacity-60">廓形 · </span>{asset.silhouette}</div>}
+            {asset.styleFeatures?.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {asset.styleFeatures.map((s) => <span key={s} className="text-[10px] bg-white/15 px-1.5 py-0.5 rounded-full">{s}</span>)}
+              </div>
+            )}
+            {asset.designHighlights?.length > 0 && (
+              <ul className="text-[10px] leading-relaxed space-y-0.5">
+                {asset.designHighlights.map((h) => <li key={h} className="opacity-90">· {h}</li>)}
+              </ul>
+            )}
+            {asset.brandAnalysis && <p className="text-[10px] leading-relaxed opacity-75 mt-auto">{asset.brandAnalysis}</p>}
+          </div>
+        )}
       </div>
     </figure>
   );

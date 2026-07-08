@@ -18,6 +18,8 @@ export interface InspirationItem {
   silhouette?: string | null;
   colors?: string[];
   brandAnalysis?: string | null;
+  designHighlights?: string[];
+  styleFeatures?: string[];
   useCount?: number;
   createdAt: string;
 }
