@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const storage = require('./storage');
 
 /**
  * 把设计工作流的 aspectRatio 映射到 CogView 支持的 size。
@@ -99,7 +100,7 @@ async function generateImage(prompt, opts) {
     clearTimeout(timer);
   }
 
-  // CogView 返回的 URL 是临时的,立即下载落盘到本地 uploads,保持与旧逻辑一致的 /uploads/… 服务
+  // CogView 返回的 URL 是临时的,立即下载并持久化到 storage(本地或 S3)
   try {
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) {
@@ -108,17 +109,17 @@ async function generateImage(prompt, opts) {
     }
     const buf = Buffer.from(await imgRes.arrayBuffer());
 
-    const uploadsRoot = path.join(__dirname, '..', 'uploads');
-    const outDir = path.join(uploadsRoot, String(teamId), 'design');
-    fs.mkdirSync(outDir, { recursive: true });
-
+    // tmp 落盘(由 saveUpload 再路由到最终位置,统一本地/S3 两条路径)
     const cleanSafe = String(safeName || 'image').replace(/[^a-zA-Z0-9一-龥_-]+/g, '-').slice(0, 60) || 'image';
     const filename = `${Date.now()}-${cleanSafe}-${crypto.randomBytes(6).toString('hex')}.png`;
-    const absPath = path.join(outDir, filename);
-    fs.writeFileSync(absPath, buf);
+    const tmpPath = path.join(storage.TMP_DIR, filename);
+    fs.mkdirSync(storage.TMP_DIR, { recursive: true });
+    fs.writeFileSync(tmpPath, buf);
+    const savePath = storage.createSavePath(`design/${String(teamId)}`, filename);
+    await storage.saveUpload(tmpPath, savePath, 'image/png');
 
-    const url = `/uploads/${teamId}/design/${filename}`;
-    console.log(`[gen-image] done: ${source}, saved=${filename}`);
+    const url = storage.getPublicUrl(savePath);
+    console.log(`[gen-image] done: ${source}, mode=${storage.mode}, saved=${filename}, url=${url}`);
     return { url, prompt, model };
   } catch (e) {
     console.error('[gen-image] save image failed:', e?.message || String(e));

@@ -4,14 +4,12 @@ const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
 const { authMiddleware } = require('../middleware/auth');
+const storage = require('../lib/storage');
+const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
 
 const router = express.Router();
 
 router.use(authMiddleware);
-
-function ensureDir(dirPath) {
-  fs.mkdirSync(dirPath, { recursive: true });
-}
 
 function safeExtFromMime(mimetype) {
   if (mimetype === 'image/jpeg') return '.jpg';
@@ -22,29 +20,20 @@ function safeExtFromMime(mimetype) {
   return '';
 }
 
-const storage = multer.diskStorage({
-  destination(req, _file, cb) {
-    const runId = typeof req.body?.runId === 'string' && req.body.runId.trim() ? req.body.runId.trim() : null;
-    const userId = String(req.userId || 'anonymous');
-    const rel = runId ? path.join('uploads', userId, runId) : path.join('uploads', userId);
-    const abs = path.join(__dirname, '..', rel);
-    try {
-      ensureDir(abs);
-      cb(null, abs);
-    } catch (err) {
-      cb(err);
-    }
-  },
-  filename(_req, file, cb) {
-    const extFromName = path.extname(file.originalname || '').slice(0, 12);
-    const ext = extFromName || safeExtFromMime(file.mimetype) || '';
-    const name = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
-    cb(null, name);
-  },
-});
-
+// 所有上传先落到 tmp,由后续 saveUpload 路由到最终位置(本地或 S3),避免容器重建丢文件
 const upload = multer({
-  storage,
+  storage: multer.diskStorage({
+    destination(_req, _file, cb) {
+      fs.mkdirSync(TMP_DIR, { recursive: true });
+      cb(null, TMP_DIR);
+    },
+    filename(_req, file, cb) {
+      const extFromName = path.extname(file.originalname || '').slice(0, 12);
+      const ext = extFromName || safeExtFromMime(file.mimetype) || '';
+      const name = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      cb(null, name);
+    },
+  }),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter(_req, file, cb) {
     if (!file.mimetype || !file.mimetype.startsWith('image/')) {
@@ -58,15 +47,12 @@ router.post('/image', upload.single('image'), async (req, res) => {
   try {
     const f = req.file;
     if (!f) return res.status(400).json({ error: '缺少图片文件 image' });
+    const runId = typeof req.body?.runId === 'string' && req.body.runId.trim() ? req.body.runId.trim() : null;
+    const folder = runId ? `workflow/${String(req.userId || 'anonymous')}/${runId}` : `workflow/${String(req.userId || 'anonymous')}`;
 
-    // f.path: absolute path, we need a public URL under /uploads
-    const absUploadsRoot = path.join(__dirname, '..', 'uploads') + path.sep;
-    const absFile = f.path;
-    if (!absFile.startsWith(absUploadsRoot)) {
-      return res.status(500).json({ error: '上传路径异常' });
-    }
-    const rel = absFile.slice(absUploadsRoot.length).split(path.sep).join('/');
-    const url = `/uploads/${rel}`;
+    const savePath = createSavePath(folder, f.filename);
+    await saveUpload(f.path, savePath, f.mimetype);
+    const url = getPublicUrl(savePath);
     res.json({ url });
   } catch (err) {
     console.error('[uploads] image error:', err);
@@ -75,4 +61,3 @@ router.post('/image', upload.single('image'), async (req, res) => {
 });
 
 module.exports = router;
-

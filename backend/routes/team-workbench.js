@@ -21,6 +21,8 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { callLongcatStream, callQwenStream, callGeminiStream, callGlmStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
+const storage = require('../lib/storage');
+const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
 const designGeneratorRouter = require('./design-generator');
 const {
   defaultBrand, findOwned, pickDefined, tryParseJson, slugify,
@@ -28,16 +30,12 @@ const {
 
 const router = express.Router();
 
-const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
-
 const storage = multer.diskStorage({
-  destination: async (req, _file, cb) => {
+  // 统一先落到本地 tmp,后续由 saveUpload() 路由到本地最终目录或 S3,避免容器重建丢失文件
+  destination: async (_req, _file, cb) => {
     try {
-      const dir = path.join(UPLOAD_ROOT, String(req.team.id));
-      await new Promise((resolve, reject) =>
-        require('fs').mkdir(dir, { recursive: true }, (err) => (err ? reject(err) : resolve())),
-      );
-      cb(null, dir);
+      await fs.promises.mkdir(TMP_DIR, { recursive: true });
+      cb(null, TMP_DIR);
     } catch (err) {
       cb(err);
     }
@@ -254,7 +252,10 @@ router.post('/inspirations', (req, res) => {
       return res.status(400).json({ error: 'no file' });
     }
     try {
-      const url = `/uploads/${req.team.id}/${req.file.filename}`;
+      // 把 multer 暂存文件落到最终位置(本地或 S3,由 storage 模块按 env 决定)
+      const savePath = createSavePath(`inspirations/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
       const asset = await prisma.lAInspirationAsset.create({
         data: {
           teamId: req.team.id,
@@ -270,8 +271,11 @@ router.post('/inspirations', (req, res) => {
       });
       res.status(201).json(asset);
 
-      // 异步 AI 视觉分析(不阻塞上传响应)
-      void runInspirationAnalysis(asset.id, asset.url);
+      // 异步 AI 视觉分析(不阻塞上传响应)——本地模式下 url 相对路径需要转为绝对 /app/backend/… 文件路径
+      const filePath = storage.mode === 'local'
+        ? path.join(storage.UPLOAD_ROOT, savePath.split('/').slice(1).join(path.sep))
+        : null;
+      void runInspirationAnalysis(asset.id, filePath, url);
     } catch (e) {
       console.error('[team-workbench] create inspiration failed:', e);
       res.status(500).json({ error: `写入失败: ${e.message}` });
@@ -281,20 +285,31 @@ router.post('/inspirations', (req, res) => {
 
 // 异步分析灵感图片,失败把原因写入 analysisError(供前端重试接口返回)
 // 返回 'success' | 'failed',调用方可据此响应前端
-async function runInspirationAnalysis(id, urlPath) {
+// filePath:本地绝对路径(本地模式);publicUrl:公网 URL(所有模式,含 S3)
+async function runInspirationAnalysis(id, filePath, publicUrl) {
   try {
-    // urlPath = /uploads/{teamId}/{filename}
-    // 注意:urlPath 以 '/' 开头时 path.resolve 会把它当绝对路径、把前面的 __dirname 全部丢弃;
-    // 因此必须剥离前导 slash 后再 resolve。
-    const relPath = urlPath.replace(/^\/+/, '');
-    const filePath = path.resolve(__dirname, '..', relPath);
-    if (!fs.existsSync(filePath)) {
-      const reason = `file:${filePath}`;
-      console.warn(`[team-workbench] image file not found: ${filePath}`);
-      await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: reason } }).catch(() => {});
-      return 'failed';
+    let buf;
+    if (storage.mode === 'local') {
+      // filePath = /app/backend/uploads/... 本地绝对路径
+      if (!filePath || !fs.existsSync(filePath)) {
+        const reason = `file:${filePath || '(none)'}`;
+        console.warn(`[team-workbench] image file not found: ${filePath}`);
+        await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: reason } }).catch(() => {});
+        return 'failed';
+      }
+      buf = fs.readFileSync(filePath);
+    } else {
+      // S3 模式:从公网 URL 下载 bytes
+      try {
+        const r = await fetch(publicUrl);
+        if (!r.ok) throw new Error(`download ${publicUrl} HTTP ${r.status}`);
+        buf = Buffer.from(await r.arrayBuffer());
+      } catch (e) {
+        console.warn(`[team-workbench] download image for analysis failed: ${e.message}`);
+        await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: `net:${e.message}` } }).catch(() => {});
+        return 'failed';
+      }
     }
-    const buf = fs.readFileSync(filePath);
     // 从 url 中解析 mime: 取文件扩展名
     const ext = path.extname(filePath).toLowerCase();
     const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
