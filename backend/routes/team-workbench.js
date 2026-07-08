@@ -193,6 +193,42 @@ router.get('/inspirations', async (req, res) => {
   res.json({ items, nextCursor: hasMore ? items[items.length - 1].id : null, total });
 });
 
+// GET /api/teams/:teamId/inspirations/debug —— AI 配置诊断(返回当前 env + 试请求结果)
+// 注意:上线后应删除或加 admin 校验
+router.get('/inspirations/debug', async (req, res) => {
+  try {
+    const apiKey = process.env.LONGCAT_API_KEY || process.env.OPENAI_API_KEY;
+    const baseUrl = (process.env.LONGCAT_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, '');
+    const model = process.env.INSPIRATION_AI_MODEL || process.env.LONGCAT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    // 文本试请求(不带图,排除 vision 问题和图片大小问题)
+    let probe = { ok: false, status: null, body: null };
+    try {
+      const r = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] }),
+        signal: AbortSignal.timeout(10000),
+      });
+      probe.status = r.status;
+      probe.ok = r.ok;
+      probe.body = await r.text().then((t) => t.slice(0, 300));
+    } catch (e) {
+      probe.body = `fetch error: ${e.message}`;
+    }
+    res.json({
+      env: {
+        hasApiKey: !!apiKey,
+        apiKeyPrefix: apiKey ? `${apiKey.slice(0, 6)}…${apiKey.slice(-4)}` : null,
+        baseUrl,
+        model,
+      },
+      probe,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/teams/:teamId/inspirations — multipart form-data with field "file"
 router.post('/inspirations', (req, res) => {
   upload.single('file')(req, res, async (err) => {
