@@ -202,7 +202,7 @@ function NavSection({
   return (
     <div>
       <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500 flex items-center gap-1">
-        {section.icon && <span>{section.icon}</span>}
+        {/* {section.icon && <span>{section.icon}</span>} */}
         {section.label}
       </div>
       <nav className="flex flex-col gap-0.5">

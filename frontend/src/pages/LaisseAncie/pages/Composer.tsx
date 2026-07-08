@@ -162,9 +162,9 @@ export default function ComposerPage({
     const history = [...msgs, userMsg].map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
     const knowledgeBlock = knowledge
       ? buildKnowledgeInjectors(knowledge)
-          .map((inj) => inj(raw, knowledge))
-          .filter(Boolean)
-          .join("\n\n")
+        .map((inj) => inj(raw, knowledge))
+        .filter(Boolean)
+        .join("\n\n")
       : "";
     const system = knowledgeBlock
       ? `${DESIGNER_SYSTEM}\n\n## 团队知识库(自动注入)\n${knowledgeBlock}`
@@ -249,7 +249,7 @@ export default function ComposerPage({
     if (generating) return;
     setGenerating(true);
     setStage("generating");
-    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "🎨 开始生成设计图…" }]);
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "开始生成设计图…" }]);
     try {
       const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/generate"), {
         method: "POST",
@@ -262,7 +262,7 @@ export default function ComposerPage({
       setStage("presenting");
       setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "✨ 设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。" }]);
     } catch (e: any) {
-      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 生成失败: ${e.message}` }]);
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败: ${e.message}` }]);
       setStage("planning");
     } finally {
       setGenerating(false);
@@ -347,14 +347,14 @@ export default function ComposerPage({
             </div>
           ))}
           {busy && (
-            <div className="rounded-2xl px-4 py-3 bg-white border border-gray-200 text-gray-500 max-w-[80%] inline-block">生成中…</div>
+            <div className="text-gray-500 max-w-[80%] inline-block">生成中…</div>
           )}
 
           {/* 生成按钮(企划确认后) */}
           {canGenerate && (
             <div className="flex justify-center">
               <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm shadow-lg transition-colors">
-                🎨 确认企划,开始生成设计图
+                确认方案,开始生成设计图
               </button>
             </div>
           )}
@@ -362,7 +362,7 @@ export default function ComposerPage({
           {/* 生成中 */}
           {generating && (
             <div className="flex justify-center">
-              <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">🎨 正在生成设计图…</div>
+              <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">正在生成设计图…</div>
             </div>
           )}
 
@@ -373,7 +373,7 @@ export default function ComposerPage({
                 <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
                 {stage === "presenting" && (
                   <button onClick={saveToLookbook} className="text-[12px] bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg font-medium transition-colors">
-                    ✓ 录入 Lookbook
+                    录入 Lookbook
                   </button>
                 )}
               </div>
@@ -389,11 +389,11 @@ export default function ComposerPage({
         <PromptBar
           placeholder={
             stage === "greeting" ? "我想设计…(插画/单品/系列)" :
-            stage === "aligning" ? "回答设计师的问题…" :
-            stage === "brainstorming" ? "选一个方向,或提出自己的想法…" :
-            stage === "planning" ? "确认企划,或提出修改意见…" :
-            stage === "presenting" ? "描述你想修改的地方…" :
-            "输入…"
+              stage === "aligning" ? "回答设计师的问题…" :
+                stage === "brainstorming" ? "选一个方向,或提出自己的想法…" :
+                  stage === "planning" ? "确认企划,或提出修改意见…" :
+                    stage === "presenting" ? "描述你想修改的地方…" :
+                      "输入…"
           }
           onSubmit={send}
         />
