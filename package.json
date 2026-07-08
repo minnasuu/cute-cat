@@ -8,6 +8,10 @@
     "build": "cd frontend && npm run build",
     "start:backend": "cd backend && node index.js",
     "docker:up": "docker-compose up -d --build",
-    "docker:down": "docker-compose down"
+    "docker:down": "docker-compose down",
+    "prepare": "husky .husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }
 }

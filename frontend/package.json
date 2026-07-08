@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build && vite build --config vite.sandbox-ui.config.ts",
     "build:sandbox-ui": "vite build --config vite.sandbox-ui.config.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prepare": "husky"
   },
   "dependencies": {
     "browser-image-compression": "^2.0.2",
@@ -30,6 +31,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",
+    "husky": "^9.1.7",
     "tailwindcss": "^4.1.12",
     "typescript": "~5.8.3",
     "vite": "^6.3.5"
