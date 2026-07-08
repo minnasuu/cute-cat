@@ -30,7 +30,7 @@ const {
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
+const multerStorage = multer.diskStorage({
   // 统一先落到本地 tmp,后续由 saveUpload() 路由到本地最终目录或 S3,避免容器重建丢失文件
   destination: async (_req, _file, cb) => {
     try {
@@ -47,7 +47,7 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({
-  storage,
+  storage: multerStorage,
   limits: { fileSize: 12 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpe?g|png|webp|avif|gif)$/i.test(file.mimetype)) cb(null, true);
