@@ -159,7 +159,7 @@ function ArticleCard({ a, onClick }: { a: SkillArticle; onClick: () => void }) {
   );
 }
 
-function PinBadge() { return <span className="absolute top-3 right-3 text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full">PIN</span>; }
+function PinBadge() { return <span className="absolute top-3 right-3 text-[10px] bg-primary-500 text-white px-2 py-0.5 rounded-full">PIN</span>; }
 
 function Inner({ a }: { a: SkillArticle }) {
   const meta = SKILL_PHASE_META[a.category as SkillPhaseId];
@@ -251,7 +251,7 @@ function ArticleModal({ article, onClose }: { article: SkillArticle; onClose: ()
         )}
         <div className="flex gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">关闭</button>
-          {!isComingSoon && editing && <button onClick={save} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-500">保存</button>}
+          {!isComingSoon && editing && <button onClick={save} className="px-4 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500">保存</button>}
         </div>
       </footer>
     </Modal>
@@ -311,7 +311,7 @@ function AddArticleButton() {
           </div>
           <footer className="mt-4 flex justify-end">
             <button onClick={save} disabled={!draft.zhTitle || !draft.title}
-              className="px-5 py-2 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-500 disabled:opacity-40">保存</button>
+              className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500 disabled:opacity-40">保存</button>
           </footer>
         </Modal>
       )}

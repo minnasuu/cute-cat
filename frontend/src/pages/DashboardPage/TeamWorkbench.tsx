@@ -232,7 +232,7 @@ function NavBtn({
     <button
       onClick={onClick}
       className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${current
-        ? 'bg-blue-600 text-white font-medium'
+        ? 'bg-primary-500 text-white font-medium'
         : 'text-gray-600 hover:bg-blue-50 hover:text-primary-600'
         }`}
     >

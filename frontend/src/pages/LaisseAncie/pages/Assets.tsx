@@ -31,7 +31,7 @@ export default function AssetsPage() {
 function TabBtn({ current, onClick, label }: { current: boolean; onClick: () => void; label: string }) {
   return (
     <button onClick={onClick}
-      className={`px-5 py-2.5 transition-colors ${current ? "bg-blue-600 text-white" : "bg-white text-gray-700 hover:bg-blue-50"}`}>
+      className={`px-5 py-2.5 transition-colors ${current ? "bg-primary-500 text-white" : "bg-white text-gray-700 hover:bg-blue-50"}`}>
       {label}
     </button>
   );
@@ -201,7 +201,7 @@ function VisualAssets() {
 function FilterPill({ current, onClick, icon, label, count }: { current: boolean; onClick: () => void; icon: string; label: string; count?: number }) {
   return (
     <button onClick={onClick}
-      className={`text-[11px] px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${current ? "bg-blue-600 border-blue-600 text-white" : "border-gray-200 text-gray-600 hover:border-blue-500 hover:text-blue-600"}`}>
+      className={`text-[11px] px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${current ? "bg-primary-500 border-blue-600 text-white" : "border-gray-200 text-gray-600 hover:border-blue-500 hover:text-blue-600"}`}>
       <span>{icon}</span><span>{label}</span>{count != null ? <span className="opacity-60">({count})</span> : null}
     </button>
   );
@@ -211,7 +211,7 @@ function AssetCard({ asset, onClick, onDelete }: { asset: VisualAsset; onClick: 
   return (
     <figure className="rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative">
       <button onClick={onClick} className="text-left w-full">
-        {asset.pinned && <span className="absolute top-2 right-2 text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full z-10">PIN</span>}
+        {asset.pinned && <span className="absolute top-2 right-2 text-[10px] bg-primary-500 text-white px-2 py-0.5 rounded-full z-10">PIN</span>}
         <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
           <img src={asset.thumb || asset.src} alt={asset.title} className="w-full h-full object-cover" />
         </div>
@@ -301,7 +301,7 @@ function AssetViewer({ asset, onClose, onSave }: { asset: VisualAsset; onClose: 
           <button onClick={() => setEditing((v) => !v)} className="text-blue-600 text-sm underline">{editing ? "取消编辑" : "编辑"}</button>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">关闭</button>
-            {editing && <button onClick={save} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-500">保存</button>}
+            {editing && <button onClick={save} className="px-4 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500">保存</button>}
           </div>
         </footer>
       </div>
@@ -395,7 +395,7 @@ function AssetPicker({ onClose, onSave }: { onClose: () => void; onSave: (a: Vis
         </div>
         <footer className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">取消</button>
-          <button onClick={save} disabled={!src || !draft.title} className="px-5 py-2 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-500 disabled:opacity-40">保存</button>
+          <button onClick={save} disabled={!src || !draft.title} className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500 disabled:opacity-40">保存</button>
         </footer>
       </div>
     </div>

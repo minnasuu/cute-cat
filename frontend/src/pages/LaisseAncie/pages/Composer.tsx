@@ -378,7 +378,7 @@ export default function ComposerPage({
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
           {msgs.map((m) => (
-            <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[80%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-blue-600 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
+            <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[80%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
               {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
             </div>
           ))}
@@ -466,7 +466,7 @@ function ImageCard({ image, onRegenerate }: { image: GeneratedImage; onRegenerat
             <input value={inst} onChange={(e) => setInst(e.target.value)} placeholder="修改意见…"
               className="flex-1 text-[11px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500" />
             <button onClick={() => { onRegenerate(inst); setInst(""); setOpen(false); }}
-              className="text-[10px] bg-blue-600 text-white px-2 rounded hover:bg-blue-500">生成</button>
+              className="text-[10px] bg-primary-500 text-white px-2 rounded hover:bg-blue-500">生成</button>
           </div>
         )}
       </div>

@@ -173,7 +173,7 @@ export default function InspinationsPage() {
         <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-xs">
           {(["recent", "uses"] as const).map((k) => (
             <button key={k} onClick={() => setFilter((f) => ({ ...f, sort: k }))}
-              className={`px-3 py-2 transition-colors ${filter.sort === k ? "bg-blue-600 text-white" : "bg-white hover:bg-gray-100 text-gray-700"}`}>
+              className={`px-3 py-2 transition-colors ${filter.sort === k ? "bg-primary-500 text-white" : "bg-white hover:bg-gray-100 text-gray-700"}`}>
               {k === "recent" ? "Most recent" : "Most used"}
             </button>
           ))}
@@ -225,7 +225,7 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.05]" />
         {/* pending 时左上角转圈提示 */}
         {asset.analysisStatus === 'pending' && (
-          <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 border-white/70 border-t-blue-500 animate-spin" title="分析中…" />
+          <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 border-white/70 border-t-primary-500 animate-spin" title="分析中…" />
         )}
         {/* 操作按钮(hover 显示) */}
         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -322,7 +322,7 @@ function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose
         </div>
         <footer className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">取消</button>
-          <button onClick={save} disabled={saving} className="px-5 py-2 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-500 disabled:opacity-40">{saving ? "保存中…" : "保存"}</button>
+          <button onClick={save} disabled={saving} className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500 disabled:opacity-40">{saving ? "保存中…" : "保存"}</button>
         </footer>
       </div>
     </div>
@@ -355,7 +355,7 @@ function Pills({ options, value, onPick }: { options: string[]; value?: string; 
     <div className="flex flex-wrap gap-1.5">
       {options.map((o) => (
         <button key={o} onClick={() => onPick(o)}
-          className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${value === o ? "bg-blue-600 border-blue-600 text-white" : "border-gray-200 text-gray-600 hover:border-blue-500"}`}>
+          className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${value === o ? "bg-primary-500 border-blue-600 text-white" : "border-gray-200 text-gray-600 hover:border-blue-500"}`}>
           {o}
         </button>
       ))}

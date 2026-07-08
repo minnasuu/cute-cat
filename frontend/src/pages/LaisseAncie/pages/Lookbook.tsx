@@ -89,7 +89,7 @@ export default function LookbookPage() {
 function TabBtn({ current, value, onClick, label }: { current: TabKey; value: TabKey; onClick: (v: TabKey) => void; label: string }) {
   return (
     <button onClick={() => onClick(value)}
-      className={`px-4 py-2 transition-colors ${current === value ? "bg-blue-600 text-white" : "bg-white text-gray-700 hover:bg-blue-50"}`}>
+      className={`px-4 py-2 transition-colors ${current === value ? "bg-primary-500 text-white" : "bg-white text-gray-700 hover:bg-blue-50"}`}>
       {label}
     </button>
   );
@@ -179,7 +179,7 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
             <div className="flex items-center gap-3 mb-3">
               <span className="bg-gray-800 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[product.status]}</span>
               <span className="text-gray-500">→</span>
-              <span className="bg-blue-600 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[target]}</span>
+              <span className="bg-primary-500 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[target]}</span>
             </div>
             <textarea value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="(可选) 批注 · 工厂 / 成本 / 样品反馈 …" rows={3}
