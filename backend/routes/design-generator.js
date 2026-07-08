@@ -21,11 +21,19 @@ const router = express.Router();
 function planImages(mode, plan) {
   const planText = (plan || '').trim();
   if (mode === 'illustration') {
+    // 插画 = 1:1 正方形 · 纯图案(碎花等可居中或平铺) · 不要服装/人物
     return [{
       slot: 'illustration',
-      label: '插画设计图',
-      aspectRatio: '3:4',
-      prompt: `Original fashion illustration. ${planText} Watercolor and ink, expressive fabric draping, elegant pose, soft editorial lighting, high-detail, premium fashion magazine quality.`,
+      label: '插画图案',
+      aspectRatio: '1:1',
+      prompt: `Create a seamless 1:1 square illustration pattern. Subject: ${planText}.
+
+Rules:
+- Output is a clean 1:1 square artwork, suitable as a fabric print or surface pattern.
+- NO clothing, NO human figures, NO models, NO garments, NO fashion poses.
+- Subject is centered on a solid pastel/white background, or as a repeatable tile pattern that fills the canvas (e.g. floral=scattered scatter, motif=centered emblem).
+- Style: flat vector / watercolor-textile / modern minimal, editorial quality.
+- High detail, crisp edges, commercially printable.`,
     }];
   }
   if (mode === 'collection') {
@@ -91,8 +99,9 @@ router.post('/regenerate', async (req, res) => {
   if (!plan) return res.status(400).json({ error: 'plan required' });
 
   // 在 plan 基础上叠加修图指令
-  const baseSlots = planImages('single', plan); // 统一用 single 的 slot 结构
-  const base = baseSlots.find((s) => s.slot === slot) || { aspectRatio: '3:4', prompt: plan };
+  // 先尝试匹配 single / illustration 里的 slot,找不到就按 slot 名回退
+  const baseSlots = [...planImages('single', plan), ...planImages('illustration', plan)];
+  const base = baseSlots.find((s) => s.slot === slot) || { aspectRatio: '1:1', prompt: plan };
   const finalPrompt = instruction
     ? `${base.prompt} Modification: ${instruction}`
     : base.prompt;
