@@ -536,7 +536,7 @@ router.get('/products', async (req, res) => {
 });
 
 router.post('/products', async (req, res) => {
-  const data = pickDefined(req.body ?? [], []);
+  const data = req.body ?? {};
   if (!data.title) return res.status(400).json({ error: 'title required' });
   const now = new Date().toISOString();
   const status = data.status === 'submitted' ? 'submitted' : 'draft';
