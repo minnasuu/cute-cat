@@ -234,9 +234,13 @@ router.post('/inspirations', (req, res) => {
 async function runInspirationAnalysis(id, urlPath) {
   try {
     // urlPath = /uploads/{teamId}/{filename}
-    const filePath = path.resolve(__dirname, '..', urlPath);
+    // 注意:urlPath 以 '/' 开头时 path.resolve 会把它当绝对路径、把前面的 __dirname 全部丢弃;
+    // 因此必须用 path.join + resolve,或手动剥离前导 slash。
+    const relPath = urlPath.replace(/^\/+/, '');
+    const filePath = path.resolve(__dirname, '..', relPath);
     if (!fs.existsSync(filePath)) {
       console.warn(`[team-workbench] image file not found: ${filePath}`);
+      await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed' } }).catch(() => {});
       return;
     }
     const buf = fs.readFileSync(filePath);
