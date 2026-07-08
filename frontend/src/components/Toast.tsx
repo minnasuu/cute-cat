@@ -34,7 +34,7 @@ const ICONS: Record<ToastType, string> = {
 const COLORS: Record<ToastType, { bg: string; border: string; text: string; icon: string }> = {
   error: { bg: 'bg-danger-50', border: 'border-red-200', text: 'text-danger-700', icon: 'bg-danger-500' },
   success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', icon: 'bg-green-500' },
-  info: { bg: 'bg-blue-50', border: 'border-primary-200', text: 'text-primary-600', icon: 'bg-blue-500' },
+  info: { bg: 'bg-primary-50', border: 'border-primary-200', text: 'text-primary-600', icon: 'bg-primary-500' },
   warning: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', icon: 'bg-yellow-500' },
 }
 

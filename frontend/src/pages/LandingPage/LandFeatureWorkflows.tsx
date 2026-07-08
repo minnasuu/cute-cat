@@ -124,17 +124,15 @@ export const LandFeatureWorkflows = () => {
                 return (
                   <div key={i} className="flex items-start">
                     {/* Node */}
-                    <div className={`relative flex flex-col items-center gap-2 w-[140px] transition-all duration-400 ${
-                      status === 'waiting' ? 'opacity-40' : ''
-                    } ${status === 'active' ? 'scale-110 z-10' : ''}`}>
+                    <div className={`relative flex flex-col items-center gap-2 w-[140px] transition-all duration-400 ${status === 'waiting' ? 'opacity-40' : ''
+                      } ${status === 'active' ? 'scale-110 z-10' : ''}`}>
                       {/* Bubble */}
-                      <div className={`absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap bg-white border border-border rounded-xl px-3 py-1 shadow-md transition-all duration-300 ${
-                        status === 'active'
+                      <div className={`absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap bg-white border border-border rounded-xl px-3 py-1 shadow-md transition-all duration-300 ${status === 'active'
                           ? 'opacity-100 translate-y-0 scale-100'
                           : status === 'done'
                             ? 'opacity-80 translate-y-0 scale-95'
                             : 'opacity-0 translate-y-2 scale-80 pointer-events-none'
-                      }`}>
+                        }`}>
                         <span className={`text-xs font-semibold ${status === 'done' ? 'text-primary-600' : 'text-text-primary'}`}>
                           {dialog}
                         </span>
@@ -142,17 +140,15 @@ export const LandFeatureWorkflows = () => {
                       </div>
 
                       {/* Cat avatar */}
-                      <div className={`w-[80px] transition-all duration-400 ${
-                        status === 'active' ? 'animate-bounce-gentle' : ''
-                      }`}>
+                      <div className={`w-[80px] transition-all duration-400 ${status === 'active' ? 'animate-bounce-gentle' : ''
+                        }`}>
                         {cat && (
                           <CatSVG
                             colors={cat.catColors}
-                            className={`w-full h-auto transition-all duration-400 ${
-                              status === 'waiting' ? 'saturate-[0.3]' :
-                              status === 'active' ? 'saturate-110 drop-shadow-lg' :
-                              'saturate-100'
-                            }`}
+                            className={`w-full h-auto transition-all duration-400 ${status === 'waiting' ? 'saturate-[0.3]' :
+                                status === 'active' ? 'saturate-110 drop-shadow-lg' :
+                                  'saturate-100'
+                              }`}
                           />
                         )}
                       </div>
@@ -181,7 +177,7 @@ export const LandFeatureWorkflows = () => {
                       {status === 'done' && (
                         <div className="absolute -top-1 -right-1 w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center shadow-sm animate-in zoom-in">
                           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                            <path d="M2 5.5L4 7.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M2 5.5L4 7.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         </div>
                       )}
@@ -189,7 +185,7 @@ export const LandFeatureWorkflows = () => {
                       {/* IO tags */}
                       {status === 'waiting' && (
                         <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-[9px] font-bold uppercase bg-blue-50 text-blue-600 px-1.5 py-px rounded tracking-wider">text</span>
+                          <span className="text-[9px] font-bold uppercase bg-primary-50 text-primary-600 px-1.5 py-px rounded tracking-wider">text</span>
                           <span className="text-[9px] text-text-tertiary">→</span>
                           <span className="text-[9px] font-bold uppercase bg-orange-50 text-orange-600 px-1.5 py-px rounded tracking-wider">text</span>
                         </div>
@@ -199,12 +195,10 @@ export const LandFeatureWorkflows = () => {
                     {/* Arrow connector */}
                     {i < DEMO_WORKFLOW.steps.length - 1 && (
                       <div className="flex items-center h-[80px] w-[50px] flex-shrink-0 translate-y-[10px]">
-                        <div className={`flex-1 h-[2px] transition-colors duration-400 ${
-                          stepStatuses[i] === 'done' ? 'bg-primary-400' : 'bg-border'
-                        }`} />
-                        <svg width="10" height="10" viewBox="0 0 24 24" className={`-ml-1 transition-colors duration-400 ${
-                          stepStatuses[i] === 'done' ? 'text-primary-400' : 'text-border'
-                        }`} fill="currentColor">
+                        <div className={`flex-1 h-[2px] transition-colors duration-400 ${stepStatuses[i] === 'done' ? 'bg-primary-400' : 'bg-border'
+                          }`} />
+                        <svg width="10" height="10" viewBox="0 0 24 24" className={`-ml-1 transition-colors duration-400 ${stepStatuses[i] === 'done' ? 'text-primary-400' : 'text-border'
+                          }`} fill="currentColor">
                           <path d="M8 5v14l11-7z" />
                         </svg>
                         {/* Data flow tag */}
@@ -227,7 +221,7 @@ export const LandFeatureWorkflows = () => {
               {!allDone && (
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
-                    {[0,1,2].map(j => (
+                    {[0, 1, 2].map(j => (
                       <span key={j} className="w-1.5 h-1.5 bg-secondary-400 rounded-full animate-bounce" style={{ animationDelay: `${j * 0.15}s` }} />
                     ))}
                   </div>

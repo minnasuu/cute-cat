@@ -169,7 +169,7 @@ export default function MaterialsPage() {
             <p className="text-xs text-gray-500 mt-0.5">{visible.length} {visible.length === 1 ? "item" : "items"}</p>
           </div>
           <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="按成分、用途、颜色搜索…"
-            className="w-72 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            className="w-72 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
         </header>
 
         {visible.length === 0 ? (
@@ -259,7 +259,7 @@ function MaterialModal({ mat, onClose }: { mat: MaterialRow | null; onClose: () 
           {price && (
             <div className="flex items-baseline justify-between gap-4">
               <div className="flex items-baseline gap-1.5">
-                <span className="text-3xl text-blue-600 font-semibold leading-none">
+                <span className="text-3xl text-primary-600 font-semibold leading-none">
                   {CURRENCY_SYMBOL[price.currency] ?? price.currency}{price.amount % 1 === 0 ? price.amount : price.amount.toFixed(2)}
                 </span>
                 <span className="text-[11px] text-gray-500">{price.unit}</span>

@@ -164,7 +164,7 @@ export default function TeamWorkbench() {
                     onClick={() => setDesignMode(m.id)}
                     className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors ${designMode === m.id
                       ? 'bg-primary-100 text-primary-600 font-medium'
-                      : 'text-gray-500 hover:text-blue-600'
+                      : 'text-gray-500 hover:text-primary-600'
                       }`}
                   >
                     {m.label}
@@ -233,7 +233,7 @@ function NavBtn({
       onClick={onClick}
       className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${current
         ? 'bg-primary-500 text-white font-medium'
-        : 'text-gray-600 hover:bg-blue-50 hover:text-primary-600'
+        : 'text-gray-600 hover:bg-primary-50 hover:text-primary-600'
         }`}
     >
       {icon && <span className="text-xs">{icon}</span>}

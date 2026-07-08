@@ -63,7 +63,7 @@ export default function SkillsPage() {
       <main className="overflow-auto bg-white">
         <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-[34px] font-semibold text-blue-600 tracking-tight">知识库</h1>
+            <h1 className="text-[34px] font-semibold text-primary-600 tracking-tight">知识库</h1>
             <p className="text-sm text-gray-500 mt-0.5">
               {filtered.length} 条知识
               {cat !== "all" ? ` · ${SKILL_PHASE_META[cat as SkillPhaseId].hint}` : " · 用 + 沉淀的闭环"}
@@ -71,7 +71,7 @@ export default function SkillsPage() {
           </div>
           <div className="flex gap-3">
             <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="搜索标题 / 标签 / 内容 …"
-              className="w-72 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              className="w-72 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
             {!comingSoon && <AddArticleButton />}
           </div>
         </header>
@@ -151,7 +151,7 @@ function ArticleCard({ a, onClick }: { a: SkillArticle; onClick: () => void }) {
           <Inner a={a} />
         </article>
       ) : (
-        <article className="rounded-2xl border border-gray-200 bg-gray-50 p-5 shadow-sm min-h-[150px] hover:border-blue-500/50 hover:shadow-md transition-shadow cursor-pointer">
+        <article className="rounded-2xl border border-gray-200 bg-gray-50 p-5 shadow-sm min-h-[150px] hover:border-primary-500/50 hover:shadow-md transition-shadow cursor-pointer">
           <Inner a={a} />
         </article>
       )}
@@ -202,7 +202,7 @@ function ArticleModal({ article, onClose }: { article: SkillArticle; onClose: ()
             <span className="ml-2">{article.title}</span>
           </div>
           {!isComingSoon && (
-            <button onClick={togglePin} className="text-xs text-blue-600 underline">{article.pinned ? "取消置顶" : "置顶"}</button>
+            <button onClick={togglePin} className="text-xs text-primary-600 underline">{article.pinned ? "取消置顶" : "置顶"}</button>
           )}
         </header>
         {editing ? (
@@ -220,11 +220,11 @@ function ArticleModal({ article, onClose }: { article: SkillArticle; onClose: ()
                   {k === "tags" ? (
                     <input value={(val as string[]).join(", ")} onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
                       disabled={isComingSoon}
-                      className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 disabled:opacity-60" />
+                      className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500 disabled:opacity-60" />
                   ) : (
                     <input value={val as string} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
                       disabled={isComingSoon}
-                      className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 disabled:opacity-60" />
+                      className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500 disabled:opacity-60" />
                   )}
                 </label>
               );
@@ -233,25 +233,25 @@ function ArticleModal({ article, onClose }: { article: SkillArticle; onClose: ()
               <div className="text-[10px] uppercase tracking-wider text-gray-500">body</div>
               <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={12}
                 disabled={isComingSoon}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500 disabled:opacity-60" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary-500 disabled:opacity-60" />
             </label>
           </div>
         ) : (
           <div className="text-[13px]">
             <Markdown source={draft.body} />
             <div className="mt-5 flex flex-wrap gap-1.5">
-              {draft.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-primary-100 text-blue-600">#{t}</span>)}
+              {draft.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-primary-100 text-primary-600">#{t}</span>)}
             </div>
           </div>
         )}
       </div>
       <footer className="mt-5 flex justify-between">
         {!isComingSoon && (
-          <button onClick={() => setEditing((v) => !v)} className="text-xs text-blue-600 underline">{editing ? "取消编辑" : "编辑"}</button>
+          <button onClick={() => setEditing((v) => !v)} className="text-xs text-primary-600 underline">{editing ? "取消编辑" : "编辑"}</button>
         )}
         <div className="flex gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">关闭</button>
-          {!isComingSoon && editing && <button onClick={save} className="px-4 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500">保存</button>}
+          {!isComingSoon && editing && <button onClick={save} className="px-4 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-primary-500">保存</button>}
         </div>
       </footer>
     </Modal>
@@ -284,34 +284,34 @@ function AddArticleButton() {
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">阶段</div>
               <select value={draft.category as string} onChange={(e) => setDraft({ ...draft, category: e.target.value as SkillPhaseId })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500">
                 {WRITEABLE_PHASE_IDS.map((c) => <option key={c} value={c}>{SKILL_PHASE_META[c].phase}. {SKILL_PHASE_META[c].labelZh} ({SKILL_PHASE_META[c].labelEn})</option>)}
               </select>
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">中文标题</div>
               <input value={draft.zhTitle} onChange={(e) => setDraft({ ...draft, zhTitle: e.target.value })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">English title</div>
               <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">标签 (, 分隔)</div>
               <input value={(draft.tags ?? []).join(", ")} onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">正文 (Markdown)</div>
               <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={8}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary-500" />
             </label>
           </div>
           <footer className="mt-4 flex justify-end">
             <button onClick={save} disabled={!draft.zhTitle || !draft.title}
-              className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500 disabled:opacity-40">保存</button>
+              className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-primary-500 disabled:opacity-40">保存</button>
           </footer>
         </Modal>
       )}

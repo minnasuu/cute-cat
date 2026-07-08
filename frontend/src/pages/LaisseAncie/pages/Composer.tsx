@@ -359,7 +359,7 @@ export default function ComposerPage({
         <header className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white">
           <div className="flex items-baseline gap-2">
             <button onClick={() => navigateTab("__design__")} className="text-sm text-gray-500 hover:text-gray-800">←</button>
-            <span className="text-2xl font-semibold text-blue-600">设计工作室</span>
+            <span className="text-2xl font-semibold text-primary-600">设计工作室</span>
           </div>
           {/* 模型切换下拉 */}
           <select
@@ -367,7 +367,7 @@ export default function ComposerPage({
             onChange={(e) => setModel(e.target.value as ModelId)}
             disabled={busy || generating}
             title="切换 AI 模型"
-            className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-blue-400 disabled:opacity-40"
+            className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-primary-400 disabled:opacity-40"
           >
             {MODELS.map((m) => (
               <option key={m.id} value={m.id}>{m.label}</option>
@@ -460,13 +460,13 @@ function ImageCard({ image, onRegenerate }: { image: GeneratedImage; onRegenerat
       <div className="p-2">
         <div className="text-[11px] text-gray-600 font-medium mb-1">{image.label}</div>
         {!open ? (
-          <button onClick={() => setOpen(true)} className="text-[10px] text-blue-600 hover:underline">修改</button>
+          <button onClick={() => setOpen(true)} className="text-[10px] text-primary-600 hover:underline">修改</button>
         ) : (
           <div className="flex gap-1">
             <input value={inst} onChange={(e) => setInst(e.target.value)} placeholder="修改意见…"
-              className="flex-1 text-[11px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500" />
+              className="flex-1 text-[11px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-primary-500" />
             <button onClick={() => { onRegenerate(inst); setInst(""); setOpen(false); }}
-              className="text-[10px] bg-primary-500 text-white px-2 rounded hover:bg-blue-500">生成</button>
+              className="text-[10px] bg-primary-500 text-white px-2 rounded hover:bg-primary-500">生成</button>
           </div>
         )}
       </div>

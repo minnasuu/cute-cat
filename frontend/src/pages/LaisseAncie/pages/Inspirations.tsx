@@ -169,7 +169,7 @@ export default function InspinationsPage() {
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="Search by category, silhouette, …"
-          className="w-60 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          className="w-60 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
         <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-xs">
           {(["recent", "uses"] as const).map((k) => (
             <button key={k} onClick={() => setFilter((f) => ({ ...f, sort: k }))}
@@ -322,7 +322,7 @@ function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose
         </div>
         <footer className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">取消</button>
-          <button onClick={save} disabled={saving} className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500 disabled:opacity-40">{saving ? "保存中…" : "保存"}</button>
+          <button onClick={save} disabled={saving} className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-primary-500 disabled:opacity-40">{saving ? "保存中…" : "保存"}</button>
         </footer>
       </div>
     </div>
@@ -334,7 +334,7 @@ function FieldInput({ label, value, onChange, placeholder, sublabel }: { label: 
     <label className="block">
       <div className="flex items-baseline justify-between"><div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>{sublabel && <div className="text-[10px] text-gray-400">{sublabel}</div>}</div>
       <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+        className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
     </label>
   );
 }
@@ -344,7 +344,7 @@ function FieldTextarea({ label, value, onChange, sublabel, rows = 2 }: { label: 
     <label className="block">
       <div className="flex items-baseline justify-between"><div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>{sublabel && <div className="text-[10px] text-gray-400">{sublabel}</div>}</div>
       <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={rows}
-        className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none" />
+        className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500 resize-none" />
     </label>
   );
 }
@@ -355,7 +355,7 @@ function Pills({ options, value, onPick }: { options: string[]; value?: string; 
     <div className="flex flex-wrap gap-1.5">
       {options.map((o) => (
         <button key={o} onClick={() => onPick(o)}
-          className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${value === o ? "bg-primary-500 border-blue-600 text-white" : "border-gray-200 text-gray-600 hover:border-blue-500"}`}>
+          className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${value === o ? "bg-primary-500 border-primary-600 text-white" : "border-gray-200 text-gray-600 hover:border-primary-500"}`}>
           {o}
         </button>
       ))}
@@ -378,7 +378,7 @@ function EmptyDrop({ onDrop, onFiles }: { onDrop: (e: React.DragEvent) => void; 
   const ref = useRef<HTMLInputElement>(null);
   return (
     <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
-      className="border-2 border-dashed border-gray-300 rounded-2xl py-20 text-center hover:border-blue-400 transition-colors">
+      className="border-2 border-dashed border-gray-300 rounded-2xl py-20 text-center hover:border-primary-400 transition-colors">
       <div className="text-gray-500 text-sm">Drag & drop inspiration images here, or</div>
       <button onClick={() => ref.current?.click()} className="mt-3 inline-flex rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-5 py-2 text-sm font-medium">Choose files</button>
       <input ref={ref} type="file" accept="image/*" multiple className="hidden"

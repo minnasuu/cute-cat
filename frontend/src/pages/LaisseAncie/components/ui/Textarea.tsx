@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { forwardRef, TextareaHTMLAttributes } from "react";
 
-interface Props extends TextareaHTMLAttributes<HTMLTextAreaElement> {}
+interface Props extends TextareaHTMLAttributes<HTMLTextAreaElement> { }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, Props>(({ className = "", onKeyDown, ...rest }, ref) => {
   function autoGrow(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -22,7 +22,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(({ className = ""
         }
         onKeyDown?.(e);
       }}
-      className={`w-full resize-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20 transition-colors ${className}`}
+      className={`w-full resize-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-primary-500/60 focus:ring-2 focus:ring-primary-500/20 transition-colors ${className}`}
       {...rest}
     />
   );

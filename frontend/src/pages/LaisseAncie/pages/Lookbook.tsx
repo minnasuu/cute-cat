@@ -29,7 +29,7 @@ export default function LookbookPage() {
     <div className="p-8 lg:p-12 max-w-[1400px] mx-auto">
       <header className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-5xl font-semibold text-blue-600 tracking-tight">Lookbook</h1>
+          <h1 className="text-5xl font-semibold text-primary-600 tracking-tight">Lookbook</h1>
           <p className="text-sm text-gray-500 mt-1">款式总览 — 按创作模式分类 · 点击状态推进工序</p>
         </div>
         <span className="text-xs text-gray-500">{store.products.length} items</span>
@@ -41,7 +41,7 @@ export default function LookbookPage() {
 
       {items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-300 py-16 text-center text-gray-500 text-sm">
-          要去往 <span className="text-blue-600">Design</span> 开始创作，产品才会进入 Lookbook
+          要去往 <span className="text-primary-600">Design</span> 开始创作，产品才会进入 Lookbook
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -55,7 +55,7 @@ export default function LookbookPage() {
             </thead>
             <tbody>
               {items.map((p) => (
-                <tr key={p.id} className="border-b border-gray-200 hover:bg-blue-50/40 cursor-pointer"
+                <tr key={p.id} className="border-b border-gray-200 hover:bg-primary-50/40 cursor-pointer"
                   onClick={() => setActiveProduct(p)}>
                   <td className="px-3 py-3">
                     <div className="font-medium text-gray-900">{p.title || "(untitled)"}</div>
@@ -89,7 +89,7 @@ export default function LookbookPage() {
 function TabBtn({ current, value, onClick, label }: { current: TabKey; value: TabKey; onClick: (v: TabKey) => void; label: string }) {
   return (
     <button onClick={() => onClick(value)}
-      className={`px-4 py-2 transition-colors ${current === value ? "bg-primary-500 text-white" : "bg-white text-gray-700 hover:bg-blue-50"}`}>
+      className={`px-4 py-2 transition-colors ${current === value ? "bg-primary-500 text-white" : "bg-white text-gray-700 hover:bg-primary-50"}`}>
       {label}
     </button>
   );
@@ -99,7 +99,7 @@ function StatusPill({ product, onClick }: { product: Product; onClick: () => voi
   const nxt = nextStatus(product.status);
   return (
     <button onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap transition-colors ${product.status === "live" ? "bg-blue-50 border-blue-500 text-blue-600" : product.status === "draft" ? "bg-gray-100 border-gray-300 text-gray-600" : "bg-gray-800 border-gray-800 text-white"}`}>
+      className={`text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap transition-colors ${product.status === "live" ? "bg-primary-50 border-primary-500 text-primary-600" : product.status === "draft" ? "bg-gray-100 border-gray-300 text-gray-600" : "bg-gray-800 border-gray-800 text-white"}`}>
       {STATUS_LABEL[product.status]}
       {nxt && <span className="ml-1 opacity-60">→ {STATUS_LABEL[nxt]}</span>}
     </button>
@@ -110,7 +110,7 @@ function SkillsBadge({ productId }: { productId: string }) {
   const skills = useSkillStore();
   const n = skills.articles.filter((a) => (a.relatedProducts ?? []).includes(productId)).length;
   if (n === 0) return <span className="text-[11px] text-gray-400">—</span>;
-  return <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary-100 text-blue-600">ⓢ {n}</span>;
+  return <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary-100 text-primary-600">ⓢ {n}</span>;
 }
 
 function StageEditor({ product, onClose, onSave }: { product: Product; onClose: () => void; onSave: (p: Product) => Promise<void> }) {
@@ -183,7 +183,7 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
             </div>
             <textarea value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="(可选) 批注 · 工厂 / 成本 / 样品反馈 …" rows={3}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-blue-500" />
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500" />
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={onClose} className="rounded-xl border border-gray-200 text-gray-700 font-medium py-2 px-4 text-sm hover:border-gray-800">关闭</button>
               <button disabled={submitting} onClick={advance}
@@ -193,7 +193,7 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
             </div>
           </div>
         ) : (
-          <div className="border-t border-gray-200 pt-5 text-blue-600 text-[13px]">✓ 产品已上架，流水完成</div>
+          <div className="border-t border-gray-200 pt-5 text-primary-600 text-[13px]">✓ 产品已上架，流水完成</div>
         )}
       </div>
     </div>

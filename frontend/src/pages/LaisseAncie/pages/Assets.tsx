@@ -31,7 +31,7 @@ export default function AssetsPage() {
 function TabBtn({ current, onClick, label }: { current: boolean; onClick: () => void; label: string }) {
   return (
     <button onClick={onClick}
-      className={`px-5 py-2.5 transition-colors ${current ? "bg-primary-500 text-white" : "bg-white text-gray-700 hover:bg-blue-50"}`}>
+      className={`px-5 py-2.5 transition-colors ${current ? "bg-primary-500 text-white" : "bg-white text-gray-700 hover:bg-primary-50"}`}>
       {label}
     </button>
   );
@@ -68,7 +68,7 @@ function BrandInfoAssets() {
     {
       group: "基本信息", rows: [
         { label: "中文名", value: <span className="text-2xl font-medium">{profileFields.nameZh}</span> },
-        { label: "英文名", value: <span className="italic text-2xl text-blue-600">{profileFields.nameEn}</span> },
+        { label: "英文名", value: <span className="italic text-2xl text-primary-600">{profileFields.nameEn}</span> },
         { label: "中文字体", value: profileFields.cnFont },
         { label: "英文字体", value: profileFields.enFont },
       ]
@@ -83,7 +83,7 @@ function BrandInfoAssets() {
     },
     {
       group: "调性 · 定位", rows: [
-        { label: "品牌调性", value: <div className="flex gap-2">{(profileFields.voice ?? ["优雅", "松弛", "乐趣"]).map((v: string) => <span key={v} className="text-[30px] text-blue-600">{v}</span>)}</div> },
+        { label: "品牌调性", value: <div className="flex gap-2">{(profileFields.voice ?? ["优雅", "松弛", "乐趣"]).map((v: string) => <span key={v} className="text-[30px] text-primary-600">{v}</span>)}</div> },
         { label: "目标客群", value: `${profileFields.audienceAgeMin}-${profileFields.audienceAgeMax} 岁 · 独立自我的年轻女性` },
         { label: "价格带", value: `¥${profileFields.priceMin} — ¥${profileFields.priceMax} · 根据产品成本调控` },
       ]
@@ -170,7 +170,7 @@ function VisualAssets() {
     <div id="visual-assets" className="pt-8 mt-8 border-t border-gray-200">
       <header className="flex items-end justify-between mb-5">
         <div>
-          <h2 className="text-3xl font-semibold text-blue-600 tracking-tight">Visual Assets</h2>
+          <h2 className="text-3xl font-semibold text-primary-600 tracking-tight">Visual Assets</h2>
           <p className="text-sm text-gray-500 mt-1">印花 · 插画 · 主视觉 · 模板 · Lookbook · 包装</p>
         </div>
         <button onClick={() => setPicker(true)} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-sm">+ 新增</button>
@@ -201,7 +201,7 @@ function VisualAssets() {
 function FilterPill({ current, onClick, icon, label, count }: { current: boolean; onClick: () => void; icon: string; label: string; count?: number }) {
   return (
     <button onClick={onClick}
-      className={`text-[11px] px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${current ? "bg-primary-500 border-blue-600 text-white" : "border-gray-200 text-gray-600 hover:border-blue-500 hover:text-blue-600"}`}>
+      className={`text-[11px] px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${current ? "bg-primary-500 border-primary-600 text-white" : "border-gray-200 text-gray-600 hover:border-primary-500 hover:text-primary-600"}`}>
       <span>{icon}</span><span>{label}</span>{count != null ? <span className="opacity-60">({count})</span> : null}
     </button>
   );
@@ -224,7 +224,7 @@ function AssetCard({ asset, onClick, onDelete }: { asset: VisualAsset; onClick: 
         </figcaption>
       </button>
       <button onClick={(e) => { e.stopPropagation(); if (confirm("刪除視覺資產？")) onDelete(); }}
-        className="absolute bottom-2 right-2 text-[10px] text-gray-500 hover:text-blue-600 underline" title="删除">×</button>
+        className="absolute bottom-2 right-2 text-[10px] text-gray-500 hover:text-primary-600 underline" title="删除">×</button>
     </figure>
   );
 }
@@ -246,7 +246,7 @@ function AssetViewer({ asset, onClose, onSave }: { asset: VisualAsset; onClose: 
       <div className="w-full max-w-4xl max-h-[88vh] overflow-y-auto rounded-3xl border border-gray-200 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-start justify-between gap-4 mb-4">
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-blue-600">{VISUAL_KIND_META[asset.kind]?.labelZh}</span>
+            <span className="text-[10px] uppercase tracking-wider text-primary-600">{VISUAL_KIND_META[asset.kind]?.labelZh}</span>
             <h2 className="text-[26px] font-medium text-gray-900">{asset.title}</h2>
           </div>
           <button onClick={onClose} className="text-2xl text-gray-400 hover:text-gray-800">×</button>
@@ -259,29 +259,29 @@ function AssetViewer({ asset, onClose, onSave }: { asset: VisualAsset; onClose: 
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">标题</div>
               <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">分类</div>
               <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as VisualAssetKind })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500">
                 {(Object.keys(VISUAL_KIND_META) as VisualAssetKind[]).map((k) => <option key={k} value={k}>{VISUAL_KIND_META[k].labelZh}</option>)}
               </select>
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">描述</div>
               <textarea value={draft.description ?? ""} rows={3} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">标签 (, 分隔)</div>
               <input value={(draft.tags ?? []).join(", ")} onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
             </label>
             <label className="block">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">季节</div>
               <input value={(draft.seasons ?? []).join(", ")} onChange={(e) => setDraft({ ...draft, seasons: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
-                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+                className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={!!draft.pinned} onChange={(e) => setDraft({ ...draft, pinned: e.target.checked })} />
@@ -293,15 +293,15 @@ function AssetViewer({ asset, onClose, onSave }: { asset: VisualAsset; onClose: 
             {asset.description && <p className="text-[13px] text-gray-600 mb-4">{asset.description}</p>}
             <div className="text-[11px] text-gray-500 mb-2">{asset.seasons?.length ? `季节 · ${asset.seasons.join(", ")}` : "季节 · —"}</div>
             <div className="flex flex-wrap gap-1.5">
-              {asset.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-primary-100 text-blue-600">#{t}</span>)}
+              {asset.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-primary-100 text-primary-600">#{t}</span>)}
             </div>
           </div>
         )}
         <footer className="mt-5 flex items-center justify-between">
-          <button onClick={() => setEditing((v) => !v)} className="text-blue-600 text-sm underline">{editing ? "取消编辑" : "编辑"}</button>
+          <button onClick={() => setEditing((v) => !v)} className="text-primary-600 text-sm underline">{editing ? "取消编辑" : "编辑"}</button>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">关闭</button>
-            {editing && <button onClick={save} className="px-4 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500">保存</button>}
+            {editing && <button onClick={save} className="px-4 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-primary-500">保存</button>}
           </div>
         </footer>
       </div>
@@ -348,7 +348,7 @@ function AssetPicker({ onClose, onSave }: { onClose: () => void; onSave: (a: Vis
         </header>
         <div onClick={() => fileRef.current?.click()} onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
-          className="border-2 border-dashed border-gray-300 hover:border-blue-500 rounded-2xl py-8 px-6 text-center text-sm cursor-pointer transition-colors mb-4">
+          className="border-2 border-dashed border-gray-300 hover:border-primary-500 rounded-2xl py-8 px-6 text-center text-sm cursor-pointer transition-colors mb-4">
           {src ? (
             <div className="inline-block">
               <img src={src} alt="preview" className="max-h-40 mx-auto rounded-lg mb-2" />
@@ -368,34 +368,34 @@ function AssetPicker({ onClose, onSave }: { onClose: () => void; onSave: (a: Vis
           <label className="block">
             <div className="text-[10px] uppercase tracking-wider text-gray-500">分类</div>
             <select value={draft.kind as string} onChange={(e) => setDraft({ ...draft, kind: e.target.value as VisualAssetKind })}
-              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500">
               {(Object.keys(VISUAL_KIND_META) as VisualAssetKind[]).map((k) => <option key={k} value={k}>{VISUAL_KIND_META[k].labelZh}</option>)}
             </select>
           </label>
           <label className="block">
             <div className="text-[10px] uppercase tracking-wider text-gray-500">标题 (必填)</div>
             <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
           </label>
           <label className="block">
             <div className="text-[10px] uppercase tracking-wider text-gray-500">描述</div>
             <textarea value={draft.description ?? ""} rows={2} onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
           </label>
           <label className="block">
             <div className="text-[10px] uppercase tracking-wider text-gray-500">标签 (, 分隔)</div>
             <input value={(draft.tags ?? []).join(", ")} onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
-              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
           </label>
           <label className="block">
             <div className="text-[10px] uppercase tracking-wider text-gray-500">季节</div>
             <input value={(draft.seasons ?? []).join(", ")} onChange={(e) => setDraft({ ...draft, seasons: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
-              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+              className="w-full mt-0.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
           </label>
         </div>
         <footer className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">取消</button>
-          <button onClick={save} disabled={!src || !draft.title} className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-blue-500 disabled:opacity-40">保存</button>
+          <button onClick={save} disabled={!src || !draft.title} className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-primary-500 disabled:opacity-40">保存</button>
         </footer>
       </div>
     </div>
@@ -405,7 +405,7 @@ function AssetPicker({ onClose, onSave }: { onClose: () => void; onSave: (a: Vis
 function BrandWordmark() {
   return (
     <div className="flex items-baseline gap-3">
-      <span className="text-[48px] font-semibold text-blue-600 leading-none">Laisse Ancie</span>
+      <span className="text-[48px] font-semibold text-primary-600 leading-none">Laisse Ancie</span>
     </div>
   );
 }
