@@ -7,7 +7,7 @@
  *   - 失败 → { result: null, error: 'key' | 'mime' | 'file' | 'api:xxx' | 'json' | 'empty' }
  *     调用方可把 error 记录到 DB 并反馈给用户,用于排错。
  *
- * 模型:复用 LongCat(Anthropic 兼容),通过 image content block 传图。
+ * 模型:复用 LongCat(OpenAI 兼容,走 /v1/chat/completions + Bearer <REDACTED>),通过 image_url data-URI 传图。
  */
 
 'use strict';
@@ -34,14 +34,14 @@ function extractJson(text) {
 }
 
 async function analyzeInspiration(imageBuffer, mimeType) {
-  const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.LONGCAT_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.warn('[analyze-inspiration] LONGCAT_API_KEY/ANTHROPIC_API_KEY not set, skip AI analysis');
+    console.warn('[analyze-inspiration] LONGCAT_API_KEY/OPENAI_API_KEY not set, skip AI analysis');
     return { result: null, error: 'key' };
   }
 
-  const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-  const model = process.env.INSPIRATION_AI_MODEL || process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
+  const baseUrl = (process.env.LONGCAT_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, '');
+  const model = process.env.INSPIRATION_AI_MODEL || process.env.LONGCAT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const maxTokens = 1024;
   const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 30000;
 
@@ -56,18 +56,18 @@ async function analyzeInspiration(imageBuffer, mimeType) {
   }
 
   const b64 = imageBuffer.toString('base64');
+  const dataUrl = `data:${mediaType};base64,${b64}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log(`[analyze-inspiration] analyzing image (${imageBuffer.length} bytes, ${mediaType}, model=${model})`);
-    const res = await fetch(`${baseUrl}/v1/messages`, {
+    console.log(`[analyze-inspiration] analyzing image (${imageBuffer.length} bytes, ${mediaType}, model=${model}, baseUrl=${baseUrl})`);
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model,
@@ -75,7 +75,7 @@ async function analyzeInspiration(imageBuffer, mimeType) {
         messages: [{
           role: 'user',
           content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
+            { type: 'image_url', image_url: { url: dataUrl } },
             { type: 'text', text: PROMPT },
           ],
         }],
@@ -90,9 +90,9 @@ async function analyzeInspiration(imageBuffer, mimeType) {
     }
 
     const data = await res.json();
-    const raw = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const raw = data?.choices?.[0]?.message?.content || '';
     if (!raw) {
-      console.error('[analyze-inspiration] model returned empty text');
+      console.error('[analyze-inspiration] model returned empty content');
       return { result: null, error: 'empty' };
     }
 
