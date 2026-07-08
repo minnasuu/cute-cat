@@ -55,15 +55,14 @@ const Navbar: React.FC<NavbarProps> = ({
     ? "" // fixed variant uses the header itself as flex container
     : "mx-auto px-6 h-16 flex items-center justify-between";
 
-  /* Default right section based on auth state */
+  /* Default right section: user avatar (first char of nickname) + name */
+  const initial = (user?.nickname || user?.email || "?").trim().charAt(0).toUpperCase();
   const defaultRight = user ? (
-    <div className="flex items-center gap-3">
-      <button
-        onClick={() => navigate('/dashboard')}
-        className="px-5 py-2 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all cursor-pointer"
-      >
-        进入创作
-      </button>
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-medium text-text-secondary max-w-[120px] truncate">{user.nickname || user.email}</span>
+      <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-bold flex items-center justify-center shrink-0">
+        {initial}
+      </div>
     </div>
   ) : (
     <div className="flex items-center gap-4">
