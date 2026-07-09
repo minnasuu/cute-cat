@@ -143,19 +143,61 @@ function CatBtn({ current, onClick, icon, label, sublabel, count, disabled }: {
 }
 
 function ArticleCard({ a, onClick }: { a: SkillArticle; onClick: () => void }) {
+  const [showMenu, setShowMenu] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const store = useSkillStore();
+
+  async function doDelete() {
+    setConfirming(false);
+    setShowMenu(false);
+    try { await store.remove(a.id); }
+    catch (e: any) { alert(`删除失败: ${e?.message || e}`); }
+  }
+
   return (
-    <button onClick={onClick} className="text-left">
-      {a.pinned ? (
-        <article className="rounded-2xl border-2 border-primary-500/40 bg-gray-50 p-5 shadow-sm min-h-[150px] hover:shadow-md transition-shadow cursor-pointer relative">
-          <PinBadge />
-          <Inner a={a} />
-        </article>
-      ) : (
-        <article className="rounded-2xl border border-gray-200 bg-gray-50 p-5 shadow-sm min-h-[150px] hover:border-primary-500/50 hover:shadow-md transition-shadow cursor-pointer">
-          <Inner a={a} />
-        </article>
+    <div className="relative group">
+      <button onClick={onClick} className="text-left w-full">
+        {a.pinned ? (
+          <article className="rounded-2xl border-2 border-primary-500/40 bg-gray-50 p-5 shadow-sm min-h-[150px] hover:shadow-md transition-shadow cursor-pointer relative">
+            <PinBadge />
+            <Inner a={a} />
+          </article>
+        ) : (
+          <article className="rounded-2xl border border-gray-200 bg-gray-50 p-5 shadow-sm min-h-[150px] hover:border-primary-500/50 hover:shadow-md transition-shadow cursor-pointer">
+            <Inner a={a} />
+          </article>
+        )}
+      </button>
+      {/* 删除按钮:hover 时显示在卡片右上角 */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }}
+        className="absolute top-2 right-2 w-7 h-7 rounded-md bg-white/90 border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-300 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10"
+        title="删除"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+      </button>
+      {/* 删除确认气泡 */}
+      {showMenu && !confirming && (
+        <div className="absolute top-2 right-10 z-20">
+          <button onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
+            className="text-[11px] px-3 py-1.5 rounded-md bg-red-500 hover:bg-red-600 text-white font-medium shadow-sm whitespace-nowrap">
+            删除条目
+          </button>
+        </div>
       )}
-    </button>
+      {confirming && (
+        <div className="absolute inset-0 z-20 rounded-2xl bg-white/95 backdrop-blur-sm border border-red-200 flex flex-col items-center justify-center gap-3 p-4">
+          <div className="text-[12px] text-gray-700 font-medium">确认删除这条知识?</div>
+          <div className="text-[11px] text-gray-500 truncate max-w-full">{a.zhTitle}</div>
+          <div className="flex gap-2">
+            <button onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+              className="text-[11px] px-3 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50">取消</button>
+            <button onClick={(e) => { e.stopPropagation(); void doDelete(); }}
+              className="text-[11px] px-3 py-1 rounded-md bg-red-500 hover:bg-red-600 text-white font-medium">确认删除</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
