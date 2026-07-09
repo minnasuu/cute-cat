@@ -31,8 +31,11 @@ services:
     ports:
       - "8002:8002"
     volumes:
-      # 持久化上传的图片文件（容器内工作目录为 /app，multer 写入 /app/backend/uploads）
-      - ./backend/uploads:/app/backend/uploads
+      # 持久化上传的图片文件。
+      # 不能用 bind mount(./backend/uploads:/...)——backend/uploads 在 .gitignore 里,
+      # git pull / git clean / 重新克隆等重新部署流程会清空宿主机目录 → 容器内看不到旧文件 → 404。
+      # 改用 named volume(Docker 管理),只有显式 `docker volume rm` 才会删除,重新部署自动保留。
+      - cucatopiacom_uploads:/app/backend/uploads
     environment:
       PORT: 8002
       # 与 db 服务必须一致；entrypoint 优先用下面两项连库，避免从 URL 解析密码时截断（密码含 @ # : 等）
@@ -76,3 +79,4 @@ services:
 
 volumes:
   cucatopiacom_postgres_data:
+  cucatopiacom_uploads:
