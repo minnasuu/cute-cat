@@ -44,11 +44,21 @@ function localPublicUrl(relPath) {
   // relPath 不含 'uploads/' 前缀,静态挂载在 /uploads → UPLOAD_ROOT,这里要补齐
   return `/uploads/${relPath.split(path.sep).join('/')}`;
 }
+/** 清洗一个路径 segment:移除非安全字符(保留中文),单个 segment 限长 60。 */
+function cleanSegment(seg) {
+  return String(seg || '').replace(/[^a-zA-Z0-9_一-龥-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+}
+
+/** 清洗 folder 路径:按 '/' 分段、逐段清洗后再拼回(保留层级,不压扁)。 */
+function cleanFolderPath(folder) {
+  const segs = String(folder || 'misc').split('/').map(cleanSegment).filter(Boolean);
+  return segs.length ? segs.join('/') : 'misc';
+}
+
 function createLocalSavePath(folder, filename) {
-  const cleanFolder = String(folder || 'misc').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 60) || 'misc';
   // 注意:不含 'uploads/' 前缀——UPLOAD_ROOT 已经是 ../uploads,localSave 做 join(UPLOAD_ROOT, relPath)
   // public URL 前缀 '/' 由 localPublicUrl 统一添加
-  return `${cleanFolder}/${filename}`;
+  return `${cleanFolderPath(folder)}/${filename}`;
 }
 
 // ─── s3(SigV4 手写,零依赖) ─────────────────────────────────
@@ -130,9 +140,8 @@ function s3PublicUrl(key) {
   return `${endpoint}/${process.env.S3_BUCKET}/${canonKey(key)}`;
 }
 function createS3SavePath(folder, filename) {
-  const cleanFolder = String(folder || 'misc').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 60) || 'misc';
   const prefix = (process.env.S3_FOLDER_PREFIX || '').replace(/^\/+|\/+$/g, '');
-  const key = prefix ? `${prefix}/${cleanFolder}/${filename}` : `${cleanFolder}/${filename}`;
+  const key = prefix ? `${prefix}/${cleanFolderPath(folder)}/${filename}` : `${cleanFolderPath(folder)}/${filename}`;
   return key;
 }
 
