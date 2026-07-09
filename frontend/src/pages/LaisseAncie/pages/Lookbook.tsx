@@ -6,6 +6,28 @@ import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { teamApi } from "../lib/api";
 import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type Product, type ProductStatus } from "../types/design";
 
+/** 简易行内删除确认状态:id → 是否正在确认中。 */
+function useRowDelete() {
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null); // 正在调接口的 id
+  const store = useDesignStore();
+
+  async function doDelete(id: string) {
+    setPending(id);
+    try {
+      await store.removeProduct(id);
+    } catch (e: any) {
+      console.error("[lookbook] delete failed", e);
+      alert(`删除失败: ${e?.message || e}`);
+    } finally {
+      setPending(null);
+      setConfirming((cur) => (cur === id ? null : cur));
+    }
+  }
+
+  return { confirming, setConfirming, pending, doDelete };
+}
+
 const ALL_MODES = ["illustration", "single", "collection", "occasion"] as const;
 type TabKey = "illustration" | "single" | "collection" | "occasion" | "all";
 
@@ -19,6 +41,7 @@ export default function LookbookPage() {
   const store = useDesignStore();
   const [tab, setTab] = useState<TabKey>("all");
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
+  const { confirming, setConfirming, pending, doDelete } = useRowDelete();
 
   const items = useMemo(() => {
     if (tab === "all") return store.products;
@@ -48,7 +71,7 @@ export default function LookbookPage() {
           <table className="w-full text-[13px] border-collapse">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-200">
-                {["产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新"].map((h) => (
+                {["产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新", "操作"].map((h) => (
                   <th key={h} className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -68,6 +91,30 @@ export default function LookbookPage() {
                   <td className="px-3 py-3"><StatusPill product={p} onClick={() => setActiveProduct(p)} /></td>
                   <td className="px-3 py-3"><SkillsBadge productId={p.id} /></td>
                   <td className="px-3 py-3 text-gray-500 font-mono text-[11px]">{new Date(p.updatedAt).toLocaleDateString()}</td>
+                  <td className="px-3 py-3">
+                    {confirming === p.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          disabled={pending === p.id}
+                          onClick={(e) => { e.stopPropagation(); void doDelete(p.id); }}
+                          className="text-[11px] px-2 py-1 rounded-md bg-red-500 hover:bg-red-600 text-white font-medium disabled:opacity-50"
+                        >{pending === p.id ? "删除中" : "确认删除"}</button>
+                        <button
+                          disabled={pending === p.id}
+                          onClick={(e) => { e.stopPropagation(); setConfirming(null); }}
+                          className="text-[11px] px-2 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50"
+                        >取消</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirming(p.id); }}
+                        className="text-[11px] px-2 py-1 rounded-md text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="删除该产品"
+                      >
+                        删除
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
