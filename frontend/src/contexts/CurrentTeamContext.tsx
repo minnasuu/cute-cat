@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../utils/apiClient';
+import { resolveTabFromSearch, DEFAULT_TAB_ID } from '../pages/DashboardPage/teamNav';
 
 /**
  * CurrentTeamContext —— 当前选中的团队。
@@ -41,7 +43,9 @@ export function CurrentTeamProvider({ children }: { children: ReactNode }) {
   const [teamId, setTeamIdState] = useState<string | null>(null);
   const [teams, setTeams] = useState<TeamShape[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<string>('single');
+  // URL ?tab= 同步:初始化读 URL,后续通过 navigateTab 写 URL
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<string>(() => resolveTabFromSearch(searchParams.toString()));
 
   const refreshTeams = useCallback(async () => {
     setLoading(true);
@@ -70,7 +74,14 @@ export function CurrentTeamProvider({ children }: { children: ReactNode }) {
 
   const navigateTab = useCallback((tabId: string) => {
     setActiveTab(tabId);
-  }, []);
+    // 同步到 URL ?tab=,用 replace 避免每个 tab 切换都产生历史记录
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tabId === DEFAULT_TAB_ID) next.delete("tab");
+      else next.set("tab", tabId);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const team = useMemo(() => teams.find((t) => t.id === teamId) ?? null, [teams, teamId]);
 

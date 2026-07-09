@@ -44,6 +44,9 @@ export function isDesignTab(id: string): id is DesignMode {
   return (DESIGN_TABS as { id: DesignMode }[]).some((t) => t.id === id);
 }
 
+/** 默认 landing tab(单品) */
+export const DEFAULT_TAB_ID = "single";
+
 /** 「资源」分类下的子 tab(数据浏览 tab) */
 export const RESOURCE_SECTIONS: NavSection[] = [
   {
@@ -77,3 +80,14 @@ export const KNOWLEDGE_SECTIONS: NavSection[] = [
 export const ALL_DATA_TABS: Record<string, NavSubTab & { section: "resources" | "knowledge" }> = {};
 for (const s of RESOURCE_SECTIONS) for (const t of s.tabs) ALL_DATA_TABS[t.id] = { ...t, section: "resources" };
 for (const s of KNOWLEDGE_SECTIONS) for (const t of s.tabs) ALL_DATA_TABS[t.id] = { ...t, section: "knowledge" };
+
+/** 校验一个 tab id 是否合法(设计 tab + 数据 tab) */
+export function isValidTabId(id: string | null | undefined): boolean {
+  return !!id && (isDesignTab(id) || id in ALL_DATA_TABS);
+}
+
+/** 把 URL ?tab= 解析为合法 tab id,非法时回落到 DEFAULT_TAB_ID */
+export function resolveTabFromSearch(search: string): string {
+  const id = new URLSearchParams(search).get("tab");
+  return isValidTabId(id) ? id! : DEFAULT_TAB_ID;
+}
