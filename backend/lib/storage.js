@@ -29,7 +29,28 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
+/**
+ * 解析上传根目录 —— 运行时探测,兼容两种部署目录结构:
+ *   本地开发 / minna 部署:代码在 /app/backend/lib → /app/backend/uploads
+ *   cucatopia 部署:        代码在 /app/lib       → /app/uploads
+ * 优先用已存在的卷挂载点(容器重启后仍在),兜底用 __dirname 推算。
+ */
+function resolveUploadRoot() {
+  const candidates = [
+    '/app/backend/uploads', // minna 部署 / 本地开发结构
+    '/app/uploads',         // cucatopia 部署结构
+    path.join(__dirname, '..', 'uploads'), // 兜底推算
+  ];
+  for (const c of candidates) {
+    try {
+      fs.mkdirSync(c, { recursive: true });
+      if (fs.existsSync(c) && fs.statSync(c).isDirectory()) return c;
+    } catch { /* 不可写则跳过 */ }
+  }
+  return candidates[candidates.length - 1];
+}
+
+const UPLOAD_ROOT = resolveUploadRoot();
 const TMP_DIR = path.join(UPLOAD_ROOT, '.tmp');
 
 const mode = (process.env.S3_BUCKET && process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY) ? 's3' : 'local';
