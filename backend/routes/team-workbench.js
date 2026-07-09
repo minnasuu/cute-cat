@@ -19,7 +19,7 @@ const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
-const { callLongcatStream, callQwenStream, callGeminiStream, callGlmStream } = require('../workflow-executor');
+const { callLongcatStream, callQwenStream, callGlmStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const storage = require('../lib/storage');
 const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
@@ -243,11 +243,8 @@ router.get('/inspirations/debug', async (req, res) => {
       }
       providers.push({ name, ok: probe.ok ? 'ok' : 'fail', model, baseUrl: base.replace(/^https?:\/\/[^/]+/, '***'), probe });
     }
-    if (process.env.GEMINI_API_KEY) {
-      providers.push({ name: 'gemini', ok: 'sdk-only', model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' });
-    }
     res.json({
-      INSPIRATION_AI_PROVIDER: process.env.INSPIRATION_AI_PROVIDER || '(未设置,按 gemini→qwen→openai 顺序回退)',
+      INSPIRATION_AI_PROVIDER: process.env.INSPIRATION_AI_PROVIDER || '(未设置,按 longcat→qwen→openai 顺序回退)',
       providers,
     });
   } catch (err) {
@@ -715,7 +712,7 @@ const CHAT_HEARTBEAT_MS = Number.parseInt(process.env.LAISSE_ANCIE_CHAT_HEARTBEA
 router.post('/chat', async (req, res) => {
   const system = String(req.body.system || '');
   const prompt = String(req.body.prompt || '');
-  const requestedModel = req.body.model || process.env.DEFAULT_AI_MODEL || 'qwen';
+  const requestedModel = req.body.model || process.env.DEFAULT_AI_MODEL || 'longcat';
   const maxTokens = Math.min(Number(req.body.maxTokens) || 2048, 8192);
   if (!system && !prompt) return res.status(400).json({ error: 'system or prompt required' });
 
@@ -751,12 +748,11 @@ router.post('/chat', async (req, res) => {
     console.log(`[team-workbench] chat stream: model=${requestedModel}, maxTokens=${maxTokens}, system=${system.length}c, prompt=${prompt.length}c, timeout=${CHAT_TIMEOUT_MS}ms`);
     if (requestedModel === 'qwen') {
       await callQwenStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
-    } else if (requestedModel === 'longcat') {
-      await callLongcatStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     } else if (requestedModel === 'glm') {
       await callGlmStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     } else {
-      await callGeminiStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+      // 默认: longcat
+      await callLongcatStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     }
     sendSSE('done', { text: fullText, model: requestedModel });
     console.log(`[team-workbench] chat stream done: model=${requestedModel}, length=${fullText.length}`);

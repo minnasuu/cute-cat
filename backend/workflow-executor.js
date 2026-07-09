@@ -8,24 +8,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// 延迟加载 Google GenAI
-let _GoogleGenAI = null;
-async function getGoogleGenAI() {
-  if (!_GoogleGenAI) {
-    const mod = await import('@google/genai');
-    _GoogleGenAI = mod.GoogleGenAI;
-  }
-  return _GoogleGenAI;
-}
-
-async function createGeminiClient(apiKey) {
-  const GoogleGenAI = await getGoogleGenAI();
-  const baseUrl = process.env.GEMINI_BASE_URL;
-  const opts = { apiKey };
-  if (baseUrl) opts.httpOptions = { baseUrl };
-  return new GoogleGenAI(opts);
-}
-
 // ─── LongCat-2.0 (Anthropic‑compatible) ───────────────────────
 async function callLongcat(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
@@ -133,7 +115,39 @@ async function callLongcatStream(systemPrompt, userText, maxTokens = 4096, { onD
   }
 }
 
-// ─── Qwen 调用 (仍保留，可 fallback) ─────────────────────────
+// ─── GLM 调用 (智谱, OpenAI 兼容) ────────────────────────────
+async function callGlm(systemPrompt, userText, maxTokens = 4096) {
+  const apiKey = process.env.GLM_API_KEY;
+  if (!apiKey) throw new Error('GLM_API_KEY not set');
+  const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
+  const model = process.env.GLM_MODEL || 'glm-4-flash';
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+        max_tokens: maxTokens,
+        temperature: 0.7,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`GLM API ${response.status}: ${errText}`);
+    }
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || '';
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// ─── Qwen 调用 ───────────────────────────────────────────────
 async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.QWEN_API_KEY;
   if (!apiKey) throw new Error('QWEN_API_KEY not set');
@@ -160,30 +174,6 @@ async function callQwen(systemPrompt, userText, maxTokens = 4096) {
     }
     const data = await response.json();
     return data.choices?.[0]?.message?.content || '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// ─── Gemini 调用 (仍保留，可 fallback) ────────────────────────
-async function callGemini(systemPrompt, userText, maxTokens = 4096) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
-  const ai = await createGeminiClient(apiKey);
-
-  // 超时保护：与 callQwen 一致，避免无超时导致 nginx 504
-  const controller = new AbortController();
-  const timeoutMs = Number.parseInt(process.env.GEMINI_TIMEOUT_MS || '', 10) || 90000;
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-      contents: userText,
-      config: { systemInstruction: systemPrompt, maxOutputTokens: maxTokens, temperature: 0.7 },
-      // @google/genai 支持 signal 以中断请求
-      ...(controller.signal ? { signal: controller.signal } : {}),
-    });
-    return response.text || '';
   } finally {
     clearTimeout(timeout);
   }
@@ -236,30 +226,6 @@ async function callQwenStream(systemPrompt, userText, maxTokens = 4096, { onDelt
           onDelta?.(delta);
         }
       } catch { /* skip malformed line */ }
-    }
-  }
-  return fullText;
-}
-
-// ─── 流式 Gemini 调用 ───
-async function callGeminiStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
-  const ai = await createGeminiClient(apiKey);
-
-  const stream = await ai.models.generateContentStream({
-    model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-    contents: userText,
-    config: { systemInstruction: systemPrompt, maxOutputTokens: maxTokens, temperature: 0.7 },
-  });
-
-  let fullText = '';
-  for await (const chunk of stream) {
-    if (signal?.aborted) break;
-    const delta = chunk.text || '';
-    if (delta) {
-      fullText += delta;
-      onDelta?.(delta);
     }
   }
   return fullText;
@@ -321,7 +287,7 @@ async function callGlmStream(systemPrompt, userText, maxTokens = 4096, { onDelta
 async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
   const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'longcat';
   if (selectedModel === 'qwen') return callQwen(systemPrompt, userText, maxTokens);
-  if (selectedModel === 'gemini') return callGemini(systemPrompt, userText, maxTokens);
+  if (selectedModel === 'glm') return callGlm(systemPrompt, userText, maxTokens);
   return callLongcat(systemPrompt, userText, maxTokens);
 }
 
@@ -680,6 +646,5 @@ module.exports = {
   callAI,
   callLongcatStream,
   callQwenStream,
-  callGeminiStream,
   callGlmStream,
 };

@@ -36,7 +36,6 @@ const MODELS = [
   { id: "longcat", label: "LongCat-2.0", hint: "Anthropic 兼容" },
   { id: "glm", label: "GLM", hint: "智谱" },
   { id: "qwen", label: "Qwen", hint: "通义千问" },
-  { id: "gemini", label: "Gemini", hint: "Google" },
 ] as const;
 type ModelId = typeof MODELS[number]["id"];
 

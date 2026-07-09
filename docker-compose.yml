@@ -42,9 +42,6 @@ services:
       LONGCAT_API_KEY: ${LONGCAT_API_KEY:-sk-placeholder}
       LONGCAT_BASE_URL: ${LONGCAT_BASE_URL:-https://api.anthropic.com}
       LONGCAT_MODEL: ${LONGCAT_MODEL:-LongCat-2.0}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen3.5-plus}

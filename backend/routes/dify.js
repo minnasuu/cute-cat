@@ -200,29 +200,8 @@ router.post('/generate-goal', optionalAuth, async (req, res) => {
   }
 });
 
-// 通用 Skill 路由：各 skill 共用 Gemini 模型
+// 通用 Skill 路由：各 skill 共用 AI 模型
 // POST /api/dify/skill  body: { taskId, text }
-
-// 延迟加载 GoogleGenAI（ESM-only 包，需用 dynamic import）
-let _GoogleGenAI = null;
-async function getGoogleGenAI() {
-  if (!_GoogleGenAI) {
-    const mod = await import('@google/genai');
-    _GoogleGenAI = mod.GoogleGenAI;
-  }
-  return _GoogleGenAI;
-}
-
-// 创建 Gemini AI 客户端（支持自定义代理地址）
-async function createGeminiClient(apiKey) {
-  const GoogleGenAI = await getGoogleGenAI();
-  const baseUrl = process.env.GEMINI_BASE_URL; // 可选：自定义代理地址
-  const opts = { apiKey };
-  if (baseUrl) {
-    opts.httpOptions = { baseUrl };
-  }
-  return new GoogleGenAI(opts);
-}
 
 // Skill 对应的系统提示词
 const SKILL_SYSTEM_PROMPTS = {
@@ -331,19 +310,21 @@ async function callQwen(systemPrompt, userText, maxTokens = 4096) {
 
 // 可用模型列表
 const AVAILABLE_MODELS = {
-  gemini: { name: 'Gemini', provider: 'Google' },
+  longcat: { name: 'LongCat-2.0', provider: 'Anthropic 兼容' },
   qwen: { name: 'Qwen', provider: 'Alibaba' },
+  glm: { name: 'GLM', provider: '智谱' },
 };
 
 // 获取可用模型列表
 router.get('/models', (_req, res) => {
   const models = Object.entries(AVAILABLE_MODELS).map(([id, info]) => {
     let available = false;
-    if (id === 'gemini') available = !!process.env.GEMINI_API_KEY;
+    if (id === 'longcat') available = !!(process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY);
     if (id === 'qwen') available = !!process.env.QWEN_API_KEY;
+    if (id === 'glm') available = !!process.env.GLM_API_KEY;
     return { id, ...info, available };
   });
-  res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'qwen' });
+  res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'longcat' });
 });
 
 // =====================================================================
@@ -392,7 +373,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
 
     // 与非流式 POST /skill 一致：优先使用前端传入的 systemPrompt / maxTokens
     const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
-    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
+    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'longcat';
 
     const TASK_MAX_TOKENS = {
       'workflow-gen': 8192, 'mece-analysis': 8192, 'scamper-creative': 8192,
@@ -486,40 +467,64 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
           : (err.message || String(err));
         sendSSE('error', { error: msg });
       }
-    } else {
-      // --- Gemini Streaming ---
-      const GoogleGenAI = await getGoogleGenAI();
-      if (!GoogleGenAI) {
-        sendSSE('error', { error: '@google/genai module not available' });
+    } else if (selectedModel === 'glm') {
+      // --- GLM Streaming (智谱, OpenAI 兼容) ---
+      const apiKey = process.env.GLM_API_KEY;
+      if (!apiKey) {
+        sendSSE('error', { error: 'GLM_API_KEY not set' });
         return endSSE();
       }
-      const geminiApiKey = process.env.GEMINI_API_KEY;
-      if (!geminiApiKey) {
-        sendSSE('error', { error: 'GEMINI_API_KEY not set' });
-        return endSSE();
-      }
+      const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
+      const glmModel = process.env.GLM_MODEL || 'glm-4-flash';
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), streamAbortMs);
 
       try {
-        const ai = await createGeminiClient(geminiApiKey);
-        const stream = await ai.models.generateContentStream({
-          model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-          contents: text,
-          config: {
-            systemInstruction: systemPrompt,
-            maxOutputTokens: maxTokens,
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: glmModel,
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
+            max_tokens: maxTokens,
             temperature: 0.7,
-          },
+            stream: true,
+          }),
+          signal: controller.signal,
         });
 
+        if (!response.ok) {
+          const errText = await response.text();
+          sendSSE('error', { error: `GLM API ${response.status}: ${errText.slice(0, 200)}` });
+          return endSSE();
+        }
+
         let fullAnswer = '';
-        for await (const chunk of stream) {
-          const delta = chunk.text || '';
-          if (delta) {
-            fullAnswer += delta;
-            sendSSE('chunk', { text: delta });
+        const reader = response.body;
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        for await (const chunk of reader) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (!trimmed.startsWith('data: ')) continue;
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json.choices?.[0]?.delta?.content || '';
+              if (delta) {
+                fullAnswer += delta;
+                sendSSE('chunk', { text: delta });
+              }
+            } catch { /* skip malformed */ }
           }
         }
 
+        clearTimeout(timeout);
         const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
         sendSSE('done', {
           answer: fullAnswer,
@@ -527,7 +532,85 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
           ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
         });
       } catch (err) {
-        const msg = err.message || String(err);
+        clearTimeout(timeout);
+        const msg = err.name === 'AbortError'
+          ? `AI 流式请求超时（当前上限 ${streamAbortMs / 1000}s）`
+          : (err.message || String(err));
+        sendSSE('error', { error: msg });
+      }
+    } else {
+      // --- 默认: LongCat (Anthropic 兼容) ---
+      const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        sendSSE('error', { error: 'LONGCAT_API_KEY not set' });
+        return endSSE();
+      }
+      const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+      const longcatModel = process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), streamAbortMs);
+
+      try {
+        const response = await fetch(`${baseUrl}/v1/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: longcatModel,
+            max_tokens: maxTokens,
+            temperature: 0.7,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: text }],
+            stream: true,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          sendSSE('error', { error: `LongCat API ${response.status}: ${errText.slice(0, 200)}` });
+          return endSSE();
+        }
+
+        let fullAnswer = '';
+        const reader = response.body;
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        for await (const chunk of reader) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json.delta?.text || '';
+              if (delta) {
+                fullAnswer += delta;
+                sendSSE('chunk', { text: delta });
+              }
+            } catch { /* skip malformed */ }
+          }
+        }
+
+        clearTimeout(timeout);
+        const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
+        sendSSE('done', {
+          answer: fullAnswer,
+          model: selectedModel,
+          ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+        });
+      } catch (err) {
+        clearTimeout(timeout);
+        const msg = err.name === 'AbortError'
+          ? `AI 流式请求超时（当前上限 ${streamAbortMs / 1000}s）`
+          : (err.message || String(err));
         sendSSE('error', { error: msg });
       }
     }
@@ -558,7 +641,7 @@ router.post('/skill', optionalAuth, async (req, res) => {
 
     // 优先使用前端传入的 systemPrompt，否则 fallback 到 taskId 对应的默认值
     const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
-    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
+    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'longcat';
 
     // 根据 taskId 动态调整 token 限制
     // 结构化输出类（JSON 格式）需要更大空间防止截断
@@ -583,30 +666,59 @@ router.post('/skill', optionalAuth, async (req, res) => {
     if (selectedModel === 'qwen') {
       // --- Qwen ---
       answer = await callQwen(systemPrompt, text, maxTokens);
-    } else {
-      // --- Gemini (默认) ---
-      const GoogleGenAI = await getGoogleGenAI();
-      if (!GoogleGenAI) {
-        return res.status(500).json({ error: 'Server configuration error: @google/genai module not available' });
+    } else if (selectedModel === 'glm') {
+      // --- GLM (智谱, OpenAI 兼容) ---
+      const apiKey = process.env.GLM_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'GLM_API_KEY not set' });
       }
-
-      const geminiApiKey = process.env.GEMINI_API_KEY;
-      if (!geminiApiKey) {
-        return res.status(500).json({ error: 'Server configuration error: GEMINI_API_KEY not set' });
-      }
-
-      const ai = await createGeminiClient(geminiApiKey);
-      const response = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-        contents: text,
-        config: {
-          systemInstruction: systemPrompt,
-          maxOutputTokens: maxTokens,
+      const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
+      const glmModel = process.env.GLM_MODEL || 'glm-4-flash';
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: glmModel,
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
+          max_tokens: maxTokens,
           temperature: 0.7,
-        },
+        }),
       });
-
-      answer = response.text || '';
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(500).json({ error: `GLM API ${response.status}: ${errText.slice(0, 200)}` });
+      }
+      const data = await response.json();
+      answer = data.choices?.[0]?.message?.content || '';
+    } else {
+      // --- 默认: LongCat (Anthropic 兼容) ---
+      const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'LONGCAT_API_KEY not set' });
+      }
+      const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+      const longcatModel = process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
+      const response = await fetch(`${baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: longcatModel,
+          max_tokens: maxTokens,
+          temperature: 0.7,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: text }],
+        }),
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(500).json({ error: `LongCat API ${response.status}: ${errText.slice(0, 200)}` });
+      }
+      const data = await response.json();
+      answer = data.content?.map(c => c.text).join('') || '';
     }
 
     console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, answer length=${answer.length}`);
@@ -625,7 +737,7 @@ router.post('/skill', optionalAuth, async (req, res) => {
     // 返回更具体的错误信息帮助定位
     let errDetail = error.message || String(error);
     if (errDetail.includes('API_KEY') || errDetail.includes('apiKey')) {
-      errDetail = 'AI API Key 未配置或无效，请检查 .env 中的 GEMINI_API_KEY 或 QWEN_API_KEY';
+      errDetail = 'AI API Key 未配置或无效，请检查 .env 中的 LONGCAT_API_KEY / QWEN_API_KEY / GLM_API_KEY';
     } else if (errDetail.includes('ECONNREFUSED') || errDetail.includes('ENOTFOUND') || errDetail.includes('fetch failed')) {
       errDetail = 'AI 服务连接失败，请检查网络或 API 地址配置';
     } else if (errDetail.includes('aborted') || errDetail.includes('timeout')) {

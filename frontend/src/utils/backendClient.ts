@@ -240,7 +240,7 @@ export interface DifySkillResponse {
   aiQuota?: number;
 }
 
-let _currentAIModel: string = 'qwen';
+let _currentAIModel: string = 'longcat';
 
 export const setCurrentAIModel = (model: string) => { _currentAIModel = model; };
 export const getCurrentAIModel = () => _currentAIModel;
@@ -270,10 +270,11 @@ export const fetchAIModels = async (): Promise<{ models: AIModelInfo[]; default:
   } catch {
     return {
       models: [
-        { id: 'gemini', name: 'Gemini', provider: 'Google', available: true },
+        { id: 'longcat', name: 'LongCat-2.0', provider: 'Anthropic 兼容', available: true },
         { id: 'qwen', name: 'Qwen', provider: 'Alibaba', available: true },
+        { id: 'glm', name: 'GLM', provider: '智谱', available: true },
       ],
-      default: 'qwen',
+      default: 'longcat',
     };
   }
 };

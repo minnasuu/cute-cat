@@ -1,5 +1,5 @@
 import type { AgentContext, AgentResult } from './types';
-import { callDifySkillStream } from '../utils/backendClient';
+import { callDifySkillStream, getCurrentAIModel } from '../utils/backendClient';
 
 /**
  * Agent 执行框架：
@@ -65,7 +65,7 @@ export async function runWithAI(
       const resp = await callDifySkillStream(
         'ai-chat',
         userText,
-        'qwen',
+        getCurrentAIModel(),
         options.onChunk,
         {
           systemPrompt,

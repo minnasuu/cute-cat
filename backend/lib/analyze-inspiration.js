@@ -7,10 +7,10 @@
  *   - 失败 → { result: null, error: 'key' | 'mime' | 'file' | 'api:xxx' | 'json:...' | 'empty' }
  *
  * provider(INSPIRATION_AI_PROVIDER):
- *   - openai(LONGCAT_BASE_URL/LONGCAT_API_KEY/LONGCAT_MODEL 或 OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL)
+ *   - longcat(LONGCAT_BASE_URL/LONGCAT_API_KEY/LONGCAT_MODEL)
  *   - qwen(QWEN_BASE_URL/QWEN_API_KEY/QWEN_MODEL)
- *   - gemini(GEMINI_BASE_URL/GEMINI_API_KEY/GEMINI_MODEL)  -- 通过 @google/genai SDK,支持 inline image
- * 默认:打开可用 key 的第一个(qwen → gemini → openai)
+ *   - openai(OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL)
+ * 默认:打开可用 key 的第一个(longcat → qwen → openai)
  */
 
 'use strict';
@@ -81,39 +81,6 @@ async function analyzeOpenAi({ endpoint, apiKey, model, dataUrl, mimeType, timeo
   }
 }
 
-// ─── Gemini (原生 SDK,内联 base64 小图) ───────────────────────
-async function analyzeGemini({ apiKey, model, imageBuffer, mimeType, timeoutMs }) {
-  let GoogleGenAI;
-  try {
-    GoogleGenAI = (await import('@google/genai')).GoogleGenAI;
-  } catch (e) {
-    return { error: `no-sdk:@google/genai` };
-  }
-  const ext = mediaTypeToExtension(mimeType);
-  if (!ext) return { error: 'mime' };
-  const client = new GoogleGenAI({ apiKey });
-
-  const timer = setTimeout(() => {}, timeoutMs);
-  try {
-    const resp = await client.models.generateContent({
-      model,
-      contents: [
-        { inlineData: { mimeType, data: imageBuffer.toString('base64') } },
-        { text: PROMPT },
-      ],
-      generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
-    });
-    const raw = resp?.text || '';
-    if (!raw) return { error: 'empty' };
-    return { raw };
-  } catch (err) {
-    if (err.name === 'AbortError') return { error: `net:timeout(${timeoutMs}ms)` };
-    return { error: `net:${err.name || 'unknown'}:${(err.message || '').slice(0, 100)}` };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function analyzeInspiration(imageBuffer, mimeType) {
   if (!imageBuffer || !imageBuffer.length) {
     return { result: null, error: 'file' };
@@ -137,27 +104,22 @@ async function analyzeInspiration(imageBuffer, mimeType) {
     return b.endsWith('/v1') ? `${b}/chat/completions` : `${b}/v1/chat/completions`;
   }
 
-  // 默认顺序:gemini 优先(渲染上唯一确定支持 vision 的),再 qwen/text-compat
-  // 原因:qwen3.5-plus 是纯文本模型, vision 调用会 400;longcat 上游 403;gemini flash 稳
+  // 默认顺序:longcat 优先(Anthropic 兼容,vision 稳),再 qwen/openai
+  // 注意:GLM 没有视觉理解能力,不参与 analyze-inspiration
+  // longcat 上游若 403 会自动回退到下一个可用 key
 
-  // 1) gemini(首选,vision 稳定)
-  if (process.env.GEMINI_API_KEY) {
-    providers.push({
-      name: 'gemini',
-      run: () => analyzeGemini({
-        apiKey: process.env.GEMINI_API_KEY,
-        model: explicitModel || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-        imageBuffer, mimeType, timeoutMs,
-      }),
-    });
-  }
-
-  // 2) OpenAI‑compatible 大类 (qwen/openai/longcat)
+  // 视觉模型列表 (仅支持 image_url 输入的模型)
   const openVariants = [
+    { name: 'longcat', base: process.env.LONGCAT_BASE_URL, key: process.env.LONGCAT_API_KEY, model: process.env.LONGCAT_MODEL },
     { name: 'qwen',  base: process.env.QWEN_BASE_URL,  key: process.env.QWEN_API_KEY,  model: process.env.QWEN_MODEL },
     { name: 'openai', base: process.env.OPENAI_BASE_URL, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL },
-    { name: 'longcat', base: process.env.LONGCAT_BASE_URL, key: process.env.LONGCAT_API_KEY, model: process.env.LONGCAT_MODEL },
-  ].filter((v) => v.key && v.base);
+  ].filter((v) => v.key && v.base); // 仅保留配置了 key+base 的
+
+  // 防御:如果 INSPIRATION_AI_PROVIDER 被误设为 glm,直接拒绝
+  if (forced === 'glm') {
+    console.warn('[analyze-inspiration] INSPIRATION_AI_PROVIDER=glm 不合法,GLM 不支持视觉理解');
+    return { result: null, error: 'no-provider:glm (GLM 不支持视觉理解)' };
+  }
   for (const v of openVariants) {
     if (!v.base) v.base = 'https://api.openai.com';
   }
@@ -185,7 +147,7 @@ async function analyzeInspiration(imageBuffer, mimeType) {
   }
 
   if (providers.length === 0) {
-    console.warn('[analyze-inspiration] no AI provider (qwen/openai/gemini) configured with both key + base');
+    console.warn('[analyze-inspiration] no AI provider (longcat/qwen/openai) configured with both key + base');
     return { result: null, error: 'key' };
   }
 
