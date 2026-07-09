@@ -18,10 +18,11 @@ function shouldSkipRefreshOn401(url: string): boolean {
 
 class ApiClient {
   private async request<T = any>(url: string, options: RequestInit = {}): Promise<T> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string> || {}),
-    };
+    // FormData 上传:透传 body,不强制 Content-Type(让浏览器自动加 multipart boundary)
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    const headers: Record<string, string> = isFormData
+      ? { ...(options.headers as Record<string, string> || {}) }
+      : { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> || {}) };
 
     let response: Response;
     try {
@@ -116,15 +117,19 @@ class ApiClient {
   }
 
   post<T = any>(url: string, body?: any) {
-    return this.request<T>(url, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
+    const finalBody = (typeof FormData !== 'undefined' && body instanceof FormData) ? body : (body ? JSON.stringify(body) : undefined);
+    return this.request<T>(url, { method: 'POST', body: finalBody });
   }
 
   put<T = any>(url: string, body?: any) {
-    return this.request<T>(url, { method: 'PUT', body: body ? JSON.stringify(body) : undefined });
+    const finalBody = (typeof FormData !== 'undefined' && body instanceof FormData) ? body : (body ? JSON.stringify(body) : undefined);
+    return this.request<T>(url, { method: 'PUT', body: finalBody });
   }
 
   patch<T = any>(url: string, body?: any) {
-    return this.request<T>(url, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined });
+    // FormData 直接透传(不 JSON 序列化),让 fetch 自动设置 multipart boundary
+    const finalBody = (typeof FormData !== 'undefined' && body instanceof FormData) ? body : (body ? JSON.stringify(body) : undefined);
+    return this.request<T>(url, { method: 'PATCH', body: finalBody });
   }
 
   delete<T = any>(url: string) {
