@@ -245,6 +245,11 @@ model LAInspirationAsset {
   width         Int      @default(0)
   height        Int      @default(0)
   category      String?
+  // —— 新 AI 分析结果(4 维度) ——
+  visualStyle     String?  @db.Text
+  designApproach  String?  @db.Text
+  inspiration     Json     @default("[]")
+  // —— 旧字段(弃用,保留兼容旧数据,新代码不再写入) ——
   silhouette    String?
   colors        Json     @default("[]")
   brandAnalysis String?  @db.Text

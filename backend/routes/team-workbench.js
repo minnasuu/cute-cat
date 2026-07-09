@@ -354,11 +354,9 @@ async function runInspirationAnalysis(id, filePath, publicUrl) {
         analysisStatus: 'success',
         analysisError: null,
         category: result.category || null,
-        silhouette: result.silhouette || null,
-        colors: Array.isArray(result.colors) ? result.colors : [],
-        brandAnalysis: result.brandAnalysis || null,
-        designHighlights: Array.isArray(result.designHighlights) ? result.designHighlights : [],
-        styleFeatures: Array.isArray(result.styleFeatures) ? result.styleFeatures : [],
+        visualStyle: result.visualStyle || null,
+        designApproach: result.designApproach || null,
+        inspiration: Array.isArray(result.inspiration) ? result.inspiration : [],
       },
     });
     console.log(`[team-workbench] inspiration ${id} analyzed: category=${result.category}`);
