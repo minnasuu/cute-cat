@@ -29,7 +29,7 @@ import { Markdown } from "../lib/markdown";
 import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
 import type { InspirationItem } from "../store/resource";
 
-type DesignStage = "greeting" | "brainstorming" | "planning" | "generating" | "presenting";
+type DesignStage = "greeting" | "brainstorming" | "planning" | "generating" | "presenting" | "presenting-html";
 
 const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
 
@@ -102,6 +102,17 @@ function stripStageMarker(text: string): string {
   return text.replace(STAGE_MARKER, "").trim();
 }
 
+/**
+ * 从 AI 回复中提取自包含 HTML(代码块或裸 <html>…</html> 片段)。
+ * 插画 HTML 生成路径的解析函数。
+ */
+function extractHtmlBlock(text: string): string | null {
+  const fence = text.match(/```(?:html|HTML)?\s*\n?([\s\S]*?)```/);
+  if (fence?.[1]) return fence[1].trim();
+  const auto = text.match(/<html[\s\S]*<\/html>/i);
+  return auto ? auto[0] : null;
+}
+
 interface ChatMsg {
   id: string;
   role: "user" | "assistant";
@@ -109,6 +120,108 @@ interface ChatMsg {
   product?: Product;
   /** 本次回复引用的灵感图(前端匹配后注入,用于渲染「参考灵感」卡片) */
   references?: InspirationItem[];
+  /** 插画最终自包含 HTML(仅 illustration 模式下产出,供画布渲染) */
+  html?: string;
+}
+
+/** design-chat 追加的 stage:插画 HTML 稿生成完毕 */
+type ExtendedStage = DesignStage | "presenting-html";
+
+/**
+ * 插画 HTML 生成的系统 prompt —— 声明「只输出一段自包含 HTML 代码块」,
+ * 复用品牌调色板 + 灵感参考。
+ */
+const ILLUSTRATION_HTML_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的插画师。基于下面确认的设计方案,交付一幅完整、独立、可直接在浏览器打开的插画作品。
+
+## 输出格式硬约束(必须遵守)
+- 只输出一段自包含的 HTML 文档(HTML + inline CSS + inline SVG / canvas 绘图),不能有外部资源、不能联网。
+- 输出时**只输出一个** \`\`\`html ... \`\`\` 代码块,**代码块外不要有任何解释、说明或对话文字**。
+- 画布填满 viewport,整体是 1:1 方形、可印刷的印花 / 图形作品。
+
+## 风格与规则
+- 主题 / 元素 / 配色沿用下面的「参考灵感」与「团队知识库」(品牌调色板),与方案保持一致。
+- **不要**出现服装、人物、模特、走秀姿势、文字标语。
+- 风格:平面矢量 / 水彩 / 现代极简 / 编辑级图案,印刷友好(高清边缘、平涂或渐层)。
+- 允许 inline CSS 动画(如缓慢旋转 / 呼吸),让画面"活"起来。
+
+方案确认后立即输出插画 HTML,末尾加 <!--STAGE:presenting-html-->:`;
+
+/** 公共聊天流式 helper —— send / generateHtml / regenerateHtml 共用。
+ *  用 fetch 直接流式读取 SSE,teamId 由调用方注入(避免在类函数内用 React hook)。*/
+async function streamChat(opts: {
+  chatUrl: string;
+  system: string;
+  prompt: string;
+  model: ModelId;
+  maxTokens?: number;
+  onTick?: (accumulated: string) => void;
+  onDone?: (finalText: string, accumulated: string) => void;
+}): Promise<void> {
+  const { chatUrl, system, prompt, model, maxTokens = 2048, onTick, onDone } = opts;
+  const streamTimeoutMs = 290_000;
+  const ac = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => ac.abort(), streamTimeoutMs);
+  try {
+    const res = await fetch(teamApi(teamId ?? "").chatUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ system, prompt, model, maxTokens }),
+      signal: ac.signal,
+    });
+    if (!res.ok) {
+      let errMsg = `请求失败(HTTP ${res.status})`;
+      try { const j = await res.json(); if (j?.error) errMsg = j.error; } catch { /* */ }
+      onDone?.(`⚠ ${errMsg}`, `⚠ ${errMsg}`);
+      return;
+    }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      onDone?.("⚠ 当前浏览器不支持流式响应", "⚠ 当前浏览器不支持流式响应");
+      return;
+    }
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let currentEvent = "";
+    let accumulated = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) { currentEvent = ""; continue; }
+        if (trimmed.startsWith(":")) continue;
+        if (trimmed.startsWith("event: ")) { currentEvent = trimmed.slice(7).trim(); continue; }
+        if (trimmed.startsWith("data: ")) {
+          let payload: any = null;
+          try { payload = JSON.parse(trimmed.slice(6)); } catch { continue; }
+          if (currentEvent === "chunk" && payload?.text) {
+            accumulated += payload.text;
+            onTick?.(accumulated);
+          } else if (currentEvent === "done") {
+            const finalText = stripStageMarker(payload?.text ?? accumulated);
+            onDone?.(finalText, payload?.text ?? accumulated);
+            return;
+          } else if (currentEvent === "error") {
+            onDone?.(`⚠ 生成失败: ${payload?.error ?? "未知错误"}`, "");
+            return;
+          }
+        }
+      }
+    }
+    // reader 正常结束但没有 event:done —— 强制收尾
+    const finalText = stripStageMarker(accumulated);
+    onDone?.(finalText, accumulated);
+  } catch (err: any) {
+    let msg = err?.message || "未知错误";
+    if (err instanceof DOMException && err.name === "AbortError") msg = "生成超时(上限约 290s),请稍后重试或精简 prompt";
+    onDone?.(`⚠ ${msg}`, "");
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
 }
 
 interface GeneratedImage {
@@ -150,38 +263,37 @@ export default function ComposerPage({
   const [references, setReferences] = useState<InspirationItem[]>([]); // 最近一次匹配到的灵感引用
   const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
   const isMobile = useIsMobile();
-  const [planOpen, setPlanOpen] = useState(false); // 移动端企划抽屉开关
+  const [planOpen, setPlanOpen] = useState(false); // 移动端企划(单品/系列)抽屉开关
+  const [canvasOpen, setCanvasOpen] = useState(false); // 移动端画布(插画)抽屉开关
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // —— 插画 HTML + 画布模式的状态 ——
+  const [illustHtml, setIllustHtml] = useState<string | null>(null);     // 当前画布渲染的自包含 HTML
+  const [illustBusy, setIllustBusy] = useState(false);                    // 插画生成进行中(不阻塞 chat)
+  const [illustMsgId, setIllustMsgId] = useState<string | null>(null);   // 当前展示插画的消息 id(渲染画布入口)
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs, busy]);
 
-  // 开场自动发一条 assistant 消息
+  // 开场自动发一条 assistant 消息(按 mode 给不同引导)
   useEffect(() => {
     if (msgs.length === 0 && !busy) {
-      setMsgs([{
-        id: "greeting",
-        role: "assistant",
-        text: "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 素材 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成设计图\n\n可选方向类型:\n- **插画** — 一张艺术插画(主视觉 / 印花 / 图案)\n- **单品** — 服装 / 包袋 / 配饰 / 家居 / 文创(输出 4 张设计图)\n- **系列** — 一个完整系列(系列总览 + 每款 4 张图)",
-      }]);
+      const greeting = mode === "illustration"
+        ? "欢迎来到 Laisse Ancie 插画工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**风格**(水彩、矢量、现代极简、装饰艺术…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个插画方案\n3️⃣ 你确认后,生成可印刷的插画 HTML 画布"
+        : mode === "collection"
+        ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成系列总览图"
+        : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成设计图";
+      setMsgs([{ id: "greeting", role: "assistant", text: greeting }]);
       setStage("greeting");
     }
   }, []);
 
-  async function send(raw: string) {
-    if (!raw.trim() || busy || knowledgeLoading) return;
-    const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", text: raw.trim() };
-    setMsgs((xs) => [...xs, userMsg]);
-    setBusy(true);
-
-    const assistantId = crypto.randomUUID();
-    setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "" }]);
-
-    // ── 步骤 1:前端本地匹配 3 个最相关的灵感借鉴 ──
+  /** 构建「参考灵感」注入块(前端本地匹配 3 张灵感) */
+  function buildReferencesBlock(raw: string): { block: string; refs: InspirationItem[] } {
     const matchedRefs = matchInspirations(raw, knowledge?.inspirations ?? [], 3);
     setReferences(matchedRefs);
-    const referencesBlock = matchedRefs.length
+    const block = matchedRefs.length
       ? [
         "## 参考灵感(前端已匹配,方案必须引用以下 3 张灵感,用 #[ID] 的形式)",
         ...matchedRefs.map((it) => [
@@ -194,14 +306,23 @@ export default function ComposerPage({
         ].filter(Boolean).join("\n")),
       ].join("\n\n")
       : "## 参考灵感\n(灵感库为空,建议先到左侧上传灵感图)";
+    return { block, refs: matchedRefs };
+  }
 
-    // 构造 system prompt(设计顾问 + 参考灵感 + 知识注入)
+  /** 单品 / 系列:chat 主流程(设计顾问 + 灵感 + 知识 → 方案) */
+  async function send(raw: string) {
+    if (!raw.trim() || busy || knowledgeLoading) return;
+    const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", text: raw.trim() };
+    setMsgs((xs) => [...xs, userMsg]);
+    setBusy(true);
+
+    const assistantId = crypto.randomUUID();
+    setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "" }]);
+
+    const { block: referencesBlock, refs: matchedRefs } = buildReferencesBlock(raw);
     const history = [...msgs, userMsg].map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
     const knowledgeBlock = knowledge
-      ? buildKnowledgeInjectors(knowledge)
-        .map((inj) => inj(raw, knowledge))
-        .filter(Boolean)
-        .join("\n\n")
+      ? buildKnowledgeInjectors(knowledge).map((inj) => inj(raw, knowledge)).filter(Boolean).join("\n\n")
       : "";
     const system = [
       DESIGNER_SYSTEM,
@@ -209,86 +330,137 @@ export default function ComposerPage({
       knowledgeBlock ? `## 团队知识库(自动注入)\n${knowledgeBlock}` : "",
     ].filter(Boolean).join("\n\n");
 
-    const streamTimeoutMs = 290_000;
-    const ac = new AbortController();
-    const timeoutId = globalThis.setTimeout(() => ac.abort(), streamTimeoutMs);
-
-    try {
-      const res = await fetch(teamApi(teamId ?? "").chatUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ system, prompt: history, model, maxTokens: 2048 }),
-        signal: ac.signal,
-      });
-
-      if (!res.ok) {
-        let errMsg = `请求失败(HTTP ${res.status})`;
-        try { const j = await res.json(); if (j?.error) errMsg = j.error; } catch { /* */ }
-        setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ ${errMsg}` } : m));
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      if (!reader) {
-        setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: "⚠ 当前浏览器不支持流式响应" } : m));
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let currentEvent = "";
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) { currentEvent = ""; continue; }
-          if (trimmed.startsWith(":")) continue;
-          if (trimmed.startsWith("event: ")) { currentEvent = trimmed.slice(7).trim(); continue; }
-          if (trimmed.startsWith("data: ")) {
-            let payload: any = null;
-            try { payload = JSON.parse(trimmed.slice(6)); } catch { continue; }
-            if (currentEvent === "chunk" && payload?.text) {
-              accumulated += payload.text;
-              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: stripStageMarker(accumulated) } : m));
-            } else if (currentEvent === "done") {
-              const finalText = stripStageMarker(payload?.text ?? accumulated);
-              const newStage = parseStage(payload?.text ?? accumulated) || stage;
-              // 附带灵感引用(渲染「参考灵感」卡片)——仅在 proposal 阶段注入
-              const withRefs = newStage === "proposal" || newStage === "references" || stage === "greeting"
-                ? { text: finalText, references: matchedRefs }
-                : { text: finalText };
-              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, ...withRefs } : m));
-              setStage(newStage);
-              // 保存 plan text(用于后续图片生成)
-              if (newStage === "planning" || newStage === "brainstorming" || newStage === "proposal") {
-                setPlanText(finalText);
-              }
-            } else if (currentEvent === "error") {
-              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ 生成失败: ${payload?.error ?? "未知错误"}` } : m));
-            }
-          }
+    await streamChat({
+      chatUrl: teamApi(teamId ?? "").chatUrl,
+      system,
+      prompt: history,
+      model,
+      assistantId,
+      onTick: (accumulated) => {
+        setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: stripStageMarker(accumulated) } : m));
+      },
+      onDone: (finalText, rawAccum) => {
+        const newStage = parseStage(rawAccum) || stage;
+        const withRefs = newStage === "proposal" || newStage === "references" || stage === "greeting"
+          ? { text: finalText, references: matchedRefs }
+          : { text: finalText };
+        setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, ...withRefs } : m));
+        setStage(newStage);
+        if (newStage === "planning" || newStage === "brainstorming" || newStage === "proposal") {
+          setPlanText(finalText);
         }
-      }
-    } catch (err: any) {
-      let msg = err?.message || "未知错误";
-      if (err instanceof DOMException && err.name === "AbortError") msg = "生成超时(当前上限约 290s),请稍后重试或精简 prompt";
-      setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: `⚠ ${msg}` } : m));
-    } finally {
-      globalThis.clearTimeout(timeoutId);
-      setBusy(false);
-    }
+      },
+    });
+    setBusy(false);
   }
 
-  // 用户确认企划 → 批量生成设计图
+  /**
+   * 插画:确认方案后,让 AI 输出自包含 HTML 作为最终交付物。
+   * 不调用 /design/generate 图片接口,而是复用 /chat 流式,解析 ```html … ``` 块。
+   */
+  async function generateHtml() {
+    if (illustBusy || busy || generating) return;
+    setIllustBusy(true);
+    setStage("generating");
+
+    const trigger: ChatMsg = {
+      id: crypto.randomUUID(),
+      role: "user",
+      text: "请基于上面的方案,输出一幅完整的插画(自包含 HTML + inline CSS / SVG,可直接在浏览器打开)。仅输出 ```html … ``` 代码块,代码块外不要有任何文字。",
+    };
+    const assistantId = crypto.randomUUID();
+    setMsgs((xs) => [...xs, trigger, { id: assistantId, role: "assistant", text: "生成插画稿…" }]);
+
+    const { block: referencesBlock } = buildReferencesBlock(planText || "");
+    const knowledgeBlock = knowledge
+      ? buildKnowledgeInjectors(knowledge).map((inj) => inj(planText || "", knowledge)).filter(Boolean).join("\n\n")
+      : "";
+    const system = [
+      ILLUSTRATION_HTML_SYSTEM,
+      referencesBlock,
+      knowledgeBlock ? `## 团队知识库(自动注入)\n${knowledgeBlock}` : "",
+    ].filter(Boolean).join("\n\n");
+    const history = [...msgs, trigger].map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
+
+    await streamChat({
+      chatUrl: teamApi(teamId ?? "").chatUrl,
+      system,
+      prompt: history,
+      model,
+      maxTokens: 4096,
+      onTick: () => { /* 插画生成中不逐 token 更新,保持「生成插画稿…」 */ },
+      onDone: (finalText, rawAccum) => {
+        const html = extractHtmlBlock(rawAccum);
+        if (html) {
+          setIllustHtml(html);
+          setIllustMsgId(assistantId);
+          setMsgs((xs) => xs.map((m) => m.id === assistantId
+            ? { ...m, text: "✅ 插画稿已生成,可在右侧画布查看;告诉我要调整的地方。", html }
+            : m));
+          setStage("presenting-html");
+        } else {
+          setMsgs((xs) => xs.map((m) => m.id === assistantId
+            ? { ...m, text: "⚠ 未检测到 HTML 输出,请重试或调整方案。" }
+            : m));
+          setStage("proposal");
+        }
+      },
+    });
+    setIllustBusy(false);
+  }
+
+  /** 插画:在画布下方「修改」输入 → 让 AI 基于上一版重出完整 HTML */
+  async function regenerateHtml(instruction: string) {
+    if (!instruction.trim() || illustBusy || busy) return;
+    setIllustBusy(true);
+    const userMsg: ChatMsg = {
+      id: crypto.randomUUID(),
+      role: "user",
+      text: `请在上一版插画基础上修改: ${instruction}\n仅输出新的完整 \`\`\`html … \`\`\` 代码块,代码块外不要有任何文字。`,
+    };
+    const assistantId = crypto.randomUUID();
+    setMsgs((xs) => [...xs, userMsg, { id: assistantId, role: "assistant", text: "调整插画稿…" }]);
+
+    const { block: referencesBlock } = buildReferencesBlock(planText || "");
+    const knowledgeBlock = knowledge
+      ? buildKnowledgeInjectors(knowledge).map((inj) => inj(planText || "", knowledge)).filter(Boolean).join("\n\n")
+      : "";
+    const system = [
+      ILLUSTRATION_HTML_SYSTEM,
+      referencesBlock,
+      knowledgeBlock ? `## 团队知识库(自动注入)\n${knowledgeBlock}` : "",
+    ].filter(Boolean).join("\n\n");
+    const history = [...msgs, userMsg].map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
+
+    await streamChat({
+      chatUrl: teamApi(teamId ?? "").chatUrl,
+      system,
+      prompt: history,
+      model,
+      maxTokens: 4096,
+      onTick: () => {},
+      onDone: (finalText, rawAccum) => {
+        const html = extractHtmlBlock(rawAccum);
+        if (html) {
+          setIllustHtml(html);
+          setIllustMsgId(assistantId);
+          setMsgs((xs) => xs.map((m) => m.id === assistantId
+            ? { ...m, text: "✅ 插画稿已更新,可在右侧画布查看;继续调整或确认。", html }
+            : m));
+          setStage("presenting-html");
+        } else {
+          setMsgs((xs) => xs.map((m) => m.id === assistantId
+            ? { ...m, text: "⚠ 未检测到 HTML 输出,请重试。" }
+            : m));
+        }
+      },
+    });
+    setIllustBusy(false);
+  }
+
+  /** 用户确认企划 → 进入生成:插画走 HTML+画布,单品/系列走图片生成 */
   async function startGeneration() {
+    if (mode === "illustration") { await generateHtml(); return; }
     if (generating) return;
     setGenerating(true);
     setStage("generating");
@@ -380,9 +552,11 @@ export default function ComposerPage({
     }
   }
 
-  // 新流程用 proposal 阶段(旧 planning 仍兼容)
-  const canGenerate = (stage === "planning" || stage === "proposal") && !generating;
-  const showImages = stage === "presenting" || (stage === "generating" && images.length > 0);
+  // 新流程用 proposal 阶段(旧 planning 仍兼容)。插画生成用 illustBusy,不阻塞 chat。
+  const canGenerate = (stage === "planning" || stage === "proposal") && !generating && !illustBusy;
+  const showImages = (stage === "presenting" || (stage === "generating" && images.length > 0)) && mode !== "illustration";
+  const showCanvas = mode === "illustration" && (stage === "presenting-html" || illustHtml);
+  const inIllustGenerating = mode === "illustration" && stage === "generating";
 
   return (
     <>
@@ -402,13 +576,13 @@ export default function ComposerPage({
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
-              {/* 移动端:查看企划按钮(有企划时显示) */}
-              {isMobile && planText && (
+              {/* 移动端:插画→画布抽屉;其他→企划抽屉 */}
+              {isMobile && (
                 <button
-                  onClick={() => setPlanOpen(true)}
+                  onClick={() => mode === "illustration" ? setCanvasOpen(true) : setPlanOpen(true)}
                   className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600"
                 >
-                  企划
+                  {mode === "illustration" ? "画布" : "企划"}
                 </button>
               )}
               <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
@@ -448,19 +622,21 @@ export default function ComposerPage({
             {canGenerate && (
               <div className="flex justify-center">
                 <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
-                  确认方案,开始生成设计图
+                  {mode === "illustration" ? "确认方案,生成插画稿" : "确认方案,开始生成设计图"}
                 </button>
               </div>
             )}
 
-            {/* 生成中 */}
-            {generating && (
+            {/* 生成中(单品/系列:图片;插画:HTML) */}
+            {(generating || inIllustGenerating) && (
               <div className="flex justify-center">
-                <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">正在生成设计图…</div>
+                <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
+                  {mode === "illustration" ? "正在生成插画稿…" : "正在生成设计图…"}
+                </div>
               </div>
             )}
 
-            {/* 设计图展示 */}
+            {/* 设计图展示(单品/系列) */}
             {showImages && images.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -478,15 +654,22 @@ export default function ComposerPage({
                 </div>
               </div>
             )}
+
+            {/* 插画:生成后提示(画布在右侧 aside 渲染) */}
+            {showCanvas && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-4 text-[12px] text-gray-600">
+                ✨ 插画稿已生成,可在右侧画布查看;告诉我要调整的地方。
+              </div>
+            )}
           </div>
 
           <PromptBar
             placeholder={
               knowledgeLoading ? "加载知识库中…" :
-                stage === "greeting" ? "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)" :
+                stage === "greeting" ? (mode === "illustration" ? "输入一个主题 + 风格(如:猫咪 / 复古水彩)…" : mode === "collection" ? "输入一个主题 + 品类方向…" : "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)") :
                   stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
                     (stage === "planning" || stage === "proposal") ? "确认方案(OK/开始),或提出修改意见…" :
-                      stage === "presenting" ? "描述你想修改的地方…" :
+                      (stage === "presenting" || stage === "presenting-html") ? "描述你想修改的地方…" :
                         "输入…"
             }
             disabled={knowledgeLoading}
@@ -494,16 +677,66 @@ export default function ComposerPage({
           />
         </div>
 
-        {/* 桌面端设计企划侧边栏(≥md 直出) */}
-        <aside className="hidden md:block border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
-          {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-          {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
-        </aside>
+        {/* 桌面端侧栏:单品/系列=设计企划 / 插画=画布预览 + 修图输入 */}
+        {mode === "illustration"
+          ? <IllustrationCanvas html={illustHtml} generating={illustBusy} onModify={regenerateHtml} />
+          : (
+            <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
+              {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+              {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+            </aside>
+          )
+        }
       </div>
-      {/* 移动端企划抽屉(<md,跟主内容同级渲染) */}
-      {isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} />}
+      {/* 移动端抽屉(<md,跟主内容同级渲染) */}
+      {isMobile && mode === "illustration"
+        ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} />
+        : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} />
+      }
     </>
+  );
+}
+
+/** 桌面端插画画布(≥md,渲染自包含 HTML + 修图输入) */
+function IllustrationCanvas({ html, generating, onModify }: { html: string | null; generating: boolean; onModify: (inst: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [inst, setInst] = useState("");
+  return (
+    <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">画布预览</div>
+      <div className="flex-1 flex flex-col min-h-0">
+        {generating ? (
+          <div className="w-full aspect-square max-w-[320px] mx-auto rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-400 text-sm">生成插画稿中…</div>
+        ) : html ? (
+          <iframe
+            key={html.slice(0, 40)}
+            srcDoc={html}
+            sandbox="allow-scripts"
+            className="w-full aspect-square max-w-[320px] mx-auto rounded-lg border border-gray-200 bg-white"
+            title="插画画布"
+          />
+        ) : (
+          <div className="w-full aspect-square max-w-[320px] mx-auto rounded-lg border border-dashed border-gray-300 bg-white flex items-center justify-center text-center text-[12px] text-gray-400 px-6">
+            确认方案后<br />这里将渲染插画(HTML)
+          </div>
+        )}
+      </div>
+      {/* 修图输入 */}
+      <div className="mt-4 shrink-0">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">修改插画</div>
+        {!open ? (
+          <button onClick={() => setOpen(true)} className="text-[11px] text-primary-600 hover:underline">✎ 修改</button>
+        ) : (
+          <div className="flex gap-1">
+            <input value={inst} onChange={(e) => setInst(e.target.value)} placeholder="告诉我要怎么调整…"
+              className="flex-1 text-[11px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-primary-500" />
+            <button onClick={() => { if (inst.trim()) { onModify(inst); setInst(""); setOpen(false); } }}
+              className="text-[11px] bg-primary-500 hover:bg-primary-600 text-white px-3 rounded transition-colors">重新生成</button>
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -529,6 +762,46 @@ export function ComposerPlanDrawer({ planText, open, onClose }: { planText: stri
         </div>
         {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
         {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+      </aside>
+    </>
+  );
+}
+
+/** 移动端插画画布抽屉(<md 才渲染) */
+export function IllustrationCanvasDrawer({ html, generating, open, onClose, onModify }: {
+  html: string | null; generating: boolean; open: boolean; onClose: () => void; onModify: (inst: string) => void;
+}) {
+  const [inst, setInst] = useState("");
+  return (
+    <>
+      {open && (
+        <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      )}
+      <aside
+        className={`fixed top-0 right-0 z-50 h-full w-72 max-w-[85vw] bg-white border-l border-gray-200 shadow-xl p-4 overflow-y-auto transition-transform duration-200 md:hidden ${open ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500">画布预览</div>
+          <button onClick={onClose} ariaLabel="关闭画布" className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+        <div className="mb-4">
+          {generating ? (
+            <div className="aspect-square rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center text-gray-400">生成中…</div>
+          ) : html ? (
+            <iframe srcDoc={html} sandbox="allow-scripts" className="w-full aspect-square rounded-lg border border-gray-200 bg-white" title="插画画布" />
+          ) : (
+            <div className="aspect-square rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-center text-[12px] text-gray-400">确认方案后显示插画</div>
+          )}
+        </div>
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">修改插画</div>
+        <div className="flex gap-1">
+          <input value={inst} onChange={(e) => setInst(e.target.value)} placeholder="告诉我要怎么调整…"
+            className="flex-1 text-[11px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-primary-500" />
+          <button onClick={() => { if (inst.trim()) { onModify(inst); setInst(""); } }}
+            className="text-[11px] bg-primary-500 hover:bg-primary-600 text-white px-3 rounded transition-colors">生成</button>
+        </div>
       </aside>
     </>
   );

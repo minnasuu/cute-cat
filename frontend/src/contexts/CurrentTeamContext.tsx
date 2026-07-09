@@ -41,7 +41,7 @@ export function CurrentTeamProvider({ children }: { children: ReactNode }) {
   const [teamId, setTeamIdState] = useState<string | null>(null);
   const [teams, setTeams] = useState<TeamShape[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<string>('__design__');
+  const [activeTab, setActiveTab] = useState<string>('single');
 
   const refreshTeams = useCallback(async () => {
     setLoading(true);
