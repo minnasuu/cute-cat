@@ -398,8 +398,9 @@ router.patch('/inspirations/:id', async (req, res) => {
   res.json(row);
 });
 
-// PATCH /api/teams/:teamId/inspirations/:id/image — 替换灵感图片(保留 AI 分析信息)
-// multipart form-data with field "file";换成新图后自动重新触发 AI 分析
+// PATCH /api/teams/:teamId/inspirations/:id/image — 替换灵感图片
+// multipart form-data with field "file";只换图(url/bytes/mime),保留 category/visualStyle 等
+// AI 分析字段不变,不触发重新解析(避免覆盖已有分析或重复耗时)
 router.patch('/inspirations/:id/image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
     if (err) {
@@ -416,18 +417,12 @@ router.patch('/inspirations/:id/image', (req, res) => {
       const savePath = createSavePath(`inspirations/${req.team.id}`, req.file.filename);
       await saveUpload(req.file.path, savePath, req.file.mimetype);
       const url = getPublicUrl(savePath);
-      // 更新图的 url/bytes/mime,保留 category/visualStyle 等分析字段不动;重置分析状态为 pending → 重新分析
+      // 只更新图的 url/bytes/mime;保留 category/visualStyle/designApproach/inspiration/analysisStatus 等分析字段
       const updated = await prisma.lAInspirationAsset.update({
         where: { id: owned.id },
-        data: { url, thumbUrl: url, mime: req.file.mimetype, bytes: req.file.size, analysisStatus: 'pending', analysisError: null },
+        data: { url, thumbUrl: url, mime: req.file.mimetype, bytes: req.file.size },
       });
       res.json(updated);
-
-      // 异步重新 AI 分析
-      const filePath = storage.mode === 'local'
-        ? path.join(storage.UPLOAD_ROOT, ...savePath.split('/'))
-        : null;
-      void runInspirationAnalysis(updated.id, filePath, url);
     } catch (e) {
       console.error('[team-workbench] replace inspiration image failed:', e);
       res.status(500).json({ error: `替换失败: ${e.message}` });

@@ -329,11 +329,9 @@ function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose
       const fd = new FormData();
       fd.append("file", compressed);
       const res = await apiClient.patch(`/api/teams/${teamId}/inspirations/${asset.id}/image`, fd);
-      // 替换成功 → 立即在 modal 里预览新图,并触发父组件状态更新
+      // 替换成功 → 立即在 modal 里预览新图,并触发父组件状态更新(只换图,保留分析信息)
       setPreviewUrl(res.url);
-      // 通知父组件更新该 item 的 url/缩略图 + 分析状态变 pending,使卡片实时刷新
-      await onSave({ id: asset.id, url: res.url, thumbUrl: res.url, analysisStatus: "pending" } as any);
-      // 轮询等分析完成(复用已有的 pending 轮询机制)
+      await onSave({ id: asset.id, url: res.url, thumbUrl: res.url } as any);
     } catch (err: any) {
       console.error("[replace image] failed", err);
       alert(`替换失败: ${err?.message || err}`);
@@ -383,7 +381,7 @@ function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose
         <footer className="sticky bottom-0 flex justify-between items-center px-6 py-4 bg-white/95 backdrop-blur border-t border-gray-100 rounded-b-3xl">
           <div className="text-[11px] text-gray-400">
             {asset.analysisStatus === 'pending' ? (
-              <span className="text-primary-500">AI 正在分析新图片…(分析字段保留不变)</span>
+              <span className="text-primary-500">AI 分析中…</span>
             ) : asset.analysisStatus === 'failed' ? (
               <span className="text-amber-500">分析失败 ({asset.analysisError || "unknown"}) · 请保存后点击卡片上的 ⟳ 重试</span>
             ) : (
