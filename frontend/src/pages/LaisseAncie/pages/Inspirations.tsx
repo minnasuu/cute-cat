@@ -192,8 +192,8 @@ export default function InspinationsPage() {
             </button>
           ))}
         </div>
-        <Pills options={catalog.categories} value={filter.category} onPick={(v) => setFilter((f) => ({ ...f, category: f.category === v ? undefined : v }))} />
-        <Pills options={catalog.visualStyles} value={filter.visualStyle} onPick={(v) => setFilter((f) => ({ ...f, visualStyle: f.visualStyle === v ? undefined : v }))} />
+        {/* <Pills options={catalog.categories} value={filter.category} onPick={(v) => setFilter((f) => ({ ...f, category: f.category === v ? undefined : v }))} />
+        <Pills options={catalog.visualStyles} value={filter.visualStyle} onPick={(v) => setFilter((f) => ({ ...f, visualStyle: f.visualStyle === v ? undefined : v }))} /> */}
       </div>
 
       {uploads.length > 0 && (
