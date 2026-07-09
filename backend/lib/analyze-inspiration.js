@@ -56,7 +56,7 @@ async function analyzeOpenAi({ endpoint, apiKey, model, dataUrl, mimeType, timeo
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model, max_tokens: 1024,
+        model, max_tokens: 2048,
         messages: [{
           role: 'user',
           content: [
@@ -91,7 +91,8 @@ async function analyzeInspiration(imageBuffer, mimeType) {
   if (!ext) {
     return { result: null, error: 'mime' };
   }
-  const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 30000;
+  // 视觉分析需要更长的超时:图片 base64 传输 + vision 模型推理 + 4 维度 JSON 生成 (默认 90s)
+  const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 90000;
 
   /** @type {Array<{name:string,run:Function}>} */
   const providers = [];
