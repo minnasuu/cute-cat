@@ -53,8 +53,9 @@ export const RESOURCE_SECTIONS: NavSection[] = [
     defaultExpanded: true,
     tabs: [
       { id: "inspirations", label: "灵感", icon: "◐" },
-      { id: "lookbook", label: "Lookbook", icon: "✦" },
       { id: "materials", label: "材料", icon: "◫" },
+      { id: "assets", label: "品牌资产", icon: "◻" },
+      { id: "lookbook", label: "Lookbook", icon: "✦" },
     ],
   },
 ];
@@ -68,7 +69,6 @@ export const KNOWLEDGE_SECTIONS: NavSection[] = [
     defaultExpanded: true,
     tabs: [
       { id: "skills", label: "知识库", icon: "✎" },
-      { id: "assets", label: "资产", icon: "◻" },
     ],
   },
 ];
