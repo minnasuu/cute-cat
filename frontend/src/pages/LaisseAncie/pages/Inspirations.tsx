@@ -286,7 +286,7 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
   );
 }
 
-/** 灵感图编辑 modal —— 4 维度: category / visualStyle / designApproach / inspiration */
+/** 灵感图编辑 modal —— 4 维度: category / visualStyle / designApproach / inspiration + 图片替换 */
 function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose: () => void; onSave: (data: Partial<InspirationItem>) => Promise<void>; }) {
   const [form, setForm] = useState({
     category: asset.category || "",
@@ -295,6 +295,10 @@ function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose
     inspiration: (asset.inspiration || []).join("\n"),
   });
   const [saving, setSaving] = useState(false);
+  const [replacing, setReplacing] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null); // 替换后的预览
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { teamId } = useCurrentTeam();
 
   async function save() {
     setSaving(true);
@@ -311,6 +315,35 @@ function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose
     }
   }
 
+  // 替换图片:选文件后上传,后端替换并重新分析,modal 内预览新图
+  function triggerReplace() { fileRef.current?.click(); }
+
+  async function handleReplaceFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 重置,允许重复选同一文件
+    if (!file || !teamId) return;
+    setReplacing(true);
+    try {
+      // 客户端压缩后上传
+      const compressed = await compressForUpload(file);
+      const fd = new FormData();
+      fd.append("file", compressed);
+      const res = await apiClient.patch(`/api/teams/${teamId}/inspirations/${asset.id}/image`, fd);
+      // 替换成功 → 立即在 modal 里预览新图,并触发父组件状态更新
+      setPreviewUrl(res.url);
+      // 通知父组件更新该 item 的 url/缩略图 + 分析状态变 pending,使卡片实时刷新
+      await onSave({ id: asset.id, url: res.url, thumbUrl: res.url, analysisStatus: "pending" } as any);
+      // 轮询等分析完成(复用已有的 pending 轮询机制)
+    } catch (err: any) {
+      console.error("[replace image] failed", err);
+      alert(`替换失败: ${err?.message || err}`);
+    } finally {
+      setReplacing(false);
+    }
+  }
+
+  const displayUrl = previewUrl || asset.thumbUrl || asset.url;
+
   return (
     <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-gray-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -320,7 +353,23 @@ function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose
         </header>
         <div className="p-6">
           <div className="grid grid-cols-[160px_1fr] gap-5 mb-5">
-            <img src={asset.thumbUrl || asset.url} alt="" className="w-full rounded-xl border border-gray-200 object-cover" style={{ aspectRatio: "3/4" }} />
+            {/* 图片区 + 替换按钮 */}
+            <div className="relative group">
+              <img src={displayUrl} alt="" className="w-full rounded-xl border border-gray-200 object-cover" style={{ aspectRatio: "3/4" }} />
+              <button
+                onClick={triggerReplace}
+                disabled={replacing}
+                className="absolute inset-x-2 bottom-2 py-1.5 rounded-lg bg-black/60 hover:bg-black/70 text-white text-[11px] font-medium text-center backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+              >
+                {replacing ? "上传中…" : "替换图片"}
+              </button>
+              {replacing && (
+                <div className="absolute inset-0 bg-white/60 rounded-xl flex items-center justify-center">
+                  <div className="w-6 h-6 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+                </div>
+              )}
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleReplaceFile} />
+            </div>
             <div className="space-y-3">
               <FieldInput label="类别" value={form.category} onChange={(v) => setForm({ ...form, category: v })} placeholder="T恤 / 插画 / 手机壳 / …" />
               <FieldTextarea label="视觉风格" value={form.visualStyle} onChange={(v) => setForm({ ...form, visualStyle: v })} sublabel="一句话描述,如 手绘日系插画风" rows={2} />
@@ -333,15 +382,17 @@ function EditModal({ asset, onClose, onSave }: { asset: InspirationItem; onClose
         </div>
         <footer className="sticky bottom-0 flex justify-between items-center px-6 py-4 bg-white/95 backdrop-blur border-t border-gray-100 rounded-b-3xl">
           <div className="text-[11px] text-gray-400">
-            {asset.analysisStatus === 'failed' ? (
-              <span className="text-amber-500">上次分析失败 ({asset.analysisError || "unknown"}) · 请保存后点击卡片上的 ⟳ 重试</span>
+            {asset.analysisStatus === 'pending' ? (
+              <span className="text-primary-500">AI 正在分析新图片…(分析字段保留不变)</span>
+            ) : asset.analysisStatus === 'failed' ? (
+              <span className="text-amber-500">分析失败 ({asset.analysisError || "unknown"}) · 请保存后点击卡片上的 ⟳ 重试</span>
             ) : (
               <span>AI 已自动分析,你可以按需调整</span>
             )}
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800">取消</button>
-            <button onClick={save} disabled={saving} className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-primary-600 disabled:opacity-40">{saving ? "保存中…" : "保存"}</button>
+            <button onClick={save} disabled={saving || replacing} className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm hover:bg-primary-600 disabled:opacity-40">{saving ? "保存中…" : "保存"}</button>
           </div>
         </footer>
       </div>
