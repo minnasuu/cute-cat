@@ -26,6 +26,8 @@ import type { InspirationItem, MaterialRow } from "../store/resource";
 import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { Markdown } from "../lib/markdown";
+import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
+import type { InspirationItem } from "../store/resource";
 
 type DesignStage = "greeting" | "brainstorming" | "planning" | "generating" | "presenting";
 
@@ -39,61 +41,54 @@ const MODELS = [
 ] as const;
 type ModelId = typeof MODELS[number]["id"];
 
-/** 设计顾问总 prompt:引导 AI 走完多阶段工作流。 */
-const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总监。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套完整的设计流程。
+/** 设计顾问总 prompt:引导 AI 走完 "匹配灵感 → 设计方案 → 确认出图" 三步工作流。 */
+const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总监。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套以灵感为核心的设计流程。
 
-## 工作流阶段(精简为 4 步)
+## 工作流(3 步)
 
-### 阶段 1 · greeting(开场)
-前端已在 Chat 区显示欢迎卡,你**不要再重复开场白**。用户输入主题后直接进入阶段 2(brainstorming)。加 <!--STAGE:greeting-->。
+### 步骤 1 · references(匹配灵感借鉴)= 前端已完成后置处理,你无需处理这一步
+前端根据用户输入已从灵感库中匹配出 3 个最相关的灵感借鉴(会作为「参考灵感」卡片嵌在对话里)。
+你只需在下一步方案中**显式引用**这些灵感即可,不要再自己重新推荐灵感。
 
-### 阶段 2 · brainstorming(三方向脑暴)——用户输入主题后的第一步
-用户说出主题(无论多简略),立刻给出 **3 个差异化方向**供选择。每个方向包含:
-- **方向名**(4-6 字,有调性)
-- **一句话核心概念**
-- **关键元素组合**(材质 / 色彩 / 形态 / 细节)
-- **与品牌调性(优雅/松弛/乐趣)的关联**
+### 步骤 2 · proposal(生成 1 个整合方案)——必须严格输出
+结合下面几部分信息,**输出 1 个完整设计方案**(不要给多个方向让用户选):
+1. 「参考灵感」卡片中的 3 张灵感图(会作为 #[灵感ID] 注入到 system prompt,包含其 category / visualStyle / designApproach / inspiration / colors / 图片 URL 等)
+2. 「团队知识库」中注入的材料 / 资产 / 品牌 / Lookbook(如已注入)
+3. 用户的历史对话上下文、本次 mode(illustration / single / collection)
 
-**方向必须差异化**: 覆盖不同的风格路线(如一个偏优雅、一个偏趣味、一个偏极简),让用户有真实的选择空间。
+**方案必须包含:**
+- **产品名**(有调性)+ **主题叙述**(2-3 句话,讲清核心概念)
+- **灵感借鉴说明**:明确写"从 #[灵感ID1] 汲取 ××、从 #[灵感ID2] 借鉴 ××、呼应 #[灵感ID3] 的 ××"——必须把 3 张灵感都用上
+- **材质与色彩方案**:具体色值/色号,指明「材料库 ×× 面料」
+- **形态 / 结构 / 细节**:闭合方式、工艺、尺寸感知等(按品类自适应,服装问廓形/包包问款型/家居问肌理/文创问形态……不要默认是衣服)
+- **目标价格带**
 
-**品类自适应**:
-- **插画(illustration)**: 围绕主题给出 3 种艺术风格/氛围方向(如水彩治愈 / 扁平复古 / 线条写意)。**不要问季节、穿着场合**——插画不需要这些。
-- **单品(single)**: 品类范围是**服装、包袋、配饰(首饰/帽子/围巾等)、家居(抱枕/香薰/餐具等)、文创(明信片/贴纸/手账等)**——按用户说的品类给方向,不要默认是衣服。如用户说"包包",就围绕包包给出 3 种款型/风格方向。
-- **系列(collection)**: 给出 3 种主题叙事/色彩情绪方向。
+末尾问「确认这个方案,开始生成设计图吗? 也可以告诉我你想调整的地方」并加 <!--STAGE:proposal-->。
 
-末尾提示「选一个方向,或告诉我你的想法」并加 <!--STAGE:brainstorming-->。
+**品类自适应提问**(方案中自然体现,不要再单独问):
+- **插画(illustration)**:艺术风格 + 整体氛围即可。**不要问季节、穿着场合**——插画不需要这些。
+- **单品(single)**:服装 / 包袋 / 配饰(首饰/帽子/围巾) / 家居(抱枕/香薰/餐具) / 文创(明信片/贴纸/手账)——按用户说的品类写方案
+- **系列(collection)**:统一主题/叙事 + 整体色彩情绪
 
-### 阶段 3 · planning(详细方案 + chat 调整)
-用户选定方向后,输出一份**完整设计企划**:
-- 产品名 + 主题叙述(一段话)
-- 材质与色彩方案(具体色值/色号)
-- 形态/结构细节(闭合方式、工艺细节等)
-- 目标价格带
-- 指明「材料库的 ×× 面料」+「呼应灵感图的 ×× 元素」
-
-末尾问「确认这份方案,开始生成设计图吗? 也可以告诉我你想调整的地方」并加 <!--STAGE:planning-->。
-
-**chat 调整**: 用户确认前如果提出修改意见(如"颜色换成蓝色""加上刺绣"),你在当前方案基础上修改并重新输出完整方案,保持 <!--STAGE:planning-->。
-
-### 阶段 4 · generating(生成中)
+### 步骤 3 · generating(生成中)
 用户确认后,回复「开始生成设计图…」并加 <!--STAGE:generating-->。
 前端会自动调起图片生成,你不需要做其他事。
 
-### 阶段 5 · presenting(展示与迭代)
-图片生成后,展示给用户,并主动询问是否需要调整。
+### 步骤 4 · presenting(展示与迭代)
+图片生成后,主动询问是否需要调整。
 用户描述修改意见后,给出专业反馈并加 <!--STAGE:presenting-->。
 前端会自动重新生成修改的那张图。
 
 ## 贴近叙事与素材(硬约束)
-- 每轮给出的设计方向必须贴近「材料库」中的面料与工艺 — 从真实可用的面料出发,而不是空想。
-- 风格方向必须参考「灵感图」的 AI 分析结果(归类 / 廓形 / 配色 / 风格特色 / 设计手法 / 灵感元素),做出一脉相承的延展,而不是另起炉灶。
-- **每条方案/产品描述里必须至少明确引用 1 条真实素材**,格式如「—— 材料:真丝电力纺(#M012)」「—— 灵感:复古玫瑰油画(#I037)的配色」。素材名称与编号必须与材料库/灵感图里存在的條目对应,不要凭空编造。
-- 如果当前材料库或灵感图为空,直接告知用户「目前素材库还是空的,建议先到左侧上传灵感图或材料后再开始设计」,并加对应阶段的 STAGE 标记。
+- 方案必须从真实灵感/材料出发,而不是空想。**每份方案必须引用 system prompt 中「参考灵感」的 3 张灵感图**(#[灵感ID] 的形式),说明具体借鉴了它们的什么(配色 / 构图 / 风格 / 元素…)。
+- 必须参考「团队知识库」中的面料与工艺,从真实可用的面料出发。指明「材料库 ×× 面料」。
+- 引用格式示例:「—— 灵感:#abc123 复古玫瑰油画的配色」「—— 材料:真丝电力纺」。引用的灵感 ID / 材料必须真实存在,不要凭空编造。
+- 如果当前灵感库为空,告知用户「灵感库还是空的,建议先到左侧上传灵感图后再开始」;并加 <!--STAGE:proposal-->。
 
 ## 重要规则
 - 每轮回复末尾必须加 <!--STAGE:当前阶段--> 标记
 - 用中文对话,专业但不生硬,体现 Laisse Ancie 的「优雅·松弛·乐趣」调性
-- 用户输入主题后直接给 3 个方向,不要先问一轮问题(季节/客群/面料等)——方向里自然体现这些维度的选择
+- 用户输入后只输出 1 个方案,不要再给 3 个方向让用户选,不要再先问一轮问题(季节/客群/面料等)——方案里自然涵盖
 - 插画/文创绝不问"季节""穿着场合"除非用户主动提
 - 单品品类可以是服装/包包/配饰/家居/文创,按用户说的来,不要默认是衣服
 - 不要输出 JSON(前端不再解析 JSON,只解析阶段标记)`;
@@ -112,6 +107,8 @@ interface ChatMsg {
   role: "user" | "assistant";
   text: string;
   product?: Product;
+  /** 本次回复引用的灵感图(前端匹配后注入,用于渲染「参考灵感」卡片) */
+  references?: InspirationItem[];
 }
 
 interface GeneratedImage {
@@ -150,6 +147,7 @@ export default function ComposerPage({
     const saved = localStorage.getItem("laisse-ancie:model");
     return (MODELS.some((m) => m.id === saved) ? saved : "longcat") as ModelId;
   });
+  const [references, setReferences] = useState<InspirationItem[]>([]); // 最近一次匹配到的灵感引用
   const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
   const isMobile = useIsMobile();
   const [planOpen, setPlanOpen] = useState(false); // 移动端企划抽屉开关
@@ -165,7 +163,7 @@ export default function ComposerPage({
       setMsgs([{
         id: "greeting",
         role: "assistant",
-        text: "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我帮你脑暴 3 个设计方向。\n\n可选方向类型:\n- **插画** — 一张艺术插画(主视觉 / 印花 / 图案)\n- **单品** — 服装 / 包袋 / 配饰 / 家居 / 文创(输出 4 张设计图)\n- **系列** — 一个完整系列(系列总览 + 每款 4 张图)",
+        text: "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 素材 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成设计图\n\n可选方向类型:\n- **插画** — 一张艺术插画(主视觉 / 印花 / 图案)\n- **单品** — 服装 / 包袋 / 配饰 / 家居 / 文创(输出 4 张设计图)\n- **系列** — 一个完整系列(系列总览 + 每款 4 张图)",
       }]);
       setStage("greeting");
     }
@@ -180,7 +178,24 @@ export default function ComposerPage({
     const assistantId = crypto.randomUUID();
     setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "" }]);
 
-    // 构造 system prompt(设计顾问 + 知识注入)
+    // ── 步骤 1:前端本地匹配 3 个最相关的灵感借鉴 ──
+    const matchedRefs = matchInspirations(raw, knowledge?.inspirations ?? [], 3);
+    setReferences(matchedRefs);
+    const referencesBlock = matchedRefs.length
+      ? [
+          "## 参考灵感(前端已匹配,方案必须引用以下 3 张灵感,用 #[ID] 的形式)",
+          ...matchedRefs.map((it) => [
+            `### #[${it.id}] ${it.category ?? "general"}`,
+            it.visualStyle ? `风格: ${it.visualStyle}` : null,
+            it.designApproach ? `设计手法: ${it.designApproach}` : null,
+            it.colors?.length ? `配色: ${it.colors.join(", ")}` : null,
+            it.inspiration?.length ? `启发:\n${it.inspiration.map((h) => `- ${h}`).join("\n")}` : null,
+            `图片: ${it.thumbUrl || it.url}`,
+          ].filter(Boolean).join("\n")),
+        ].join("\n\n")
+      : "## 参考灵感\n(灵感库为空,建议先到左侧上传灵感图)";
+
+    // 构造 system prompt(设计顾问 + 参考灵感 + 知识注入)
     const history = [...msgs, userMsg].map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
     const knowledgeBlock = knowledge
       ? buildKnowledgeInjectors(knowledge)
@@ -188,9 +203,11 @@ export default function ComposerPage({
         .filter(Boolean)
         .join("\n\n")
       : "";
-    const system = knowledgeBlock
-      ? `${DESIGNER_SYSTEM}\n\n## 团队知识库(自动注入)\n${knowledgeBlock}`
-      : DESIGNER_SYSTEM;
+    const system = [
+      DESIGNER_SYSTEM,
+      referencesBlock,
+      knowledgeBlock ? `## 团队知识库(自动注入)\n${knowledgeBlock}` : "",
+    ].filter(Boolean).join("\n\n");
 
     const streamTimeoutMs = 290_000;
     const ac = new AbortController();
@@ -244,10 +261,14 @@ export default function ComposerPage({
             } else if (currentEvent === "done") {
               const finalText = stripStageMarker(payload?.text ?? accumulated);
               const newStage = parseStage(payload?.text ?? accumulated) || stage;
-              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: finalText } : m));
+              // 附带灵感引用(渲染「参考灵感」卡片)——仅在 proposal 阶段注入
+              const withRefs = newStage === "proposal" || newStage === "references" || stage === "greeting"
+                ? { text: finalText, references: matchedRefs }
+                : { text: finalText };
+              setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, ...withRefs } : m));
               setStage(newStage);
               // 保存 plan text(用于后续图片生成)
-              if (newStage === "planning" || newStage === "brainstorming") {
+              if (newStage === "planning" || newStage === "brainstorming" || newStage === "proposal") {
                 setPlanText(finalText);
               }
             } else if (currentEvent === "error") {
@@ -398,7 +419,26 @@ export default function ComposerPage({
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
           {msgs.map((m) => (
-            <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[80%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
+            <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[85%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
+              {/* 灵感引用卡片(仅 assistant 消息附带 references 时渲染) */}
+              {m.role === "assistant" && m.references && m.references.length > 0 && (
+                <div className="mb-3 pb-3 border-b border-gray-100">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">参考灵感 · 方案将借鉴这 {m.references.length} 张</div>
+                  <div className="flex gap-2 overflow-x-auto">
+                    {m.references.map((ref) => (
+                      <div key={ref.id} className="shrink-0 w-24 rounded-lg border border-gray-200 overflow-hidden bg-gray-50" title={`${ref.category ?? ""}${ref.visualStyle ? ` · ${ref.visualStyle}` : ""}`}>
+                        <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+                          <img src={ref.thumbUrl || ref.url} alt={ref.category ?? "inspiration"} className="w-full h-full object-cover" loading="lazy" />
+                        </div>
+                        <div className="px-1.5 py-1">
+                          <div className="text-[10px] text-gray-700 font-medium truncate">{ref.category ?? "灵感"}</div>
+                          {ref.visualStyle && <div className="text-[9px] text-gray-400 truncate">{ref.visualStyle}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
             </div>
           ))}
