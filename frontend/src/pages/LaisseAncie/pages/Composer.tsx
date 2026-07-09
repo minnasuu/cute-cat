@@ -29,7 +29,9 @@ import { Markdown } from "../lib/markdown";
 import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
 import type { InspirationItem } from "../store/resource";
 
-type DesignStage = "greeting" | "brainstorming" | "planning" | "generating" | "presenting" | "presenting-html";
+type DesignStage = "greeting" | "brainstorming" | "planning" | "generating" | "presenting" | "presenting-html"
+  // 线稿→材料→成图(仅 single / collection)
+  | "generating-lineart" | "presenting-lineart" | "material-select" | "generating-final";
 
 const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
 
@@ -261,6 +263,7 @@ export default function ComposerPage({
     return (MODELS.some((m) => m.id === saved) ? saved : "longcat") as ModelId;
   });
   const [references, setReferences] = useState<InspirationItem[]>([]); // 最近一次匹配到的灵感引用
+  const [selectedMaterial, setSelectedMaterial] = useState<MaterialRow | null>(null); // 线稿→选材料阶段选定的材料
   const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
   const isMobile = useIsMobile();
   const [planOpen, setPlanOpen] = useState(false); // 移动端企划(单品/系列)抽屉开关
@@ -283,8 +286,8 @@ export default function ComposerPage({
       const greeting = mode === "illustration"
         ? "欢迎来到 Laisse Ancie 插画工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**风格**(水彩、矢量、现代极简、装饰艺术…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个插画方案\n3️⃣ 你确认后,生成插画(默认出图,可切换为 HTML 画布)\n\n下方会在你确认方案后出现【图片 / HTML】切换,两种输出都可在这切换。"
         : mode === "collection"
-        ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成系列总览图"
-        : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成设计图";
+        ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成**系列线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图"
+        : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成**设计线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图";
       setMsgs([{ id: "greeting", role: "assistant", text: greeting }]);
       setStage("greeting");
     }
@@ -459,7 +462,9 @@ export default function ComposerPage({
     setIllustBusy(false);
   }
 
-  /** 用户确认企划 → 进入生成:插画按 illustOutputMode 分叉(图片/HTML),单品/系列走图片生成 */
+  /** 用户确认企划 → 进入生成:
+   *  - 插画(illustration):按 illustOutputMode 分叉(图片/HTML),走原有路径;
+   *  - 单品 / 系列(single/collection):走「线稿生成」(线稿 → 选材料 → 最终成图)。 */
   async function startGeneration() {
     if (mode === "illustration") {
       if (illustOutputMode === "html") { await generateHtml(); return; }
@@ -467,10 +472,13 @@ export default function ComposerPage({
     }
     if (generating) return;
     setGenerating(true);
-    setStage("generating");
-    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "开始生成设计图…" }]);
+    // 单品 / 系列 → 线稿;插画 → 最终图
+    const isLineart = mode !== "illustration";
+    setStage(isLineart ? "generating-lineart" : "generating");
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: isLineart ? "开始生成设计线稿…" : "开始生成设计图…" }]);
     try {
-      const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/generate"), {
+      const path = isLineart ? "/design/lineart" : "/design/generate";
+      const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", path), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -483,28 +491,67 @@ export default function ComposerPage({
       }
       const data = await res.json();
       setImages(data.images || []);
-      setStage("presenting");
-      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "✨ 设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。" }]);
+      setStage(isLineart ? "presenting-lineart" : "presenting");
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant",
+        text: isLineart ? "✏️ 设计线稿已生成! 看看结构是否满意,可以修改单张线稿,确认后进入选材料。" : "✨ 设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。" }]);
     } catch (e: any) {
       setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败: ${e.message}` }]);
-      // 回退到当前方案阶段(planning 或 proposal)
-      setStage((cur) => cur === "generating" ? "proposal" : cur);
+      // 回退到当前方案阶段
+      setStage((cur) => cur === "generating-lineart" || cur === "generating" ? "proposal" : cur);
     } finally {
       setGenerating(false);
     }
   }
 
-  // 单图修图
+  /** 线稿确认 → 进入选材料阶段(仅 single / collection) */
+  function confirmLineart() {
+    setSelectedMaterial(null);
+    setStage("material-select");
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "线稿已确认。接下来为你推荐合适的材料…(see/materials/recommend-materials mentioned in sidebar)" }]);
+  }
+
+  /** 材料选定 → 生成最终设计图(线稿 + 材料参考) */
+  async function generateFinal() {
+    if (!selectedMaterial || generating) return;
+    setGenerating(true);
+    setStage("generating-final");
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `使用「${selectedMaterial.name}」生成最终设计图…` }]);
+    try {
+      const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/generate-final"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode, plan: planText, material: selectedMaterial }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`服务暂不可用 (HTTP ${res.status})${errText.slice(0, 80) ? `: ${errText.slice(0, 80)}` : ''}`);
+      }
+      const data = await res.json();
+      // 线稿保留,最终图追加(final 槽)
+      setImages((prev) => [...prev.filter((im) => im.slot === "lineart"), ...(data.images || [])]);
+      setStage("presenting");
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "✨ 最终设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。" }]);
+    } catch (e: any) {
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败: ${e.message}` }]);
+      setStage("material-select");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // 单图修图(线稿 / 最终图均走此接口;最终图自动叠加材料描述)
   async function regenerateOne(slot: string, label: string, instruction: string) {
     if (!instruction.trim()) return;
     setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "user", text: `修改「${label}」: ${instruction}` }]);
     setBusy(true);
     try {
+      const isFinal = slot === "final";
       const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/regenerate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ slot, label, plan: planText, instruction }),
+        body: JSON.stringify({ slot, label, plan: planText, instruction, mode: isFinal ? mode : undefined, material: isFinal ? selectedMaterial : undefined }),
       });
       if (!res.ok) {
         const errText = await res.text();
@@ -542,7 +589,8 @@ export default function ComposerPage({
       description: planText,
       seasons: [],
       category: mode,
-      colors: [],
+      colors: selectedMaterial?.colors ?? [],
+      materialId: selectedMaterial?.id ?? undefined,
       tech_pack_url: mainImage?.url,
       images: productImages,
       ...(hasHtml ? { html: illustHtml! } : {}),
@@ -563,14 +611,21 @@ export default function ComposerPage({
 
   // 新流程用 proposal 阶段(旧 planning 仍兼容)。插画生成用 illustBusy,不阻塞 chat。
   const canGenerate = (stage === "planning" || stage === "proposal") && !generating && !illustBusy;
-  // 插画图片产物 / 单品&系列 → 图片画廊
-  const showImages = (stage === "presenting" || (stage === "generating" && images.length > 0))
+  // 线稿展示阶段(仅 single / collection)
+  const showLineart = mode !== "illustration" && (stage === "presenting-lineart" || stage === "generating-lineart") && images.some((im) => im.slot === "lineart");
+  // 最终图展示(线稿保留 + 最终图)
+  const showFinalImages = mode !== "illustration" && stage === "presenting" && images.some((im) => im.slot === "final");
+  // 图片画廊:线稿 / 最终图 / 插画图片
+  const showImages = (showLineart || showFinalImages || (stage === "presenting" && mode === "illustration")
+    || (stage === "generating" && images.length > 0))
     && !(mode === "illustration" && illustOutputMode === "html");
   // 插画 HTML 产物 → 画布
   const showCanvas = mode === "illustration" && illustOutputMode === "html" && (stage === "presenting-html" || illustHtml);
   const inIllustGenerating = mode === "illustration" && stage === "generating";
   // 插画当前产物是图片(右侧渲染 ImageCard,修改走 regenerateOne)
   const illustShowingImage = mode === "illustration" && illustOutputMode === "image" && images.length > 0;
+  // 线稿确认按钮(仅 presenting-lineart)
+  const canConfirmLineart = mode !== "illustration" && stage === "presenting-lineart";
 
   return (
     <>
@@ -654,8 +709,26 @@ export default function ComposerPage({
             {canGenerate && (
               <div className="flex justify-center">
                 <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
-                  {mode === "illustration" ? (illustOutputMode === "html" ? "确认方案,生成插画 HTML" : "确认方案,生成插画图") : "确认方案,开始生成设计图"}
+                  {mode === "illustration" ? (illustOutputMode === "html" ? "确认方案,生成插画 HTML" : "确认方案,生成插画图") : "确认方案,生成设计线稿"}
                 </button>
+              </div>
+            )}
+
+            {/* 线稿确认按钮(仅 single / collection 的 presenting-lineart) */}
+            {canConfirmLineart && (
+              <div className="flex justify-center">
+                <button onClick={confirmLineart} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
+                  线稿确认,下一步选材料
+                </button>
+              </div>
+            )}
+
+            {/* 最终成图:进入 generating-final 时展示提示 */}
+            {stage === "generating-final" && (
+              <div className="flex justify-center">
+                <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
+                  正在结合「{selectedMaterial?.name}」生成最终设计图…
+                </div>
               </div>
             )}
 
@@ -668,10 +741,12 @@ export default function ComposerPage({
               </div>
             )}
 
-            {/* 设计图展示(单品/系列/插画+图片) —— 录入按钮已移到右侧 preview 区 */}
+            {/* 设计图展示(线稿 / 最终图 / 插画+图片) —— 录入按钮已移到右侧 preview 区 */}
             {showImages && images.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
+                <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                  {showLineart ? "设计线稿" : (showFinalImages && selectedMaterial ? `最终设计图 · ${selectedMaterial.name}` : "设计图")}
+                </div>
                 <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
                   {images.map((im) => (
                     <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
@@ -702,16 +777,16 @@ export default function ComposerPage({
           />
         </div>
 
-        {/* 桌面端侧栏:单品/系列/插画+图片=设计企划 / 插画+HTML=画布预览 + 修图输入 */}
+        {/* 桌面端侧栏:单品/系列/插画+图片=设计企划·材料选择 / 插画+HTML=画布预览 + 修图输入 */}
         {mode === "illustration" && illustOutputMode === "html"
           ? <IllustrationCanvas html={illustHtml} generating={illustBusy} stage={stage} illustHtml={illustHtml} onModify={regenerateHtml} onSaveToLookbook={saveToLookbook} />
-          : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} />
+          : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} selectedMaterial={selectedMaterial} library={knowledge?.materials ?? []} />
         }
       </div>
       {/* 移动端抽屉(<md,跟主内容同级渲染) */}
       {isMobile && (mode === "illustration" && illustOutputMode === "html")
         ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} stage={stage} onSaveToLookbook={saveToLookbook} />
-        : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} />
+        : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} selectedMaterial={selectedMaterial} library={knowledge?.materials ?? []} onSelectMaterial={setSelectedMaterial} onGenerateFinal={generateFinal} />
       }
     </>
   );
@@ -767,15 +842,23 @@ function IllustrationCanvas({ html, generating, stage, onModify, onSaveToLookboo
   );
 }
 
-/** 桌面端「设计企划」侧栏(单品 / 系列 / 插画+图片 共用) —— 底部含录入 Lookbook 按钮 */
-function PlanSideBar({ planText, stage, images, onSaveToLookbook }: { planText: string; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void }) {
+/** 桌面端「设计企划 / 材料选择」侧栏(单品 / 系列 / 插画+图片 共用) —— 底部含录入 Lookbook 按钮 */
+function PlanSideBar({ planText, stage, images, onSaveToLookbook, selectedMaterial, library }: { planText: string; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void; selectedMaterial: MaterialRow | null; library: MaterialRow[] }) {
   const canSave = stage === "presenting" && images.length > 0;
+  // 材料选择面板(Phase 3 渲染推荐卡片);其他阶段显示设计企划
+  const isMaterialSelect = stage === "material-select" || stage === "generating-final";
   return (
     <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
       <div className="flex-1 min-h-0">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
-        {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-        {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+        {isMaterialSelect
+          ? <MaterialSelectPanel selectedMaterial={selectedMaterial} planText={planText}
+              onSelect={setSelectedMaterial} onGenerateFinal={generateFinal} library={library} />
+          : <>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
+              {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+              {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+            </>
+        }
       </div>
       {/* 录入 Lookbook —— 统一放右侧 preview 区底部 */}
       {canSave && (
@@ -788,11 +871,121 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook }: { planText: 
   );
 }
 
+/** 材料推荐+选择面板(Phase 3):AI 推荐库内/库外材料,选定后驱动最终成图 */
+function MaterialSelectPanel({ selectedMaterial, planText, onSelect, onGenerateFinal, library }: {
+  selectedMaterial: MaterialRow | null; planText: string;
+  onSelect: (m: MaterialRow) => void; onGenerateFinal: () => void;
+  library: MaterialRow[];
+}) {
+  const { teamId } = useCurrentTeam();
+  const [recs, setRecs] = useState<Array<Partial<MaterialRow> & { reason?: string; source?: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const fetchRecs = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const api = teamApi(teamId ?? "");
+      const data = await api.recommendMaterials({ plan: planText, materials: library });
+      setRecs(data.recommendations || []);
+    } catch (e: any) {
+      setError(e.message || "推荐失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId, planText, library]);
+
+  useEffect(() => { void fetchRecs(); }, [fetchRecs]);
+
+  // 选择材料:库外新材料先落库,再选中
+  const pick = async (rec: Partial<MaterialRow> & { reason?: string; source?: string }) => {
+    if (rec.source === "new" && rec.name) {
+      setCreating(true);
+      try {
+        const created = await teamApi(teamId ?? "").createMaterial({
+          name: rec.name, category: rec.category || "面料", texture: rec.texture,
+          composition: rec.composition, colors: rec.colors, finish: rec.finish, slug: `rec-${slugify(rec.name)}`,
+        });
+        onSelect(created);
+      } catch (e: any) {
+        setError(`新建材料失败: ${e.message}`);
+      } finally {
+        setCreating(false);
+      }
+    } else if (rec.id) {
+      // 库内材料——从 library 回查完整对象(含 image 等)
+      const full = library.find((m) => m.id === rec.id);
+      if (full) onSelect(full);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500">选材料(AI 推荐)</div>
+        <button onClick={fetchRecs} disabled={loading} className="text-[10px] text-primary-600 hover:underline disabled:opacity-40">
+          {loading ? "推荐中…" : "换一批"}
+        </button>
+      </div>
+
+      {error && <div className="text-[11px] text-red-500 mb-2">{error}</div>}
+      {!loading && !error && recs.length === 0 && (
+        <div className="text-[11px] text-gray-500">暂无推荐,建议先到「材料」页补充材料库。</div>
+      )}
+
+      <div className="space-y-2">
+        {recs.map((rec, i) => {
+          const selected = selectedMaterial?.id === rec.id || (rec.source === "new" && selectedMaterial?.name === rec.name);
+          return (
+            <button key={`${rec.id ?? ""}-${rec.name}-${i}`} onClick={() => pick(rec)} disabled={creating}
+              className={`w-full text-left rounded-xl border p-2.5 transition-colors ${selected ? "border-primary-400 bg-primary-50" : "border-gray-200 bg-white hover:border-primary-200"}`}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-12 h-12 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden shrink-0">
+                  {rec.image
+                    ? <img src={rec.image} alt={rec.name} className="w-full h-full object-cover" />
+                    : <SwatchStrip colors={rec.colors ?? []} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] text-gray-800 font-medium truncate">{rec.name}</span>
+                    {rec.source === "new" && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">新材料</span>}
+                  </div>
+                  {rec.reason && <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{rec.reason}</div>}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedMaterial && (
+        <div className="mt-3 rounded-xl border border-primary-200 bg-primary-50 p-3">
+          <div className="text-[10px] text-primary-600 mb-1">已选材料</div>
+          <div className="text-[12px] text-gray-800 font-medium">{selectedMaterial.name}</div>
+          <button onClick={onGenerateFinal} disabled={creating}
+            className="mt-2 w-full text-[12px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+            用此材料生成最终设计图
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 简单的 slugify(后端同名函数的前端镜像,用于新建材料时生成slug) */
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9一-龥]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "material";
+}
+
 /** 移动端企划抽屉(<md 才渲染),挂在 Composer 外层由父组件组合。 */
-export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onSaveToLookbook }: {
-  planText: string; open: boolean; onClose: () => void; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void;
+export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onSaveToLookbook, selectedMaterial, library, onSelectMaterial, onGenerateFinal }: {
+  planText: string; open: boolean; onClose: () => void; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void; selectedMaterial: MaterialRow | null; library: MaterialRow[];
+  onSelectMaterial: (m: MaterialRow) => void; onGenerateFinal: () => void;
 }) {
   const canSave = stage === "presenting" && images.length > 0;
+  const isMaterialSelect = stage === "material-select" || stage === "generating-final";
   return (
     <>
       {open && (
@@ -802,7 +995,7 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
         className={`fixed top-0 right-0 z-50 h-full w-72 max-w-[85vw] bg-white border-l border-gray-200 shadow-xl p-4 overflow-y-auto transition-transform duration-200 md:hidden ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">设计企划</div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500">{isMaterialSelect ? "选材料" : "设计企划"}</div>
           <button
             onClick={onClose}
             ariaLabel="关闭企划"
@@ -812,8 +1005,14 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
           </button>
         </div>
         <div className="flex-1">
-          {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-          {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+          {isMaterialSelect
+            ? <MaterialSelectPanel selectedMaterial={selectedMaterial} planText={planText}
+                onSelect={onSelectMaterial} onGenerateFinal={onGenerateFinal} library={library} />
+            : <>
+                {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+                {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+              </>
+          }
         </div>
         {canSave && (
           <button onClick={onSaveToLookbook}

@@ -75,6 +75,8 @@ export interface Product {
   gradingNotes?: string;
   patternUrl?: string;
   techPackUrl?: string;
+  /** 设计工作流选定的材料 id(线稿→选材料→成图流程写入) */
+  materialId?: string;
   /** 设计工作流生成的图片数组:[{slot, label, url}] */
   images?: ProductImage[];
   /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */

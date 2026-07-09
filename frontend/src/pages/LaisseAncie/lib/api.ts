@@ -86,6 +86,12 @@ export function teamApi(teamId: string) {
     createMaterial: (body: any) => _apiClient.post(pre('/materials'), body),
     updateMaterial: (id: string, body: any) => _apiClient.patch(pre(`/materials/${id}`), body),
     deleteMaterial: (id: string) => _apiClient.delete(pre(`/materials/${id}`)),
+    // 材料参考图上传(multipart, field "file") —— 返回 { id, url }
+    uploadMaterialImage: (id: string, formData: FormData) =>
+      fetch(pre(`/materials/${id}/image`), { method: 'POST', body: formData, credentials: 'include' }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      }),
 
     // skills
     listSkills: (category?: string) =>
@@ -115,5 +121,10 @@ export function teamApi(teamId: string) {
 
     // chat(SSE 流式主流程)
     chatUrl: pre('/chat'),
+
+    // 设计工作流:线稿 / 材料推荐 / 最终成图
+    lineartUrl: pre('/design/lineart'),
+    generateFinalUrl: pre('/design/generate-final'),
+    recommendMaterials: (body: any) => _apiClient.post(pre('/design/recommend-materials'), body),
   };
 }

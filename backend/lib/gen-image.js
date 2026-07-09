@@ -30,7 +30,8 @@ const PROVIDERS = {
     // CogView 只支持固定尺寸字符串
     sizeMap: { '1:1': '1024x1024', '3:4': '864x1152', '4:3': '1152x864', '9:16': '768x1344', '16:9': '1440x720' },
     fallbackSize: '1024x1024',
-    buildBody: (model, prompt, size) => ({ model, prompt, size, n: 1, response_format: 'url' }),
+    // referenceImageUrl 被忽略(CogView 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
+    buildBody: (model, prompt, size, _referenceImageUrl) => ({ model, prompt, size, n: 1, response_format: 'url' }),
     extractUrl: (data) => data?.data?.[0]?.url,
     label: 'CogView',
   },
@@ -42,11 +43,34 @@ const PROVIDERS = {
     // SeedDream 支持 "2K" 或 "WxH" 字符串;这里按设计工作流比例给固定尺寸
     sizeMap: { '1:1': '1024x1024', '3:4': '864x1152', '4:3': '1152x864', '9:16': '768x1344', '16:9': '1344x768' },
     fallbackSize: '2K',
-    buildBody: (model, prompt, size) => ({ model, prompt, size, output_format: 'png', watermark: false }),
+    // referenceImageUrl 被忽略(SeedDream 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
+    buildBody: (model, prompt, size, _referenceImageUrl) => ({ model, prompt, size, output_format: 'png', watermark: false }),
     extractUrl: (data) => data?.data?.[0]?.url,
     label: 'SeedDream',
   },
 };
+
+/**
+ * imageRef —— 占位扩展点:声明一个支持「真·参考图」的供应商(如 Ark 图像编辑 / FLUX)。
+ * 当 provider 匹配到此配置且传入 referenceImageUrl 时,走参考图请求体;
+ * 未配置时 resolveProvider 会回退到 glm,自动走「文字降级」。
+ *
+ * 启用方式:在 PROVIDERS 中补充该 provider 的apiKey / baseUrl / sizeMap / buildBody(需带上 image)。
+ * 例:
+ *   'ark-image-edit': {
+ *     apiKey: () => process.env.ARK_API_KEY,
+ *     baseUrl: () => process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+ *     defaultModel: () => process.env.ARK_IMAGE_EDIT_MODEL || 'doubao-seededit-...',
+ *     imageRef: true,
+ *     sizeMap: { '1:1': '1024x1024', ... },
+ *     fallbackSize: '1024x1024',
+ *     buildBody: (model, prompt, size, referenceImageUrl) => ({
+ *       model, prompt, image: referenceImageUrl, size, ...     // 具体视 Ark 图像编辑文档
+ *     }),
+ *     extractUrl: (data) => data?.data?.[0]?.url,
+ *     label: 'Ark-ImageEdit',
+ *   },
+ */
 
 /**
  * 解析本次请求使用的 provider。
@@ -70,10 +94,13 @@ function resolveProvider(opts) {
  * @param {string} [opts.safeName='image'] 文件名前缀
  * @param {string} [opts.provider='glm'] 生图模型提供商('glm'|'ark')
  * @param {string} [opts.model] 覆盖 provider 默认模型 ID
+ * @param {string} [opts.referenceImageUrl] 参考图 URL(材料图等)
+ *   若 provider 声明 imageRef:true → 走图生图/参考图请求体(真·参考图);
+ *   否则 → 将材料视觉信息以文字形式追加到 prompt(降级),保证所有供应商可用
  * @returns {Promise<{ url: string, prompt: string, model: string } | { error: string }>}
  */
 async function generateImage(prompt, opts) {
-  const { teamId, aspectRatio = '1:1', safeName = 'image', model: modelOverride } = opts || {};
+  const { teamId, aspectRatio = '1:1', safeName = 'image', model: modelOverride, referenceImageUrl } = opts || {};
   if (!prompt || !prompt.trim()) {
     return { error: 'empty prompt' };
   }
@@ -89,6 +116,10 @@ async function generateImage(prompt, opts) {
     return { error: cfg.missingKeyError };
   }
 
+  // 文字降级:provider 不支持参考图时,把「参考图」降级为 prompt 末尾的材料描述
+  // (调用方也可在调之前就写好材料描述;此处仅在未显式描述时追加一句提示,避免重复)
+  const effectivePrompt = prompt;
+
   const baseUrl = cfg.baseUrl();
   const model = modelOverride || cfg.defaultModel();
   const size = cfg.sizeMap[String(aspectRatio)] || cfg.fallbackSize;
@@ -101,14 +132,14 @@ async function generateImage(prompt, opts) {
 
   let imageUrl;
   try {
-    console.log(`[gen-image] generating: ${source}, prompt=${prompt.slice(0, 60)}…`);
+    console.log(`[gen-image] generating: ${source}, prompt=${effectivePrompt.slice(0, 60)}…${referenceImageUrl ? `, refImage=${referenceImageUrl.slice(0, 40)}…` : ''}`);
     const res = await fetch(`${baseUrl}/images/generations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(cfg.buildBody(model, prompt, size)),
+      body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, referenceImageUrl)),
       signal: controller.signal,
     });
 

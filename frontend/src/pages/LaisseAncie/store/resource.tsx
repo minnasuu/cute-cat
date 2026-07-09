@@ -57,6 +57,8 @@ export interface MaterialRow {
   priceCur?: string | null;
   priceUnit?: string | null;
   priceNote?: string | null;
+  /** 材料参考图 URL */
+  image?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

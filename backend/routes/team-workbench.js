@@ -465,6 +465,7 @@ router.post('/materials', async (req, res) => {
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
+    'image',
   ]);
   if (!data.name || !data.category) return res.status(400).json({ error: 'name,category required' });
   if (!data.slug) data.slug = `${data.category}-${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
@@ -497,6 +498,7 @@ router.post('/materials', async (req, res) => {
       priceCur: data.priceCur || 'CNY',
       priceUnit: data.priceUnit || null,
       priceNote: data.priceNote || null,
+      image: data.image || null,
     },
   });
   res.status(201).json(mat);
@@ -511,9 +513,39 @@ router.patch('/materials/:id', async (req, res) => {
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
+    'image',
   ]);
   const mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data });
   res.json(mat);
+});
+
+// POST /api/teams/:teamId/materials/:id/image —— 上传/替换材料参考图
+// multipart form-data, field "file";写入材料的 image 字段
+router.post('/materials/:id/image', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('[team-workbench] material image multer error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'no file' });
+    }
+    const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
+    if (!owned) return res.status(404).json({ error: 'not found' });
+    try {
+      const savePath = createSavePath(`materials/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      const updated = await prisma.lAMaterial.update({
+        where: { id: owned.id },
+        data: { image: url },
+      });
+      res.json({ id: updated.id, url });
+    } catch (e) {
+      console.error('[team-workbench] upload material image failed:', e);
+      res.status(500).json({ error: `上传失败: ${e.message}` });
+    }
+  });
 });
 
 router.delete('/materials/:id', async (req, res) => {

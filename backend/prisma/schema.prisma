@@ -295,6 +295,8 @@ model LAMaterial {
   priceCur    String?
   priceUnit   String?
   priceNote   String?
+  /** 材料参考图 URL(上传接口 /materials/:id/image 写入) */
+  image       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   @@index([teamId])
@@ -342,6 +344,8 @@ model LAProduct {
   gradingNotes      String?  @db.Text
   patternUrl        String?
   techPackUrl       String?
+  /** 设计工作流选定的材料 id(线稿→选材料→成图流程写入) */
+  materialId        String?
   /** 设计工作流生成的图片数组:[{slot, label, url}] */
   images            Json     @default("[]")
   /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */
