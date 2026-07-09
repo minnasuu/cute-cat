@@ -16,6 +16,7 @@ import { useParams } from "react-router-dom";
 import { useDesignStore } from "../store/design";
 import { useSkillStore } from "../store/skill";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
+import { useIsMobile } from "../../../hooks/use-media-query";
 import { teamApi } from "../lib/api";
 import { PromptBar } from "../components/PromptBar";
 import { apiClient } from "../lib/api";
@@ -150,6 +151,8 @@ export default function ComposerPage({
     return (MODELS.some((m) => m.id === saved) ? saved : "longcat") as ModelId;
   });
   const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
+  const isMobile = useIsMobile();
+  const [planOpen, setPlanOpen] = useState(false); // 移动端企划抽屉开关
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -358,26 +361,38 @@ export default function ComposerPage({
   const showImages = stage === "presenting" || (stage === "generating" && images.length > 0);
 
   return (
-    <div className="grid grid-cols-[1fr_360px] h-[calc(100vh-64px)] min-h-0">
+    <>
+    <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] h-[calc(100vh-64px)] min-h-0">
       <div className="flex flex-col min-h-0">
-        <header className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white">
-          <div className="flex items-baseline gap-2">
-            <button onClick={() => navigateTab("__design__")} className="text-sm text-gray-500 hover:text-gray-800">←</button>
-            <span className="text-2xl font-semibold text-primary-600">设计工作室</span>
+        <header className="flex items-center justify-between px-3 md:px-6 py-3 border-b border-gray-200 bg-white">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <button onClick={() => navigateTab("__design__")} className="text-sm text-gray-500 hover:text-gray-800 shrink-0">←</button>
+            <span className="text-lg md:text-2xl font-semibold text-primary-600 truncate">设计工作室</span>
           </div>
-          {/* 模型切换下拉 */}
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value as ModelId)}
-            disabled={busy || generating}
-            title="切换 AI 模型"
-            className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-primary-400 disabled:opacity-40"
-          >
-            {MODELS.map((m) => (
-              <option key={m.id} value={m.id}>{m.label}</option>
-            ))}
-          </select>
-          <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
+          <div className="flex items-center gap-2">
+            {/* 模型切换下拉 */}
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value as ModelId)}
+              disabled={busy || generating}
+              title="切换 AI 模型"
+              className="hidden sm:block text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-primary-400 disabled:opacity-40"
+            >
+              {MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+            {/* 移动端:查看企划按钮(有企划时显示) */}
+            {isMobile && planText && (
+              <button
+                onClick={() => setPlanOpen(true)}
+                className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600"
+              >
+                企划
+              </button>
+            )}
+            <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
+          </div>
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
@@ -417,7 +432,7 @@ export default function ComposerPage({
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2 md:gap-3">
                 {images.map((im) => (
                   <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
                 ))}
@@ -440,12 +455,43 @@ export default function ComposerPage({
         />
       </div>
 
-      <aside className="border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
+      {/* 桌面端设计企划侧边栏(≥md 直出) */}
+      <aside className="hidden md:block border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
         <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
-        {!planText && <p className="text-sm text-gray-500">完成咨询对齐后,这里会显示设计企划。</p>}
+        {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
         {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
       </aside>
     </div>
+    {/* 移动端企划抽屉(<md,跟主内容同级渲染) */}
+    {isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} />}
+    </>
+  );
+}
+
+/** 移动端设计企划抽屉(<md 才渲染),挂在 Composer 外层由父组件组合。 */
+export function ComposerPlanDrawer({ planText, open, onClose }: { planText: string; open: boolean; onClose: () => void }) {
+  return (
+    <>
+      {open && (
+        <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      )}
+      <aside
+        className={`fixed top-0 right-0 z-50 h-full w-72 max-w-[85vw] bg-white border-l border-gray-200 shadow-xl p-4 overflow-y-auto transition-transform duration-200 md:hidden ${open ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500">设计企划</div>
+          <button
+            onClick={onClose}
+            ariaLabel="关闭企划"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+        {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+      </aside>
+    </>
   );
 }
 

@@ -11,7 +11,7 @@
  * 设计主工作台会自动读取「资源」和「知识底座」的内容,按相关性注入 chat 的
  * system prompt,让 AI 在生成成品时参考团队的素材与知识。
  */
-import React, { useState, lazy, Suspense, useEffect, type ComponentType } from 'react';
+import React, { useState, lazy, Suspense, useEffect, useCallback, type ComponentType } from 'react';
 import Navbar from '../../components/Navbar';
 import { TeamSelect } from '../../components/TeamSelect';
 import { apiClient } from '../../utils/apiClient';
@@ -20,6 +20,7 @@ import { useSkillStore } from '../LaisseAncie/store/skill';
 import { useVisualAssetStore } from '../LaisseAncie/store/visual-asset';
 import { useDesignStore } from '../LaisseAncie/store/design';
 import { useResourceStore } from '../LaisseAncie/store/resource';
+import { useIsMobile } from '../../hooks/use-media-query';
 import { DESIGN_MODES, RESOURCE_SECTIONS, KNOWLEDGE_SECTIONS, ALL_DATA_TABS, type DesignMode } from './teamNav';
 import type { KnowledgeDeps } from './knowledge-injectors';
 
@@ -49,6 +50,8 @@ export default function TeamWorkbench() {
   const [designMode, setDesignMode] = useState<DesignMode>('single');
   const [brand, setBrand] = useState<KnowledgeDeps["brand"]>(undefined);
   const [brandLoading, setBrandLoading] = useState(true);
+  const isMobile = useIsMobile();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // 预加载资源 + 知识底座数据,传给 Composer 用于自动注入 system prompt
   const skillStore = useSkillStore();
@@ -107,6 +110,7 @@ export default function TeamWorkbench() {
 
   function switchTab(tabId: string) {
     navigateTab(tabId);
+    if (isMobile) setDrawerOpen(false); // 移动端点完自动收起抽屉
   }
 
   function renderNavSections() {
@@ -129,16 +133,65 @@ export default function TeamWorkbench() {
     ));
   }
 
+  /** 侧边栏内容 —— 桌面端直出、移动端塞进抽屉,复用同一份。 */
+  function renderSidebar() {
+    return (
+      <>
+        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">工作台</div>
+        <nav className="flex flex-col gap-0.5">
+          <NavBtn
+            current={activeTab === HOME_ID}
+            onClick={() => switchTab(HOME_ID)}
+            icon="★"
+            label="设计"
+          />
+          {/* 设计模式子菜单(选中"设计"时显示) */}
+          {activeTab === HOME_ID && (
+            <div className="ml-4 flex flex-col gap-0.5 mt-0.5">
+              {DESIGN_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setDesignMode(m.id)}
+                  className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors ${designMode === m.id
+                    ? 'bg-primary-100 text-primary-600 font-medium'
+                    : 'text-gray-500 hover:text-primary-600'
+                    }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </nav>
+
+        <div className="my-3 border-t border-gray-200" />
+
+        {renderNavSections()}
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#fafafa] text-gray-900">
       <Navbar
         afterLogo={
           <div className="flex items-center gap-3">
+            {/* 移动端:汉堡按钮展开侧边栏导航 */}
+            {isMobile && (
+              <button
+                onClick={() => setDrawerOpen(true)}
+                aria-label="打开导航"
+                title="导航"
+                className="md:hidden w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 active:bg-gray-100"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+              </button>
+            )}
             <TeamSelect
               value={teamId}
               options={teams.map((t) => ({ id: t.id, label: t.name }))}
               onChange={(id) => {
-                navigateTab(HOME_ID);
+                switchTab(HOME_ID);
                 setTeamId(id);
               }}
               ariaLabel="选择团队"
@@ -149,38 +202,9 @@ export default function TeamWorkbench() {
       />
 
       <div className="flex h-[calc(100vh-64px)] min-h-0">
-        {/* 左侧团队导航 */}
-        <aside className="w-56 shrink-0 border-r border-gray-200 bg-white px-3 py-4 flex flex-col overflow-y-auto">
-          <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">工作台</div>
-          <nav className="flex flex-col gap-0.5">
-            <NavBtn
-              current={activeTab === HOME_ID}
-              onClick={() => navigateTab(HOME_ID)}
-              icon="★"
-              label="设计"
-            />
-            {/* 设计模式子菜单(选中"设计"时显示) */}
-            {activeTab === HOME_ID && (
-              <div className="ml-4 flex flex-col gap-0.5 mt-0.5">
-                {DESIGN_MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setDesignMode(m.id)}
-                    className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors ${designMode === m.id
-                      ? 'bg-primary-100 text-primary-600 font-medium'
-                      : 'text-gray-500 hover:text-primary-600'
-                      }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </nav>
-
-          <div className="my-3 border-t border-gray-200" />
-
-          {renderNavSections()}
+        {/* 桌面端左侧团队导航(≥md 直出) */}
+        <aside className="hidden md:flex w-40 shrink-0 border-r border-gray-200 bg-white px-3 py-4 flex-col overflow-y-auto">
+          {renderSidebar()}
         </aside>
 
         {/* 主内容区 */}
@@ -188,6 +212,35 @@ export default function TeamWorkbench() {
           {renderActive()}
         </main>
       </div>
+
+      {/* 移动端抽屉式侧边栏(<md 才渲染) */}
+      {isMobile && (
+        <>
+          {/* 遮罩 */}
+          {drawerOpen && (
+            <div
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+              onClick={() => setDrawerOpen(false)}
+            />
+          )}
+          {/* 抽屉 */}
+          <aside
+            className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-gray-200 shadow-xl px-3 py-4 flex flex-col overflow-y-auto transition-transform duration-200 ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-gray-700">导航</span>
+              <button
+                onClick={() => setDrawerOpen(false)}
+                aria-label="关闭导航"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            {renderSidebar()}
+          </aside>
+        </>
+      )}
     </div>
   );
 }
