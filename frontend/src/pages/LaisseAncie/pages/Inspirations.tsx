@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compressForUpload } from "../lib/images";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
-import { teamApi } from "../lib/api";
+import { teamApi, apiClient } from "../lib/api";
 
 const TAKE = 24;
 
