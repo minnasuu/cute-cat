@@ -94,13 +94,15 @@ Rules:
 
 /**
  * POST /api/teams/:teamId/design/generate
- * body: { mode: 'single'|'illustration'|'collection', plan: string }
+ * body: { mode: 'single'|'illustration'|'collection', plan: string, provider?: 'glm'|'ark' }
  * 返回: { images: [{ slot, label, url, prompt, error? }] }
  */
 router.post('/generate', async (req, res) => {
-  const { mode = 'single', plan } = req.body || {};
+  const { mode = 'single', plan, provider } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
 
+  // provider 可选,未传则走 env IMAGE_PROVIDER → glm 兜底(向后兼容)
+  const imgOptsBase = { provider };
   const slots = planImages(mode, plan);
   // 并行生成——总耗时取决于最慢的单张(而非 N 张串联),避免撑过 nginx proxy_read_timeout
   const results = await Promise.all(slots.map(async (slot) => {
@@ -109,8 +111,9 @@ router.post('/generate', async (req, res) => {
         teamId: req.team.id,
         aspectRatio: slot.aspectRatio,
         safeName: slot.slot,
+        ...imgOptsBase,
       });
-      // gen-image 成功返回 {url},失败返回 {error}(已含 CogView 真实原因)
+      // gen-image 成功返回 {url},失败返回 {error}(已含 provider 真实原因)
       if (r?.url) return { slot: slot.slot, label: slot.label, url: r.url, prompt: r.prompt };
       return { slot: slot.slot, label: slot.label, error: r?.error || '生成失败', prompt: slot.prompt };
     } catch (e) {
@@ -123,11 +126,11 @@ router.post('/generate', async (req, res) => {
 
 /**
  * POST /api/teams/:teamId/design/regenerate
- * body: { slot: string, label: string, plan: string, instruction: string }
+ * body: { slot: string, label: string, plan: string, instruction: string, provider?: 'glm'|'ark' }
  * 返回: { slot, label, url, prompt, error? }
  */
 router.post('/regenerate', async (req, res) => {
-  const { slot = 'flat', label = '图', plan, instruction = '' } = req.body || {};
+  const { slot = 'flat', label = '图', plan, instruction = '', provider } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
 
   // 在 plan 基础上叠加修图指令
@@ -142,6 +145,7 @@ router.post('/regenerate', async (req, res) => {
     teamId: req.team.id,
     aspectRatio: base.aspectRatio,
     safeName: slot,
+    provider,
   });
   if (r?.url) {
     res.json({ slot, label, url: r.url, prompt: r.prompt });

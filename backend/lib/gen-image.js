@@ -1,12 +1,15 @@
 /**
- * gen-image —— 智谱 CogView 文生图公共 helper。
+ * gen-image —— 文生图公共 helper,多 provider 策略。
  *
- * generateImage(prompt, { teamId, aspectRatio, safeName }) →
+ * provider:
+ *   'glm'(默认)  —— 智谱 CogView,OpenAI 兼容 /images/generations
+ *   'ark'        —— 火山方舟 SeedDream,doubao-seedream-5-0-pro-260628
+ *
+ * generateImage(prompt, { teamId, aspectRatio, safeName, provider }) →
  *   成功 { url, prompt, model }
  *   失败 { error }(具体错误信息,便于前端/日志定位)
  *
- * 接口:OpenAI 兼容 /images/generations (智谱开放平台),返回临时 URL → 下载落盘。
- * 供设计工作流/旧流水线共用。
+ * 两个 provider 都返回临时 URL → 下载落盘,供设计工作流/旧流水线共用。
  */
 
 'use strict';
@@ -16,91 +19,120 @@ const path = require('path');
 const crypto = require('crypto');
 const storage = require('./storage');
 
+/* ─── provider 配置 ─────────────────────────────────────────── */
+// 每个 provider 声明自己的默认参数 + 请求体构造 + 响应解析,新增模型只加一项。
+const PROVIDERS = {
+  glm: {
+    apiKey: () => process.env.GLM_API_KEY,
+    missingKeyError: 'GLM_API_KEY not set',
+    baseUrl: () => process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
+    defaultModel: () => process.env.GLM_IMAGE_MODEL || 'cogview-3',
+    // CogView 只支持固定尺寸字符串
+    sizeMap: { '1:1': '1024x1024', '3:4': '864x1152', '4:3': '1152x864', '9:16': '768x1344', '16:9': '1440x720' },
+    fallbackSize: '1024x1024',
+    buildBody: (model, prompt, size) => ({ model, prompt, size, n: 1, response_format: 'url' }),
+    extractUrl: (data) => data?.data?.[0]?.url,
+    label: 'CogView',
+  },
+  ark: {
+    apiKey: () => process.env.ARK_API_KEY,
+    missingKeyError: 'ARK_API_KEY not set',
+    baseUrl: () => process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+    defaultModel: () => process.env.ARK_IMAGE_MODEL || 'doubao-seedream-5-0-pro-260628',
+    // SeedDream 支持 "2K" 或 "WxH" 字符串;这里按设计工作流比例给固定尺寸
+    sizeMap: { '1:1': '1024x1024', '3:4': '864x1152', '4:3': '1152x864', '9:16': '768x1344', '16:9': '1344x768' },
+    fallbackSize: '2K',
+    buildBody: (model, prompt, size) => ({ model, prompt, size, output_format: 'png', watermark: false }),
+    extractUrl: (data) => data?.data?.[0]?.url,
+    label: 'SeedDream',
+  },
+};
+
 /**
- * 把设计工作流的 aspectRatio 映射到 CogView 支持的 size。
- * CogView-3/3-Plus 常用:1024x1024 / 864x1152(3:4) / 1440x720(≈16:9) / 768x1344 等。
- * 未匹配到的退回 1024x1024(全模型支持)。
+ * 解析本次请求使用的 provider。
+ * 优先级:opts.provider > env IMAGE_PROVIDER > 'glm'(默认,向后兼容)。
  */
-function aspectRatioToSize(aspectRatio) {
-  const map = {
-    '1:1': '1024x1024',
-    '3:4': '864x1152',
-    '4:3': '1152x864',
-    '9:16': '768x1344',
-    '16:9': '1440x720',
-  };
-  return map[String(aspectRatio)] || '1024x1024';
+function resolveProvider(opts) {
+  const p = (opts?.provider || process.env.IMAGE_PROVIDER || 'glm').toLowerCase();
+  if (!PROVIDERS[p]) {
+    console.warn(`[gen-image] unknown provider="${p}", fall back to glm`);
+    return 'glm';
+  }
+  return p;
 }
 
 /**
- * 调用 CogView 生成一张图片。
+ * 调用指定 provider 生成一张图片。
  * @param {string} prompt 英文 prompt
  * @param {object} opts
  * @param {string} opts.teamId 团队 ID(用作 uploads 子目录)
- * @param {string} [opts.aspectRatio='1:1'] 设计工作流比例(自动映射到 CogView size)
+ * @param {string} [opts.aspectRatio='1:1'] 设计工作流比例
  * @param {string} [opts.safeName='image'] 文件名前缀
- * @param {number} [opts.numberOfImages=1] 张数(CogView 单张生成,>1 时只取 1)
+ * @param {string} [opts.provider='glm'] 生图模型提供商('glm'|'ark')
+ * @param {string} [opts.model] 覆盖 provider 默认模型 ID
  * @returns {Promise<{ url: string, prompt: string, model: string } | { error: string }>}
  */
 async function generateImage(prompt, opts) {
-  const { teamId, aspectRatio = '1:1', safeName = 'image', numberOfImages = 1 } = opts || {};
+  const { teamId, aspectRatio = '1:1', safeName = 'image', model: modelOverride } = opts || {};
   if (!prompt || !prompt.trim()) {
     return { error: 'empty prompt' };
-  }
-  const apiKey = process.env.GLM_API_KEY;
-  if (!apiKey) {
-    return { error: 'GLM_API_KEY not set' };
   }
   if (!teamId) {
     return { error: 'teamId required' };
   }
 
-  const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-  const model = process.env.GLM_IMAGE_MODEL || 'cogview-3';
-  const size = aspectRatioToSize(aspectRatio);
-  // CogView 单张生成;调用方 numberOfImages 通常为 1
-  const n = Math.min(Math.max(Number(numberOfImages) || 1, 1), 1);
-  const source = `${model}/${size}`;
+  const provider = resolveProvider(opts);
+  const cfg = PROVIDERS[provider];
 
-  // 单张生成超时(默认 120s)——CogView 通常 30~90s
+  const apiKey = cfg.apiKey();
+  if (!apiKey) {
+    return { error: cfg.missingKeyError };
+  }
+
+  const baseUrl = cfg.baseUrl();
+  const model = modelOverride || cfg.defaultModel();
+  const size = cfg.sizeMap[String(aspectRatio)] || cfg.fallbackSize;
+  const source = `${provider}:${model}/${size}`;
+
+  // 单张生成超时(默认 120s)——CogView 30~90s,SeedDream 可能更长
   const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 120000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
 
   let imageUrl;
   try {
-    console.log(`[gen-image] generating: model=${model}, size=${size}, prompt=${prompt.slice(0, 60)}…`);
+    console.log(`[gen-image] generating: ${source}, prompt=${prompt.slice(0, 60)}…`);
     const res = await fetch(`${baseUrl}/images/generations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, prompt, size, n, response_format: 'url' }),
+      body: JSON.stringify(cfg.buildBody(model, prompt, size)),
       signal: controller.signal,
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error(`[gen-image] CogView API ${res.status} (${source}): ${errText.slice(0, 300)}`);
-      return { error: `CogView HTTP ${res.status}: ${errText.slice(0, 200)}` };
+      console.error(`[gen-image] ${cfg.label} API ${res.status} (${source}): ${errText.slice(0, 300)}`);
+      return { error: `${cfg.label} HTTP ${res.status}: ${errText.slice(0, 200)}` };
     }
 
     const data = await res.json();
-    imageUrl = data?.data?.[0]?.url || null;
+    imageUrl = cfg.extractUrl(data) || null;
     if (!imageUrl) {
-      console.error('[gen-image] CogView returned no image URL:', JSON.stringify(data).slice(0, 200));
-      return { error: `CogView 返回无图片 URL: ${JSON.stringify(data).slice(0, 120)}` };
+      console.error(`[gen-image] ${cfg.label} returned no image URL:`, JSON.stringify(data).slice(0, 200));
+      return { error: `${cfg.label} 返回无图片 URL: ${JSON.stringify(data).slice(0, 120)}` };
     }
   } catch (e) {
     const msg = e?.name === 'AbortError' ? `生成超时(${IMAGE_TIMEOUT_MS}ms)` : (e?.message || String(e));
-    console.error('[gen-image] CogView call failed:', msg);
+    console.error(`[gen-image] ${cfg.label} call failed:`, msg);
     return { error: msg };
   } finally {
     clearTimeout(timer);
   }
 
-  // CogView 返回的 URL 是临时的,立即下载并持久化到 storage(本地或 S3)
+  // 返回的 URL 是临时的,立即下载并持久化到 storage(本地或 S3)
   try {
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) {
@@ -127,4 +159,4 @@ async function generateImage(prompt, opts) {
   }
 }
 
-module.exports = { generateImage };
+module.exports = { generateImage, PROVIDERS, resolveProvider };
