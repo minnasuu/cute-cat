@@ -52,6 +52,9 @@ export default function TeamWorkbench() {
   const [brandLoading, setBrandLoading] = useState(true);
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // 记录用户访问过的 tab,访问过的 tab 常驻挂载(display:none),避免切走再切回时
+  // 组件卸载 → <img> 元素销毁 → 图片重新解码(视觉上"每次重新加载")。
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([HOME_ID]));
 
   // 预加载资源 + 知识底座数据,传给 Composer 用于自动注入 system prompt
   const skillStore = useSkillStore();
@@ -81,34 +84,48 @@ export default function TeamWorkbench() {
     );
   }
 
+  /**
+   * 渲染主内容区。
+   * 已访问的 tab 全部挂载(用 display:none 隐藏非活跃 tab),切回来时 DOM/解码后的图片都还在,
+   * 避免 <img> 每次重新解码导致的"重新加载"闪烁。未访问的 tab 不挂载(保持首屏轻量)。
+   */
   function renderActive() {
-    if (activeTab === HOME_ID) {
-      return (
-        <ComposerPage
-          mode={designMode}
-          brandLoading={brandLoading}
-          knowledgeLoading={knowledgeLoading}
-          knowledge={{
-            skills: skillStore.articles,
-            assets: visualAssetStore.assets,
-            inspirations: resourceStore.inspirations,
-            materials: resourceStore.materials,
-            products: designStore.products,
-            brand,
-          }}
-        />
-      );
-    }
-    const Comp = DATA_COMPONENTS[activeTab];
-    if (!Comp) return <div className="p-8 text-gray-500">未找到该 tab</div>;
     return (
-      <Suspense fallback={<div className="p-8 text-gray-500">加载中…</div>}>
-        <Comp />
-      </Suspense>
+      <>
+        {/* 设计主工作台 */}
+        {visitedTabs.has(HOME_ID) && (
+          <div className={activeTab === HOME_ID ? '' : 'hidden'}>
+            <ComposerPage
+              mode={designMode}
+              brandLoading={brandLoading}
+              knowledgeLoading={knowledgeLoading}
+              knowledge={{
+                skills: skillStore.articles,
+                assets: visualAssetStore.assets,
+                inspirations: resourceStore.inspirations,
+                materials: resourceStore.materials,
+                products: designStore.products,
+                brand,
+              }}
+            />
+          </div>
+        )}
+        {/* 数据 tab(惰性加载过就常驻挂载) */}
+        {Object.entries(DATA_COMPONENTS).map(([id, Comp]) => (
+          visitedTabs.has(id) && (
+            <div key={id} className={activeTab === id ? '' : 'hidden'}>
+              <Suspense fallback={<div className="p-8 text-gray-500">加载中…</div>}>
+                <Comp />
+              </Suspense>
+            </div>
+          )
+        ))}
+      </>
     );
   }
 
   function switchTab(tabId: string) {
+    setVisitedTabs((prev) => new Set(prev).add(tabId)); // 标记为已访问 → 常驻挂载
     navigateTab(tabId);
     if (isMobile) setDrawerOpen(false); // 移动端点完自动收起抽屉
   }
