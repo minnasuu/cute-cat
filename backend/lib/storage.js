@@ -41,11 +41,14 @@ function localSave(buf, relPath) {
   fs.writeFileSync(abs, buf);
 }
 function localPublicUrl(relPath) {
-  return `/${relPath.split(path.sep).join('/')}`;
+  // relPath 不含 'uploads/' 前缀,静态挂载在 /uploads → UPLOAD_ROOT,这里要补齐
+  return `/uploads/${relPath.split(path.sep).join('/')}`;
 }
 function createLocalSavePath(folder, filename) {
   const cleanFolder = String(folder || 'misc').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 60) || 'misc';
-  return path.posix.join('uploads', cleanFolder, filename);
+  // 注意:不含 'uploads/' 前缀——UPLOAD_ROOT 已经是 ../uploads,localSave 做 join(UPLOAD_ROOT, relPath)
+  // public URL 前缀 '/' 由 localPublicUrl 统一添加
+  return `${cleanFolder}/${filename}`;
 }
 
 // ─── s3(SigV4 手写,零依赖) ─────────────────────────────────

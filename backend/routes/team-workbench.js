@@ -45,16 +45,12 @@ const debugImageUpload = multer({
   limits: { fileSize: 12 * 1024 * 1024 },
 }).single('file');
 
+// TMP_DIR 必须在 multer 启动前物理存在(multer 不等待 async callback)
+fs.mkdirSync(TMP_DIR, { recursive: true });
 const multerStorage = multer.diskStorage({
   // 统一先落到本地 tmp,后续由 saveUpload() 路由到本地最终目录或 S3,避免容器重建丢失文件
-  destination: async (_req, _file, cb) => {
-    try {
-      await fs.promises.mkdir(TMP_DIR, { recursive: true });
-      cb(null, TMP_DIR);
-    } catch (err) {
-      cb(err);
-    }
-  },
+  // 注意:multer diskStorage.destination 是同步回调,不可用 async/await
+  destination: (_req, _file, cb) => cb(null, TMP_DIR),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     const stem = `${Date.now().toString(36)}${crypto.randomUUID().slice(0, 8)}`;
@@ -300,8 +296,9 @@ router.post('/inspirations', (req, res) => {
       res.status(201).json(asset);
 
       // 异步 AI 视觉分析(不阻塞上传响应)——本地模式下 url 相对路径需要转为绝对 /app/backend/… 文件路径
+      // savePath 已是 'inspiration/filename' 形式(无 'uploads/' 前缀,UPLOAD_ROOT 已含)
       const filePath = storage.mode === 'local'
-        ? path.join(storage.UPLOAD_ROOT, savePath.split('/').slice(1).join(path.sep))
+        ? path.join(storage.UPLOAD_ROOT, ...savePath.split('/'))
         : null;
       void runInspirationAnalysis(asset.id, filePath, url);
     } catch (e) {
