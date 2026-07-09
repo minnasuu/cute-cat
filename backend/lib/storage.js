@@ -31,23 +31,32 @@ const crypto = require('crypto');
 
 /**
  * 解析上传根目录 —— 运行时探测,兼容两种部署目录结构:
- *   本地开发 / minna 部署:代码在 /app/backend/lib → /app/backend/uploads
- *   cucatopia 部署:        代码在 /app/lib       → /app/uploads
- * 优先用已存在的卷挂载点(容器重启后仍在),兜底用 __dirname 推算。
+ *   本地开发 / minna 部署:卷挂载在 /app/backend/uploads
+ *   cucatopia 部署:        卷挂载在 /app/backend/uploads (index.js 在 /app/)
+ * 返回已存在且有数据的目录(优先卷挂载点);都不存在时建在卷挂载位(首轮部署)。
+ *
+ * 导出供 index.js 静态服务使用 → 读写走同一路径,消除错位 404。
  */
 function resolveUploadRoot() {
   const candidates = [
-    '/app/backend/uploads', // minna 部署 / 本地开发结构
-    '/app/uploads',         // cucatopia 部署结构
-    path.join(__dirname, '..', 'uploads'), // 兜底推算
+    '/app/backend/uploads', // minna 部署 / cucatopia 部署 / 本地开发:卷挂载点
+    path.join(__dirname, '..', 'uploads'), // 兜底推算(本地开发非标准结构)
   ];
+  // 优先返回已存在且有数据的目录(容器重启后命名卷数据仍在)
   for (const c of candidates) {
     try {
-      fs.mkdirSync(c, { recursive: true });
-      if (fs.existsSync(c) && fs.statSync(c).isDirectory()) return c;
-    } catch { /* 不可写则跳过 */ }
+      if (fs.existsSync(c) && fs.statSync(c).isDirectory()) {
+        // 有数据(至少一个子项)→ 认定是卷挂载点
+        let entries;
+        try { entries = fs.readdirSync(c); } catch { continue; }
+        if (entries.length > 0) return c;
+      }
+    } catch { /* skip */ }
   }
-  return candidates[candidates.length - 1];
+  // 都不存在/都为空 → 选卷挂载位(创建目录,命名卷首次启动时落到卷里)
+  const primary = candidates[0];
+  try { fs.mkdirSync(primary, { recursive: true }); } catch { /* 不可写则回退 */ }
+  return primary;
 }
 
 const UPLOAD_ROOT = resolveUploadRoot();
@@ -188,6 +197,7 @@ module.exports = {
   mode,
   UPLOAD_ROOT,
   TMP_DIR,
+  resolveUploadRoot,
   saveUpload,
   getPublicUrl,
   createSavePath,
