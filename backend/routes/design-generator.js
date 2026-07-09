@@ -15,81 +15,81 @@ const { generateImage } = require('../lib/gen-image');
 const router = express.Router();
 
 /**
- * 单品图片 slot 模板生成器。
- * 根据 plan 中出现的品类关键词,切换描述用语(服装/包包/配饰/家居/文创)。
- *
- * clothing → 默认用语(garment / garment photography / flat sketch)
- * bag      → tote / handbag / bag product
- * accessory→ accessory / jewelry
- * home     → home object / lifestyle product
- * stationery→ stationery / paper goods
+ * 根据 plan 出现的品类关键词判断是否为服装(否则按物品处理)。
+ * 服装 → 正反面平铺在一张图; 物品 → 三视图(主视/侧视/俯视)在一张图。
  */
-function singleSlots(planText) {
+function isClothingCategory(planText) {
   const p = planText.toLowerCase();
-  // 简单启发式:匹配中文/英文关键词确定品类
-  const isBag = /包|bag|tote|handbag/.test(p);
-  const isAccessory = /配饰|首饰|帽子|围巾|项链|戒指|accessory|jewelry|hat|scarf/.test(p);
-  const isHome = /家居|抱枕|香薰|餐具|花瓶|cushion|candle|vase|home/.test(p);
-  const isStationery = /文创|明信片|贴纸|手账|贴纸|stationery|sticker|postcard/.test(p);
+  // 明确匹配到非服装品类 → 走物品
+  const nonClothing = /包|bag|tote|handbag|配饰|首饰|帽子|围巾|项链|戒指|accessory|jewelry|hat|scarf|家居|抱枕|香薰|餐具|花瓶|cushion|candle|vase|home|文创|明信片|贴纸|手账|sticker|postcard|手机壳|phone case/.test(p);
+  if (nonClothing) return false;
+  // 其余(含明确服装关键词或完全没提到物品关键词)都走服装
+  return true;
+}
 
-  // 根据品类挑主语词(用于替换 "garment")
-  let noun = 'fashion garment';
-  let detailNoun = 'stitching, buttons, craftsmanship';
-  if (isBag) { noun = 'designer handbag'; detailNoun = 'stitching, hardware, strap, closure'; }
-  else if (isAccessory) { noun = 'designer accessory'; detailNoun = 'material texture, clasp, fine detail, craftsmanship'; }
-  else if (isHome) { noun = 'home lifestyle product'; detailNoun = 'material texture, surface finish, craftsmanship'; }
-  else if (isStationery) { noun = 'stationery product'; detailNoun = 'print detail, paper texture, color accuracy'; }
-
-  return [
-    { slot: 'flat', label: '白底效果图', aspectRatio: '3:4',
-      prompt: `Product photo, single ${noun} on pure white background. ${planText} Clean studio lighting, front view, sharp detail, e-commerce style.` },
-    { slot: 'tech', label: '款式结构图', aspectRatio: '3:4',
-      prompt: `Technical flat sketch of a ${noun}. ${planText} Front + back view, clean line art, design detail callouts, spec annotations, white background.` },
-    { slot: 'detail', label: '细节图', aspectRatio: '1:1',
-      prompt: `Extreme close-up detail shot of a ${noun}. ${planText} ${detailNoun}, soft studio lighting, editorial quality.` },
-    { slot: 'editorial', label: '场景效果图', aspectRatio: '3:4',
-      prompt: `Editorial lifestyle photo featuring a ${noun}. ${planText} Styled in a realistic setting, soft natural light, premium brand atmosphere, luxurious mood.` },
-  ];
+function pickNoun(planText) {
+  const p = planText.toLowerCase();
+  if (/包|bag|tote|handbag/.test(p)) return 'designer handbag';
+  if (/配饰|首饰|帽子|围巾|项链|戒指|accessory|jewelry|hat|scarf/.test(p)) return 'designer accessory';
+  if (/家居|抱枕|香薰|餐具|花瓶|cushion|candle|vase|home/.test(p)) return 'home lifestyle product';
+  if (/文创|明信片|贴纸|手账|sticker|postcard/.test(p)) return 'stationery product';
+  return 'fashion garment';
 }
 
 /**
- * 按类别推导出需要生成的图片列表。
+ * 按类别推导需要生成的图片列表 —— 每个 mode 只生成 1 张整合图:
+ *   illustration → 1:1 印花图案(可满铺或居中,能直接用于印花)
+ *   single       → 1 张整合图(服装:正反面平铺 / 物品:三视图)
+ *   collection   → 16:9 系列总览(所有款一起展示)
  * 每张图有 slot(用途标识)、prompt(英文 prompt)、label(中文说明)、aspectRatio。
  */
 function planImages(mode, plan) {
   const planText = (plan || '').trim();
   if (mode === 'illustration') {
-    // 插画 = 1:1 正方形 · 纯图案(碎花等可居中或平铺) · 不要服装/人物
+    // 插画 = 1:1 正方形 · 纯图案,能直接用于印花(满铺或居中) · 不要服装/人物
     return [{
       slot: 'illustration',
-      label: '插画图案',
+      label: '印花图案',
       aspectRatio: '1:1',
-      prompt: `Create a seamless 1:1 square illustration artwork. Subject: ${planText}.
+      prompt: `Create a seamless 1:1 square illustration artwork optimized for fabric / surface printing. Subject: ${planText}.
 
 Rules:
-- Output is a clean 1:1 square artwork, suitable as a fabric print or surface pattern.
-- NO clothing, NO human figures, NO models, NO garments, NO fashion poses.
-- Subject is centered on a solid pastel/white background, or as a repeatable tile pattern that fills the canvas (e.g. floral=scattered scatter, motif=centered emblem).
+- Output is a clean 1:1 square, commercially printable at high resolution.
+- Design either: (a) fills the canvas as a repeatable tile pattern (scattered floral / all-over motif), OR (b) a single centered emblem / icon on a solid pastel / white background.
+- NO clothing, NO human figures, NO models, NO garments, NO fashion poses, NO text.
 - Style: flat vector / watercolor-textile / modern minimal, editorial quality.
-- High detail, crisp edges, commercially printable.`,
+- Crisp edges, high detail, suitable for textile printing or surface-pattern reproduction.`,
     }];
   }
   if (mode === 'collection') {
-    // 系列 = 系列总览 + 色彩企划 + 默认示意款 4 张
-    const out = [
-      { slot: 'collection-overview', label: '系列总览', aspectRatio: '16:9',
-        prompt: `Product collection lookbook overview. ${planText} Items arranged in a grid, cohesive color story, editorial styling, premium brand catalog layout.` },
-      { slot: 'collection-color', label: '色彩企划', aspectRatio: '1:1',
-        prompt: `Color palette storyboard for a collection. ${planText} Color chips, material swatches, mood hues, premium brand identity, editorial flat photography.` },
-    ];
-    // 示意款 4 张,按品类自适应
-    const heroSlots = singleSlots(planText);
-    // hero 前缀一下 slot 名避免与 collection 冲突
-    out.push(...heroSlots.map((s) => ({ ...s, slot: 'hero-' + s.slot, label: '主款' + s.label })));
-    return out;
+    // 系列 = 1 张 16:9 总览,把系列所有款一次性展示在同一画面
+    return [{
+      slot: 'collection',
+      label: '系列总览',
+      aspectRatio: '16:9',
+      prompt: `Fashion collection overview flat-lay photograph. ${planText}.
+
+Show ALL pieces of the collection arranged together in a clean, cohesive editorial grid on pure white background.
+Each piece is flat-laid or hung neatly, with consistent studio lighting and a unified color story.
+Premium brand catalog layout, catalog-quality photography, evenly spaced, the full collection visible in one frame.`,
+    }];
   }
-  // default: single 单品(品类自适应)
-  return singleSlots(planText);
+  // default: single 单品 —— 1 张整合图
+  // 服装 → 正反面平铺在一张图; 物品 → 三视图(主视/侧视/俯视)在一张图
+  const noun = pickNoun(planText);
+  const isClothing = isClothingCategory(planText);
+  const viewDesc = isClothing
+    ? 'Shows BOTH front view and back view of the garment together in one image — clean flat-laid layout on pure white background, shot from directly above.'
+    : 'Shows three professional views in one image — front view, side view, and back/top view, arranged in a clean 3-view product layout on pure white background.';
+  return [{
+    slot: 'single',
+    label: isClothing ? '服装平铺(正反面)' : '物品三视图',
+    aspectRatio: '1:1',
+    prompt: `Product photography, single ${noun} on pure white background. ${planText}.
+
+${viewDesc}
+Clean studio lighting, sharp detail, e-commerce catalog style. No model, no mannequin, no background clutter, pure white backdrop.`,
+  }];
 }
 
 /**

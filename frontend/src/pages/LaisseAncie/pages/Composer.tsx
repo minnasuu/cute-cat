@@ -473,7 +473,7 @@ export default function ComposerPage({
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-2 md:gap-3">
+              <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
                 {images.map((im) => (
                   <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
                 ))}
