@@ -668,17 +668,10 @@ export default function ComposerPage({
               </div>
             )}
 
-            {/* 设计图展示(单品/系列) */}
+            {/* 设计图展示(单品/系列/插画+图片) —— 录入按钮已移到右侧 preview 区 */}
             {showImages && images.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
-                  {stage === "presenting" && (
-                    <button onClick={saveToLookbook} className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1 rounded-lg font-medium transition-colors">
-                      {mode === "illustration" && !images.length && illustHtml ? "录入 Lookbook (HTML)" : "录入 Lookbook"}
-                    </button>
-                  )}
-                </div>
+                <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
                 <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
                   {images.map((im) => (
                     <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
@@ -711,27 +704,28 @@ export default function ComposerPage({
 
         {/* 桌面端侧栏:单品/系列/插画+图片=设计企划 / 插画+HTML=画布预览 + 修图输入 */}
         {mode === "illustration" && illustOutputMode === "html"
-          ? <IllustrationCanvas html={illustHtml} generating={illustBusy} onModify={regenerateHtml} />
-          : <PlanSideBar planText={planText} />
+          ? <IllustrationCanvas html={illustHtml} generating={illustBusy} stage={stage} illustHtml={illustHtml} onModify={regenerateHtml} onSaveToLookbook={saveToLookbook} />
+          : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} />
         }
       </div>
       {/* 移动端抽屉(<md,跟主内容同级渲染) */}
       {isMobile && (mode === "illustration" && illustOutputMode === "html")
-        ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} />
-        : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} />
+        ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} stage={stage} onSaveToLookbook={saveToLookbook} />
+        : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} />
       }
     </>
   );
 }
 
-/** 桌面端插画画布(≥md,渲染自包含 HTML + 修图输入) */
-function IllustrationCanvas({ html, generating, onModify }: { html: string | null; generating: boolean; onModify: (inst: string) => void }) {
+/** 桌面端插画画布(≥md,渲染自包含 HTML + 修图输入 + 录入 Lookbook) */
+function IllustrationCanvas({ html, generating, stage, onModify, onSaveToLookbook }: { html: string | null; generating: boolean; stage: string; illustHtml: string | null; onModify: (inst: string) => void; onSaveToLookbook: () => void }) {
   const [open, setOpen] = useState(false);
   const [inst, setInst] = useState("");
+  const canSave = stage === "presenting-html" && !!html;
   return (
     <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
-      <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">画布预览</div>
       <div className="flex-1 flex flex-col min-h-0">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">画布预览</div>
         {generating ? (
           <div className="w-full aspect-square max-w-[320px] mx-auto rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-400 text-sm">生成插画稿中…</div>
         ) : html ? (
@@ -748,6 +742,13 @@ function IllustrationCanvas({ html, generating, onModify }: { html: string | nul
           </div>
         )}
       </div>
+      {/* 录入 Lookbook —— 统一放右侧 preview 区底部 */}
+      {canSave && (
+        <button onClick={onSaveToLookbook}
+          className="mt-4 shrink-0 w-full text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
+          录入 Lookbook
+        </button>
+      )}
       {/* 修图输入 */}
       <div className="mt-4 shrink-0">
         <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">修改插画</div>
@@ -766,19 +767,32 @@ function IllustrationCanvas({ html, generating, onModify }: { html: string | nul
   );
 }
 
-/** 桌面端「设计企划」侧栏(单品 / 系列 / 插画+图片 共用) */
-function PlanSideBar({ planText }: { planText: string }) {
+/** 桌面端「设计企划」侧栏(单品 / 系列 / 插画+图片 共用) —— 底部含录入 Lookbook 按钮 */
+function PlanSideBar({ planText, stage, images, onSaveToLookbook }: { planText: string; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void }) {
+  const canSave = stage === "presenting" && images.length > 0;
   return (
     <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
-      <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
-      {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-      {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+      <div className="flex-1 min-h-0">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
+        {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+        {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+      </div>
+      {/* 录入 Lookbook —— 统一放右侧 preview 区底部 */}
+      {canSave && (
+        <button onClick={onSaveToLookbook}
+          className="mt-4 shrink-0 w-full text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
+          录入 Lookbook
+        </button>
+      )}
     </aside>
   );
 }
 
-/** 移动端设计企划抽屉(<md 才渲染),挂在 Composer 外层由父组件组合。 */
-export function ComposerPlanDrawer({ planText, open, onClose }: { planText: string; open: boolean; onClose: () => void }) {
+/** 移动端企划抽屉(<md 才渲染),挂在 Composer 外层由父组件组合。 */
+export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onSaveToLookbook }: {
+  planText: string; open: boolean; onClose: () => void; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void;
+}) {
+  const canSave = stage === "presenting" && images.length > 0;
   return (
     <>
       {open && (
@@ -797,16 +811,24 @@ export function ComposerPlanDrawer({ planText, open, onClose }: { planText: stri
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
-        {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-        {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+        <div className="flex-1">
+          {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+          {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+        </div>
+        {canSave && (
+          <button onClick={onSaveToLookbook}
+            className="mt-3 shrink-0 w-full text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
+            录入 Lookbook
+          </button>
+        )}
       </aside>
     </>
   );
 }
 
 /** 移动端插画画布抽屉(<md 才渲染) */
-export function IllustrationCanvasDrawer({ html, generating, open, onClose, onModify }: {
-  html: string | null; generating: boolean; open: boolean; onClose: () => void; onModify: (inst: string) => void;
+export function IllustrationCanvasDrawer({ html, generating, open, onClose, onModify, stage, onSaveToLookbook }: {
+  html: string | null; generating: boolean; open: boolean; onClose: () => void; onModify: (inst: string) => void; stage: string; onSaveToLookbook: () => void;
 }) {
   const [inst, setInst] = useState("");
   return (
