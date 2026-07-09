@@ -47,6 +47,13 @@ export interface StatusLogEntry {
   attachments?: string[];
 }
 
+/** 设计工作流生成的一张图片(录入 Lookbook 时存入 Product.images) */
+export interface ProductImage {
+  slot: string;
+  label: string;
+  url: string;
+}
+
 export interface Product {
   id: string;
   mode: DesignMode;
@@ -68,6 +75,8 @@ export interface Product {
   gradingNotes?: string;
   patternUrl?: string;
   techPackUrl?: string;
+  /** 设计工作流生成的图片数组:[{slot, label, url}] */
+  images?: ProductImage[];
   aiDraftRaw?: string;
   status: ProductStatus;
   statusHistory: StatusLogEntry[];

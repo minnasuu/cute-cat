@@ -331,8 +331,8 @@ export default function ComposerPage({
     if (images.length === 0) return;
     const now = new Date().toISOString();
     const mainImage = images.find((im) => im.url);
-    // 收集所有可访问的图片 URL
-    const imageUrls = images.filter((im) => im.url).map((im) => im.url);
+    // 收集所有可访问的图片(结构化数组,供 Lookbook 直接展示缩略图)
+    const productImages = images.filter((im) => im.url).map((im) => ({ slot: im.slot, label: im.label, url: im.url }));
     const product: Product = {
       id: crypto.randomUUID(),
       mode,
@@ -342,6 +342,7 @@ export default function ComposerPage({
       category: mode,
       colors: [],
       tech_pack_url: mainImage?.url,
+      images: productImages,
       aiDraftRaw: JSON.stringify({ plan: planText, images }),
       status: "draft",
       statusHistory: [],

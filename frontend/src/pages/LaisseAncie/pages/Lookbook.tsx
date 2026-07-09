@@ -164,6 +164,7 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
   const target = nextStatus(product.status);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const productImages = (product.images ?? []).filter((im) => im.url);
 
   async function advance() {
     if (!target) return;
@@ -189,6 +190,23 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
           </div>
           <button onClick={onClose} className="text-xl text-gray-400 hover:text-gray-800">×</button>
         </header>
+
+        {/* 设计工作流生成的图片 */}
+        {productImages.length > 0 && (
+          <div className="mb-5">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计图 ({productImages.length})</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {productImages.map((im) => (
+                <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+                  <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+                    <img src={im.url} alt={im.label} className="w-full h-full object-cover" loading="lazy" />
+                  </div>
+                  <figcaption className="px-2 py-1.5 text-[10px] text-gray-600 font-medium truncate">{im.label}</figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mb-5">
           <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">工序时间线</div>

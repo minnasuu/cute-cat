@@ -342,6 +342,8 @@ model LAProduct {
   gradingNotes      String?  @db.Text
   patternUrl        String?
   techPackUrl       String?
+  /** 设计工作流生成的图片数组:[{slot, label, url}] */
+  images            Json     @default("[]")
   aiDraftRaw        String?  @db.Text
   fitAcknowledge    String?
   fitDetail         String?  @db.Text
