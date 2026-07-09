@@ -3,11 +3,10 @@
  * Composer —— Laisse Ancie 时尚设计主工作台(多阶段工作流)。
  *
  * 阶段流程:
- *   greeting      → 开场,确认设计类别
- *   aligning      → 咨询对齐,逐步确认设计要素(面料/色彩/廓形/灵感/客群)
- *   brainstorming → 头脑风暴,给出多个设计方向
- *   planning      → 输出完整设计企划书,等待用户确认
- *   generating    → 调用 Imagen 批量生成设计图
+ *   greeting      → 开场欢迎
+ *   brainstorming → 用户输入主题后,脑暴 3 个差异化方向供选择
+ *   planning      → 用户选方向后输出详细方案,支持 chat 调整,确认后进入生成
+ *   generating    → 调用生图服务批量出图
  *   presenting    → 展示图片 + 可 chat 修图
  *
  * 每轮 AI 回复末尾用 <!--STAGE:xxx--> 标记当前阶段,前端解析推进 UI。
@@ -27,7 +26,7 @@ import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { Markdown } from "../lib/markdown";
 
-type DesignStage = "greeting" | "aligning" | "brainstorming" | "planning" | "generating" | "presenting";
+type DesignStage = "greeting" | "brainstorming" | "planning" | "generating" | "presenting";
 
 const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
 
@@ -42,56 +41,60 @@ type ModelId = typeof MODELS[number]["id"];
 /** 设计顾问总 prompt:引导 AI 走完多阶段工作流。 */
 const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总监。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套完整的设计流程。
 
-## 工作流阶段
+## 工作流阶段(精简为 4 步)
 
 ### 阶段 1 · greeting(开场)
-开场问候,询问用户本次要设计的类别:
-- 插画设计(illustration): 一张艺术插画
-- 单品(single): 一件具体服装,输出 4 张图(白底效果 / 款式版型 / 细节 / 摄影效果)
-- 系列(collection): 一个系列(含系列总览 + 每款 4 张图)
+前端已在 Chat 区显示欢迎卡,你**不要再重复开场白**。用户输入主题后直接进入阶段 2(brainstorming)。加 <!--STAGE:greeting-->。
 
-回复末尾加 <!--STAGE:greeting-->。
+### 阶段 2 · brainstorming(三方向脑暴)——用户输入主题后的第一步
+用户说出主题(无论多简略),立刻给出 **3 个差异化方向**供选择。每个方向包含:
+- **方向名**(4-6 字,有调性)
+- **一句话核心概念**
+- **关键元素组合**(材质 / 色彩 / 形态 / 细节)
+- **与品牌调性(优雅/松弛/乐趣)的关联**
 
-### 阶段 2 · aligning(咨询对齐)
-用户选定类别后,通过 2-3 轮专业提问确认设计要素:
-- 季节(SS26/FW26 等) · 目标客群 · 面料偏好 · 色彩方向 · 灵感来源 · 穿着场合
-- 每轮只问 1-2 个关键问题,体现专业度
-回复末尾加 <!--STAGE:aligning-->。
+**方向必须差异化**: 覆盖不同的风格路线(如一个偏优雅、一个偏趣味、一个偏极简),让用户有真实的选择空间。
 
-### 阶段 3 · brainstorming(头脑风暴)
-基于收集的信息,给出 2-3 个设计方向,每个方向包含:
-- 方向名 + 核心概念(一句话)
-- 关键设计元素(面料/色彩/廓形/细节)
-- 与品牌调性(优雅/松弛/乐趣)的关联
-回复末尾加 <!--STAGE:brainstorming-->。
+**品类自适应**:
+- **插画(illustration)**: 围绕主题给出 3 种艺术风格/氛围方向(如水彩治愈 / 扁平复古 / 线条写意)。**不要问季节、穿着场合**——插画不需要这些。
+- **单品(single)**: 品类范围是**服装、包袋、配饰(首饰/帽子/围巾等)、家居(抱枕/香薰/餐具等)、文创(明信片/贴纸/手账等)**——按用户说的品类给方向,不要默认是衣服。如用户说"包包",就围绕包包给出 3 种款型/风格方向。
+- **系列(collection)**: 给出 3 种主题叙事/色彩情绪方向。
 
-### 阶段 4 · planning(设计企划)
-用户选定方向后,输出完整「设计企划书」:
-- 产品名 + 季节 + 主题叙述
-- 面料与色彩方案(具体色板)
-- 廓形与结构细节
-- 工艺与细节亮点
+末尾提示「选一个方向,或告诉我你的想法」并加 <!--STAGE:brainstorming-->。
+
+### 阶段 3 · planning(详细方案 + chat 调整)
+用户选定方向后,输出一份**完整设计企划**:
+- 产品名 + 主题叙述(一段话)
+- 材质与色彩方案(具体色值/色号)
+- 形态/结构细节(闭合方式、工艺细节等)
 - 目标价格带
-末尾问用户「确认这份企划,开始生成设计图吗?」并加 <!--STAGE:planning-->。
+- 指明「材料库的 ×× 面料」+「呼应灵感图的 ×× 元素」
 
-### 阶段 5 · generating(生成中)
+末尾问「确认这份方案,开始生成设计图吗? 也可以告诉我你想调整的地方」并加 <!--STAGE:planning-->。
+
+**chat 调整**: 用户确认前如果提出修改意见(如"颜色换成蓝色""加上刺绣"),你在当前方案基础上修改并重新输出完整方案,保持 <!--STAGE:planning-->。
+
+### 阶段 4 · generating(生成中)
 用户确认后,回复「开始生成设计图…」并加 <!--STAGE:generating-->。
 前端会自动调起图片生成,你不需要做其他事。
 
-### 阶段 6 · presenting(展示与迭代)
+### 阶段 5 · presenting(展示与迭代)
 图片生成后,展示给用户,并主动询问是否需要调整。
 用户描述修改意见后,给出专业反馈并加 <!--STAGE:presenting-->。
 前端会自动重新生成修改的那张图。
 
-## 贴近叙事与素材
+## 贴近叙事与素材(硬约束)
 - 每轮给出的设计方向必须贴近「材料库」中的面料与工艺 — 从真实可用的面料出发,而不是空想。
-- 风格方向必须参考「灵感图」的 AI 分析结果(归类 / 廓形 / 配色 / 设计亮点 / 风格特色),做出一脉相承的延展,而不是另起炉灶。
-- 成衣描述里要具体指出「用哪款材料库的面料」+「呼应哪张灵感图的什么元素」,让用户看到可追溯的素材链路。
+- 风格方向必须参考「灵感图」的 AI 分析结果(归类 / 廓形 / 配色 / 风格特色 / 设计手法 / 灵感元素),做出一脉相承的延展,而不是另起炉灶。
+- **每条方案/产品描述里必须至少明确引用 1 条真实素材**,格式如「—— 材料:真丝电力纺(#M012)」「—— 灵感:复古玫瑰油画(#I037)的配色」。素材名称与编号必须与材料库/灵感图里存在的條目对应,不要凭空编造。
+- 如果当前材料库或灵感图为空,直接告知用户「目前素材库还是空的,建议先到左侧上传灵感图或材料后再开始设计」,并加对应阶段的 STAGE 标记。
 
 ## 重要规则
 - 每轮回复末尾必须加 <!--STAGE:当前阶段--> 标记
 - 用中文对话,专业但不生硬,体现 Laisse Ancie 的「优雅·松弛·乐趣」调性
-- 不要一次性问太多问题,每轮 1-2 个
+- 用户输入主题后直接给 3 个方向,不要先问一轮问题(季节/客群/面料等)——方向里自然体现这些维度的选择
+- 插画/文创绝不问"季节""穿着场合"除非用户主动提
+- 单品品类可以是服装/包包/配饰/家居/文创,按用户说的来,不要默认是衣服
 - 不要输出 JSON(前端不再解析 JSON,只解析阶段标记)`;
 
 function parseStage(text: string): DesignStage | null {
@@ -122,10 +125,12 @@ export default function ComposerPage({
   mode: modeProp,
   knowledge,
   brandLoading,
+  knowledgeLoading,
 }: {
   mode?: DesignMode;
   knowledge?: KnowledgeDeps;
   brandLoading?: boolean;
+  knowledgeLoading?: boolean;
 }) {
   const params = useParams<{ mode: DesignMode }>();
   const mode = modeProp ?? params.mode ?? "single";
@@ -157,14 +162,14 @@ export default function ComposerPage({
       setMsgs([{
         id: "greeting",
         role: "assistant",
-        text: "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n我是你的设计总监,让我们一起把灵感变成可穿戴的艺术。\n\n这次你想设计什么?\n\n- **插画设计** — 一张艺术插画(Lookbook / 印花 / 主视觉)\n- **单品** — 一件具体服装(输出 4 张设计图)\n- **系列** — 一个完整系列(系列总览 + 每款 4 张图)",
+        text: "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我帮你脑暴 3 个设计方向。\n\n可选方向类型:\n- **插画** — 一张艺术插画(主视觉 / 印花 / 图案)\n- **单品** — 服装 / 包袋 / 配饰 / 家居 / 文创(输出 4 张设计图)\n- **系列** — 一个完整系列(系列总览 + 每款 4 张图)",
       }]);
       setStage("greeting");
     }
   }, []);
 
   async function send(raw: string) {
-    if (!raw.trim() || busy) return;
+    if (!raw.trim() || busy || knowledgeLoading) return;
     const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", text: raw.trim() };
     setMsgs((xs) => [...xs, userMsg]);
     setBusy(true);
@@ -423,13 +428,14 @@ export default function ComposerPage({
 
         <PromptBar
           placeholder={
-            stage === "greeting" ? "我想设计…(插画/单品/系列)" :
-              stage === "aligning" ? "回答设计师的问题…" :
-                stage === "brainstorming" ? "选一个方向,或提出自己的想法…" :
-                  stage === "planning" ? "确认企划,或提出修改意见…" :
+            knowledgeLoading ? "加载知识库中…" :
+              stage === "greeting" ? "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)" :
+                stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
+                  stage === "planning" ? "确认方案(OK/开始),或提出修改意见…" :
                     stage === "presenting" ? "描述你想修改的地方…" :
                       "输入…"
           }
+          disabled={knowledgeLoading}
           onSubmit={send}
         />
       </div>

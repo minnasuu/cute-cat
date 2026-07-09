@@ -56,6 +56,9 @@ export default function TeamWorkbench() {
   const designStore = useDesignStore();
   const resourceStore = useResourceStore();
 
+  // 所有知识源首次加载完成前,禁用发送(避免拿到空知识库)
+  const knowledgeLoading = brandLoading || skillStore.loading || visualAssetStore.loading || designStore.loading || resourceStore.loading;
+
   // 预加载品牌资产
   useEffect(() => {
     if (!teamId) { setBrandLoading(false); return; }
@@ -81,6 +84,7 @@ export default function TeamWorkbench() {
         <ComposerPage
           mode={designMode}
           brandLoading={brandLoading}
+          knowledgeLoading={knowledgeLoading}
           knowledge={{
             skills: skillStore.articles,
             assets: visualAssetStore.assets,

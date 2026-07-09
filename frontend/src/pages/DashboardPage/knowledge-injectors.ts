@@ -74,14 +74,26 @@ const assetInjector: Injector = (prompt, deps) => {
   return `## Visual assets (reference these in your reply)\n${blocks}`;
 };
 
-/** 灵感注入:按 category/silhouette/color/brandAnalysis 匹配 */
+/**
+ * 灵感注入:按 category/silhouette/color/brandAnalysis + AI 分析字段(visualStyle/designApproach/inspiration)匹配。
+ * visualStyle / designApproach 是单值文案,inspiration 是数组,一并纳入相关性打分。
+ */
 const inspirationInjector: Injector = (prompt, deps) => {
   if (!deps.inspirations.length) return "";
   const tokens = tokenize(prompt);
   const scored = deps.inspirations
     .map((it) => {
       let s = 0;
-      const hay = `${it.category ?? ""} ${it.silhouette ?? ""} ${(it.colors ?? []).join(" ")} ${it.brandAnalysis ?? ""}`.toLowerCase();
+      const hay = [
+        it.category ?? "",
+        it.silhouette ?? "",
+        (it.colors ?? []).join(" "),
+        it.brandAnalysis ?? "",
+        // AI 视觉分析新增字段
+        it.visualStyle ?? "",
+        it.designApproach ?? "",
+        (it.inspiration ?? []).join(" "),
+      ].join(" ").toLowerCase();
       for (const t of tokens) if (hay.includes(t)) s += 2;
       return { it, s };
     })
@@ -92,7 +104,10 @@ const inspirationInjector: Injector = (prompt, deps) => {
   const blocks = scored
     .map(({ it }) => {
       const head = `[Inspiration · ${it.category ?? "general"}] ${it.silhouette ?? ""}`;
-      const body = it.brandAnalysis ?? `colors: ${(it.colors ?? []).join(", ") || "—"}`;
+      const sub = [it.visualStyle, it.designApproach].filter(Boolean).join(" · ");
+      const body = it.brandAnalysis
+        ? `${it.brandAnalysis}${sub ? `\nStyle: ${sub}` : ""}`
+        : `${sub ? `Style: ${sub}\n` : ""}colors: ${(it.colors ?? []).join(", ") || "—"}`;
       return `### ${head}\n${body}`;
     })
     .join("\n\n");

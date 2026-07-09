@@ -20,6 +20,10 @@ export interface InspirationItem {
   brandAnalysis?: string | null;
   designHighlights?: string[];
   styleFeatures?: string[];
+  // AI 视觉分析新增字段(后端 lAInspirationAsset 已落库,用于灵感 injector 相关性匹配)
+  visualStyle?: string | null;
+  designApproach?: string | null;
+  inspiration?: string[];
   analysisStatus?: "pending" | "success" | "failed" | null;
   useCount?: number;
   createdAt: string;
