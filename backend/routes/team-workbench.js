@@ -181,14 +181,16 @@ router.delete('/assets/:id', async (req, res) => {
 /* ─── inspirations (灵感图) ──────────────────────────────────── */
 
 router.get('/inspirations', async (req, res) => {
-  const { q, category, take: takeStr, cursor } = req.query;
+  const { q, category, visualStyle, take: takeStr, cursor } = req.query;
   const take = Math.min(parseInt(takeStr, 10) || 24, 96);
   const where = { teamId: req.team.id };
   if (category) where.category = String(category);
+  if (visualStyle) where.visualStyle = { contains: String(visualStyle), mode: 'insensitive' };
   if (q) {
     where.OR = [
       { category: { contains: String(q), mode: 'insensitive' } },
-      { brandAnalysis: { contains: String(q), mode: 'insensitive' } },
+      { visualStyle: { contains: String(q), mode: 'insensitive' } },
+      { designApproach: { contains: String(q), mode: 'insensitive' } },
     ];
   }
   const total = await prisma.lAInspirationAsset.count({ where });
@@ -388,7 +390,9 @@ router.patch('/inspirations/:id', async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, [
-    'category', 'silhouette', 'colors', 'brandAnalysis', 'designHighlights', 'styleFeatures',
+    'category', 'visualStyle', 'designApproach', 'inspiration',
+    // 旧字段(兼容旧前端/旧数据)
+    'silhouette', 'colors', 'brandAnalysis', 'designHighlights', 'styleFeatures',
   ]);
   const row = await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data });
   res.json(row);

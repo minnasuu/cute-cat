@@ -61,10 +61,11 @@ export function teamApi(teamId: string) {
     deleteAsset: (id: string) => _apiClient.delete(pre(`/assets/${id}`)),
 
     // inspirations
-    listInspirations: (params: { q?: string; category?: string; take?: number; cursor?: string } = {}) => {
+    listInspirations: (params: { q?: string; category?: string; visualStyle?: string; take?: number; cursor?: string } = {}) => {
       const qs = new URLSearchParams();
       if (params.q) qs.set('q', params.q);
       if (params.category) qs.set('category', params.category);
+      if (params.visualStyle) qs.set('visualStyle', params.visualStyle);
       if (params.take) qs.set('take', String(params.take));
       if (params.cursor) qs.set('cursor', params.cursor);
       const qstr = qs.toString();
