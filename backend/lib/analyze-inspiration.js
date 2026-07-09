@@ -129,10 +129,6 @@ async function analyzeInspiration(imageBuffer, mimeType) {
 
   // 优先级 1: INSPIRATION_AI_PROVIDER 显式指定
   const forced = (process.env.INSPIRATION_AI_PROVIDER || '').toLowerCase().trim();
-
-  // openai 大类 (qwen/openai/longcat 都走同一路径,只是 env var 名不同)
-  // QWEN_BASE_URL 通常已含 /v1 尾巴(如 .../compatible-mode/v1),OpenAI 端点只需要 /chat/completions;
-  // OpenAI 官方 base 只到主机(https://api.openai.com),需要 /v1/chat/completions。
   const explicitModel = (process.env.INSPIRATION_AI_MODEL || '').trim();
 
   // 组合出完整 OpenAI 端点:如果 base 已经以 /v1 结尾,只追加 /chat/completions;否则追加 /v1/chat/completions
@@ -141,6 +137,22 @@ async function analyzeInspiration(imageBuffer, mimeType) {
     return b.endsWith('/v1') ? `${b}/chat/completions` : `${b}/v1/chat/completions`;
   }
 
+  // 默认顺序:gemini 优先(渲染上唯一确定支持 vision 的),再 qwen/text-compat
+  // 原因:qwen3.5-plus 是纯文本模型, vision 调用会 400;longcat 上游 403;gemini flash 稳
+
+  // 1) gemini(首选,vision 稳定)
+  if (process.env.GEMINI_API_KEY) {
+    providers.push({
+      name: 'gemini',
+      run: () => analyzeGemini({
+        apiKey: process.env.GEMINI_API_KEY,
+        model: explicitModel || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+        imageBuffer, mimeType, timeoutMs,
+      }),
+    });
+  }
+
+  // 2) OpenAI‑compatible 大类 (qwen/openai/longcat)
   const openVariants = [
     { name: 'qwen',  base: process.env.QWEN_BASE_URL,  key: process.env.QWEN_API_KEY,  model: process.env.QWEN_MODEL },
     { name: 'openai', base: process.env.OPENAI_BASE_URL, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL },
@@ -160,18 +172,6 @@ async function analyzeInspiration(imageBuffer, mimeType) {
         apiKey: v.key, model,
         dataUrl: `data:${mimeType};base64,${imageBuffer.toString('base64')}`,
         mimeType, timeoutMs,
-      }),
-    });
-  }
-
-  // gemini
-  if (process.env.GEMINI_API_KEY) {
-    providers.push({
-      name: 'gemini',
-      run: () => analyzeGemini({
-        apiKey: process.env.GEMINI_API_KEY,
-        model: explicitModel || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-        imageBuffer, mimeType, timeoutMs,
       }),
     });
   }

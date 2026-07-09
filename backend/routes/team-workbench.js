@@ -30,6 +30,21 @@ const {
 
 const router = express.Router();
 
+// 调试用的轻便 multer(field 名 'file'),落点 tmp,调试完后 unlink
+const debugImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      fs.mkdirSync(TMP_DIR, { recursive: true });
+      cb(null, TMP_DIR);
+    },
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+      cb(null, `dbg-${Date.now().toString(36)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 12 * 1024 * 1024 },
+}).single('file');
+
 const multerStorage = multer.diskStorage({
   // 统一先落到本地 tmp,后续由 saveUpload() 路由到本地最终目录或 S3,避免容器重建丢失文件
   destination: async (_req, _file, cb) => {
@@ -232,9 +247,25 @@ router.get('/inspirations/debug', async (req, res) => {
       providers.push({ name: 'gemini', ok: 'sdk-only', model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' });
     }
     res.json({
-      INSPIRATION_AI_PROVIDER: process.env.INSPIRATION_AI_PROVIDER || '(未设置,按 qwen→openai→gemini 顺序回退)',
+      INSPIRATION_AI_PROVIDER: process.env.INSPIRATION_AI_PROVIDER || '(未设置,按 gemini→qwen→openai 顺序回退)',
       providers,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/teams/:teamId/inspirations/debug —— 真正用一张图调 analyzeInspiration,看哪个 provider 能出 JSON
+// 注意:上线后应删除或加 admin 校验
+router.post('/inspirations/debug', debugImageUpload, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传一张图(field 名 "file")' });
+    const buf = fs.readFileSync(req.file.path);
+    fs.unlinkSync(req.file.path);
+    const ext = path.extname(req.file.filename).toLowerCase();
+    const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.png' ? 'image/png' : 'image/jpeg';
+    const { result, error } = await analyzeInspiration(buf, mime);
+    res.json({ ok: !!result, error, category: result?.category || null, style: result?.styleFeatures || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
