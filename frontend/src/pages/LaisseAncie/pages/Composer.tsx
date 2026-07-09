@@ -267,7 +267,8 @@ export default function ComposerPage({
   const [canvasOpen, setCanvasOpen] = useState(false); // 移动端画布(插画)抽屉开关
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // —— 插画 HTML + 画布模式的状态 ——
+  // —— 插画(支持图片 + HTML 两种_output)的状态 ——
+  const [illustOutputMode, setIllustOutputMode] = useState<"image" | "html">("image"); // 当前插画产出模式(默认图片)
   const [illustHtml, setIllustHtml] = useState<string | null>(null);     // 当前画布渲染的自包含 HTML
   const [illustBusy, setIllustBusy] = useState(false);                    // 插画生成进行中(不阻塞 chat)
   const [illustMsgId, setIllustMsgId] = useState<string | null>(null);   // 当前展示插画的消息 id(渲染画布入口)
@@ -280,7 +281,7 @@ export default function ComposerPage({
   useEffect(() => {
     if (msgs.length === 0 && !busy) {
       const greeting = mode === "illustration"
-        ? "欢迎来到 Laisse Ancie 插画工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**风格**(水彩、矢量、现代极简、装饰艺术…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个插画方案\n3️⃣ 你确认后,生成可印刷的插画 HTML 画布"
+        ? "欢迎来到 Laisse Ancie 插画工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**风格**(水彩、矢量、现代极简、装饰艺术…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个插画方案\n3️⃣ 你确认后,生成插画(默认出图,可切换为 HTML 画布)\n\n下方会在你确认方案后出现【图片 / HTML】切换,两种输出都可在这切换。"
         : mode === "collection"
         ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成系列总览图"
         : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成设计图";
@@ -458,9 +459,12 @@ export default function ComposerPage({
     setIllustBusy(false);
   }
 
-  /** 用户确认企划 → 进入生成:插画走 HTML+画布,单品/系列走图片生成 */
+  /** 用户确认企划 → 进入生成:插画按 illustOutputMode 分叉(图片/HTML),单品/系列走图片生成 */
   async function startGeneration() {
-    if (mode === "illustration") { await generateHtml(); return; }
+    if (mode === "illustration") {
+      if (illustOutputMode === "html") { await generateHtml(); return; }
+      // 插画 + 图片模式 → 走 /design/generate(1:1 印花图案)
+    }
     if (generating) return;
     setGenerating(true);
     setStage("generating");
@@ -554,9 +558,14 @@ export default function ComposerPage({
 
   // 新流程用 proposal 阶段(旧 planning 仍兼容)。插画生成用 illustBusy,不阻塞 chat。
   const canGenerate = (stage === "planning" || stage === "proposal") && !generating && !illustBusy;
-  const showImages = (stage === "presenting" || (stage === "generating" && images.length > 0)) && mode !== "illustration";
-  const showCanvas = mode === "illustration" && (stage === "presenting-html" || illustHtml);
+  // 插画图片产物 / 单品&系列 → 图片画廊
+  const showImages = (stage === "presenting" || (stage === "generating" && images.length > 0))
+    && !(mode === "illustration" && illustOutputMode === "html");
+  // 插画 HTML 产物 → 画布
+  const showCanvas = mode === "illustration" && illustOutputMode === "html" && (stage === "presenting-html" || illustHtml);
   const inIllustGenerating = mode === "illustration" && stage === "generating";
+  // 插画当前产物是图片(右侧渲染 ImageCard,修改走 regenerateOne)
+  const illustShowingImage = mode === "illustration" && illustOutputMode === "image" && images.length > 0;
 
   return (
     <>
@@ -576,13 +585,13 @@ export default function ComposerPage({
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
-              {/* 移动端:插画→画布抽屉;其他→企划抽屉 */}
+              {/* 移动端:插画+HTML→画布抽屉;其他→企划抽屉 */}
               {isMobile && (
                 <button
-                  onClick={() => mode === "illustration" ? setCanvasOpen(true) : setPlanOpen(true)}
+                  onClick={() => (mode === "illustration" && illustOutputMode === "html") ? setCanvasOpen(true) : setPlanOpen(true)}
                   className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600"
                 >
-                  {mode === "illustration" ? "画布" : "企划"}
+                  {(mode === "illustration" && illustOutputMode === "html") ? "画布" : "企划"}
                 </button>
               )}
               <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
@@ -618,20 +627,38 @@ export default function ComposerPage({
               <div className="text-gray-500 max-w-[80%] inline-block">生成中…</div>
             )}
 
+            {/* 插画:图片/HTML 切换( proposer/planning / presenting / presenting-html 阶段均可见 ) */}
+            {mode === "illustration" && (stage === "planning" || stage === "proposal" || stage === "presenting" || stage === "presenting-html") && (
+              <div className="flex justify-center">
+                <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-[12px] shadow-sm">
+                  <button
+                    onClick={() => setIllustOutputMode("image")}
+                    disabled={illustBusy || generating}
+                    className={`px-3 py-1 rounded-md transition-colors ${(illustOutputMode === "image") ? "bg-primary-500 text-white font-medium" : "text-gray-600 hover:text-primary-600"}`}
+                  >图片</button>
+                  <button
+                    onClick={() => setIllustOutputMode("html")}
+                    disabled={illustBusy || generating}
+                    className={`px-3 py-1 rounded-md transition-colors ${(illustOutputMode === "html") ? "bg-primary-500 text-white font-medium" : "text-gray-600 hover:text-primary-600"}`}
+                  >HTML</button>
+                </div>
+              </div>
+            )}
+
             {/* 生成按钮(企划确认后) */}
             {canGenerate && (
               <div className="flex justify-center">
                 <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
-                  {mode === "illustration" ? "确认方案,生成插画稿" : "确认方案,开始生成设计图"}
+                  {mode === "illustration" ? (illustOutputMode === "html" ? "确认方案,生成插画 HTML" : "确认方案,生成插画图") : "确认方案,开始生成设计图"}
                 </button>
               </div>
             )}
 
-            {/* 生成中(单品/系列:图片;插画:HTML) */}
+            {/* 生成中(单品/系列:图片;插画:图片 / HTML) */}
             {(generating || inIllustGenerating) && (
               <div className="flex justify-center">
                 <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
-                  {mode === "illustration" ? "正在生成插画稿…" : "正在生成设计图…"}
+                  {mode === "illustration" ? (illustOutputMode === "html" ? "正在生成插画 HTML…" : "正在生成插画图…") : "正在生成设计图…"}
                 </div>
               </div>
             )}
@@ -677,20 +704,14 @@ export default function ComposerPage({
           />
         </div>
 
-        {/* 桌面端侧栏:单品/系列=设计企划 / 插画=画布预览 + 修图输入 */}
-        {mode === "illustration"
+        {/* 桌面端侧栏:单品/系列/插画+图片=设计企划 / 插画+HTML=画布预览 + 修图输入 */}
+        {mode === "illustration" && illustOutputMode === "html"
           ? <IllustrationCanvas html={illustHtml} generating={illustBusy} onModify={regenerateHtml} />
-          : (
-            <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
-              {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-              {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
-            </aside>
-          )
+          : <PlanSideBar planText={planText} />
         }
       </div>
       {/* 移动端抽屉(<md,跟主内容同级渲染) */}
-      {isMobile && mode === "illustration"
+      {isMobile && (mode === "illustration" && illustOutputMode === "html")
         ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} />
         : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} />
       }
@@ -736,6 +757,17 @@ function IllustrationCanvas({ html, generating, onModify }: { html: string | nul
           </div>
         )}
       </div>
+    </aside>
+  );
+}
+
+/** 桌面端「设计企划」侧栏(单品 / 系列 / 插画+图片 共用) */
+function PlanSideBar({ planText }: { planText: string }) {
+  return (
+    <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
+      {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+      {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
     </aside>
   );
 }
