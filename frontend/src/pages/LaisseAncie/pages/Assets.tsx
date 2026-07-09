@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useVisualAssetStore } from "../store/visual-asset";
@@ -16,9 +15,6 @@ export default function AssetsPage() {
   const [tab, setTab] = useState<Tab>("brand");
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-10 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <BrandWordmark />
-      </header>
       <div className="inline-flex rounded-2xl border border-gray-200 overflow-hidden text-sm mb-6">
         <TabBtn current={tab === "brand"} onClick={() => setTab("brand")} label="品牌信息资产" />
         <TabBtn current={tab === "visual"} onClick={() => setTab("visual")} label="视觉资产" />
@@ -402,10 +398,3 @@ function AssetPicker({ onClose, onSave }: { onClose: () => void; onSave: (a: Vis
   );
 }
 
-function BrandWordmark() {
-  return (
-    <div className="flex items-baseline gap-3">
-      <span className="text-[48px] font-semibold text-primary-600 leading-none">Laisse Ancie</span>
-    </div>
-  );
-}

@@ -63,7 +63,7 @@ export default function SkillsPage() {
       <main className="overflow-auto bg-white">
         <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-[34px] font-semibold text-primary-600 tracking-tight">知识库</h1>
+            <h1 className="text-[34px] font-semibold tracking-tight">知识库</h1>
             <p className="text-sm text-gray-500 mt-0.5">
               {filtered.length} 条知识
               {cat !== "all" ? ` · ${SKILL_PHASE_META[cat as SkillPhaseId].hint}` : " · 用 + 沉淀的闭环"}
@@ -131,7 +131,7 @@ function CatBtn({ current, onClick, icon, label, sublabel, count, disabled }: {
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`text-left flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${disabled ? "opacity-60 cursor-not-allowed" : ""} ${current ? "bg-primary-200 text-primary-600 border border-primary-200" : "text-gray-600 hover:bg-gray-100"}`}>
+      className={`text-left flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${disabled ? "opacity-60 cursor-not-allowed" : ""} ${current ? "bg-primary-50 text-primary-600 border border-primary-200" : "text-gray-600 hover:bg-gray-100"}`}>
       <span className="w-5 text-center text-base">{icon}</span>
       <span className="flex-1 min-w-0">
         <span className="text-[13px] font-medium block">{label}</span>

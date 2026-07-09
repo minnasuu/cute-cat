@@ -52,7 +52,7 @@ export default function LookbookPage() {
     <div className="p-8 lg:p-12 max-w-[1400px] mx-auto">
       <header className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-5xl font-semibold text-primary-600 tracking-tight">Lookbook</h1>
+          <h1 className="text-5xl font-semibold tracking-tight">Lookbook</h1>
           <p className="text-sm text-gray-500 mt-1">款式总览 — 按创作模式分类 · 点击状态推进工序</p>
         </div>
         <span className="text-xs text-gray-500">{store.products.length} items</span>

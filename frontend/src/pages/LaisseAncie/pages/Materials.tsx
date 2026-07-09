@@ -153,7 +153,7 @@ export default function MaterialsPage() {
             const active = cat === c.key;
             return (
               <button key={c.key} onClick={() => setCat(c.key)}
-                className={`text-left flex items-baseline justify-between rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-primary-200 text-gray-800 border border-primary-200" : "text-gray-600 hover:bg-gray-100"}`}>
+                className={`text-left flex items-baseline justify-between rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-primary-50 text-gray-800 border border-primary-200" : "text-gray-600 hover:bg-gray-100"}`}>
                 <span className="text-[13px] font-medium">{c.label}</span>
                 <span className="text-[10px] opacity-60">{count}</span>
               </button>
