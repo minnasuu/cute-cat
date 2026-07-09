@@ -642,6 +642,7 @@ router.post('/products', async (req, res) => {
       techPackUrl: data.techPackUrl || null,
       // 设计工作流生成的图片数组:[{slot, label, url}]
       images: Array.isArray(data.images) ? data.images : [],
+      html: typeof data.html === 'string' ? data.html : null,
       aiDraftRaw: data.aiDraftRaw || null,
       status,
       statusHistory: history,

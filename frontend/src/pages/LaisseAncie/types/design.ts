@@ -77,6 +77,8 @@ export interface Product {
   techPackUrl?: string;
   /** 设计工作流生成的图片数组:[{slot, label, url}] */
   images?: ProductImage[];
+  /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */
+  html?: string;
   aiDraftRaw?: string;
   status: ProductStatus;
   statusHistory: StatusLogEntry[];

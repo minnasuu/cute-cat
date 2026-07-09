@@ -524,9 +524,13 @@ export default function ComposerPage({
     }
   }
 
-  // 把本次设计(图片+企划)录入 Lookbook
+  /** 把本次设计录入 Lookbook。
+   *  - 单品/系列/插画+图片:必须有图片;
+   *  - 插画+HTML:必须有 html。 */
   async function saveToLookbook() {
-    if (images.length === 0) return;
+    const hasImage = mode === "illustration" ? images.length > 0 : images.length > 0;
+    const hasHtml = !!(mode === "illustration" && illustOutputMode === "html" && illustHtml);
+    if (!hasImage && !hasHtml) return;
     const now = new Date().toISOString();
     const mainImage = images.find((im) => im.url);
     // 收集所有可访问的图片(结构化数组,供 Lookbook 直接展示缩略图)
@@ -541,7 +545,8 @@ export default function ComposerPage({
       colors: [],
       tech_pack_url: mainImage?.url,
       images: productImages,
-      aiDraftRaw: JSON.stringify({ plan: planText, images }),
+      ...(hasHtml ? { html: illustHtml! } : {}),
+      aiDraftRaw: JSON.stringify({ plan: planText, images, ...(hasHtml ? { html: illustHtml! } : {}) }),
       status: "draft",
       statusHistory: [],
       createdAt: now,
@@ -670,7 +675,7 @@ export default function ComposerPage({
                   <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
                   {stage === "presenting" && (
                     <button onClick={saveToLookbook} className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1 rounded-lg font-medium transition-colors">
-                      录入 Lookbook
+                      {mode === "illustration" && !images.length && illustHtml ? "录入 Lookbook (HTML)" : "录入 Lookbook"}
                     </button>
                   )}
                 </div>

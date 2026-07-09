@@ -71,7 +71,7 @@ export default function LookbookPage() {
           <table className="w-full text-[13px] border-collapse">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-200">
-                {["产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新", "操作"].map((h) => (
+                {["预览", "产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新", "操作"].map((h) => (
                   <th key={h} className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -80,6 +80,9 @@ export default function LookbookPage() {
               {items.map((p) => (
                 <tr key={p.id} className="border-b border-gray-200 hover:bg-primary-50/40 cursor-pointer"
                   onClick={() => setActiveProduct(p)}>
+                  <td className="px-3 py-3 align-middle w-20">
+                    <ProductThumb product={p} />
+                  </td>
                   <td className="px-3 py-3">
                     <div className="font-medium text-gray-900">{p.title || "(untitled)"}</div>
                     {p.description && <div className="text-[11px] text-gray-500 truncate max-w-[280px]">{p.description}</div>}
@@ -133,6 +136,39 @@ export default function LookbookPage() {
   );
 }
 
+/** 产品预览缩略图:images 优先显示 img,否则 html 显示 iframe 微缩画布 */
+function ProductThumb({ product }: { product: Product }) {
+  const imgs = (product.images ?? []).filter((im) => im.url);
+  if (imgs.length > 0) {
+    return (
+      <div className="w-16 h-16 rounded-md border border-gray-200 overflow-hidden bg-gray-100">
+        <img src={imgs[0].url} alt={imgs[0].label ?? "thumbnail"} className="w-full h-full object-cover" loading="lazy" />
+      </div>
+    );
+  }
+  if (product.html) {
+    return (
+      <div className="w-16 h-16 rounded-md border border-gray-200 overflow-hidden bg-white relative">
+        <iframe
+          srcDoc={product.html}
+          sandbox="allow-scripts"
+          title="html-thumb"
+          className="w-[256px] h-[256px]"
+          style={{
+            transform: "scale(0.25)",
+            transformOrigin: "top left",
+            width: "256px",
+            height: "256px",
+            border: "none",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
+    );
+  }
+  return <div className="w-16 h-16 rounded-md border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-gray-300 text-xs">—</div>;
+}
+
 function TabBtn({ current, value, onClick, label }: { current: TabKey; value: TabKey; onClick: (v: TabKey) => void; label: string }) {
   return (
     <button onClick={() => onClick(value)}
@@ -165,6 +201,7 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const productImages = (product.images ?? []).filter((im) => im.url);
+  const hasHtml = !!product.html;
 
   async function advance() {
     if (!target) return;
@@ -191,20 +228,34 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
           <button onClick={onClose} className="text-xl text-gray-400 hover:text-gray-800">×</button>
         </header>
 
-        {/* 设计工作流生成的图片 */}
-        {productImages.length > 0 && (
+        {/* 设计工作流生成的图片 / 插画 HTML */}
+        {(productImages.length > 0 || hasHtml) && (
           <div className="mb-5">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计图 ({productImages.length})</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {productImages.map((im) => (
-                <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-                  <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
-                    <img src={im.url} alt={im.label} className="w-full h-full object-cover" loading="lazy" />
-                  </div>
-                  <figcaption className="px-2 py-1.5 text-[10px] text-gray-600 font-medium truncate">{im.label}</figcaption>
-                </figure>
-              ))}
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
+              {hasHtml ? "插画 HTML 画布" : `设计图 (${productImages.length})`}
             </div>
+            {hasHtml ? (
+              <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                <iframe
+                  srcDoc={product.html!}
+                  sandbox="allow-scripts"
+                  title="插画 HTML 画布"
+                  className="w-full bg-white"
+                  style={{ aspectRatio: "1 / 1", border: "none" }}
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {productImages.map((im) => (
+                  <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+                    <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+                      <img src={im.url} alt={im.label} className="w-full h-full object-cover" loading="lazy" />
+                    </div>
+                    <figcaption className="px-2 py-1.5 text-[10px] text-gray-600 font-medium truncate">{im.label}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
