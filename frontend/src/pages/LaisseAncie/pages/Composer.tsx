@@ -311,7 +311,8 @@ export default function ComposerPage({
       setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "✨ 设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。" }]);
     } catch (e: any) {
       setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败: ${e.message}` }]);
-      setStage("planning");
+      // 回退到当前方案阶段(planning 或 proposal)
+      setStage((cur) => cur === "generating" ? "proposal" : cur);
     } finally {
       setGenerating(false);
     }
@@ -379,7 +380,8 @@ export default function ComposerPage({
     }
   }
 
-  const canGenerate = stage === "planning" && !generating;
+  // 新流程用 proposal 阶段(旧 planning 仍兼容)
+  const canGenerate = (stage === "planning" || stage === "proposal") && !generating;
   const showImages = stage === "presenting" || (stage === "generating" && images.length > 0);
 
   return (
@@ -483,7 +485,7 @@ export default function ComposerPage({
               knowledgeLoading ? "加载知识库中…" :
                 stage === "greeting" ? "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)" :
                   stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
-                    stage === "planning" ? "确认方案(OK/开始),或提出修改意见…" :
+                    (stage === "planning" || stage === "proposal") ? "确认方案(OK/开始),或提出修改意见…" :
                       stage === "presenting" ? "描述你想修改的地方…" :
                         "输入…"
             }
