@@ -183,16 +183,16 @@ export default function ComposerPage({
     setReferences(matchedRefs);
     const referencesBlock = matchedRefs.length
       ? [
-          "## 参考灵感(前端已匹配,方案必须引用以下 3 张灵感,用 #[ID] 的形式)",
-          ...matchedRefs.map((it) => [
-            `### #[${it.id}] ${it.category ?? "general"}`,
-            it.visualStyle ? `风格: ${it.visualStyle}` : null,
-            it.designApproach ? `设计手法: ${it.designApproach}` : null,
-            it.colors?.length ? `配色: ${it.colors.join(", ")}` : null,
-            it.inspiration?.length ? `启发:\n${it.inspiration.map((h) => `- ${h}`).join("\n")}` : null,
-            `图片: ${it.thumbUrl || it.url}`,
-          ].filter(Boolean).join("\n")),
-        ].join("\n\n")
+        "## 参考灵感(前端已匹配,方案必须引用以下 3 张灵感,用 #[ID] 的形式)",
+        ...matchedRefs.map((it) => [
+          `### #[${it.id}] ${it.category ?? "general"}`,
+          it.visualStyle ? `风格: ${it.visualStyle}` : null,
+          it.designApproach ? `设计手法: ${it.designApproach}` : null,
+          it.colors?.length ? `配色: ${it.colors.join(", ")}` : null,
+          it.inspiration?.length ? `启发:\n${it.inspiration.map((h) => `- ${h}`).join("\n")}` : null,
+          `图片: ${it.thumbUrl || it.url}`,
+        ].filter(Boolean).join("\n")),
+      ].join("\n\n")
       : "## 参考灵感\n(灵感库为空,建议先到左侧上传灵感图)";
 
     // 构造 system prompt(设计顾问 + 参考灵感 + 知识注入)
@@ -384,127 +384,123 @@ export default function ComposerPage({
 
   return (
     <>
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] h-[calc(100vh-64px)] min-h-0">
-      <div className="flex flex-col min-h-0">
-        <header className="flex items-center justify-between px-3 md:px-6 py-3 border-b border-gray-200 bg-white">
-          <div className="flex items-baseline gap-2 min-w-0">
-            <button onClick={() => navigateTab("__design__")} className="text-sm text-gray-500 hover:text-gray-800 shrink-0">←</button>
-            <span className="text-lg md:text-2xl font-semibold text-primary-600 truncate">设计工作室</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* 模型切换下拉 */}
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value as ModelId)}
-              disabled={busy || generating}
-              title="切换 AI 模型"
-              className="hidden sm:block text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-primary-400 disabled:opacity-40"
-            >
-              {MODELS.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </select>
-            {/* 移动端:查看企划按钮(有企划时显示) */}
-            {isMobile && planText && (
-              <button
-                onClick={() => setPlanOpen(true)}
-                className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600"
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] h-[calc(100vh-64px)] min-h-0">
+        <div className="flex flex-col min-h-0">
+          <header className="flex items-center justify-between px-3 md:px-6 py-3 border-b border-gray-200 bg-white">
+            <div className="flex items-center justify-between gap-2">
+              {/* 模型切换下拉 */}
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value as ModelId)}
+                disabled={busy || generating}
+                title="切换 AI 模型"
+                className="hidden sm:block text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-primary-400 disabled:opacity-40"
               >
-                企划
-              </button>
-            )}
-            <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
-          </div>
-        </header>
-
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
-          {msgs.map((m) => (
-            <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[85%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
-              {/* 灵感引用卡片(仅 assistant 消息附带 references 时渲染) */}
-              {m.role === "assistant" && m.references && m.references.length > 0 && (
-                <div className="mb-3 pb-3 border-b border-gray-100">
-                  <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">参考灵感 · 方案将借鉴这 {m.references.length} 张</div>
-                  <div className="flex gap-2 overflow-x-auto">
-                    {m.references.map((ref) => (
-                      <div key={ref.id} className="shrink-0 w-24 rounded-lg border border-gray-200 overflow-hidden bg-gray-50" title={`${ref.category ?? ""}${ref.visualStyle ? ` · ${ref.visualStyle}` : ""}`}>
-                        <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
-                          <img src={ref.thumbUrl || ref.url} alt={ref.category ?? "inspiration"} className="w-full h-full object-cover" loading="lazy" />
-                        </div>
-                        <div className="px-1.5 py-1">
-                          <div className="text-[10px] text-gray-700 font-medium truncate">{ref.category ?? "灵感"}</div>
-                          {ref.visualStyle && <div className="text-[9px] text-gray-400 truncate">{ref.visualStyle}</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
-            </div>
-          ))}
-          {busy && (
-            <div className="text-gray-500 max-w-[80%] inline-block">生成中…</div>
-          )}
-
-          {/* 生成按钮(企划确认后) */}
-          {canGenerate && (
-            <div className="flex justify-center">
-              <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
-                确认方案,开始生成设计图
-              </button>
-            </div>
-          )}
-
-          {/* 生成中 */}
-          {generating && (
-            <div className="flex justify-center">
-              <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">正在生成设计图…</div>
-            </div>
-          )}
-
-          {/* 设计图展示 */}
-          {showImages && images.length > 0 && (
-            <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
-                {stage === "presenting" && (
-                  <button onClick={saveToLookbook} className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1 rounded-lg font-medium transition-colors">
-                    录入 Lookbook
-                  </button>
-                )}
-              </div>
-              <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
-                {images.map((im) => (
-                  <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
+                {MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
-              </div>
+              </select>
+              {/* 移动端:查看企划按钮(有企划时显示) */}
+              {isMobile && planText && (
+                <button
+                  onClick={() => setPlanOpen(true)}
+                  className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600"
+                >
+                  企划
+                </button>
+              )}
+              <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
             </div>
-          )}
+          </header>
+
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
+            {msgs.map((m) => (
+              <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[85%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
+                {/* 灵感引用卡片(仅 assistant 消息附带 references 时渲染) */}
+                {m.role === "assistant" && m.references && m.references.length > 0 && (
+                  <div className="mb-3 pb-3 border-b border-gray-100">
+                    <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">参考灵感 · 方案将借鉴这 {m.references.length} 张</div>
+                    <div className="flex gap-2 overflow-x-auto">
+                      {m.references.map((ref) => (
+                        <div key={ref.id} className="shrink-0 w-24 rounded-lg border border-gray-200 overflow-hidden bg-gray-50" title={`${ref.category ?? ""}${ref.visualStyle ? ` · ${ref.visualStyle}` : ""}`}>
+                          <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+                            <img src={ref.thumbUrl || ref.url} alt={ref.category ?? "inspiration"} className="w-full h-full object-cover" loading="lazy" />
+                          </div>
+                          <div className="px-1.5 py-1">
+                            <div className="text-[10px] text-gray-700 font-medium truncate">{ref.category ?? "灵感"}</div>
+                            {ref.visualStyle && <div className="text-[9px] text-gray-400 truncate">{ref.visualStyle}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
+              </div>
+            ))}
+            {busy && (
+              <div className="text-gray-500 max-w-[80%] inline-block">生成中…</div>
+            )}
+
+            {/* 生成按钮(企划确认后) */}
+            {canGenerate && (
+              <div className="flex justify-center">
+                <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
+                  确认方案,开始生成设计图
+                </button>
+              </div>
+            )}
+
+            {/* 生成中 */}
+            {generating && (
+              <div className="flex justify-center">
+                <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">正在生成设计图…</div>
+              </div>
+            )}
+
+            {/* 设计图展示 */}
+            {showImages && images.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] uppercase tracking-wider text-gray-500">设计图</div>
+                  {stage === "presenting" && (
+                    <button onClick={saveToLookbook} className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1 rounded-lg font-medium transition-colors">
+                      录入 Lookbook
+                    </button>
+                  )}
+                </div>
+                <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
+                  {images.map((im) => (
+                    <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <PromptBar
+            placeholder={
+              knowledgeLoading ? "加载知识库中…" :
+                stage === "greeting" ? "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)" :
+                  stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
+                    stage === "planning" ? "确认方案(OK/开始),或提出修改意见…" :
+                      stage === "presenting" ? "描述你想修改的地方…" :
+                        "输入…"
+            }
+            disabled={knowledgeLoading}
+            onSubmit={send}
+          />
         </div>
 
-        <PromptBar
-          placeholder={
-            knowledgeLoading ? "加载知识库中…" :
-              stage === "greeting" ? "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)" :
-                stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
-                  stage === "planning" ? "确认方案(OK/开始),或提出修改意见…" :
-                    stage === "presenting" ? "描述你想修改的地方…" :
-                      "输入…"
-          }
-          disabled={knowledgeLoading}
-          onSubmit={send}
-        />
+        {/* 桌面端设计企划侧边栏(≥md 直出) */}
+        <aside className="hidden md:block border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
+          {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+          {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+        </aside>
       </div>
-
-      {/* 桌面端设计企划侧边栏(≥md 直出) */}
-      <aside className="hidden md:block border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
-        {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-        {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
-      </aside>
-    </div>
-    {/* 移动端企划抽屉(<md,跟主内容同级渲染) */}
-    {isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} />}
+      {/* 移动端企划抽屉(<md,跟主内容同级渲染) */}
+      {isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} />}
     </>
   );
 }
@@ -526,7 +522,7 @@ export function ComposerPlanDrawer({ planText, open, onClose }: { planText: stri
             ariaLabel="关闭企划"
             className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
         {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
