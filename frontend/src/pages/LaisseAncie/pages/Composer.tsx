@@ -162,7 +162,7 @@ async function streamChat(opts: {
   const ac = new AbortController();
   const timeoutId = globalThis.setTimeout(() => ac.abort(), streamTimeoutMs);
   try {
-    const res = await fetch(teamApi(teamId ?? "").chatUrl, {
+    const res = await fetch(chatUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
