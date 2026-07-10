@@ -1,24 +1,30 @@
 /**
  * analyze-inspiration —— 用 AI 视觉模型分析灵感图片,提取归类 + 设计信息。
  *
- * 输入:图片 buffer + mime。
+ * 输入:图片 buffer + mime,或 imageUrl(http(s) URL / base64 data URL)。
  * 输出:{ result, error }:
  *   - 成功 → { result: {...}, error: null }
  *   - 失败 → { result: null, error: 'key' | 'mime' | 'file' | 'api:xxx' | 'json:...' | 'empty' }
  *
- * provider:火山方舟(Ark) Seed 视觉模型,调用 /responses 新接口。
+ * provider:火山方舟(Ark) Seed 视觉模型,调用 /chat/completions 视觉接口(流式)。
+ *   请求体格式(messages[].content 混合 image_url + text):
+ *     { model, stream:true, messages:[{ role:"system", content:[{type:"text",text:SYSTEM_PROMPT}] },
+ *                                    { role:"user",   content:[{type:"image_url",image_url:{url:<图片URL或data:>}},
+ *                                                           {type:"text",text:PROMPT}] } ] }
  *   环境变量:
  *     ARK_API_KEY      必需 —— 方舟 API Key(全局 2 个豆包模型共用同一 Key)
  *     ARK_BASE_URL     可选 —— 默认 https://ark.cn-beijing.volces.com/api/v3
  *     ARK_TEXT_MODEL   可选 —— 文本/视觉解析模型 ID,默认 doubao-seed-2-1-pro-260628
  *                        (与 workflow-executor 文本生成共用同一变量)
- *   注意:图片以 base64 data URL 形式通过 input_image.image_url 传入;若 Ark
- *   未来版本拒绝 data URL,需在此之前先把图片上传到可访问的公开 URL。
+ *   注意:image_url 支持 http(s) URL 与 base64 data URL;优先外部 URL(省 base64 传输),
+ *        无 URL 时把 buffer 编码为 data URL 兜底。
  */
 
 'use strict';
 
-const PROMPT = `你是一位时尚生活方式品牌「Laisse Ancie 来兮·安兮」的资深设计研究员。仔细观察这张图片 —— 它可能是一件服装(T恤、连衣裙、外套...)、一件配饰(包袋、鞋履、首饰...)、一个时尚单品(手机壳、玩偶挂件...)、一张插画或平面作品,甚至任何激发时尚灵感的物件。
+const SYSTEM_PROMPT = `你是 Laisse Ancie (来兮·安兮)的 AI 设计研究员。基于用户给的灵感图片做归类分析 + 设计解读,只输出严格的 JSON(不要 Markdown 代码块、不要寒暄、不要前后说明文字)。`;
+
+const PROMPT = `仔细观察这张图片 —— 它可能是一件服装(T恤、连衣裙、外套...)、一件配饰(包袋、鞋履、首饰...)、一个时尚单品(手机壳、玩偶挂件...)、一张插画或平面作品,甚至任何激发时尚灵感的物件。
 
 请按以下 4 个维度输出 JSON 分析:
 
@@ -50,24 +56,35 @@ function mediaTypeToExtension(mimeType) {
           : null;
 }
 
-// ─── Ark Seed 视觉模型 (POST /responses) ─────────────────────
+// ─── Ark Seed 视觉模型 (POST /chat/completions,流式,视觉接口) ──
+// 请求体格式(messages[].content 混合 image_url + text):
+//   { model, stream:true,
+//     messages:[{ role:"system", content:[{type:"text",text:SYSTEM_PROMPT}] },
+//                { role:"user",  content:[{type:"image_url",image_url:{url:imageRef}},
+//                                       {type:"text",text:PROMPT}] } ] }
 async function analyzeArk({ apiKey, baseUrl, model, imageRef, timeoutMs }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res;
   try {
-    res = await fetch(`${baseUrl}/responses`, {
+    res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
         model,
-        input: [{
-          role: 'user',
-          content: [
-            { type: 'input_image', image_url: imageRef },
-            { type: 'input_text', text: PROMPT },
-          ],
-        }],
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 2048,
+        messages: [
+          { role: 'system', content: [{ type: 'text', text: SYSTEM_PROMPT }] },
+          {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: imageRef } },
+              { type: 'text', text: PROMPT },
+            ],
+          },
+        ],
       }),
       signal: controller.signal,
     });
@@ -83,38 +100,35 @@ async function analyzeArk({ apiKey, baseUrl, model, imageRef, timeoutMs }) {
     return { error: `api:${res.status}:${t}` };
   }
 
-  let data;
+  // 流式解析:SSE data: {choices:[{delta:{content:"..."}}]} → 拼接 fullText
+  const reader = res.body;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
   try {
-    data = await res.json();
-  } catch (e) {
-    return { error: 'api:invalid-json' };
-  }
-
-  // Ark /responses 输出格式(兜底多种可能):
-  //   { output: [ { type:'message', content: [ { type:'output_text', text:'...' } ] } ] }
-  // 或 { output_text: '...' } 等 —— 逐级尝试。
-  const candidates = [];
-  if (typeof data === 'string') candidates.push(data);
-  if (data?.output_text) candidates.push(data.output_text);
-  if (Array.isArray(data?.output)) {
-    for (const item of data.output) {
-      if (typeof item?.text === 'string') candidates.push(item.text);
-      if (Array.isArray(item?.content)) {
-        for (const c of item.content) {
-          if (typeof c?.text === 'string') candidates.push(c.text);
-        }
+    for await (const chunk of reader) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data: ')) continue;
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const delta = json.choices?.[0]?.delta?.content || '';
+          if (delta) fullText += delta;
+        } catch { /* skip malformed line */ }
       }
     }
+  } catch (e) {
+    return { error: `net:stream-read:${e.message}` };
   }
-  const raw = candidates.find((t) => t && t.trim()) || '';
 
-  if (!raw) {
-    const dbg = JSON.stringify(data).slice(0, 400);
-    console.warn(`[analyze-inspiration] Ark /responses returned no parseable text: ${dbg}`);
-    // 把完整结构顺带带出,方便调用方排查
-    return { raw: '', error: `empty:${dbg}` };
+  if (!fullText.trim()) {
+    return { error: `empty:stream-returned-no-text` };
   }
-  return { raw };
+  return { raw: fullText };
 }
 
 /**
@@ -155,7 +169,7 @@ async function analyzeInspiration(imageBuffer, mimeType, imageUrl) {
   try {
     // 诊断:截断打印 imageRef 前 60 字符,排查空 URL / 错误格式(400 MissingParameter 时直接对照)
     console.log(`[analyze-inspiration] Ark model=${model}, via=${imageUrl ? 'url' : 'base64'}, imageRef=${imageRef.slice(0, 60)}…`);
-    const { raw, error } = await analyzeArk({ apiKey, baseUrl, model, dataUrl: imageRef, timeoutMs });
+    const { raw, error } = await analyzeArk({ apiKey, baseUrl, model, imageRef, timeoutMs });
     if (error) {
       if (error.startsWith('empty:')) {
         // Ark 返回了但没提取到文本——携带响应结构到 error 里,便于排查
