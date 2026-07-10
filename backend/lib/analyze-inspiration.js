@@ -6,16 +6,18 @@
  *   - 成功 → { result: {...}, error: null }
  *   - 失败 → { result: null, error: 'key' | 'mime' | 'file' | 'api:xxx' | 'json:...' | 'empty' }
  *
- * provider(INSPIRATION_AI_PROVIDER):
- *   - longcat(LONGCAT_BASE_URL/LONGCAT_API_KEY/LONGCAT_MODEL)
- *   - qwen(QWEN_BASE_URL/QWEN_API_KEY/QWEN_MODEL)
- *   - openai(OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL)
- * 默认:打开可用 key 的第一个(longcat → qwen → openai)
+ * provider:火山方舟(Ark) Seed 视觉模型,调用 /responses 新接口。
+ *   环境变量:
+ *     ARK_API_KEY           必需 —— 方舟 API Key(与生图共用同一 Key)
+ *     ARK_BASE_URL          可选 —— 默认 https://ark.cn-beijing.volces.com/api/v3
+ *     INSPIRATION_AI_MODEL  可选 —— 视觉模型 ID,默认 doubao-seed-2-1-pro-260628
+ *   注意:图片以 base64 data URL 形式通过 input_image.image_url 传入;若 Ark
+ *   未来版本拒绝 data URL,需在此之前先把图片上传到可访问的公开 URL。
  */
 
 'use strict';
 
-const PROMPT = `你是一位时尚生活方式品牌「Laisse Ancie 来兮·安兮」的资深设计研究员。仔细观察这张图片 —— 它可能是一件服装(T恤、连衣裙、外套...)、一件配饰(包袋、鞋履、首饰...)、一个数码周边(手机壳、拼图...)、一张插画或平面作品,甚至任何激发时尚灵感的物件。
+const PROMPT = `你是一位时尚生活方式品牌「Laisse Ancie 来兮·安兮」的资深设计研究员。仔细观察这张图片 —— 它可能是一件服装(T恤、连衣裙、外套...)、一件配饰(包袋、鞋履、首饰...)、一个时尚单品(手机壳、玩偶挂件...)、一张插画或平面作品,甚至任何激发时尚灵感的物件。
 
 请按以下 4 个维度输出 JSON 分析:
 
@@ -42,45 +44,76 @@ function extractJson(text) {
 function mediaTypeToExtension(mimeType) {
   return mimeType === 'image/jpeg' ? 'jpeg'
     : mimeType === 'image/png' ? 'png'
-    : mimeType === 'image/webp' ? 'webp'
-    : mimeType === 'image/gif' ? 'gif'
-    : null;
+      : mimeType === 'image/webp' ? 'webp'
+        : mimeType === 'image/gif' ? 'gif'
+          : null;
 }
 
-// ─── OpenAI‑compatible (Qwen/LongCat/OpenAI) ───────────────────
-async function analyzeOpenAi({ endpoint, apiKey, model, dataUrl, mimeType, timeoutMs }) {
+// ─── Ark Seed 视觉模型 (POST /responses) ─────────────────────
+async function analyzeArk({ apiKey, baseUrl, model, dataUrl, timeoutMs }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
   try {
-    const res = await fetch(endpoint, {
+    res = await fetch(`${baseUrl}/responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model, max_tokens: 2048,
-        messages: [{
+        model,
+        input: [{
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: dataUrl } },
-            { type: 'text', text: PROMPT },
+            { type: 'input_image', image_url: dataUrl },
+            { type: 'input_text', text: PROMPT },
           ],
         }],
       }),
       signal: controller.signal,
     });
-    if (!res.ok) {
-      const t = (await res.text()).replace(/\s+/g, ' ').slice(0, 200);
-      return { error: `api:${res.status}:${t}` };
-    }
-    const data = await res.json();
-    const raw = data?.choices?.[0]?.message?.content || '';
-    if (!raw) return { error: 'empty' };
-    return { raw };
   } catch (err) {
     if (err.name === 'AbortError') return { error: `net:timeout(${timeoutMs}ms)` };
     return { error: `net:${err.name || 'unknown'}` };
   } finally {
     clearTimeout(timer);
   }
+
+  if (!res.ok) {
+    const t = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300);
+    return { error: `api:${res.status}:${t}` };
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    return { error: 'api:invalid-json' };
+  }
+
+  // Ark /responses 输出格式(兜底多种可能):
+  //   { output: [ { type:'message', content: [ { type:'output_text', text:'...' } ] } ] }
+  // 或 { output_text: '...' } 等 —— 逐级尝试。
+  const candidates = [];
+  if (typeof data === 'string') candidates.push(data);
+  if (data?.output_text) candidates.push(data.output_text);
+  if (Array.isArray(data?.output)) {
+    for (const item of data.output) {
+      if (typeof item?.text === 'string') candidates.push(item.text);
+      if (Array.isArray(item?.content)) {
+        for (const c of item.content) {
+          if (typeof c?.text === 'string') candidates.push(c.text);
+        }
+      }
+    }
+  }
+  const raw = candidates.find((t) => t && t.trim()) || '';
+
+  if (!raw) {
+    const dbg = JSON.stringify(data).slice(0, 400);
+    console.warn(`[analyze-inspiration] Ark /responses returned no parseable text: ${dbg}`);
+    // 把完整结构顺带带出,方便调用方排查
+    return { raw: '', error: `empty:${dbg}` };
+  }
+  return { raw };
 }
 
 async function analyzeInspiration(imageBuffer, mimeType) {
@@ -91,92 +124,40 @@ async function analyzeInspiration(imageBuffer, mimeType) {
   if (!ext) {
     return { result: null, error: 'mime' };
   }
-  // 视觉分析需要更长的超时:图片 base64 传输 + vision 模型推理 + 4 维度 JSON 生成 (默认 90s)
+  // 视觉分析需要更长的超时:图片 base64 传输 + 视觉模型推理 + 4 维度 JSON 生成 (默认 90s)
   const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 90000;
 
-  /** @type {Array<{name:string,run:Function}>} */
-  const providers = [];
-
-  // 优先级 1: INSPIRATION_AI_PROVIDER 显式指定
-  const forced = (process.env.INSPIRATION_AI_PROVIDER || '').toLowerCase().trim();
-  const explicitModel = (process.env.INSPIRATION_AI_MODEL || '').trim();
-
-  // 组合出完整 OpenAI 端点:如果 base 已经以 /v1 结尾,只追加 /chat/completions;否则追加 /v1/chat/completions
-  function openAiEndpoint(base) {
-    const b = base.replace(/\/+$/, '');
-    return b.endsWith('/v1') ? `${b}/chat/completions` : `${b}/v1/chat/completions`;
-  }
-
-  // 默认顺序:longcat 优先(Anthropic 兼容,vision 稳),再 qwen/openai
-  // 注意:GLM 没有视觉理解能力,不参与 analyze-inspiration
-  // longcat 上游若 403 会自动回退到下一个可用 key
-
-  // 视觉模型列表 (仅支持 image_url 输入的模型)
-  const openVariants = [
-    { name: 'longcat', base: process.env.LONGCAT_BASE_URL, key: process.env.LONGCAT_API_KEY, model: process.env.LONGCAT_MODEL },
-    { name: 'qwen',  base: process.env.QWEN_BASE_URL,  key: process.env.QWEN_API_KEY,  model: process.env.QWEN_MODEL },
-    { name: 'openai', base: process.env.OPENAI_BASE_URL, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL },
-  ].filter((v) => v.key && v.base); // 仅保留配置了 key+base 的
-
-  // 防御:如果 INSPIRATION_AI_PROVIDER 被误设为 glm,直接拒绝
-  if (forced === 'glm') {
-    console.warn('[analyze-inspiration] INSPIRATION_AI_PROVIDER=glm 不合法,GLM 不支持视觉理解');
-    return { result: null, error: 'no-provider:glm (GLM 不支持视觉理解)' };
-  }
-  for (const v of openVariants) {
-    if (!v.base) v.base = 'https://api.openai.com';
-  }
-
-  for (const v of openVariants) {
-    const model = explicitModel || v.model || (v.name === 'openai' ? 'gpt-4o-mini' : '');
-    if (!model) continue;
-    providers.push({
-      name: v.name,
-      run: () => analyzeOpenAi({
-        endpoint: openAiEndpoint(v.base),
-        apiKey: v.key, model,
-        dataUrl: `data:${mimeType};base64,${imageBuffer.toString('base64')}`,
-        mimeType, timeoutMs,
-      }),
-    });
-  }
-
-  if (forced) {
-    const match = providers.filter((p) => p.name === forced);
-    if (match.length === 0) {
-      return { result: null, error: `no-provider:${forced}` };
-    }
-    providers.splice(0, providers.length, ...match);
-  }
-
-  if (providers.length === 0) {
-    console.warn('[analyze-inspiration] no AI provider (longcat/qwen/openai) configured with both key + base');
+  const apiKey = (process.env.ARK_API_KEY || '').trim();
+  if (!apiKey) {
+    console.warn('[analyze-inspiration] ARK_API_KEY not set');
     return { result: null, error: 'key' };
   }
+  const baseUrl = (process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/+$/, '');
+  const model = (process.env.INSPIRATION_AI_MODEL || 'doubao-seed-2-1-pro-260628').trim();
+  const dataUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
 
   let lastError = 'key';
-  for (const p of providers) {
-    try {
-      console.log(`[analyze-inspiration] try provider=${p.name}`);
-      const { raw, error } = await p.run();
-      if (error) {
-        lastError = `${p.name}:${error}`;
-        console.warn(`[analyze-inspiration] provider=${p.name} failed: ${error}`);
-        continue;
+  try {
+    console.log(`[analyze-inspiration] Ark model=${model}`);
+    const { raw, error } = await analyzeArk({ apiKey, baseUrl, model, dataUrl, timeoutMs });
+    if (error) {
+      if (error.startsWith('empty:')) {
+        // Ark 返回了但没提取到文本——携带响应结构到 error 里,便于排查
+        return { result: null, error: `ark-empty` };
       }
-      try {
-        const parsed = JSON.parse(extractJson(raw));
-        console.log(`[analyze-inspiration] done via ${p.name}: category=${parsed.category}`);
-        return { result: parsed, error: null };
-      } catch (e) {
-        console.error(`[analyze-inspiration] provider=${p.name} JSON parse fail: ${e.message}; raw=${raw.slice(0, 120)}`);
-        lastError = `${p.name}:json`;
-        continue;
-      }
-    } catch (err) {
-      lastError = `${p.name}:exception:${err.message}`;
-      console.error(`[analyze-inspiration] provider=${p.name} threw: ${err.message}`);
+      return { result: null, error };
     }
+    try {
+      const parsed = JSON.parse(extractJson(raw));
+      console.log(`[analyze-inspiration] done: category=${parsed.category}`);
+      return { result: parsed, error: null };
+    } catch (e) {
+      console.error(`[analyze-inspiration] JSON parse fail: ${e.message}; raw=${raw.slice(0, 200)}`);
+      return { result: null, error: `json:${e.message}` };
+    }
+  } catch (err) {
+    lastError = `exception:${err.message}`;
+    console.error(`[analyze-inspiration] Ark threw: ${err.message}`);
   }
   return { result: null, error: lastError };
 }

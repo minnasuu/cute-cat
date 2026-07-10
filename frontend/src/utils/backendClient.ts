@@ -16,7 +16,7 @@ import { apiClient } from './apiClient';
 
 // ==================== 模块级可变状态(AI 模型选择) ====================
 
-let _currentAIModel = 'longcat';
+let _currentAIModel = 'glm';
 
 export const setCurrentAIModel = (model: string) => { _currentAIModel = model; };
 export const getCurrentAIModel = () => _currentAIModel;

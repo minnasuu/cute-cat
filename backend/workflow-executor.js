@@ -8,114 +8,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// ─── LongCat-2.0 (Anthropic‑compatible) ───────────────────────
-async function callLongcat(systemPrompt, userText, maxTokens = 4096) {
-  const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('LONGCAT_API_KEY (or ANTHROPIC_API_KEY) not set');
-  const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-  const model = process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
-  try {
-    const response = await fetch(`${baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userText }],
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`LongCat API ${response.status}: ${errText}`);
-    }
-    const data = await response.json();
-    // Anthropic returns content[] of blocks; emit text blocks
-    return (data.content || [])
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join('');
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// ─── 流式 LongCat 调用 (Anthropic‑compatible SSE) ────────────
-// Anthropic streaming 事件流：content_block_delta → delta.text_delta.text
-async function callLongcatStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
-  const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('LONGCAT_API_KEY (or ANTHROPIC_API_KEY) not set');
-  const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-  const model = process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
-
-  const controller = new AbortController();
-  const hardTimeout = Number.parseInt(process.env.LONGCAT_STREAM_TIMEOUT_MS || '', 10) || 180000;
-  const timeout = setTimeout(() => controller.abort(), hardTimeout);
-  // 外部 signal（路由级）也允许中断
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', () => controller.abort(), { once: true });
-  }
-  try {
-    const response = await fetch(`${baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userText }],
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`LongCat API ${response.status}: ${errText}`);
-    }
-    const reader = response.body;
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let fullText = '';
-    for await (const chunk of reader) {
-      buffer += decoder.decode(chunk, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          // Anthropic delta: {"type":"content_block_delta","delta":{"type":"text_delta","text":"..."}}
-          const delta = json.delta?.text || (json.type === 'content_block_delta' ? json.delta?.text : '');
-          if (delta) {
-            fullText += delta;
-            onDelta?.(delta);
-          }
-        } catch { /* skip malformed */ }
-      }
-    }
-    return fullText;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// ─── GLM 调用 (智谱, OpenAI 兼容) ────────────────────────────
+// ─── GLM 调用 (智谱, OpenAI 兼容) — 唯一文本模型 ─────────────
 async function callGlm(systemPrompt, userText, maxTokens = 4096) {
   const apiKey = process.env.GLM_API_KEY;
   if (!apiKey) throw new Error('GLM_API_KEY not set');
@@ -147,91 +40,7 @@ async function callGlm(systemPrompt, userText, maxTokens = 4096) {
   }
 }
 
-// ─── Qwen 调用 ───────────────────────────────────────────────
-async function callQwen(systemPrompt, userText, maxTokens = 4096) {
-  const apiKey = process.env.QWEN_API_KEY;
-  if (!apiKey) throw new Error('QWEN_API_KEY not set');
-  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-  const model = process.env.QWEN_MODEL || 'qwen3.6-plus';
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
-  try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-        max_tokens: maxTokens,
-        temperature: 0.7,
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Qwen API ${response.status}: ${errText}`);
-    }
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// ─── 流式 Qwen 调用 ───
-// onDelta(delta: string) 每收到一个 token 回调；signal 用于中断
-async function callQwenStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
-  const apiKey = process.env.QWEN_API_KEY;
-  if (!apiKey) throw new Error('QWEN_API_KEY not set');
-  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-  const model = process.env.QWEN_MODEL || 'qwen3.6-plus';
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-      max_tokens: maxTokens,
-      temperature: 0.7,
-      stream: true,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Qwen API ${response.status}: ${errText}`);
-  }
-
-  const reader = response.body;
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullText = '';
-
-  for await (const chunk of reader) {
-    buffer += decoder.decode(chunk, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === 'data: [DONE]') continue;
-      if (!trimmed.startsWith('data: ')) continue;
-      try {
-        const json = JSON.parse(trimmed.slice(6));
-        const delta = json.choices?.[0]?.delta?.content || '';
-        if (delta) {
-          fullText += delta;
-          onDelta?.(delta);
-        }
-      } catch { /* skip malformed line */ }
-    }
-  }
-  return fullText;
-}
-
-// ─── 流式 GLM 调用 (智谱, OpenAI 兼容) ───────────────────────
+// ─── 流式 GLM 调用 (智谱, OpenAI 兼容) — 唯一文本流模型 ──────
 // 文档: https://open.bigmodel.cn/dev/api   ——  /chat/completions SSE,格式与 OpenAI 一致
 async function callGlmStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
   const apiKey = process.env.GLM_API_KEY;
@@ -283,12 +92,11 @@ async function callGlmStream(systemPrompt, userText, maxTokens = 4096, { onDelta
   return fullText;
 }
 
-// ─── 通用 AI 调用 (默认 longcat) ──────────────────────────────
+// ─── 通用 AI 调用 (唯一文本模型: GLM) ────────────────────────
 async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
-  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'longcat';
-  if (selectedModel === 'qwen') return callQwen(systemPrompt, userText, maxTokens);
-  if (selectedModel === 'glm') return callGlm(systemPrompt, userText, maxTokens);
-  return callLongcat(systemPrompt, userText, maxTokens);
+  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'glm';
+  // 当前仅支持 GLM 文本模型
+  return callGlm(systemPrompt, userText, maxTokens);
 }
 
 // ─── 单步执行：merged 仅为 { text: 本步 user 正文 } ───
@@ -644,7 +452,5 @@ module.exports = {
   executeWorkflowIntoExistingRun,
   executeStep,
   callAI,
-  callLongcatStream,
-  callQwenStream,
   callGlmStream,
 };

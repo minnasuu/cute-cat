@@ -14,7 +14,7 @@
 
 const express = require('express');
 const { generateImage } = require('../lib/gen-image');
-const { callLongcatStream } = require('../workflow-executor');
+const { callGlmStream } = require('../workflow-executor');
 
 const router = express.Router();
 
@@ -304,7 +304,7 @@ ${JSON.stringify(libList, null, 2)}
   try {
     // 用流式调用但收集全部文本(非流式结果,一次返回)
     let fullText = '';
-    await callLongcatStream(system, prompt, 2048, {
+    await callGlmStream(system, prompt, 2048, {
       onDelta: (d) => { fullText += d; },
     });
     // 解析 JSON(容错:去掉首尾 ```json 包裹)

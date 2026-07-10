@@ -20,7 +20,7 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const { asyncHandler } = require('../middleware/asyncHandler');
-const { callLongcatStream, callQwenStream, callGlmStream } = require('../workflow-executor');
+const { callGlmStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const storage = require('../lib/storage');
 const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
@@ -812,17 +812,12 @@ router.post('/chat', asyncHandler(async (req, res) => {
   };
 
   try {
-    console.log(`[team-workbench] chat stream: model=${requestedModel}, maxTokens=${maxTokens}, system=${system.length}c, prompt=${prompt.length}c, timeout=${CHAT_TIMEOUT_MS}ms`);
-    if (requestedModel === 'qwen') {
-      await callQwenStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
-    } else if (requestedModel === 'glm') {
-      await callGlmStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
-    } else {
-      // 默认: longcat
-      await callLongcatStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
-    }
-    sendSSE('done', { text: fullText, model: requestedModel });
-    console.log(`[team-workbench] chat stream done: model=${requestedModel}, length=${fullText.length}`);
+    // 唯一文本模型: GLM
+    const model = 'glm';
+    console.log(`[team-workbench] chat stream: model=${model}, maxTokens=${maxTokens}, system=${system.length}c, prompt=${prompt.length}c, timeout=${CHAT_TIMEOUT_MS}ms`);
+    await callGlmStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+    sendSSE('done', { text: fullText, model });
+    console.log(`[team-workbench] chat stream done: model=${model}, length=${fullText.length}`);
   } catch (err) {
     console.error('[team-workbench] chat stream error', err.name, err.message);
     const msg = err.name === 'AbortError'

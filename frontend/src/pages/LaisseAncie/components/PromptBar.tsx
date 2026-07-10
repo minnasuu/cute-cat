@@ -50,7 +50,7 @@ export function PromptBar({
         </Button>
       </form>
       <div className="text-[11px] text-gray-500 mt-2 max-w-4xl mx-auto">
-        ⏎ send · ⇧⏎ newline · powered by LongCat-2.0
+        ⏎ send · ⇧⏎ newline · powered by GLM · 生图 SeedDream
       </div>
     </div>
   );

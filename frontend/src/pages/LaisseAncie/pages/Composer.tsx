@@ -45,11 +45,9 @@ type DesignStage =
 
 const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
 
-// 可选 AI 模型列表(与后端 workflow-executor 的 stream 函数对应)
+// AI 模型列表(后端唯一文本模型: GLM)
 const MODELS = [
-  { id: "longcat", label: "LongCat-2.0", hint: "Anthropic 兼容" },
   { id: "glm", label: "GLM", hint: "智谱" },
-  { id: "qwen", label: "Qwen", hint: "通义千问" },
 ] as const;
 type ModelId = typeof MODELS[number]["id"];
 
@@ -271,7 +269,7 @@ export default function ComposerPage({
   const [generating, setGenerating] = useState(false);
   const [model, setModelState] = useState<ModelId>(() => {
     const saved = localStorage.getItem("laisse-ancie:model");
-    return (MODELS.some((m) => m.id === saved) ? saved : "longcat") as ModelId;
+    return (MODELS.some((m) => m.id === saved) ? saved : "glm") as ModelId;
   });
   const [references, setReferences] = useState<InspirationItem[]>([]); // 最近一次匹配到的灵感引用
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialRow | null>(null); // 线稿→选材料阶段选定的材料

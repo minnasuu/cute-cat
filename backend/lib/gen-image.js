@@ -1,15 +1,14 @@
 /**
- * gen-image —— 文生图公共 helper,多 provider 策略。
+ * gen-image —— 文生图公共 helper,单 provider。
  *
  * provider:
- *   'glm'(默认)  —— 智谱 CogView,OpenAI 兼容 /images/generations
- *   'ark'        —— 火山方舟 SeedDream,doubao-seedream-5-0-pro-260628
+ *   'ark'(默认)  —— 火山方舟 SeedDream,doubao-seedream-5-0-pro-260628
  *
  * generateImage(prompt, { teamId, aspectRatio, safeName, provider }) →
  *   成功 { url, prompt, model }
  *   失败 { error }(具体错误信息,便于前端/日志定位)
  *
- * 两个 provider 都返回临时 URL → 下载落盘,供设计工作流/旧流水线共用。
+ * 返回临时 URL → 下载落盘,供设计工作流/旧流水线共用。
  */
 
 'use strict';
@@ -20,21 +19,9 @@ const crypto = require('crypto');
 const storage = require('./storage');
 
 /* ─── provider 配置 ─────────────────────────────────────────── */
-// 每个 provider 声明自己的默认参数 + 请求体构造 + 响应解析,新增模型只加一项。
+// 当前仅支持 ark(火山方舟 SeedDream) —— 唯一生图模型。
+// 新增模型只加一项即可。
 const PROVIDERS = {
-  glm: {
-    apiKey: () => process.env.GLM_API_KEY,
-    missingKeyError: 'GLM_API_KEY not set',
-    baseUrl: () => process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
-    defaultModel: () => process.env.GLM_IMAGE_MODEL || 'cogview-3',
-    // CogView 只支持固定尺寸字符串
-    sizeMap: { '1:1': '1024x1024', '3:4': '864x1152', '4:3': '1152x864', '9:16': '768x1344', '16:9': '1440x720' },
-    fallbackSize: '1024x1024',
-    // referenceImageUrl 被忽略(CogView 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
-    buildBody: (model, prompt, size, _referenceImageUrl) => ({ model, prompt, size, n: 1, response_format: 'url' }),
-    extractUrl: (data) => data?.data?.[0]?.url,
-    label: 'CogView',
-  },
   ark: {
     apiKey: () => process.env.ARK_API_KEY,
     missingKeyError: 'ARK_API_KEY not set',
@@ -53,7 +40,7 @@ const PROVIDERS = {
 /**
  * imageRef —— 占位扩展点:声明一个支持「真·参考图」的供应商(如 Ark 图像编辑 / FLUX)。
  * 当 provider 匹配到此配置且传入 referenceImageUrl 时,走参考图请求体;
- * 未配置时 resolveProvider 会回退到 glm,自动走「文字降级」。
+ * 未配置时 resolveProvider 会回退到 ark。
  *
  * 启用方式:在 PROVIDERS 中补充该 provider 的apiKey / baseUrl / sizeMap / buildBody(需带上 image)。
  * 例:
@@ -74,13 +61,13 @@ const PROVIDERS = {
 
 /**
  * 解析本次请求使用的 provider。
- * 优先级:opts.provider > env IMAGE_PROVIDER > 'glm'(默认,向后兼容)。
+ * 优先级:opts.provider > env IMAGE_PROVIDER > 'ark'(默认)。
  */
 function resolveProvider(opts) {
-  const p = (opts?.provider || process.env.IMAGE_PROVIDER || 'glm').toLowerCase();
+  const p = (opts?.provider || process.env.IMAGE_PROVIDER || 'ark').toLowerCase();
   if (!PROVIDERS[p]) {
-    console.warn(`[gen-image] unknown provider="${p}", fall back to glm`);
-    return 'glm';
+    console.warn(`[gen-image] unknown provider="${p}", fall back to ark`);
+    return 'ark';
   }
   return p;
 }
@@ -92,7 +79,7 @@ function resolveProvider(opts) {
  * @param {string} opts.teamId 团队 ID(用作 uploads 子目录)
  * @param {string} [opts.aspectRatio='1:1'] 设计工作流比例
  * @param {string} [opts.safeName='image'] 文件名前缀
- * @param {string} [opts.provider='glm'] 生图模型提供商('glm'|'ark')
+ * @param {string} [opts.provider='ark'] 生图模型提供商('ark')
  * @param {string} [opts.model] 覆盖 provider 默认模型 ID
  * @param {string} [opts.referenceImageUrl] 参考图 URL(材料图等)
  *   若 provider 声明 imageRef:true → 走图生图/参考图请求体(真·参考图);
