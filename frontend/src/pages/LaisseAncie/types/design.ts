@@ -54,6 +54,17 @@ export interface ProductImage {
   url: string;
 }
 
+/** AI 推荐的材质+配色方案(线稿→推荐→成图流程写入 Lookbook) */
+export interface MaterialRecommendation {
+  name: string;
+  category?: string;
+  texture?: string;
+  composition?: string;
+  finish?: string;
+  reason?: string;
+  colors: string[];
+}
+
 export interface Product {
   id: string;
   mode: DesignMode;
@@ -77,6 +88,8 @@ export interface Product {
   techPackUrl?: string;
   /** 设计工作流选定的材料 id(线稿→选材料→成图流程写入) */
   materialId?: string;
+  /** AI 材料+色彩推荐快照 */
+  recommendation?: MaterialRecommendation;
   /** 设计工作流生成的图片数组:[{slot, label, url}] */
   images?: ProductImage[];
   /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */

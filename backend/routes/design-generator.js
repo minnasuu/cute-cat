@@ -247,64 +247,40 @@ router.post('/regenerate', async (req, res) => {
 });
 
 /**
- * 把材料对象裁剪为 LLM 可消化的摘要(避免把整个库全塞进 prompt)。
- */
-function materialSummary(m) {
-  return {
-    id: m.id, name: m.name, category: m.category, code: m.code || undefined,
-    composition: m.composition || undefined, texture: m.texture || undefined,
-    finish: m.finish || undefined, colors: Array.isArray(m.colors) ? m.colors : undefined,
-    uses: Array.isArray(m.uses) ? m.uses : undefined, weight: m.weight || undefined,
-    image: m.image || undefined,
-  };
-}
-
-/**
- * 用 LLM 基于设计方案与材料库,推荐 3–5 个材料(库内 + 库外新材料)。
- * body: { plan: string, materials: MaterialRow[] }
- * 返回: { recommendations: [{ id?, name, reason, source: 'library'|'new', category?, texture?, colors?, composition? }] }
+ * 用 LLM 基于设计方案,推荐 1 个最合适的材质 + 配色方案(不限材料库,自由推荐)。
+ * body: { plan: string, lineartUrl?: string }
+ * 返回: { recommendation: { name, category?, texture?, composition?, finish?, reason?, colors: string[] } }
  */
 router.post('/recommend-materials', async (req, res) => {
-  const { plan, materials } = req.body || {};
+  const { plan } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
 
-  // 防御:材料库为空时直接返回引导提示,避免空 prompt 浪费一次 LLM 调用
-  const lib = Array.isArray(materials) ? materials : [];
-  if (lib.length === 0) {
-    return res.json({
-      recommendations: [],
-      notice: '材料库还是空的,建议先到「材料」页上传 / 录入面料与工艺后再开始推荐。',
-    });
-  }
-
-  const libList = lib.map(materialSummary);
-  const system = `你是 Laisse Ancie (来兮·安兮)的材料顾问。基于下面的设计方案,为用户推荐最合适的面料/材料。
+  const system = `你是 Laisse Ancie (来兮·安兮)的材料与配色顾问。基于下面的设计方案,提出 1 个最合适的面料 + 色彩方案。
 
 ## 规则
-- 优先从「团队材料库」中挑选最匹配的 3–5 个材料,给出推荐理由(不超过 1 句中文)。
-- 当库里实在没有匹配的小类(如需要「丝绸」库只有「棉麻」),可以给出 1–2 个「库外新材料」建议(source="new"),并补全 name / category / texture 等关键字段,便于用户落库后使用。
-- 推荐理由要结合方案:触感、克重、垂感、光泽、季节、风格调性。
+- 结合方案的触感、克重、垂感、光泽、季节、风格调性推荐材质。
+- 配色方案(3–5 个 hex 色)需与方案情绪 / 季节匹配。
 - 只输出严格的 JSON(不要解释、不要 Markdown 代码块外文字):
 
-{
-  "recommendations": [
-    { "id": "<库内材料 id>", "name": "...", "reason": "...", "source": "library" },
-    { "name": "...", "category": "面料", "texture": "...", "colors": ["#.."], "reason": "...", "source": "new" }
-  ]
-}`;
+{ "recommendation": {
+    "name": "面料名(中文,具体到品类/工艺,如「真丝双绉」「棉麻平纹」「水洗羊毛呢」)",
+    "category": "面料",
+    "texture": "触感/表面描述(如:光滑垂坠/粗粝自然/蓬松柔软)",
+    "composition": "成分/克重(如:100%桑蚕丝 16mm/棉麻 200gsm)",
+    "finish": "后整工艺(如:哑光/轻度水洗/丝光/涂层,可省略)",
+    "colors": ["#hex主色","#hex辅色","#hex点缀色"],
+    "reason": "一句话理由(结合触感/垂感/光泽/季节/风格)"
+}}`;
 
   const prompt = `## 设计方案
 ${plan}
-
-## 团队材料库(${libList.length} 项)
-${JSON.stringify(libList, null, 2)}
 
 请输出推荐 JSON。`;
 
   try {
     // 用流式调用但收集全部文本(非流式结果,一次返回)
     let fullText = '';
-    await callArkStream(system, prompt, 2048, {
+    await callArkStream(system, prompt, 1024, {
       onDelta: (d) => { fullText += d; },
     });
     // 解析 JSON(容错:去掉首尾 ```json 包裹)
@@ -313,32 +289,31 @@ ${JSON.stringify(libList, null, 2)}
     const end = cleaned.lastIndexOf('}');
     if (start === -1 || end === -1 || end <= start) throw new Error('no JSON');
     const data = JSON.parse(cleaned.slice(start, end + 1));
-    const recs = Array.isArray(data?.recommendations) ? data.recommendations : [];
-    // 库内推荐补全字段(从材料库回查)
-    const byId = new Map(lib.map((m) => [m.id, m]));
-    const enriched = recs.slice(0, 6).map((r) => {
-      if (r.source === 'library' && r.id && byId.has(r.id)) {
-        const m = byId.get(r.id);
-        return { ...materialSummary(m), reason: r.reason || '匹配', source: 'library' };
-      }
-      return { ...r, source: r.source === 'new' ? 'new' : 'library' };
-    });
-    res.json({ recommendations: enriched });
+    const rec = data?.recommendation;
+    if (!rec || typeof rec.name !== 'string' || !Array.isArray(rec.colors)) {
+      throw new Error('malformed recommendation');
+    }
+    // sanitize
+    const sanitized = {
+      name: String(rec.name).slice(0, 60),
+      category: rec.category ? String(rec.category).slice(0, 20) : '面料',
+      texture: rec.texture ? String(rec.texture).slice(0, 60) : undefined,
+      composition: rec.composition ? String(rec.composition).slice(0, 60) : undefined,
+      finish: rec.finish ? String(rec.finish).slice(0, 40) : undefined,
+      reason: rec.reason ? String(rec.reason).slice(0, 100) : undefined,
+      colors: rec.colors.filter((c) => typeof c === 'string' && /^#?[0-9a-fA-F]{3,8}$/.test(c)).slice(0, 5)
+        .map((c) => c.startsWith('#') ? c : `#${c}`),
+    };
+    if (sanitized.colors.length === 0) sanitized.colors = ['#E8D5B7', '#C4A882', '#6B5B45'];
+    res.json({ recommendation: sanitized });
   } catch (e) {
     console.error('[design-generator] recommend-materials failed:', e?.message || String(e));
-    // 失败兜底:按名称/用途关键词命中返回 topN
-    const tokens = plan.toLowerCase().split(/[\s,;，。；#·、/]+/).filter((t) => t.length > 1);
-    const scored = lib
-      .map((m) => {
-        const hay = `${m.name} ${m.category} ${m.composition || ''} ${(m.uses || []).join(' ')} ${(m.texture || '')}`.toLowerCase();
-        let s = 0;
-        for (const t of tokens) if (hay.includes(t)) s += 1;
-        return { m, s };
-      })
-      .sort((a, b) => b.s - a.s)
-      .slice(0, 4)
-      .map((x) => ({ ...materialSummary(x.m), reason: '关键词匹配', source: 'library' }));
-    res.json({ recommendations: scored, notice: 'AI 推荐暂不可用,已按关键词匹配返回。', fallback: true });
+    // 失败兜底:返回空壳推荐,让用户手动填写
+    res.json({
+      recommendation: null,
+      notice: 'AI 推荐暂不可用,请手动填写材质与配色。',
+      fallback: true,
+    });
   }
 });
 
