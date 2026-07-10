@@ -713,7 +713,7 @@ export default function ComposerPage({
                 )}
                 {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
                 {busy && m.role === "assistant" && (
-                  <div className="text-gray-500 max-w-[80%] inline-block">请求中…</div>
+                  <div className="text-gray-500 max-w-[80%] inline-block whitespace-nowrap">请求中…</div>
                 )}
               </div>
             ))}
@@ -912,8 +912,8 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation
       <div className="flex-1 min-h-0 overflow-y-auto p-4 pt-3">
         {isRecForm
           ? <RecForm recommendation={recommendation} onChange={onRecommendationChange}
-              onRefresh={onRefreshRecommendation} onConfirm={onGenerateFinal}
-              loading={!recommendation} disabled={generating} />
+            onRefresh={onRefreshRecommendation} onConfirm={onGenerateFinal}
+            loading={!recommendation} disabled={generating} />
           : <>
             <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计方案</div>
             {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计方案。</p>}
@@ -1106,8 +1106,8 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
         <div className="flex-1 overflow-y-auto p-4">
           {isRecForm
             ? <RecForm recommendation={recommendation} onChange={onRecommendationChange}
-                onRefresh={onRefreshRecommendation} onConfirm={onGenerateFinal}
-                loading={!recommendation} disabled={generating} />
+              onRefresh={onRefreshRecommendation} onConfirm={onGenerateFinal}
+              loading={!recommendation} disabled={generating} />
             : <>
               {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计方案。</p>}
               {planText && <div className="text-[12.5px] text-gray-700 leading-relaxed"><Markdown source={planText.slice(0, 600)} /></div>}
