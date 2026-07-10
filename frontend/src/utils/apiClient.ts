@@ -26,6 +26,10 @@ interface InternalFlags {
 
 /** 从 options 里剥离内部控制标志,返回真正该传给 fetch 的部分 */
 class ApiClient {
+  // body 参数保持 any:这是一个序列化边界(JSON.stringify),接受任意可 JSON 化的
+  // 载荷;收紧为 unknown 会迫使全队数百个调用方强转,回归风险远大于收益。
+  // 响应泛型 <T = any> 同理——由调用方在 .get<Type>() 处显式收窄。
+
   /** 构建请求头(FormData 透传,否则强制 application/json) */
   private buildHeaders(body: unknown, baseHeaders?: HeadersInit): Record<string, string> {
     const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
