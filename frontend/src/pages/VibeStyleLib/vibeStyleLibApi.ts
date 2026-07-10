@@ -1,3 +1,11 @@
+/**
+ * @module vibe-assets/lib
+ *
+ * 本目录曾是独立的「VibeStyleLib」灵感库页面,现已合并进 /vibe-assets (VibeAssets 页)。
+ * 当前仅作为 VibeAssets 的内部函数库被引用(上传/保存/删除风格条目,以及 vibe-snap 提取)。
+ * 目录名保留 VibeStyleLib 是为减少重命名扩散;心智模型上以「vibe-assets」为准。
+ */
+
 const API_BASE = "/api/dify";
 
 /** 生产或 preview 未代理 /uploads 时，用环境变量指向后端源 */

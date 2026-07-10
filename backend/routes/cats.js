@@ -1,3 +1,7 @@
+/**
+ * @deprecated 当前前端已改为从静态数据 (data/cats/* + themes.ts) 渲染官方猫,
+ * 本路由暂无前端调用。保留供未来 admin / 多猫管理复用,届时再激活。
+ */
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authMiddleware } = require('../middleware/auth');
