@@ -747,7 +747,10 @@ export default function ComposerPage({
 
             {/* 线稿确认按钮(仅 single / collection 的 presenting-lineart) */}
             {canConfirmLineart && (
-              <div className="flex justify-center">
+              <div className="flex justify-center gap-3">
+                <button onClick={saveToLookbook} className="px-5 py-3 rounded-2xl border border-gray-300 hover:border-gray-400 text-gray-600 font-medium text-sm transition-colors">
+                  直接录入 Lookbook
+                </button>
                 <button onClick={confirmLineart} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
                   线稿确认,下一步选材料
                 </button>
@@ -882,7 +885,7 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation
   onGenerateFinal: () => void;
   generating: boolean;
 }) {
-  const canSave = stage === "presenting" && images.some((im) => im.slot === "final");
+  const canSave = (stage === "presenting" || stage === "presenting-lineart" || stage === "material-recommend") && images.some((im) => im.url);
   const isRecForm = stage === "material-recommend" || stage === "generating-final";
   const hasLineart = images.some((im) => im.slot === "lineart" && im.url);
   const hasFinal = images.some((im) => im.slot === "final" && im.url);
@@ -1065,7 +1068,7 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
   onGenerateFinal: () => void;
   generating: boolean;
 }) {
-  const canSave = stage === "presenting" && images.some((im) => im.slot === "final");
+  const canSave = (stage === "presenting" || stage === "presenting-lineart" || stage === "material-recommend") && images.some((im) => im.url);
   const isRecForm = stage === "material-recommend" || stage === "generating-final";
   const hasLineart = images.some((im) => im.slot === "lineart" && im.url);
   const hasFinal = images.some((im) => im.slot === "final" && im.url);
