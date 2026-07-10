@@ -645,7 +645,7 @@ export default function ComposerPage({
           <header className="flex items-center justify-between px-3 md:px-6 py-3 border-b border-gray-200 bg-white">
             <div className="flex items-center justify-between gap-2">
               {/* 模型切换下拉 */}
-              <select
+              {/* <select
                 value={model}
                 onChange={(e) => setModel(e.target.value as ModelId)}
                 disabled={busy || generating}
@@ -655,7 +655,7 @@ export default function ComposerPage({
                 {MODELS.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
-              </select>
+              </select> */}
               {/* 移动端:插画+HTML→画布抽屉;其他→企划抽屉 */}
               {isMobile && (
                 <button
@@ -671,7 +671,7 @@ export default function ComposerPage({
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
             {msgs.map((m) => (
-              <div key={m.id} className={`rounded-2xl px-4 py-3 max-w-[85%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
+              <div key={m.id} className={`w-fit rounded-2xl px-4 py-3 max-w-[85%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
                 {/* 灵感引用卡片(仅 assistant 消息附带 references 时渲染) */}
                 {m.role === "assistant" && m.references && m.references.length > 0 && (
                   <div className="mb-3 pb-3 border-b border-gray-100">
@@ -692,11 +692,11 @@ export default function ComposerPage({
                   </div>
                 )}
                 {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
+                {busy && (
+                  <div className="text-gray-500 max-w-[80%] inline-block">请求中…</div>
+                )}
               </div>
             ))}
-            {busy && (
-              <div className="text-gray-500 max-w-[80%] inline-block">生成中…</div>
-            )}
 
             {/* 插画:图片/HTML 切换( proposer/planning / presenting / presenting-html 阶段均可见 ) */}
             {mode === "illustration" && (stage === "planning" || stage === "proposal" || stage === "presenting" || stage === "presenting-html") && (
@@ -867,7 +867,7 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, selectedMateri
           : <>
             <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
             {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-            {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+            {planText && <div className="text-[12.5px] text-gray-700 leading-relaxed"><Markdown source={planText.slice(0, 600)} /></div>}
           </>
         }
       </div>
@@ -1021,7 +1021,7 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
               onSelect={onSelectMaterial} onGenerateFinal={onGenerateFinal} library={library} />
             : <>
               {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-              {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+              {planText && <div className="text-[12.5px] text-gray-700 leading-relaxed"><Markdown source={planText.slice(0, 600)} /></div>}
             </>
           }
         </div>
