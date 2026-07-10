@@ -45,9 +45,9 @@ type DesignStage =
 
 const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
 
-// AI 模型列表(后端唯一文本模型: GLM)
+// AI 模型列表(后端唯一文本模型: 豆包 doubao-seed-2-1-pro,火山方舟)
 const MODELS = [
-  { id: "glm", label: "GLM", hint: "智谱" },
+  { id: "ark", label: "豆包Seed", hint: "doubao-seed-2-1-pro" },
 ] as const;
 type ModelId = typeof MODELS[number]["id"];
 
@@ -269,7 +269,7 @@ export default function ComposerPage({
   const [generating, setGenerating] = useState(false);
   const [model, setModelState] = useState<ModelId>(() => {
     const saved = localStorage.getItem("laisse-ancie:model");
-    return (MODELS.some((m) => m.id === saved) ? saved : "glm") as ModelId;
+    return (MODELS.some((m) => m.id === saved) ? saved : "ark") as ModelId;
   });
   const [references, setReferences] = useState<InspirationItem[]>([]); // 最近一次匹配到的灵感引用
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialRow | null>(null); // 线稿→选材料阶段选定的材料

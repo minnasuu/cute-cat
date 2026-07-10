@@ -101,7 +101,7 @@ async function runWithAIStream(templateId, ctx, systemPrompt, userText, options 
   const { step, context, onChunk: ctxOnChunk } = ctx;
   const maxTokens = options.maxTokens || 4096;
   const _resultType = options._resultType || undefined;
-  const selectedModel = 'glm';
+  const selectedModel = 'ark';
   const onChunk = options.onChunk || ctxOnChunk;
 
   console.log('[cat-step:ai:stream]', JSON.stringify({
@@ -115,12 +115,12 @@ async function runWithAIStream(templateId, ctx, systemPrompt, userText, options 
   }));
 
   try {
-    if (selectedModel === 'glm') {
-      // --- GLM streaming (智谱, OpenAI 兼容) ---
-      const apiKey = process.env.GLM_API_KEY;
-      if (!apiKey) throw new Error('GLM_API_KEY not set');
-      const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-      const model = process.env.GLM_MODEL || 'glm-4-flash';
+    if (selectedModel === 'ark') {
+      // --- ARK 豆包 streaming (火山方舟, OpenAI 兼容) ---
+      const apiKey = process.env.ARK_API_KEY;
+      if (!apiKey) throw new Error('ARK_API_KEY not set');
+      const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+      const model = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
 
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -135,7 +135,7 @@ async function runWithAIStream(templateId, ctx, systemPrompt, userText, options 
       });
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`GLM API ${response.status}: ${errText}`);
+        throw new Error(`Ark API ${response.status}: ${errText}`);
       }
       let fullAnswer = '';
       const reader = response.body;

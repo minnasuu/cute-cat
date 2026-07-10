@@ -2,7 +2,11 @@
  * gen-image —— 文生图公共 helper,单 provider。
  *
  * provider:
- *   'ark'(默认)  —— 火山方舟 SeedDream,doubao-seedream-5-0-pro-260628
+ *   'ark'  —— 火山方舟 SeedDream,doubao-seedream-5-0-pro-260628 (全局唯一生图模型)
+ *
+ * 全局共 2 个豆包模型,同一 ARK_API_KEY / ARK_BASE_URL:
+ *   生图: doubao-seedream-5-0-pro-260628 (本模块, /images/generations)
+ *   文本/视觉解析: doubao-seed-2-1-pro-260628 (workflow-executor / analyze-inspiration)
  *
  * generateImage(prompt, { teamId, aspectRatio, safeName, provider }) →
  *   成功 { url, prompt, model }
@@ -61,7 +65,8 @@ const PROVIDERS = {
 
 /**
  * 解析本次请求使用的 provider。
- * 优先级:opts.provider > env IMAGE_PROVIDER > 'ark'(默认)。
+ * 当前全局唯一 provider 为 'ark'(火山方舟);保留入参/env 仅为向后兼容,
+ * 传入其它值一律回退到 ark。
  */
 function resolveProvider(opts) {
   const p = (opts?.provider || process.env.IMAGE_PROVIDER || 'ark').toLowerCase();

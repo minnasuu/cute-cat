@@ -8,9 +8,10 @@
  *
  * provider:火山方舟(Ark) Seed 视觉模型,调用 /responses 新接口。
  *   环境变量:
- *     ARK_API_KEY           必需 —— 方舟 API Key(与生图共用同一 Key)
- *     ARK_BASE_URL          可选 —— 默认 https://ark.cn-beijing.volces.com/api/v3
- *     INSPIRATION_AI_MODEL  可选 —— 视觉模型 ID,默认 doubao-seed-2-1-pro-260628
+ *     ARK_API_KEY      必需 —— 方舟 API Key(全局 2 个豆包模型共用同一 Key)
+ *     ARK_BASE_URL     可选 —— 默认 https://ark.cn-beijing.volces.com/api/v3
+ *     ARK_TEXT_MODEL   可选 —— 文本/视觉解析模型 ID,默认 doubao-seed-2-1-pro-260628
+ *                        (与 workflow-executor 文本生成共用同一变量)
  *   注意:图片以 base64 data URL 形式通过 input_image.image_url 传入;若 Ark
  *   未来版本拒绝 data URL,需在此之前先把图片上传到可访问的公开 URL。
  */
@@ -133,7 +134,7 @@ async function analyzeInspiration(imageBuffer, mimeType) {
     return { result: null, error: 'key' };
   }
   const baseUrl = (process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/+$/, '');
-  const model = (process.env.INSPIRATION_AI_MODEL || 'doubao-seed-2-1-pro-260628').trim();
+  const model = (process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628').trim();
   const dataUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
 
   let lastError = 'key';

@@ -14,7 +14,7 @@
 
 const express = require('express');
 const { generateImage } = require('../lib/gen-image');
-const { callGlmStream } = require('../workflow-executor');
+const { callArkStream } = require('../workflow-executor');
 
 const router = express.Router();
 
@@ -134,7 +134,7 @@ Catalog-quality technical drawing.`,
 
 /**
  * POST /api/teams/:teamId/design/lineart —— 生成线稿(设计稿模式)
- * body: { mode: 'single'|'collection', plan: string, provider?: 'glm'|'ark' }
+ * body: { mode: 'single'|'collection', plan: string, provider?: 'ark' }
  * 返回: { mode, images: [{ slot, label, url, prompt, error? }] }
  */
 router.post('/lineart', async (req, res) => {
@@ -166,14 +166,14 @@ router.post('/lineart', async (req, res) => {
 
 /**
  * POST /api/teams/:teamId/design/generate
- * body: { mode: 'single'|'illustration'|'collection', plan: string, provider?: 'glm'|'ark' }
+ * body: { mode: 'single'|'illustration'|'collection', plan: string, provider?: 'ark' }
  * 返回: { images: [{ slot, label, url, prompt, error? }] }
  */
 router.post('/generate', async (req, res) => {
   const { mode = 'single', plan, provider } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
 
-  // provider 可选,未传则走 env IMAGE_PROVIDER → glm 兜底(向后兼容)
+  // provider 可选,未传则走 ark(唯一生图 provider,向后兼容)
   const imgOptsBase = { provider };
   const slots = planImages(mode, plan);
   // 并行生成——总耗时取决于最慢的单张(而非 N 张串联),避免撑过 nginx proxy_read_timeout
@@ -304,7 +304,7 @@ ${JSON.stringify(libList, null, 2)}
   try {
     // 用流式调用但收集全部文本(非流式结果,一次返回)
     let fullText = '';
-    await callGlmStream(system, prompt, 2048, {
+    await callArkStream(system, prompt, 2048, {
       onDelta: (d) => { fullText += d; },
     });
     // 解析 JSON(容错:去掉首尾 ```json 包裹)
@@ -344,7 +344,7 @@ ${JSON.stringify(libList, null, 2)}
 
 /**
  * POST /api/teams/:teamId/design/generate-final —— 材料驱动的最终成图
- * body: { mode: 'single'|'collection', plan: string, material: MaterialRow, provider?: 'glm'|'ark' }
+ * body: { mode: 'single'|'collection', plan: string, material: MaterialRow, provider?: 'ark' }
  * 返回: { mode, images: [{ slot, label, url, prompt, error? }] }
  */
 router.post('/generate-final', async (req, res) => {

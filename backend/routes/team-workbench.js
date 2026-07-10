@@ -20,7 +20,7 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const { asyncHandler } = require('../middleware/asyncHandler');
-const { callGlmStream } = require('../workflow-executor');
+const { callArkStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const storage = require('../lib/storage');
 const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
@@ -210,7 +210,8 @@ router.get('/inspirations', asyncHandler(async (req, res) => {
 // 注意:上线后应删除或加 admin 校验
 router.get('/inspirations/debug', asyncHandler(async (req, res) => {
   try {
-    const prefs = ['qwen', 'openai', 'longcat'];
+    // ark = 主力(文本/视觉解析/生图);qwen = 仅 vibe-snap-extract 子系统
+    const prefs = ['ark', 'qwen'];
     const providers = [];
     const openAiEndpoint = (base) => {
       const b = (base || '').replace(/\/+$/, '');
@@ -243,7 +244,6 @@ router.get('/inspirations/debug', asyncHandler(async (req, res) => {
       providers.push({ name, ok: probe.ok ? 'ok' : 'fail', model, baseUrl: base.replace(/^https?:\/\/[^/]+/, '***'), probe });
     }
     res.json({
-      INSPIRATION_AI_PROVIDER: process.env.INSPIRATION_AI_PROVIDER || '(未设置,按 longcat→qwen→openai 顺序回退)',
       providers,
     });
   } catch (err) {
@@ -779,7 +779,7 @@ const CHAT_HEARTBEAT_MS = Number.parseInt(process.env.LAISSE_ANCIE_CHAT_HEARTBEA
 router.post('/chat', asyncHandler(async (req, res) => {
   const system = String(req.body.system || '');
   const prompt = String(req.body.prompt || '');
-  const requestedModel = req.body.model || process.env.DEFAULT_AI_MODEL || 'longcat';
+  const requestedModel = req.body.model || process.env.DEFAULT_AI_MODEL || 'ark';
   const maxTokens = Math.min(Number(req.body.maxTokens) || 2048, 8192);
   if (!system && !prompt) return res.status(400).json({ error: 'system or prompt required' });
 
@@ -812,10 +812,10 @@ router.post('/chat', asyncHandler(async (req, res) => {
   };
 
   try {
-    // 唯一文本模型: GLM
-    const model = 'glm';
+    // 唯一文本模型: ARK 豆包
+    const model = 'ark';
     console.log(`[team-workbench] chat stream: model=${model}, maxTokens=${maxTokens}, system=${system.length}c, prompt=${prompt.length}c, timeout=${CHAT_TIMEOUT_MS}ms`);
-    await callGlmStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+    await callArkStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
     sendSSE('done', { text: fullText, model });
     console.log(`[team-workbench] chat stream done: model=${model}, length=${fullText.length}`);
   } catch (err) {

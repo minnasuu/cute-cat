@@ -8,12 +8,13 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// ─── GLM 调用 (智谱, OpenAI 兼容) — 唯一文本模型 ─────────────
-async function callGlm(systemPrompt, userText, maxTokens = 4096) {
-  const apiKey = process.env.GLM_API_KEY;
-  if (!apiKey) throw new Error('GLM_API_KEY not set');
-  const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-  const model = process.env.GLM_MODEL || 'glm-4-flash';
+// ─── ARK 豆包文本调用 (火山方舟, OpenAI 兼容) — 唯一文本模型 ──
+// 模型: doubao-seed-2-1-pro-260628 (与灵感视觉分析共用同一 ARK key)
+async function callArk(systemPrompt, userText, maxTokens = 4096) {
+  const apiKey = process.env.ARK_API_KEY;
+  if (!apiKey) throw new Error('ARK_API_KEY not set');
+  const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+  const model = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90000);
@@ -31,7 +32,7 @@ async function callGlm(systemPrompt, userText, maxTokens = 4096) {
     });
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`GLM API ${response.status}: ${errText}`);
+      throw new Error(`Ark API ${response.status}: ${errText}`);
     }
     const data = await response.json();
     return data.choices?.[0]?.message?.content || '';
@@ -40,13 +41,13 @@ async function callGlm(systemPrompt, userText, maxTokens = 4096) {
   }
 }
 
-// ─── 流式 GLM 调用 (智谱, OpenAI 兼容) — 唯一文本流模型 ──────
-// 文档: https://open.bigmodel.cn/dev/api   ——  /chat/completions SSE,格式与 OpenAI 一致
-async function callGlmStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
-  const apiKey = process.env.GLM_API_KEY;
-  if (!apiKey) throw new Error('GLM_API_KEY not set');
-  const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-  const model = process.env.GLM_MODEL || 'glm-4-flash';
+// ─── 流式 ARK 豆包文本调用 (火山方舟, OpenAI 兼容) — 唯一文本流模型
+// 文档: https://www.volcengine.com/docs/82379 —— /chat/completions SSE,格式与 OpenAI 一致
+async function callArkStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
+  const apiKey = process.env.ARK_API_KEY;
+  if (!apiKey) throw new Error('ARK_API_KEY not set');
+  const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+  const model = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -63,7 +64,7 @@ async function callGlmStream(systemPrompt, userText, maxTokens = 4096, { onDelta
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`GLM API ${response.status}: ${errText}`);
+    throw new Error(`Ark API ${response.status}: ${errText}`);
   }
 
   const reader = response.body;
@@ -92,11 +93,11 @@ async function callGlmStream(systemPrompt, userText, maxTokens = 4096, { onDelta
   return fullText;
 }
 
-// ─── 通用 AI 调用 (唯一文本模型: GLM) ────────────────────────
+// ─── 通用 AI 调用 (唯一文本模型: ARK 豆包) ────────────────────
 async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
-  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'glm';
-  // 当前仅支持 GLM 文本模型
-  return callGlm(systemPrompt, userText, maxTokens);
+  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'ark';
+  // 当前仅支持 ARK 豆包文本模型
+  return callArk(systemPrompt, userText, maxTokens);
 }
 
 // ─── 单步执行：merged 仅为 { text: 本步 user 正文 } ───
@@ -452,5 +453,5 @@ module.exports = {
   executeWorkflowIntoExistingRun,
   executeStep,
   callAI,
-  callGlmStream,
+  callArkStream,
 };

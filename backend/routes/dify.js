@@ -269,17 +269,17 @@ Engineer: fix-bug,
 
 // 可用模型列表
 const AVAILABLE_MODELS = {
-  glm: { name: 'GLM', provider: '智谱' },
+  ark: { name: '豆包', provider: '火山方舟' },
 };
 
 // 获取可用模型列表
 router.get('/models', (_req, res) => {
   const models = Object.entries(AVAILABLE_MODELS).map(([id, info]) => {
     let available = false;
-    if (id === 'glm') available = !!process.env.GLM_API_KEY;
+    if (id === 'ark') available = !!process.env.ARK_API_KEY;
     return { id, ...info, available };
   });
-  res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'glm' });
+  res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'ark' });
 });
 
 // =====================================================================
@@ -328,7 +328,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
 
     // 与非流式 POST /skill 一致：优先使用前端传入的 systemPrompt / maxTokens
     const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
-    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'glm';
+    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'ark';
 
     const TASK_MAX_TOKENS = {
       'workflow-gen': 8192, 'mece-analysis': 8192, 'scamper-creative': 8192,
@@ -339,16 +339,16 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
 
     const streamAbortMs = 180000;
 
-    console.log(`[ai/skill/stream] taskId=${taskId}, model=glm, text length=${text.length}, maxTokens=${maxTokens}, streamTimeoutMs=${streamAbortMs}`);
+    console.log(`[ai/skill/stream] taskId=${taskId}, model=ark, text length=${text.length}, maxTokens=${maxTokens}, streamTimeoutMs=${streamAbortMs}`);
 
-    // ── 唯一文本模型: GLM (智谱, OpenAI 兼容) ──
-    const apiKey = process.env.GLM_API_KEY;
+    // ── 唯一文本模型: ARK 豆包 (火山方舟, OpenAI 兼容) ──
+    const apiKey = process.env.ARK_API_KEY;
     if (!apiKey) {
-      sendSSE('error', { error: 'GLM_API_KEY not set' });
+      sendSSE('error', { error: 'ARK_API_KEY not set' });
       return endSSE();
     }
-    const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-    const glmModel = process.env.GLM_MODEL || 'glm-4-flash';
+    const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+    const arkModel = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), streamAbortMs);
@@ -358,7 +358,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: glmModel,
+          model: arkModel,
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
           max_tokens: maxTokens,
           temperature: 0.7,
@@ -369,7 +369,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
 
       if (!response.ok) {
         const errText = await response.text();
-        sendSSE('error', { error: `GLM API ${response.status}: ${errText.slice(0, 200)}` });
+        sendSSE('error', { error: `Ark API ${response.status}: ${errText.slice(0, 200)}` });
         return endSSE();
       }
 
@@ -398,10 +398,10 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
       }
 
       clearTimeout(timeout);
-      const usage = await recordAiUsage(req.userId, { taskId, model: 'glm', teamId, catId });
+      const usage = await recordAiUsage(req.userId, { taskId, model: 'ark', teamId, catId });
       sendSSE('done', {
         answer: fullAnswer,
-        model: 'glm',
+        model: 'ark',
         ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
       });
     } catch (err) {
@@ -438,7 +438,7 @@ router.post('/skill', optionalAuth, async (req, res) => {
 
     // 优先使用前端传入的 systemPrompt，否则 fallback 到 taskId 对应的默认值
     const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
-    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'glm';
+    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'ark';
 
     // 根据 taskId 动态调整 token 限制
     // 结构化输出类（JSON 格式）需要更大空间防止截断
@@ -460,19 +460,19 @@ router.post('/skill', optionalAuth, async (req, res) => {
 
     let answer = '';
 
-    if (selectedModel === 'glm') {
-      // --- GLM (智谱, OpenAI 兼容) ---
-      const apiKey = process.env.GLM_API_KEY;
+    if (selectedModel === 'ark') {
+      // --- ARK 豆包 (火山方舟, OpenAI 兼容) ---
+      const apiKey = process.env.ARK_API_KEY;
       if (!apiKey) {
-        return res.status(500).json({ error: 'GLM_API_KEY not set' });
+        return res.status(500).json({ error: 'ARK_API_KEY not set' });
       }
-      const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-      const glmModel = process.env.GLM_MODEL || 'glm-4-flash';
+      const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+      const arkModel = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: glmModel,
+          model: arkModel,
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
           max_tokens: maxTokens,
           temperature: 0.7,
@@ -480,7 +480,7 @@ router.post('/skill', optionalAuth, async (req, res) => {
       });
       if (!response.ok) {
         const errText = await response.text();
-        return res.status(500).json({ error: `GLM API ${response.status}: ${errText.slice(0, 200)}` });
+        return res.status(500).json({ error: `Ark API ${response.status}: ${errText.slice(0, 200)}` });
       }
       const data = await response.json();
       answer = data.choices?.[0]?.message?.content || '';
@@ -505,7 +505,7 @@ router.post('/skill', optionalAuth, async (req, res) => {
     // 返回更具体的错误信息帮助定位
     let errDetail = error.message || String(error);
     if (errDetail.includes('API_KEY') || errDetail.includes('apiKey')) {
-      errDetail = 'AI API Key 未配置或无效，请检查 .env 中的 GLM_API_KEY';
+      errDetail = 'AI API Key 未配置或无效，请检查 .env 中的 ARK_API_KEY';
     } else if (errDetail.includes('ECONNREFUSED') || errDetail.includes('ENOTFOUND') || errDetail.includes('fetch failed')) {
       errDetail = 'AI 服务连接失败，请检查网络或 API 地址配置';
     } else if (errDetail.includes('aborted') || errDetail.includes('timeout')) {

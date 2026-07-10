@@ -16,7 +16,7 @@ import { apiClient } from './apiClient';
 
 // ==================== 模块级可变状态(AI 模型选择) ====================
 
-let _currentAIModel = 'glm';
+let _currentAIModel = 'ark';
 
 export const setCurrentAIModel = (model: string) => { _currentAIModel = model; };
 export const getCurrentAIModel = () => _currentAIModel;

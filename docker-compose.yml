@@ -42,17 +42,19 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/cute_cat
-      LONGCAT_API_KEY: ${LONGCAT_API_KEY:-sk-placeholder}
-      LONGCAT_BASE_URL: ${LONGCAT_BASE_URL:-https://api.anthropic.com}
-      LONGCAT_MODEL: ${LONGCAT_MODEL:-LongCat-2.0}
+      # QWEN 仅 vibe-snap-extract 独立子系统使用(视觉模型,支持 image_url 输入);豆包之外唯一保留的 provider
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen3.5-plus}
-      GLM_API_KEY: ${GLM_API_KEY:-}
-      GLM_BASE_URL: ${GLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
-      GLM_MODEL: ${GLM_MODEL:-glm-4-flash}
-      GLM_IMAGE_MODEL: ${GLM_IMAGE_MODEL:-cogview-3}
-      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-longcat}
+      QWEN_VISION_MODEL: ${QWEN_VISION_MODEL:-qwen3.6-plus}
+      # 豆包 2 模型(同一 ARK_API_KEY / ARK_BASE_URL):
+      #   生图: doubao-seedream-5-0-pro-260628 (/images/generations)
+      #   文本/视觉解析: doubao-seed-2-1-pro-260628 (/chat/completions, /responses)
+      ARK_API_KEY: ${ARK_API_KEY:-}
+      ARK_BASE_URL: ${ARK_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      ARK_TEXT_MODEL: ${ARK_TEXT_MODEL:-doubao-seed-2-1-pro-260628}
+      ARK_IMAGE_MODEL: ${ARK_IMAGE_MODEL:-doubao-seedream-5-0-pro-260628}
+      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-ark}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
       BETA_CODES: ${BETA_CODES:-CAT2026}
       SMTP_HOST: ${SMTP_HOST:-}
