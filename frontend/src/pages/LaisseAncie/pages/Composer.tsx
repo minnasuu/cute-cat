@@ -679,7 +679,7 @@ export default function ComposerPage({
                     <div className="flex gap-2 overflow-x-auto">
                       {m.references.map((ref) => (
                         <div key={ref.id} className="shrink-0 w-24 rounded-lg border border-gray-200 overflow-hidden bg-gray-50" title={`${ref.category ?? ""}${ref.visualStyle ? ` · ${ref.visualStyle}` : ""}`}>
-                          <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+                          <div className="bg-gray-100 overflow-hidden">
                             <img src={ref.thumbUrl || ref.url} alt={ref.category ?? "inspiration"} className="w-full h-full object-cover" loading="lazy" />
                           </div>
                           <div className="px-1.5 py-1">
@@ -692,7 +692,7 @@ export default function ComposerPage({
                   </div>
                 )}
                 {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
-                {busy && (
+                {busy && m.role === "assistant" && (
                   <div className="text-gray-500 max-w-[80%] inline-block">请求中…</div>
                 )}
               </div>
@@ -788,7 +788,7 @@ export default function ComposerPage({
           />
         </div>
 
-        {/* 桌面端侧栏:单品/系列/插画+图片=设计企划·材料选择 / 插画+HTML=画布预览 + 修图输入 */}
+        {/* 桌面端侧栏:单品/系列/插画+图片=设计方案·材料选择 / 插画+HTML=画布预览 + 修图输入 */}
         {mode === "illustration" && illustOutputMode === "html"
           ? <IllustrationCanvas html={illustHtml} generating={illustBusy} stage={stage} illustHtml={illustHtml} onModify={regenerateHtml} onSaveToLookbook={saveToLookbook} />
           : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} selectedMaterial={selectedMaterial} library={knowledge?.materials ?? []} onSelect={setSelectedMaterial} onGenerateFinal={generateFinal} />
@@ -853,10 +853,10 @@ function IllustrationCanvas({ html, generating, stage, onModify, onSaveToLookboo
   );
 }
 
-/** 桌面端「设计企划 / 材料选择」侧栏(单品 / 系列 / 插画+图片 共用) —— 底部含录入 Lookbook 按钮 */
+/** 桌面端「设计方案 / 材料选择」侧栏(单品 / 系列 / 插画+图片 共用) —— 底部含录入 Lookbook 按钮 */
 function PlanSideBar({ planText, stage, images, onSaveToLookbook, selectedMaterial, library, onSelect, onGenerateFinal }: { planText: string; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void; selectedMaterial: MaterialRow | null; library: MaterialRow[]; onSelect: (m: MaterialRow) => void; onGenerateFinal: () => void }) {
   const canSave = stage === "presenting" && images.length > 0;
-  // 材料选择面板(Phase 3 渲染推荐卡片);其他阶段显示设计企划
+  // 材料选择面板(Phase 3 渲染推荐卡片);其他阶段显示设计方案
   const isMaterialSelect = stage === "material-select" || stage === "generating-final";
   return (
     <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 p-5 overflow-y-auto min-h-0">
@@ -865,8 +865,8 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, selectedMateri
           ? <MaterialSelectPanel selectedMaterial={selectedMaterial} planText={planText}
             onSelect={onSelect} onGenerateFinal={onGenerateFinal} library={library} />
           : <>
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
-            {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计方案</div>
+            {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计方案。</p>}
             {planText && <div className="text-[12.5px] text-gray-700 leading-relaxed"><Markdown source={planText.slice(0, 600)} /></div>}
           </>
         }
@@ -1006,7 +1006,7 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
         className={`fixed top-0 right-0 z-50 h-full w-72 max-w-[85vw] bg-white border-l border-gray-200 shadow-xl p-4 overflow-y-auto transition-transform duration-200 md:hidden ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">{isMaterialSelect ? "选材料" : "设计企划"}</div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500">{isMaterialSelect ? "选材料" : "设计方案"}</div>
           <button
             onClick={onClose}
             aria-label="关闭企划"
@@ -1020,7 +1020,7 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
             ? <MaterialSelectPanel selectedMaterial={selectedMaterial} planText={planText}
               onSelect={onSelectMaterial} onGenerateFinal={onGenerateFinal} library={library} />
             : <>
-              {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+              {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计方案。</p>}
               {planText && <div className="text-[12.5px] text-gray-700 leading-relaxed"><Markdown source={planText.slice(0, 600)} /></div>}
             </>
           }
@@ -1082,7 +1082,7 @@ function ImageCard({ image, onRegenerate }: { image: GeneratedImage; onRegenerat
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-      <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+      <div className="bg-gray-100 overflow-hidden">
         {image.url ? (
           <img src={image.url} alt={image.label} className="w-full h-full object-cover" />
         ) : (

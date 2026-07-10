@@ -238,7 +238,7 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
     : null;
   return (
     <figure onClick={() => onEdit(asset)} className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer group">
-      <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
+      <div className="relative aspect-[1/1] bg-gray-100 overflow-hidden">
         <img src={asset.thumbUrl || asset.url} alt={asset.visualStyle ?? asset.category ?? "inspiration"} loading="lazy"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.05]" />
         {/* pending 时左上角转圈提示 */}

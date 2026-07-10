@@ -248,7 +248,7 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {productImages.map((im) => (
                   <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-                    <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+                    <div className="aspect-[1/1] bg-gray-100 overflow-hidden">
                       <img src={im.url} alt={im.label} className="w-full h-full object-cover" loading="lazy" />
                     </div>
                     <figcaption className="px-2 py-1.5 text-[10px] text-gray-600 font-medium truncate">{im.label}</figcaption>
