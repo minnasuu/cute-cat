@@ -122,37 +122,71 @@ async function generateImage(prompt, opts) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
 
-  let imageUrl;
-  try {
-    console.log(`[gen-image] generating: ${source}, prompt=${effectivePrompt.slice(0, 60)}…${referenceImageUrl ? `, refImage=${referenceImageUrl.slice(0, 40)}…` : ''}`);
-    const res = await fetch(`${baseUrl}/images/generations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, referenceImageUrl)),
-      signal: controller.signal,
-    });
+  // 对可重试的错误(网络/超时/5xx)自动重试 1 次
+  const MAX_RETRIES = 1;
+  let lastError = null;
+  let _imageUrl = null;
+  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+    // 每次尝试新建 controller/计时器
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+    try {
+      console.log(`[gen-image] attempt ${attempt}: ${source}, prompt=${effectivePrompt.slice(0, 60)}…${referenceImageUrl ? `, refImage=${referenceImageUrl.slice(0, 40)}…` : ''}`);
+      const res = await fetch(`${baseUrl}/images/generations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, referenceImageUrl)),
+        signal: controller.signal,
+      });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`[gen-image] ${cfg.label} API ${res.status} (${source}): ${errText.slice(0, 300)}`);
-      return { error: `${cfg.label} HTTP ${res.status}: ${errText.slice(0, 200)}` };
-    }
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[gen-image] ${cfg.label} API ${res.status} (attempt ${attempt}, ${source}): ${errText.slice(0, 300)}`);
+        // 5xx / 429 可重试,4xx(参数错误)不重试
+        if (attempt < MAX_RETRIES + 1 && (res.status >= 500 || res.status === 429)) {
+          lastError = `${cfg.label} HTTP ${res.status}: ${errText.slice(0, 200)}`;
+          await new Promise((r) => setTimeout(r, 2000 * attempt)); // 退避:2s
+          continue;
+        }
+        return { error: `${cfg.label} HTTP ${res.status}: ${errText.slice(0, 200)}` };
+      }
 
-    const data = await res.json();
-    imageUrl = cfg.extractUrl(data) || null;
-    if (!imageUrl) {
-      console.error(`[gen-image] ${cfg.label} returned no image URL:`, JSON.stringify(data).slice(0, 200));
-      return { error: `${cfg.label} 返回无图片 URL: ${JSON.stringify(data).slice(0, 120)}` };
+      const data = await res.json();
+      let imageUrl = cfg.extractUrl(data) || null;
+      if (!imageUrl) {
+        console.error(`[gen-image] ${cfg.label} returned no image URL (attempt ${attempt}):`, JSON.stringify(data).slice(0, 200));
+        if (attempt < MAX_RETRIES + 1) {
+          lastError = '返回无图片 URL';
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        return { error: `${cfg.label} 返回无图片 URL: ${JSON.stringify(data).slice(0, 120)}` };
+      }
+      // 成功 — 跳出循环进入下载阶段
+      _imageUrl = imageUrl;
+      break;
+    } catch (e) {
+      const isTimeout = e?.name === 'AbortError';
+      const msg = isTimeout ? `生成超时(${IMAGE_TIMEOUT_MS}ms)` : (e?.message || String(e));
+      console.error(`[gen-image] ${cfg.label} call failed (attempt ${attempt}):`, msg);
+      // 超时或网络错误可重试
+      if (attempt < MAX_RETRIES + 1 && (isTimeout || e?.name === 'TypeError' || /network|ECONN|socket/i.test(msg))) {
+        lastError = msg;
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        continue;
+      }
+      return { error: msg };
+    } finally {
+      clearTimeout(timer);
     }
-  } catch (e) {
-    const msg = e?.name === 'AbortError' ? `生成超时(${IMAGE_TIMEOUT_MS}ms)` : (e?.message || String(e));
-    console.error(`[gen-image] ${cfg.label} call failed:`, msg);
-    return { error: msg };
-  } finally {
-    clearTimeout(timer);
+  }
+
+  let imageUrl = _imageUrl;
+  if (!imageUrl) {
+    return { error: lastError || `${cfg.label} 生成失败(已重试 ${MAX_RETRIES} 次)` };
   }
 
   // 返回的 URL 是临时的,立即下载并持久化到 storage(本地或 S3)
