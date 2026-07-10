@@ -52,7 +52,7 @@ const MODELS = [
 type ModelId = typeof MODELS[number]["id"];
 
 /** 设计顾问总 prompt:引导 AI 走完 "匹配灵感 → 设计方案 → 确认出图" 三步工作流。 */
-const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总监。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套以灵感为核心的设计流程。
+const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的品牌服装、单品、视觉设计师。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套以灵感为核心的设计流程。
 
 ## 工作流(3 步)
 
@@ -63,13 +63,13 @@ const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总�
 ### 步骤 2 · proposal(生成 1 个整合方案)——必须严格输出
 结合下面几部分信息,**输出 1 个完整设计方案**(不要给多个方向让用户选):
 1. 「参考灵感」卡片中的 3 张灵感图(会作为 #[灵感ID] 注入到 system prompt,包含其 category / visualStyle / designApproach / inspiration / colors / 图片 URL 等)
-2. 「团队知识库」中注入的材料 / 资产 / 品牌 / Lookbook(如已注入)
+2. 「团队知识库」中注入的资产 / 品牌 / Lookbook(如已注入)
 3. 用户的历史对话上下文、本次 mode(illustration / single / collection)
 
 **方案必须包含:**
 - **产品名**(有调性)+ **主题叙述**(2-3 句话,讲清核心概念)
 - **灵感借鉴说明**:明确写"从 #[灵感ID1] 汲取 ××、从 #[灵感ID2] 借鉴 ××、呼应 #[灵感ID3] 的 ××"——必须把 3 张灵感都用上
-- **材质与色彩方案**:具体色值/色号,指明「材料库 ×× 面料」
+- **材质与色彩方案**:具体色值/色号,指明「材料库 ×× 面料，如果库中没有符合要求的材料，可以根据实际进行调整」
 - **形态 / 结构 / 细节**:闭合方式、工艺、尺寸感知等(按品类自适应,服装问廓形/包包问款型/家居问肌理/文创问形态……不要默认是衣服)
 - **目标价格带**
 
@@ -91,8 +91,8 @@ const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的资深设计总�
 
 ## 贴近叙事与素材(硬约束)
 - 方案必须从真实灵感/材料出发,而不是空想。**每份方案必须引用 system prompt 中「参考灵感」的 3 张灵感图**(#[灵感ID] 的形式),说明具体借鉴了它们的什么(配色 / 构图 / 风格 / 元素…)。
-- 必须参考「团队知识库」中的面料与工艺,从真实可用的面料出发。指明「材料库 ×× 面料」。
-- 引用格式示例:「—— 灵感:#abc123 复古玫瑰油画的配色」「—— 材料:真丝电力纺」。引用的灵感 ID / 材料必须真实存在,不要凭空编造。
+- 必须参考「团队知识库」中的面料与工艺,从真实可用的面料出发。如果库中没有符合要求的材料，可以根据实际进行调。
+- 引用格式示例:「—— 灵感:#abc123 复古玫瑰油画的配色」「—— 材料:纯棉」。
 - 如果当前灵感库为空,告知用户「灵感库还是空的,建议先到左侧上传灵感图后再开始」;并加 <!--STAGE:proposal-->。
 
 ## 重要规则
@@ -295,8 +295,8 @@ export default function ComposerPage({
       const greeting = mode === "illustration"
         ? "欢迎来到 Laisse Ancie 插画工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**风格**(水彩、矢量、现代极简、装饰艺术…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个插画方案\n3️⃣ 你确认后,生成插画(默认出图,可切换为 HTML 画布)\n\n下方会在你确认方案后出现【图片 / HTML】切换,两种输出都可在这切换。"
         : mode === "collection"
-        ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成**系列线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图"
-        : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成**设计线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图";
+          ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成**系列线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图"
+          : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成**设计线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图";
       setMsgs([{ id: "greeting", role: "assistant", text: greeting }]);
       setStage("greeting");
     }
@@ -451,7 +451,7 @@ export default function ComposerPage({
       prompt: history,
       model,
       maxTokens: 4096,
-      onTick: () => {},
+      onTick: () => { },
       onDone: (finalText, rawAccum) => {
         const html = extractHtmlBlock(rawAccum);
         if (html) {
@@ -501,8 +501,10 @@ export default function ComposerPage({
       const data = await res.json();
       setImages(data.images || []);
       setStage(isLineart ? "presenting-lineart" : "presenting");
-      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant",
-        text: isLineart ? "✏️ 设计线稿已生成! 看看结构是否满意,可以修改单张线稿,确认后进入选材料。" : "✨ 设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。" }]);
+      setMsgs((xs) => [...xs, {
+        id: crypto.randomUUID(), role: "assistant",
+        text: isLineart ? "✏️ 设计线稿已生成! 看看结构是否满意,可以修改单张线稿,确认后进入选材料。" : "✨ 设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。"
+      }]);
     } catch (e: any) {
       setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败: ${e.message}` }]);
       // 回退到当前方案阶段
@@ -861,12 +863,12 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, selectedMateri
       <div className="flex-1 min-h-0">
         {isMaterialSelect
           ? <MaterialSelectPanel selectedMaterial={selectedMaterial} planText={planText}
-              onSelect={onSelect} onGenerateFinal={onGenerateFinal} library={library} />
+            onSelect={onSelect} onGenerateFinal={onGenerateFinal} library={library} />
           : <>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
-              {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-              {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
-            </>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
+            {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+            {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+          </>
         }
       </div>
       {/* 录入 Lookbook —— 统一放右侧 preview 区底部 */}
@@ -1016,11 +1018,11 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
         <div className="flex-1">
           {isMaterialSelect
             ? <MaterialSelectPanel selectedMaterial={selectedMaterial} planText={planText}
-                onSelect={onSelectMaterial} onGenerateFinal={onGenerateFinal} library={library} />
+              onSelect={onSelectMaterial} onGenerateFinal={onGenerateFinal} library={library} />
             : <>
-                {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
-                {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
-              </>
+              {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
+              {planText && <p className="text-[12.5px] text-gray-700 whitespace-pre-wrap leading-relaxed">{planText.slice(0, 600)}</p>}
+            </>
           }
         </div>
         {canSave && (
