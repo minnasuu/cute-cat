@@ -1,236 +1,40 @@
-/** 浏览器内统一走同源 /api（Vite 代理 / nginx），以便携带 httpOnly Cookie */
-export const getBackendUrl = (): string => '';
+/**
+ * 后端连接的少量「特化」入口。
+ *
+ * 模块定位:
+ *   - apiClient 是唯一通用 HTTP 层(token 刷新 / 502 归一 / Toast);
+ *   - 本文件只保留 apiClient 语义覆盖不到的「特例」:
+ *       1. Dify SSE 流式(需裸 Response + 中断保留片段)
+ *       2. 当前选择的 AI 模型(模块级可变状态)
+ *       3. 全局副作用回调(AI 用量更新 / 当前用户邮箱,由 AuthContext 注入)
+ *
+ * 工作流 / 助手 / 邮件 / 上传 / 文章 等资源型 CRUD 已全部迁移到 apiClient + teamApi,
+ * 不再在此处保留手写 fetch。
+ */
 
-/** 流式中断时是否保留片段（历史 HTML 整页或 React 沙箱 App） */
-function streamPartialLooksSalvageable(partial: string): boolean {
-  if (partial.length <= 400) return false;
-  const head = partial.slice(0, 4000);
-  if (/<!DOCTYPE\s+html|<html[\s>]/i.test(head)) return true;
-  if (/\bfunction\s+App\s*\(/.test(head) || /\bconst\s+App\s*=/.test(head)) return true;
-  return false;
-}
+import { apiClient } from './apiClient';
 
-// ==================== Auth ====================
+// ==================== 模块级可变状态(AI 模型选择) ====================
 
-export interface VerifyPasswordResponse {
-  success: boolean;
-  message: string;
-  token?: string;
-}
+let _currentAIModel = 'longcat';
 
-export const verifyEditorPassword = async (password: string): Promise<VerifyPasswordResponse> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/auth/verify-editor-password`;
+export const setCurrentAIModel = (model: string) => { _currentAIModel = model; };
+export const getCurrentAIModel = () => _currentAIModel;
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
+// ==================== 全局副作用回调 ====================
 
-    const data: VerifyPasswordResponse = await response.json();
-    return data;
-  } catch (error) {
-    const localPassword = import.meta.env.VITE_EDITOR_PASSWORD;
-    if (localPassword && password === localPassword) {
-      console.warn('[Auth] Backend unreachable, using local env fallback');
-      return { success: true, message: '本地验证成功' };
-    }
-    console.error('Error verifying password:', error);
-    throw error;
-  }
+/** 流式 / 非流式 AI 调用后自动更新用量到 AuthContext */
+let _onAiUsageUpdate: ((aiUsed: number, aiQuota?: number) => void) | null = null;
+export const setOnAiUsageUpdate = (cb: ((aiUsed: number, aiQuota?: number) => void) | null) => {
+  _onAiUsageUpdate = cb;
 };
 
-// ==================== Workflows API ====================
+/** 全局获取当前登录用户邮箱(供 Dify 后端的 user 标识) */
+let _getCurrentUserEmail: (() => string | null) | null = null;
+export const setGetCurrentUserEmail = (fn: (() => string | null) | null) => { _getCurrentUserEmail = fn; };
+export const getCurrentUserEmail = (): string | null => (_getCurrentUserEmail ? _getCurrentUserEmail() : null);
 
-export interface WorkflowStep {
-  stepId?: string;
-  agentId: string;
-  inputFrom?: string;
-}
-
-export interface WorkflowDB {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  steps: WorkflowStep[];
-  startTime?: string | null;
-  endTime?: string | null;
-  scheduled: boolean;
-  scheduledEnabled: boolean;
-  cron?: string | null;
-  persistent: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateWorkflowRequest {
-  name: string;
-  description: string;
-  steps: WorkflowStep[];
-  startTime?: string;
-  endTime?: string;
-  scheduled?: boolean;
-  scheduledEnabled?: boolean;
-  cron?: string;
-  persistent?: boolean;
-}
-
-export const fetchWorkflows = async (): Promise<WorkflowDB[]> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/workflows`;
-
-  try {
-    const response = await fetch(url, { credentials: 'include' });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch workflows: ${response.status}`);
-    }
-    const data: WorkflowDB[] = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error fetching workflows:', error);
-    return [];
-  }
-};
-
-export const fetchWorkflowById = async (id: string): Promise<WorkflowDB> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/workflows/${id}`;
-
-  try {
-    const response = await fetch(url, { credentials: 'include' });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch workflow ${id}: ${response.status}`);
-    }
-    const data: WorkflowDB = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching workflow ${id}:`, error);
-    throw error;
-  }
-};
-
-export const createWorkflow = async (workflow: CreateWorkflowRequest): Promise<WorkflowDB> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/workflows`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(workflow),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to create workflow: ${response.status}`);
-    }
-    const data: WorkflowDB = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error creating workflow:', error);
-    throw error;
-  }
-};
-
-export const updateWorkflow = async (id: string, workflow: Partial<CreateWorkflowRequest>): Promise<WorkflowDB> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/workflows/${id}`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(workflow),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update workflow: ${response.status}`);
-    }
-    const data: WorkflowDB = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error updating workflow:', error);
-    throw error;
-  }
-};
-
-export const deleteWorkflow = async (id: string): Promise<void> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/workflows/${id}`;
-
-  try {
-    const response = await fetch(url, { method: 'DELETE', credentials: 'include' });
-    if (!response.ok) {
-      throw new Error(`Failed to delete workflow: ${response.status}`);
-    }
-  } catch (error) {
-    console.error('Error deleting workflow:', error);
-    throw error;
-  }
-};
-
-// ==================== Assistants API ====================
-
-export interface AssistantDB {
-  id: string;
-  assistantId: string;
-  name: string;
-  role: string;
-  description: string;
-  accent: string;
-  systemPrompt: string;
-  item: string;
-  catColors: any;
-  messages: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const fetchAssistants = async (): Promise<AssistantDB[]> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/assistants`;
-
-  try {
-    const response = await fetch(url, { credentials: 'include' });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch assistants: ${response.status}`);
-    }
-    const data: AssistantDB[] = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error fetching assistants:', error);
-    return [];
-  }
-};
-
-export const seedAssistants = async (assistants: any[]): Promise<any> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/assistants/seed`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assistants }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to seed assistants: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Error seeding assistants:', error);
-    throw error;
-  }
-};
-
-// ==================== AI Skills ====================
+// ==================== Dify 技能响应类型 ====================
 
 export interface DifySkillResponse {
   answer: string;
@@ -240,62 +44,45 @@ export interface DifySkillResponse {
   aiQuota?: number;
 }
 
-let _currentAIModel: string = 'longcat';
+// ==================== 内部辅助 ====================
 
-export const setCurrentAIModel = (model: string) => { _currentAIModel = model; };
-export const getCurrentAIModel = () => _currentAIModel;
-
-/** 全局回调：AI 调用后自动更新用量到 AuthContext */
-let _onAiUsageUpdate: ((aiUsed: number, aiQuota?: number) => void) | null = null;
-export const setOnAiUsageUpdate = (cb: ((aiUsed: number, aiQuota?: number) => void) | null) => { _onAiUsageUpdate = cb; };
-
-/** 全局获取当前登录用户邮箱 */
-let _getCurrentUserEmail: (() => string | null) | null = null;
-export const setGetCurrentUserEmail = (fn: (() => string | null) | null) => { _getCurrentUserEmail = fn; };
-export const getCurrentUserEmail = (): string | null => _getCurrentUserEmail ? _getCurrentUserEmail() : null;
-
-export interface AIModelInfo {
-  id: string;
-  name: string;
-  provider: string;
-  available: boolean;
+/** 流式中断时是否保留片段(历史 HTML 整页或 React 沙箱 App) */
+function streamPartialLooksSalvageable(partial: string): boolean {
+  if (partial.length <= 400) return false;
+  const head = partial.slice(0, 4000);
+  if (/<!DOCTYPE\s+html|<html[\s>]/i.test(head)) return true;
+  if (/\bfunction\s+App\s*\(/.test(head) || /\bconst\s+App\s*=/.test(head)) return true;
+  return false;
 }
 
-export const fetchAIModels = async (): Promise<{ models: AIModelInfo[]; default: string }> => {
-  const backendUrl = getBackendUrl();
-  try {
-    const response = await fetch(`${backendUrl}/api/dify/models`, { credentials: 'include' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  } catch {
-    return {
-      models: [
-        { id: 'longcat', name: 'LongCat-2.0', provider: 'Anthropic 兼容', available: true },
-        { id: 'qwen', name: 'Qwen', provider: 'Alibaba', available: true },
-        { id: 'glm', name: 'GLM', provider: '智谱', available: true },
-      ],
-      default: 'longcat',
-    };
-  }
-};
+// ==================== Dify 流式 AI 调用 ====================
+
+export interface CallDifyStreamOptions {
+  systemPrompt?: string;
+  maxTokens?: number;
+  streamTimeoutMs?: number;
+}
 
 /**
- * 流式 AI 调用：通过 SSE 逐块返回 AI 生成内容
- * @param onChunk 每收到一块文本时的回调
- * @returns 最终完整结果
+ * 流式 AI 调用:通过 SSE 逐块返回 AI 生成内容。
+ *
+ * 仍保留手写 SSE 解析,因为需要:
+ *   - 裸 Response 以逐块读取 ReadableStream;
+ *   - 中断/超时时保留已收到的流式片段(streamPartialLooksSalvageable);
+ *   - 通过 localStorage.accessToken 透传 Bearer(与 apiClient 的 cookie 双轨)。
+ *
+ * 401 刷新 / 网络错误归一已下沉到 apiClient.raw。
  */
 export const callDifySkillStream = async (
   taskId: string,
   text: string,
   model?: string,
   onChunk?: (chunk: string, accumulated: string) => void,
-  options?: { systemPrompt?: string; maxTokens?: number; streamTimeoutMs?: number },
+  options?: CallDifyStreamOptions,
 ): Promise<DifySkillResponse> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/dify/skill/stream`;
+  const url = '/api/dify/skill/stream';
   const selectedModel = model || _currentAIModel;
   const streamTimeoutMs = options?.streamTimeoutMs ?? 120_000;
-  /** 提升到 try 外：流被中断/Abort 时仍能返回已收到的片段供前端修补 HTML */
   let fullAnswer = '';
 
   const ac = new AbortController();
@@ -310,7 +97,8 @@ export const callDifySkillStream = async (
     if (options?.systemPrompt) body.systemPrompt = options.systemPrompt;
     if (options?.maxTokens) body.maxTokens = options.maxTokens;
 
-    const response = await fetch(url, {
+    // apiClient.raw:享受 401 自动刷新,返回裸 Response 供流式读取
+    const response = await apiClient.raw(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -383,7 +171,9 @@ export const callDifySkillStream = async (
                 aiQuota: data.aiQuota,
               };
             }
-          } catch { /* skip malformed JSON */ }
+          } catch {
+            /* skip malformed JSON */
+          }
         }
       }
     }
@@ -412,268 +202,5 @@ export const callDifySkillStream = async (
       return { answer: partial };
     }
     return { answer: partial, error: errMsg };
-  }
-};
-
-export const callDifySkill = async (taskId: string, text: string, model?: string): Promise<DifySkillResponse> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/dify/skill`;
-  const selectedModel = model || _currentAIModel;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId, text, model: selectedModel }),
-    });
-
-    // 先检查 content-type，避免 504 等返回 HTML 时 json() 解析失败
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      const errText = await response.text().catch(() => '');
-      console.error(`[callDifySkill] Non-JSON response (${response.status}):`, errText.slice(0, 200));
-      return { answer: '', error: `HTTP ${response.status} (${response.statusText || 'timeout'})` };
-    }
-
-    const data = await response.json();
-    if (!response.ok) {
-      const errMsg = data.message ? `${data.error}: ${data.message}` : (data.error || `HTTP ${response.status}`);
-      return { answer: '', error: errMsg, aiUsed: data.aiUsed, aiQuota: data.aiQuota };
-    }
-    // 自动更新 AI 用量
-    if (data.aiUsed !== undefined && _onAiUsageUpdate) {
-      _onAiUsageUpdate(data.aiUsed, data.aiQuota);
-    }
-    return data;
-  } catch (error) {
-    console.error(`Error calling AI skill [${taskId}] (model=${selectedModel}):`, error);
-    return { answer: '', error: String(error) };
-  }
-};
-
-// ==================== Email ====================
-
-export interface SendEmailRequest {
-  to: string;
-  subject: string;
-  html?: string;
-  text?: string;
-}
-
-export interface SendEmailResponse {
-  success: boolean;
-  messageId?: string;
-  to?: string;
-  subject?: string;
-  error?: string;
-}
-
-export const sendEmail = async (req: SendEmailRequest): Promise<SendEmailResponse> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/email/send`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, error: data.error || `HTTP ${response.status}` };
-    }
-    return data;
-  } catch (error) {
-    console.error('Error sending email:', error);
-    return { success: false, error: String(error) };
-  }
-};
-
-// ==================== Workflow Runs API ====================
-
-export interface WorkflowRunDB {
-  id: string;
-  workflowId?: string | null;
-  workflowName: string;
-  agentId: string;
-  stepIndex: number;
-  summary: string;
-  result: string;
-  status: string;
-  executedAt: string;
-  duration?: number | null;
-  createdAt: string;
-}
-
-export interface CreateWorkflowRunRequest {
-  workflowId?: string | null;
-  workflowName: string;
-  agentId: string;
-  stepIndex?: number;
-  summary: string;
-  result: string;
-  status: string;
-  duration?: number | null;
-  executedAt?: string;
-}
-
-export interface FetchWorkflowRunsResponse {
-  runs: WorkflowRunDB[];
-  total: number;
-}
-
-export const fetchWorkflowRuns = async (params?: {
-  limit?: number;
-  offset?: number;
-  agentId?: string;
-  workflowId?: string;
-  status?: string;
-}): Promise<FetchWorkflowRunsResponse> => {
-  const backendUrl = getBackendUrl();
-  const query = new URLSearchParams();
-  if (params?.limit) query.set('limit', String(params.limit));
-  if (params?.offset) query.set('offset', String(params.offset));
-  if (params?.agentId) query.set('agentId', params.agentId);
-  if (params?.workflowId) query.set('workflowId', params.workflowId);
-  if (params?.status) query.set('status', params.status);
-  const url = `${backendUrl}/api/workflow-runs?${query.toString()}`;
-
-  try {
-    const response = await fetch(url, { credentials: 'include' });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch workflow runs: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching workflow runs:', error);
-    return { runs: [], total: 0 };
-  }
-};
-
-export const createWorkflowRun = async (run: CreateWorkflowRunRequest): Promise<WorkflowRunDB | null> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/workflow-runs`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(run),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to create workflow run: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Error creating workflow run:', error);
-    return null;
-  }
-};
-
-export const batchCreateWorkflowRuns = async (runs: CreateWorkflowRunRequest[]): Promise<number> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/workflow-runs/batch`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runs }),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to batch create workflow runs: ${response.status}`);
-    }
-    const data = await response.json();
-    return data.count;
-  } catch (error) {
-    console.error('Error batch creating workflow runs:', error);
-    return 0;
-  }
-};
-
-// ==================== Workbench Run Update (for landing page editor) ====================
-
-export interface UpdateWorkflowRunRequest {
-  status?: string;
-  steps?: unknown;
-  completedAt?: string;
-  totalDuration?: number | null;
-}
-
-export const updateWorkflowRun = async (
-  runId: string,
-  payload: UpdateWorkflowRunRequest,
-): Promise<any> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/workflows/runs/${encodeURIComponent(runId)}`;
-
-  const response = await fetch(url, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Failed to update workflow run: HTTP ${response.status} ${text.slice(0, 200)}`);
-  }
-  return response.json().catch(() => ({}));
-};
-
-// ==================== Uploads ====================
-
-export interface UploadImageResponse {
-  url: string;
-}
-
-export const uploadImage = async (args: {
-  file: File;
-  runId?: string;
-}): Promise<UploadImageResponse> => {
-  const backendUrl = getBackendUrl();
-  const url = `${backendUrl}/api/uploads/image`;
-
-  const form = new FormData();
-  form.append("image", args.file);
-  if (args.runId) form.append("runId", args.runId);
-
-  const response = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    body: form,
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Failed to upload image: HTTP ${response.status} ${text.slice(0, 200)}`);
-  }
-  return response.json();
-};
-
-// ==================== Articles & Crafts (simplified stubs) ====================
-
-export const fetchArticles = async (): Promise<any[]> => {
-  const backendUrl = getBackendUrl();
-  try {
-    const response = await fetch(`${backendUrl}/api/articles`, { credentials: 'include' });
-    if (!response.ok) return [];
-    return await response.json();
-  } catch {
-    return [];
-  }
-};
-
-export const fetchCrafts = async (): Promise<any[]> => {
-  const backendUrl = getBackendUrl();
-  try {
-    const response = await fetch(`${backendUrl}/api/crafts`, { credentials: 'include' });
-    if (!response.ok) return [];
-    return await response.json();
-  } catch {
-    return [];
   }
 };

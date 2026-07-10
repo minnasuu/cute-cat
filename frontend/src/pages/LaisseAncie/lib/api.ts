@@ -42,10 +42,7 @@ export function teamApi(teamId: string) {
       return _apiClient.get(pre(`/inspirations${qstr ? `?${qstr}` : ''}`));
     },
     uploadInspiration: (formData: FormData) =>
-      fetch(pre('/inspirations'), { method: 'POST', body: formData, credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error(`API ${r.status}`);
-        return r.json();
-      }),
+      _apiClient.post(pre('/inspirations'), formData),
     touchInspiration: (id: string) => _apiClient.post(pre(`/inspirations/${id}/touch`), {}),
     analyzeInspiration: (id: string) => _apiClient.post(pre(`/inspirations/${id}/analyze`), {}),
     deleteInspiration: (id: string) => _apiClient.delete(pre(`/inspirations/${id}`)),
@@ -58,10 +55,7 @@ export function teamApi(teamId: string) {
     deleteMaterial: (id: string) => _apiClient.delete(pre(`/materials/${id}`)),
     // 材料参考图上传(multipart, field "file") —— 返回 { id, url }
     uploadMaterialImage: (id: string, formData: FormData) =>
-      fetch(pre(`/materials/${id}/image`), { method: 'POST', body: formData, credentials: 'include' }).then((r) => {
-        if (!r.ok) throw new Error(`API ${r.status}`);
-        return r.json();
-      }),
+      _apiClient.post(pre(`/materials/${id}/image`), formData),
 
     // skills
     listSkills: (category?: string) =>
