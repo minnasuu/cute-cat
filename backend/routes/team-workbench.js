@@ -141,7 +141,7 @@ router.get('/assets', asyncHandler(async (req, res) => {
     orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
   });
   res.json(assets);
-});
+}));
 
 // POST /api/teams/:teamId/assets — JSON body {kind,title,description,src,tags,seasons,pinned}
 router.post('/assets', asyncHandler(async (req, res) => {
@@ -162,7 +162,7 @@ router.post('/assets', asyncHandler(async (req, res) => {
     },
   });
   res.status(201).json(asset);
-});
+}));
 
 router.patch('/assets/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAVisualAsset, req.params.id, req.team.id);
@@ -170,14 +170,14 @@ router.patch('/assets/:id', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, ['kind', 'title', 'description', 'src', 'tags', 'seasons', 'pinned']);
   const asset = await prisma.lAVisualAsset.update({ where: { id: owned.id }, data });
   res.json(asset);
-});
+}));
 
 router.delete('/assets/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAVisualAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAVisualAsset.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── inspirations (灵感图) ──────────────────────────────────── */
 
@@ -204,7 +204,7 @@ router.get('/inspirations', asyncHandler(async (req, res) => {
   const hasMore = rows.length > take;
   const items = hasMore ? rows.slice(0, take) : rows;
   res.json({ items, nextCursor: hasMore ? items[items.length - 1].id : null, total });
-});
+}));
 
 // GET /api/teams/:teamId/inspirations/debug —— AI 配置诊断(返回各 provider 可用性)
 // 注意:上线后应删除或加 admin 校验
@@ -249,7 +249,7 @@ router.get('/inspirations/debug', asyncHandler(async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // POST /api/teams/:teamId/inspirations/debug —— 真正用一张图调 analyzeInspiration,看哪个 provider 能出 JSON
 // 注意:上线后应删除或加 admin 校验
@@ -265,7 +265,7 @@ router.post('/inspirations/debug', debugImageUpload, asyncHandler(async (req, re
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // POST /api/teams/:teamId/inspirations — multipart form-data with field "file"
 router.post('/inspirations', (req, res) => {
@@ -384,7 +384,7 @@ router.post('/inspirations/:id/analyze', asyncHandler(async (req, res) => {
     select: { id: true, analysisStatus: true, analysisError: true, category: true },
   });
   res.json({ ok: true, status, ...updated });
-});
+}));
 
 // PATCH /api/teams/:teamId/inspirations/:id — 更新 AI 分析/归类字段
 router.patch('/inspirations/:id', asyncHandler(async (req, res) => {
@@ -397,7 +397,7 @@ router.patch('/inspirations/:id', asyncHandler(async (req, res) => {
   ]);
   const row = await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data });
   res.json(row);
-});
+}));
 
 // PATCH /api/teams/:teamId/inspirations/:id/image — 替换灵感图片
 // multipart form-data with field "file";只换图(url/bytes/mime),保留 category/visualStyle 等
@@ -440,14 +440,14 @@ router.post('/inspirations/:id/touch', asyncHandler(async (req, res) => {
     select: { id: true, useCount: true },
   });
   res.json(row);
-});
+}));
 
 router.delete('/inspirations/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAInspirationAsset.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── materials (面料·工艺·辅材·毛线·串珠) ─────────────────── */
 
@@ -457,7 +457,7 @@ router.get('/materials', asyncHandler(async (req, res) => {
   if (category && category !== 'all') where.category = String(category);
   const rows = await prisma.lAMaterial.findMany({ where, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
   res.json(rows);
-});
+}));
 
 router.post('/materials', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, [
@@ -503,7 +503,7 @@ router.post('/materials', asyncHandler(async (req, res) => {
     },
   });
   res.status(201).json(mat);
-});
+}));
 
 router.patch('/materials/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
@@ -518,7 +518,7 @@ router.patch('/materials/:id', asyncHandler(async (req, res) => {
   ]);
   const mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data });
   res.json(mat);
-});
+}));
 
 // POST /api/teams/:teamId/materials/:id/image —— 上传/替换材料参考图
 // multipart form-data, field "file";写入材料的 image 字段
@@ -554,7 +554,7 @@ router.delete('/materials/:id', asyncHandler(async (req, res) => {
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAMaterial.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── skills 知识库(团队级通用) ──────────────────────────────── */
 /* 引入 10 phase taxonomy 的校验 + 旧 6 key 兼容 */
@@ -573,7 +573,7 @@ router.get('/skills', asyncHandler(async (req, res) => {
   }
   const rows = await prisma.lASkillArticle.findMany({ where, orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }] });
   res.json(rows);
-});
+}));
 
 router.post('/skills', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, [
@@ -603,7 +603,7 @@ router.post('/skills', asyncHandler(async (req, res) => {
     },
   });
   res.status(201).json(a);
-});
+}));
 
 router.patch('/skills/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lASkillArticle, req.params.id, req.team.id);
@@ -622,14 +622,14 @@ router.patch('/skills/:id', asyncHandler(async (req, res) => {
   }
   const a = await prisma.lASkillArticle.update({ where: { id: owned.id }, data });
   res.json(a);
-});
+}));
 
 router.delete('/skills/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lASkillArticle, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lASkillArticle.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── products (设计稿 → lookbook 总表) ─────────────────────── */
 
@@ -640,7 +640,7 @@ router.get('/products', asyncHandler(async (req, res) => {
   if (status) where.status = String(status);
   const rows = await prisma.lAProduct.findMany({ where, orderBy: [{ updatedAt: 'desc' }] });
   res.json(rows);
-});
+}));
 
 router.post('/products', asyncHandler(async (req, res) => {
   const data = req.body ?? {};
@@ -682,7 +682,7 @@ router.post('/products', asyncHandler(async (req, res) => {
     },
   });
   res.status(201).json(p);
-});
+}));
 
 router.patch('/products/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
@@ -695,7 +695,7 @@ router.patch('/products/:id', asyncHandler(async (req, res) => {
   }
   const p = await prisma.lAProduct.update({ where: { id: owned.id }, data: update });
   res.json(p);
-});
+}));
 
 // POST /api/teams/:teamId/products/:id/advance
 router.post('/products/:id/advance', asyncHandler(async (req, res) => {
@@ -714,14 +714,14 @@ router.post('/products/:id/advance', asyncHandler(async (req, res) => {
     data: { status: next, statusHistory: [...(owned.statusHistory || []), entry] },
   });
   res.json(p);
-});
+}));
 
 router.delete('/products/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAProduct.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── collections (系列 / 专题) ──────────────────────────────── */
 
@@ -732,7 +732,7 @@ router.get('/collections', asyncHandler(async (req, res) => {
     include: { products: { select: { id: true, title: true, status: true } } },
   });
   res.json(rows);
-});
+}));
 
 router.post('/collections', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, ['mode', 'title', 'occasion', 'theme', 'seasons', 'palette', 'designerNote']);
@@ -750,7 +750,7 @@ router.post('/collections', asyncHandler(async (req, res) => {
     },
   });
   res.status(201).json(c);
-});
+}));
 
 router.patch('/collections/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lACollection, req.params.id, req.team.id);
@@ -758,14 +758,14 @@ router.patch('/collections/:id', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, ['mode', 'title', 'occasion', 'theme', 'seasons', 'palette', 'designerNote']);
   const c = await prisma.lACollection.update({ where: { id: owned.id }, data });
   res.json(c);
-});
+}));
 
 router.delete('/collections/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lACollection, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lACollection.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── chat proxy → SSE 流式(设计主流程) ──────────────────────── */
 
@@ -833,6 +833,6 @@ router.post('/chat', asyncHandler(async (req, res) => {
     clearTimeout(hardTimeout);
   }
   endSSE();
-});
+}));
 
 module.exports = router;
