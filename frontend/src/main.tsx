@@ -1,20 +1,28 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import LandingPage from './pages/LandingPage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import DashboardPage from './pages/DashboardPage';
-import DashboardHistoryPage from "./pages/DashboardPage/HistoryPage";
-import CommunityPage from './pages/CommunityPage';
 import { ToastProvider } from './components/Toast';
 import './styles/index.css';
-import { VibeAssets } from './pages/VibeAssets';
-import { LaisseAncieApp } from './pages/LaisseAncie';
-import AdminWorkflowsPage from './pages/AdminWorkflowsPage';
+
+// 首屏关键路径(Landing / Auth)保持同步,其余按路由懒加载以减小主包
+import LandingPage from './pages/LandingPage';
+import LoginPage from './pages/LoginPage';
+
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const DashboardHistoryPage = lazy(() => import('./pages/DashboardPage/HistoryPage'));
+const CommunityPage = lazy(() => import('./pages/CommunityPage'));
+const VibeAssets = lazy(() => import('./pages/VibeAssets').then((m) => ({ default: m.VibeAssets })));
+const LaisseAncieApp = lazy(() =>
+  import('./pages/LaisseAncie').then((m) => {
+    const Comp = (m as { LaisseAncieApp: React.ComponentType }).LaisseAncieApp;
+    return { default: Comp };
+  }),
+);
+const AdminWorkflowsPage = lazy(() => import('./pages/AdminWorkflowsPage'));
 
 const LoadingScreen = () => (
   <div className="min-h-screen flex items-center justify-center text-text-tertiary">加载中...</div>
@@ -60,6 +68,7 @@ const App: React.FC = () => {
       <LanguageProvider>
         <AuthProvider>
           <BrowserRouter>
+            <Suspense fallback={<LoadingScreen />}>
             <Routes>
               {/* Landing - only for guests */}
               <Route path="/" element={<LandingRoute />} />
@@ -137,6 +146,7 @@ const App: React.FC = () => {
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </AuthProvider>
       </LanguageProvider>
