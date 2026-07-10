@@ -327,7 +327,7 @@ function toAbsoluteImageUrl(publicUrl) {
 async function runInspirationAnalysis(id, filePath, publicUrl) {
   try {
     // 直接用过 Ark 能拉取的图片 URL(不再绕回读本地磁盘),省 base64 传输且绕过本地文件路径错位
-    const imageUrl = toAbsoluteImageUrl(publicUrl);
+    let imageUrl = toAbsoluteImageUrl(publicUrl);
 
     // 从 url 中解析 mime: 取文件扩展名
     const ext = path.extname(publicUrl || filePath || '').toLowerCase();
@@ -335,7 +335,22 @@ async function runInspirationAnalysis(id, filePath, publicUrl) {
       : ext === '.png' ? 'image/png'
       : ext === '.webp' ? 'image/webp'
       : 'image/jpeg';
-    const { result, error } = await analyzeInspiration(null, mime, imageUrl);
+
+    // 诊断:排查 400 MissingParameter:input.content.image_url(空 URL 直接送 Ark)
+    console.log(`[team-workbench] inspiration ${id} analyze: mode=${storage.mode}, publicUrl=${publicUrl}, imageUrl=${imageUrl}, filePath=${filePath}`);
+
+    // 保护:imageUrl 为空时,回退到读最终落盘位置拼 buffer(避免空 URL 送 Ark 报 400)
+    let buf = null;
+    if (!imageUrl) {
+      // 用 storage.UPLOAD_ROOT + publicUrl(不含 /uploads 前缀)拼出本地真实路径
+      const localRel = publicUrl && publicUrl.replace(/^\/uploads\//, '');
+      const localAbs = localRel ? path.join(storage.UPLOAD_ROOT, localRel) : filePath;
+      if (localAbs && fs.existsSync(localAbs)) {
+        buf = fs.readFileSync(localAbs);
+        console.log(`[team-workbench] inspiration ${id}: imageUrl empty, fallback to buffer(${buf.length}B) from ${localAbs}`);
+      }
+    }
+    const { result, error } = await analyzeInspiration(buf, mime, imageUrl || undefined);
     if (!result) {
       // AI 接口失败 / 返回空 / JSON 解析失败 → 写 failed + analysisError,避免前端永久 "analysing…"
       console.warn(`[team-workbench] inspiration ${id} analysis failed: ${error}`);

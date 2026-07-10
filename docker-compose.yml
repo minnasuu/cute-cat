@@ -66,6 +66,10 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4000,http://localhost:5173}
       # 豆包大 system prompt 场景首 token 延迟高,聊天硬超时上限(默认 180s);首 token 诊断日志定位后可回调
       LAISSE_ANCIE_CHAT_TIMEOUT_MS: ${LAISSE_ANCIE_CHAT_TIMEOUT_MS:-300000}
+      # SeedDream 大尺寸生图首 token + 生成常超 120s,提到 300s
+      IMAGE_TIMEOUT_MS: ${IMAGE_TIMEOUT_MS:-300000}
+      # Ark 灵感视觉分析超时(默认 90s)
+      INSPIRATION_AI_TIMEOUT_MS: ${INSPIRATION_AI_TIMEOUT_MS:-120000}
     depends_on:
       db:
         condition: service_healthy

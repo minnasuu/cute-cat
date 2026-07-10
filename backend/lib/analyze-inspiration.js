@@ -153,7 +153,8 @@ async function analyzeInspiration(imageBuffer, mimeType, imageUrl) {
 
   let lastError = 'key';
   try {
-    console.log(`[analyze-inspiration] Ark model=${model}, via=${imageUrl ? 'url' : 'base64'}`);
+    // 诊断:截断打印 imageRef 前 60 字符,排查空 URL / 错误格式(400 MissingParameter 时直接对照)
+    console.log(`[analyze-inspiration] Ark model=${model}, via=${imageUrl ? 'url' : 'base64'}, imageRef=${imageRef.slice(0, 60)}…`);
     const { raw, error } = await analyzeArk({ apiKey, baseUrl, model, dataUrl: imageRef, timeoutMs });
     if (error) {
       if (error.startsWith('empty:')) {

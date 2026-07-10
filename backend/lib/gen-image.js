@@ -117,8 +117,8 @@ async function generateImage(prompt, opts) {
   const size = cfg.sizeMap[String(aspectRatio)] || cfg.fallbackSize;
   const source = `${provider}:${model}/${size}`;
 
-  // 单张生成超时(默认 120s)——CogView 30~90s,SeedDream 可能更长
-  const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 120000;
+  // 单张生成超时(默认 300s)——SeedDream 大尺寸图首 token + 生成常超 120s
+  const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 300000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
 
