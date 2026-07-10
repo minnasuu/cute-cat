@@ -51,7 +51,7 @@ function mediaTypeToExtension(mimeType) {
 }
 
 // ─── Ark Seed 视觉模型 (POST /responses) ─────────────────────
-async function analyzeArk({ apiKey, baseUrl, model, dataUrl, timeoutMs }) {
+async function analyzeArk({ apiKey, baseUrl, model, imageRef, timeoutMs }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res;
@@ -64,7 +64,7 @@ async function analyzeArk({ apiKey, baseUrl, model, dataUrl, timeoutMs }) {
         input: [{
           role: 'user',
           content: [
-            { type: 'input_image', image_url: dataUrl },
+            { type: 'input_image', image_url: imageRef },
             { type: 'input_text', text: PROMPT },
           ],
         }],
@@ -117,14 +117,14 @@ async function analyzeArk({ apiKey, baseUrl, model, dataUrl, timeoutMs }) {
   return { raw };
 }
 
-async function analyzeInspiration(imageBuffer, mimeType) {
-  if (!imageBuffer || !imageBuffer.length) {
-    return { result: null, error: 'file' };
-  }
-  const ext = mediaTypeToExtension(mimeType);
-  if (!ext) {
-    return { result: null, error: 'mime' };
-  }
+/**
+ * AI 视觉分析灵感图片。
+ * 两种二选一输入(优先 imageUrl):
+ *   - imageUrl: 图片 HTTP(S) URL 或 base64 data URL,直接给 Ark 服务端拉取(推荐,省 base64 传输)
+ *   - imageBuffer + mimeType: 本地 buffer → base64 data URL(兜底)
+ * 返回 { result, error }(error 为 'file'|'mime'|'key'|'api:..' 等,供前端/重试接口定位)
+ */
+async function analyzeInspiration(imageBuffer, mimeType, imageUrl) {
   // 视觉分析需要更长的超时:图片 base64 传输 + 视觉模型推理 + 4 维度 JSON 生成 (默认 90s)
   const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 90000;
 
@@ -135,12 +135,26 @@ async function analyzeInspiration(imageBuffer, mimeType) {
   }
   const baseUrl = (process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/+$/, '');
   const model = (process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628').trim();
-  const dataUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+
+  // 决定给 Ark 的图片引用:优先外部 URL,否则把 buffer 编码为 base64 data URL
+  let imageRef;
+  if (imageUrl) {
+    imageRef = imageUrl;
+  } else {
+    if (!imageBuffer || !imageBuffer.length) {
+      return { result: null, error: 'file' };
+    }
+    const ext = mediaTypeToExtension(mimeType);
+    if (!ext) {
+      return { result: null, error: 'mime' };
+    }
+    imageRef = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+  }
 
   let lastError = 'key';
   try {
-    console.log(`[analyze-inspiration] Ark model=${model}`);
-    const { raw, error } = await analyzeArk({ apiKey, baseUrl, model, dataUrl, timeoutMs });
+    console.log(`[analyze-inspiration] Ark model=${model}, via=${imageUrl ? 'url' : 'base64'}`);
+    const { raw, error } = await analyzeArk({ apiKey, baseUrl, model, dataUrl: imageRef, timeoutMs });
     if (error) {
       if (error.startsWith('empty:')) {
         // Ark 返回了但没提取到文本——携带响应结构到 error 里,便于排查

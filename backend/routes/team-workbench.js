@@ -311,40 +311,31 @@ router.post('/inspirations', (req, res) => {
   });
 });
 
+// 把/publicUrl 转成 Ark 可访问的绝对 URL
+//  - 已是 http(s):// → 直接返回(S3 公网 / data URL)
+//  - /uploads/... 相对路径 → 用 FRONTEND_URL 拼成绝对 URL(本地模式,走前端同域反代访问 /uploads)
+function toAbsoluteImageUrl(publicUrl) {
+  if (!publicUrl) return publicUrl;
+  if (/^https?:\/\//i.test(publicUrl) || publicUrl.startsWith('data:')) return publicUrl;
+  const base = (process.env.FRONTEND_URL || '').split(',')[0].trim().replace(/\/+$/, '');
+  return base ? `${base.replace(/\/+$/, '')}${publicUrl}` : publicUrl;
+}
+
 // 异步分析灵感图片,失败把原因写入 analysisError(供前端重试接口返回)
 // 返回 'success' | 'failed',调用方可据此响应前端
-// filePath:本地绝对路径(本地模式);publicUrl:公网 URL(所有模式,含 S3)
+// filePath:本地绝对路径(本地模式,保留以兼容,已不再用于读图);publicUrl:公网 URL(所有模式,含 S3)
 async function runInspirationAnalysis(id, filePath, publicUrl) {
   try {
-    let buf;
-    if (storage.mode === 'local') {
-      // filePath = /app/backend/uploads/... 本地绝对路径
-      if (!filePath || !fs.existsSync(filePath)) {
-        const reason = `file:${filePath || '(none)'}`;
-        console.warn(`[team-workbench] image file not found: ${filePath}`);
-        await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: reason } }).catch(() => {});
-        return 'failed';
-      }
-      buf = fs.readFileSync(filePath);
-    } else {
-      // S3 模式:从公网 URL 下载 bytes
-      try {
-        const r = await fetch(publicUrl);
-        if (!r.ok) throw new Error(`download ${publicUrl} HTTP ${r.status}`);
-        buf = Buffer.from(await r.arrayBuffer());
-      } catch (e) {
-        console.warn(`[team-workbench] download image for analysis failed: ${e.message}`);
-        await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: `net:${e.message}` } }).catch(() => {});
-        return 'failed';
-      }
-    }
+    // 直接用过 Ark 能拉取的图片 URL(不再绕回读本地磁盘),省 base64 传输且绕过本地文件路径错位
+    const imageUrl = toAbsoluteImageUrl(publicUrl);
+
     // 从 url 中解析 mime: 取文件扩展名
-    const ext = path.extname(filePath).toLowerCase();
+    const ext = path.extname(publicUrl || filePath || '').toLowerCase();
     const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
       : ext === '.png' ? 'image/png'
       : ext === '.webp' ? 'image/webp'
       : 'image/jpeg';
-    const { result, error } = await analyzeInspiration(buf, mime);
+    const { result, error } = await analyzeInspiration(null, mime, imageUrl);
     if (!result) {
       // AI 接口失败 / 返回空 / JSON 解析失败 → 写 failed + analysisError,避免前端永久 "analysing…"
       console.warn(`[team-workbench] inspiration ${id} analysis failed: ${error}`);
