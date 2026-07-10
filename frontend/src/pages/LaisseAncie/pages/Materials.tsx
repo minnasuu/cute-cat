@@ -228,7 +228,7 @@ function MaterialCard({ mat }: { mat: MaterialRow }) {
   );
 }
 
-function SwatchStrip({ colors }: { colors: string[] }) {
+export function SwatchStrip({ colors }: { colors: string[] }) {
   if (!colors.length) return <div className="bg-gray-100 w-full h-full" />;
   const slice = colors.slice(0, 6);
   return (

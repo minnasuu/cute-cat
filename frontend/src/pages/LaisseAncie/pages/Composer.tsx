@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Composer —— Laisse Ancie 时尚设计主工作台(多阶段工作流)。
  *
@@ -11,7 +10,7 @@
  *
  * 每轮 AI 回复末尾用 <!--STAGE:xxx--> 标记当前阶段,前端解析推进 UI。
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useDesignStore } from "../store/design";
 import { useSkillStore } from "../store/skill";
@@ -27,11 +26,22 @@ import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { Markdown } from "../lib/markdown";
 import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
-import type { InspirationItem } from "../store/resource";
+import { SwatchStrip } from "../pages/Materials";
 
-type DesignStage = "greeting" | "brainstorming" | "planning" | "generating" | "presenting" | "presenting-html"
+type DesignStage =
+  | "greeting"
+  | "references"
+  | "proposal"
+  | "brainstorming"
+  | "planning"
+  | "generating"
+  | "presenting"
+  | "presenting-html"
   // 线稿→材料→成图(仅 single / collection)
-  | "generating-lineart" | "presenting-lineart" | "material-select" | "generating-final";
+  | "generating-lineart"
+  | "presenting-lineart"
+  | "material-select"
+  | "generating-final";
 
 const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
 
@@ -155,6 +165,7 @@ async function streamChat(opts: {
   system: string;
   prompt: string;
   model: ModelId;
+  assistantId?: string;
   maxTokens?: number;
   onTick?: (accumulated: string) => void;
   onDone?: (finalText: string, accumulated: string) => void;
@@ -581,7 +592,7 @@ export default function ComposerPage({
     const now = new Date().toISOString();
     const mainImage = images.find((im) => im.url);
     // 收集所有可访问的图片(结构化数组,供 Lookbook 直接展示缩略图)
-    const productImages = images.filter((im) => im.url).map((im) => ({ slot: im.slot, label: im.label, url: im.url }));
+    const productImages = images.filter((im): im is typeof im & { url: string } => !!im.url).map((im) => ({ slot: im.slot, label: im.label, url: im.url }));
     const product: Product = {
       id: crypto.randomUUID(),
       mode,
@@ -780,7 +791,7 @@ export default function ComposerPage({
         {/* 桌面端侧栏:单品/系列/插画+图片=设计企划·材料选择 / 插画+HTML=画布预览 + 修图输入 */}
         {mode === "illustration" && illustOutputMode === "html"
           ? <IllustrationCanvas html={illustHtml} generating={illustBusy} stage={stage} illustHtml={illustHtml} onModify={regenerateHtml} onSaveToLookbook={saveToLookbook} />
-          : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} selectedMaterial={selectedMaterial} library={knowledge?.materials ?? []} />
+          : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} selectedMaterial={selectedMaterial} library={knowledge?.materials ?? []} onSelect={setSelectedMaterial} onGenerateFinal={generateFinal} />
         }
       </div>
       {/* 移动端抽屉(<md,跟主内容同级渲染) */}
@@ -843,7 +854,7 @@ function IllustrationCanvas({ html, generating, stage, onModify, onSaveToLookboo
 }
 
 /** 桌面端「设计企划 / 材料选择」侧栏(单品 / 系列 / 插画+图片 共用) —— 底部含录入 Lookbook 按钮 */
-function PlanSideBar({ planText, stage, images, onSaveToLookbook, selectedMaterial, library }: { planText: string; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void; selectedMaterial: MaterialRow | null; library: MaterialRow[] }) {
+function PlanSideBar({ planText, stage, images, onSaveToLookbook, selectedMaterial, library, onSelect, onGenerateFinal }: { planText: string; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void; selectedMaterial: MaterialRow | null; library: MaterialRow[]; onSelect: (m: MaterialRow) => void; onGenerateFinal: () => void }) {
   const canSave = stage === "presenting" && images.length > 0;
   // 材料选择面板(Phase 3 渲染推荐卡片);其他阶段显示设计企划
   const isMaterialSelect = stage === "material-select" || stage === "generating-final";
@@ -852,7 +863,7 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, selectedMateri
       <div className="flex-1 min-h-0">
         {isMaterialSelect
           ? <MaterialSelectPanel selectedMaterial={selectedMaterial} planText={planText}
-              onSelect={setSelectedMaterial} onGenerateFinal={generateFinal} library={library} />
+              onSelect={onSelect} onGenerateFinal={onGenerateFinal} library={library} />
           : <>
               <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计企划</div>
               {!planText && <p className="text-sm text-gray-500">完成方案后,这里会显示设计企划。</p>}
@@ -998,7 +1009,7 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
           <div className="text-[10px] uppercase tracking-wider text-gray-500">{isMaterialSelect ? "选材料" : "设计企划"}</div>
           <button
             onClick={onClose}
-            ariaLabel="关闭企划"
+            aria-label="关闭企划"
             className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
@@ -1040,7 +1051,7 @@ export function IllustrationCanvasDrawer({ html, generating, open, onClose, onMo
       >
         <div className="flex items-center justify-between mb-3">
           <div className="text-[10px] uppercase tracking-wider text-gray-500">画布预览</div>
-          <button onClick={onClose} ariaLabel="关闭画布" className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100">
+          <button onClick={onClose} aria-label="关闭画布" className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
