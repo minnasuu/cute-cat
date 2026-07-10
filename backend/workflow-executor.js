@@ -71,6 +71,8 @@ async function callArkStream(systemPrompt, userText, maxTokens = 4096, { onDelta
   const decoder = new TextDecoder();
   let buffer = '';
   let fullText = '';
+  const startedAt = Date.now();
+  let gotFirstDelta = false;
 
   for await (const chunk of reader) {
     buffer += decoder.decode(chunk, { stream: true });
@@ -84,11 +86,19 @@ async function callArkStream(systemPrompt, userText, maxTokens = 4096, { onDelta
         const json = JSON.parse(trimmed.slice(6));
         const delta = json.choices?.[0]?.delta?.content || '';
         if (delta) {
+          if (!gotFirstDelta) {
+            gotFirstDelta = true;
+            console.log(`[callArkStream] first delta after ${Date.now() - startedAt}ms, model=${model}`);
+          }
           fullText += delta;
           onDelta?.(delta);
         }
       } catch { /* skip malformed line */ }
     }
+  }
+  // 诊断:全程无 delta 几乎一定是首 token 超时或响应格式异常,便于区分排查
+  if (!gotFirstDelta) {
+    console.warn(`[callArkStream] no delta extracted in ${Date.now() - startedAt}ms, model=${model}, baseUrl=${baseUrl}`);
   }
   return fullText;
 }
