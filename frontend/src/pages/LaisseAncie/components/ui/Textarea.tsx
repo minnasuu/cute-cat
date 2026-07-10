@@ -1,10 +1,9 @@
-// @ts-nocheck
-import { forwardRef, TextareaHTMLAttributes } from "react";
+import { forwardRef, type TextareaHTMLAttributes } from "react";
 
 interface Props extends TextareaHTMLAttributes<HTMLTextAreaElement> { }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, Props>(({ className = "", onKeyDown, ...rest }, ref) => {
-  function autoGrow(e: React.ChangeEvent<HTMLTextAreaElement>) {
+  function autoGrow(e: React.SyntheticEvent<HTMLTextAreaElement>) {
     const el = e.currentTarget;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;

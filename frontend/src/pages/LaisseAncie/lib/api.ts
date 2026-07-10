@@ -21,13 +21,13 @@ export function teamApi(teamId: string) {
   return {
     // brand
     getBrand: () => _apiClient.get(pre('/brand')),
-    patchBrand: (body: any) => _apiClient.patch(pre('/brand'), body),
+    patchBrand: (body: Record<string, unknown>) => _apiClient.patch(pre('/brand'), body),
 
     // assets(通用资产)
     listAssets: (kind?: string) =>
       _apiClient.get(pre(kind && kind !== 'all' ? `/assets?kind=${encodeURIComponent(kind)}` : '/assets')),
-    createAsset: (body: any) => _apiClient.post(pre('/assets'), body),
-    updateAsset: (id: string, body: any) => _apiClient.patch(pre(`/assets/${id}`), body),
+    createAsset: (body: Record<string, unknown>) => _apiClient.post(pre('/assets'), body),
+    updateAsset: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/assets/${id}`), body),
     deleteAsset: (id: string) => _apiClient.delete(pre(`/assets/${id}`)),
 
     // inspirations
@@ -50,8 +50,8 @@ export function teamApi(teamId: string) {
     // materials
     listMaterials: (category?: string) =>
       _apiClient.get(pre(category && category !== 'all' ? `/materials?category=${encodeURIComponent(category)}` : '/materials')),
-    createMaterial: (body: any) => _apiClient.post(pre('/materials'), body),
-    updateMaterial: (id: string, body: any) => _apiClient.patch(pre(`/materials/${id}`), body),
+    createMaterial: (body: Record<string, unknown>) => _apiClient.post(pre('/materials'), body),
+    updateMaterial: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/materials/${id}`), body),
     deleteMaterial: (id: string) => _apiClient.delete(pre(`/materials/${id}`)),
     // 材料参考图上传(multipart, field "file") —— 返回 { id, url }
     uploadMaterialImage: (id: string, formData: FormData) =>
@@ -60,8 +60,8 @@ export function teamApi(teamId: string) {
     // skills
     listSkills: (category?: string) =>
       _apiClient.get(pre(category && category !== 'all' ? `/skills?category=${encodeURIComponent(category)}` : '/skills')),
-    createSkill: (body: any) => _apiClient.post(pre('/skills'), body),
-    updateSkill: (id: string, body: any) => _apiClient.patch(pre(`/skills/${id}`), body),
+    createSkill: (body: Record<string, unknown>) => _apiClient.post(pre('/skills'), body),
+    updateSkill: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/skills/${id}`), body),
     deleteSkill: (id: string) => _apiClient.delete(pre(`/skills/${id}`)),
 
     // products(设计作品)
@@ -72,15 +72,15 @@ export function teamApi(teamId: string) {
       const qstr = qs.toString();
       return _apiClient.get(pre(`/products${qstr ? `?${qstr}` : ''}`));
     },
-    createProduct: (body: any) => _apiClient.post(pre('/products'), body),
-    updateProduct: (id: string, body: any) => _apiClient.patch(pre(`/products/${id}`), body),
-    advanceProduct: (id: string, body: any) => _apiClient.post(pre(`/products/${id}/advance`), body),
+    createProduct: (body: Record<string, unknown>) => _apiClient.post(pre('/products'), body),
+    updateProduct: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/products/${id}`), body),
+    advanceProduct: (id: string, body: Record<string, unknown>) => _apiClient.post(pre(`/products/${id}/advance`), body),
     deleteProduct: (id: string) => _apiClient.delete(pre(`/products/${id}`)),
 
     // collections
     listCollections: () => _apiClient.get(pre('/collections')),
-    createCollection: (body: any) => _apiClient.post(pre('/collections'), body),
-    updateCollection: (id: string, body: any) => _apiClient.patch(pre(`/collections/${id}`), body),
+    createCollection: (body: Record<string, unknown>) => _apiClient.post(pre('/collections'), body),
+    updateCollection: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/collections/${id}`), body),
     deleteCollection: (id: string) => _apiClient.delete(pre(`/collections/${id}`)),
 
     // chat(SSE 流式主流程)
@@ -89,6 +89,6 @@ export function teamApi(teamId: string) {
     // 设计工作流:线稿 / 材料推荐 / 最终成图
     lineartUrl: pre('/design/lineart'),
     generateFinalUrl: pre('/design/generate-final'),
-    recommendMaterials: (body: any) => _apiClient.post(pre('/design/recommend-materials'), body),
+    recommendMaterials: (body: Record<string, unknown>) => _apiClient.post(pre('/design/recommend-materials'), body),
   };
 }

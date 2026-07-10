@@ -19,6 +19,7 @@ const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
+const { asyncHandler } = require('../middleware/asyncHandler');
 const { callLongcatStream, callQwenStream, callGlmStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const storage = require('../lib/storage');
@@ -101,12 +102,12 @@ router.use('/design', designGeneratorRouter);
 
 // GET/PATCH /api/teams/:teamId/brand
 router.route('/brand')
-  .get(async (req, res) => {
+  .get(asyncHandler(async (req, res) => {
     const profile = await prisma.lABrandProfile.findUnique({ where: { teamId: req.team.id } });
     const pairs = await prisma.lAColorPair.findMany({ where: { teamId: req.team.id }, orderBy: { createdAt: 'asc' } });
     res.json({ profile, colors: pairs });
-  })
-  .patch(async (req, res) => {
+  }))
+  .patch(asyncHandler(async (req, res) => {
     const data = pickDefined(req.body ?? {}, [
       'nameZh', 'nameEn', 'cnFont', 'enFont', 'sloganZh', 'sloganEn',
       'greetingEn', 'voice', 'audienceAgeMin', 'audienceAgeMax', 'priceMin', 'priceMax',
@@ -127,11 +128,11 @@ router.route('/brand')
     }
     const pairs = await prisma.lAColorPair.findMany({ where: { teamId: req.team.id } });
     res.json({ profile, colors: pairs });
-  });
+  }));
 
 /* ─── assets (通用资产,替代旧 visual-assets) ──────────────────── */
 
-router.get('/assets', async (req, res) => {
+router.get('/assets', asyncHandler(async (req, res) => {
   const { kind } = req.query;
   const where = { teamId: req.team.id };
   if (kind && kind !== 'all') where.kind = String(kind);
@@ -143,7 +144,7 @@ router.get('/assets', async (req, res) => {
 });
 
 // POST /api/teams/:teamId/assets — JSON body {kind,title,description,src,tags,seasons,pinned}
-router.post('/assets', async (req, res) => {
+router.post('/assets', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, ['kind', 'title', 'description', 'src', 'tags', 'seasons', 'pinned']);
   if (!data.kind || !data.title || !data.src) {
     return res.status(400).json({ error: 'kind, title, src required' });
@@ -163,7 +164,7 @@ router.post('/assets', async (req, res) => {
   res.status(201).json(asset);
 });
 
-router.patch('/assets/:id', async (req, res) => {
+router.patch('/assets/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAVisualAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, ['kind', 'title', 'description', 'src', 'tags', 'seasons', 'pinned']);
@@ -171,7 +172,7 @@ router.patch('/assets/:id', async (req, res) => {
   res.json(asset);
 });
 
-router.delete('/assets/:id', async (req, res) => {
+router.delete('/assets/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAVisualAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAVisualAsset.delete({ where: { id: owned.id } });
@@ -180,7 +181,7 @@ router.delete('/assets/:id', async (req, res) => {
 
 /* ─── inspirations (灵感图) ──────────────────────────────────── */
 
-router.get('/inspirations', async (req, res) => {
+router.get('/inspirations', asyncHandler(async (req, res) => {
   const { q, category, visualStyle, take: takeStr, cursor } = req.query;
   const take = Math.min(parseInt(takeStr, 10) || 24, 96);
   const where = { teamId: req.team.id };
@@ -207,7 +208,7 @@ router.get('/inspirations', async (req, res) => {
 
 // GET /api/teams/:teamId/inspirations/debug —— AI 配置诊断(返回各 provider 可用性)
 // 注意:上线后应删除或加 admin 校验
-router.get('/inspirations/debug', async (req, res) => {
+router.get('/inspirations/debug', asyncHandler(async (req, res) => {
   try {
     const prefs = ['qwen', 'openai', 'longcat'];
     const providers = [];
@@ -252,7 +253,7 @@ router.get('/inspirations/debug', async (req, res) => {
 
 // POST /api/teams/:teamId/inspirations/debug —— 真正用一张图调 analyzeInspiration,看哪个 provider 能出 JSON
 // 注意:上线后应删除或加 admin 校验
-router.post('/inspirations/debug', debugImageUpload, async (req, res) => {
+router.post('/inspirations/debug', debugImageUpload, asyncHandler(async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传一张图(field 名 "file")' });
     const buf = fs.readFileSync(req.file.path);
@@ -372,7 +373,7 @@ async function runInspirationAnalysis(id, filePath, publicUrl) {
 }
 
 // POST /api/teams/:teamId/inspirations/:id/analyze —— 重试 AI 分析(同步等待,返回详细状态给前端排错)
-router.post('/inspirations/:id/analyze', async (req, res) => {
+router.post('/inspirations/:id/analyze', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   // 清除上次失败原因,重置为 pending
@@ -386,7 +387,7 @@ router.post('/inspirations/:id/analyze', async (req, res) => {
 });
 
 // PATCH /api/teams/:teamId/inspirations/:id — 更新 AI 分析/归类字段
-router.patch('/inspirations/:id', async (req, res) => {
+router.patch('/inspirations/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, [
@@ -430,7 +431,7 @@ router.patch('/inspirations/:id/image', (req, res) => {
   });
 });
 
-router.post('/inspirations/:id/touch', async (req, res) => {
+router.post('/inspirations/:id/touch', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const row = await prisma.lAInspirationAsset.update({
@@ -441,7 +442,7 @@ router.post('/inspirations/:id/touch', async (req, res) => {
   res.json(row);
 });
 
-router.delete('/inspirations/:id', async (req, res) => {
+router.delete('/inspirations/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAInspirationAsset.delete({ where: { id: owned.id } });
@@ -450,7 +451,7 @@ router.delete('/inspirations/:id', async (req, res) => {
 
 /* ─── materials (面料·工艺·辅材·毛线·串珠) ─────────────────── */
 
-router.get('/materials', async (req, res) => {
+router.get('/materials', asyncHandler(async (req, res) => {
   const { category } = req.query;
   const where = { teamId: req.team.id };
   if (category && category !== 'all') where.category = String(category);
@@ -458,7 +459,7 @@ router.get('/materials', async (req, res) => {
   res.json(rows);
 });
 
-router.post('/materials', async (req, res) => {
+router.post('/materials', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, [
     'slug', 'category', 'name', 'code', 'supplier', 'origin',
     'colors', 'composition', 'weight', 'texture', 'finish',
@@ -504,7 +505,7 @@ router.post('/materials', async (req, res) => {
   res.status(201).json(mat);
 });
 
-router.patch('/materials/:id', async (req, res) => {
+router.patch('/materials/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, [
@@ -548,7 +549,7 @@ router.post('/materials/:id/image', (req, res) => {
   });
 });
 
-router.delete('/materials/:id', async (req, res) => {
+router.delete('/materials/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAMaterial.delete({ where: { id: owned.id } });
@@ -561,7 +562,7 @@ const {
   normalizeCategory, VALID_PHASE_SET, WRITEABLE_PHASE_SET,
 } = require('../data/skill-phases');
 
-router.get('/skills', async (req, res) => {
+router.get('/skills', asyncHandler(async (req, res) => {
   const { category } = req.query;
   const where = { teamId: req.team.id };
   if (category && category !== 'all') {
@@ -574,7 +575,7 @@ router.get('/skills', async (req, res) => {
   res.json(rows);
 });
 
-router.post('/skills', async (req, res) => {
+router.post('/skills', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, [
     'category', 'title', 'zhTitle', 'body', 'tags',
     'relatedProducts', 'relatedMaterials', 'systemHint', 'pinned',
@@ -604,7 +605,7 @@ router.post('/skills', async (req, res) => {
   res.status(201).json(a);
 });
 
-router.patch('/skills/:id', async (req, res) => {
+router.patch('/skills/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lASkillArticle, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, [
@@ -623,7 +624,7 @@ router.patch('/skills/:id', async (req, res) => {
   res.json(a);
 });
 
-router.delete('/skills/:id', async (req, res) => {
+router.delete('/skills/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lASkillArticle, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lASkillArticle.delete({ where: { id: owned.id } });
@@ -632,7 +633,7 @@ router.delete('/skills/:id', async (req, res) => {
 
 /* ─── products (设计稿 → lookbook 总表) ─────────────────────── */
 
-router.get('/products', async (req, res) => {
+router.get('/products', asyncHandler(async (req, res) => {
   const { mode, status } = req.query;
   const where = { teamId: req.team.id };
   if (mode && mode !== 'all') where.mode = String(mode);
@@ -641,7 +642,7 @@ router.get('/products', async (req, res) => {
   res.json(rows);
 });
 
-router.post('/products', async (req, res) => {
+router.post('/products', asyncHandler(async (req, res) => {
   const data = req.body ?? {};
   if (!data.title) return res.status(400).json({ error: 'title required' });
   const now = new Date().toISOString();
@@ -683,7 +684,7 @@ router.post('/products', async (req, res) => {
   res.status(201).json(p);
 });
 
-router.patch('/products/:id', async (req, res) => {
+router.patch('/products/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = req.body ?? {};
@@ -697,7 +698,7 @@ router.patch('/products/:id', async (req, res) => {
 });
 
 // POST /api/teams/:teamId/products/:id/advance
-router.post('/products/:id/advance', async (req, res) => {
+router.post('/products/:id/advance', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const next = String(req.body.status);
@@ -715,7 +716,7 @@ router.post('/products/:id/advance', async (req, res) => {
   res.json(p);
 });
 
-router.delete('/products/:id', async (req, res) => {
+router.delete('/products/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAProduct.delete({ where: { id: owned.id } });
@@ -724,7 +725,7 @@ router.delete('/products/:id', async (req, res) => {
 
 /* ─── collections (系列 / 专题) ──────────────────────────────── */
 
-router.get('/collections', async (req, res) => {
+router.get('/collections', asyncHandler(async (req, res) => {
   const rows = await prisma.lACollection.findMany({
     where: { teamId: req.team.id },
     orderBy: [{ createdAt: 'desc' }],
@@ -733,7 +734,7 @@ router.get('/collections', async (req, res) => {
   res.json(rows);
 });
 
-router.post('/collections', async (req, res) => {
+router.post('/collections', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, ['mode', 'title', 'occasion', 'theme', 'seasons', 'palette', 'designerNote']);
   if (!data.title) return res.status(400).json({ error: 'title required' });
   const c = await prisma.lACollection.create({
@@ -751,7 +752,7 @@ router.post('/collections', async (req, res) => {
   res.status(201).json(c);
 });
 
-router.patch('/collections/:id', async (req, res) => {
+router.patch('/collections/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lACollection, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, ['mode', 'title', 'occasion', 'theme', 'seasons', 'palette', 'designerNote']);
@@ -759,7 +760,7 @@ router.patch('/collections/:id', async (req, res) => {
   res.json(c);
 });
 
-router.delete('/collections/:id', async (req, res) => {
+router.delete('/collections/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lACollection, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lACollection.delete({ where: { id: owned.id } });
@@ -775,7 +776,7 @@ router.delete('/collections/:id', async (req, res) => {
 const CHAT_TIMEOUT_MS = Number.parseInt(process.env.LAISSE_ANCIE_CHAT_TIMEOUT_MS || '', 10) || 180000;
 const CHAT_HEARTBEAT_MS = Number.parseInt(process.env.LAISSE_ANCIE_CHAT_HEARTBEAT_MS || '', 10) || 8000;
 
-router.post('/chat', async (req, res) => {
+router.post('/chat', asyncHandler(async (req, res) => {
   const system = String(req.body.system || '');
   const prompt = String(req.body.prompt || '');
   const requestedModel = req.body.model || process.env.DEFAULT_AI_MODEL || 'longcat';
