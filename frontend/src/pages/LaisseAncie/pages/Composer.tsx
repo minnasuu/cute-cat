@@ -132,6 +132,10 @@ interface ChatMsg {
   references?: InspirationItem[];
   /** 插画最终自包含 HTML(仅 illustration 模式下产出,供画布渲染) */
   html?: string;
+  /** 请求耗时(ms),完成后写入 */
+  timingMs?: number;
+  /** 请求开始时间戳(进行中显示实时耗时) */
+  startedAt?: number;
 }
 
 /** design-chat 追加的 stage:插画 HTML 稿生成完毕 */
@@ -158,6 +162,16 @@ const ILLUSTRATION_HTML_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的插画�
 
 /** 公共聊天流式 helper —— send / generateHtml / regenerateHtml 共用。
  *  用 fetch 直接流式读取 SSE,teamId 由调用方注入(避免在类函数内用 React hook)。*/
+/** 格式化耗时为可读字符串 */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  const rem = Math.round(s % 60);
+  return `${m}m${rem}s`;
+}
+
 async function streamChat(opts: {
   chatUrl: string;
   system: string;
@@ -165,13 +179,16 @@ async function streamChat(opts: {
   model: ModelId;
   assistantId?: string;
   maxTokens?: number;
+  onStart?: () => void;
   onTick?: (accumulated: string) => void;
-  onDone?: (finalText: string, accumulated: string) => void;
+  onDone?: (finalText: string, accumulated: string, elapsedMs: number) => void;
 }): Promise<void> {
-  const { chatUrl, system, prompt, model, maxTokens = 2048, onTick, onDone } = opts;
+  const { chatUrl, system, prompt, model, maxTokens = 2048, onStart, onTick, onDone } = opts;
   const streamTimeoutMs = 290_000;
   const ac = new AbortController();
   const timeoutId = globalThis.setTimeout(() => ac.abort(), streamTimeoutMs);
+  const t0 = Date.now();
+  onStart?.();
   try {
     const res = await fetch(chatUrl, {
       method: "POST",
@@ -183,12 +200,12 @@ async function streamChat(opts: {
     if (!res.ok) {
       let errMsg = `请求失败(HTTP ${res.status})`;
       try { const j = await res.json(); if (j?.error) errMsg = j.error; } catch { /* */ }
-      onDone?.(`⚠ ${errMsg}`, `⚠ ${errMsg}`);
+      onDone?.(`⚠ ${errMsg}`, `⚠ ${errMsg}`, Date.now() - t0);
       return;
     }
     const reader = res.body?.getReader();
     if (!reader) {
-      onDone?.("⚠ 当前浏览器不支持流式响应", "⚠ 当前浏览器不支持流式响应");
+      onDone?.("⚠ 当前浏览器不支持流式响应", "⚠ 当前浏览器不支持流式响应", Date.now() - t0);
       return;
     }
     const decoder = new TextDecoder();
@@ -214,10 +231,10 @@ async function streamChat(opts: {
             onTick?.(accumulated);
           } else if (currentEvent === "done") {
             const finalText = stripStageMarker(payload?.text ?? accumulated);
-            onDone?.(finalText, payload?.text ?? accumulated);
+            onDone?.(finalText, payload?.text ?? accumulated, Date.now() - t0);
             return;
           } else if (currentEvent === "error") {
-            onDone?.(`⚠ 生成失败: ${payload?.error ?? "未知错误"}`, "");
+            onDone?.(`⚠ 生成失败: ${payload?.error ?? "未知错误"}`, "", Date.now() - t0);
             return;
           }
         }
@@ -225,11 +242,11 @@ async function streamChat(opts: {
     }
     // reader 正常结束但没有 event:done —— 强制收尾
     const finalText = stripStageMarker(accumulated);
-    onDone?.(finalText, accumulated);
+    onDone?.(finalText, accumulated, Date.now() - t0);
   } catch (err: any) {
     let msg = err?.message || "未知错误";
     if (err instanceof DOMException && err.name === "AbortError") msg = "生成超时(上限约 290s),请稍后重试或精简 prompt";
-    onDone?.(`⚠ ${msg}`, "");
+    onDone?.(`⚠ ${msg}`, "", Date.now() - t0);
   } finally {
     globalThis.clearTimeout(timeoutId);
   }
@@ -265,6 +282,7 @@ export default function ComposerPage({
   const [draft, setDraft] = useState<Product | null>(null);
   const [stage, setStage] = useState<DesignStage>("greeting");
   const [planText, setPlanText] = useState("");
+  const [, setTick] = useState(0); // 触发实时计时器重渲染
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [generating, setGenerating] = useState(false);
   const [model, setModelState] = useState<ModelId>(() => {
@@ -330,7 +348,8 @@ export default function ComposerPage({
     setBusy(true);
 
     const assistantId = crypto.randomUUID();
-    setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "" }]);
+    const t0 = Date.now();
+    setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "", startedAt: t0 }]);
 
     const { block: referencesBlock, refs: matchedRefs } = buildReferencesBlock(raw);
     const history = [...msgs, userMsg].map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
@@ -352,11 +371,11 @@ export default function ComposerPage({
       onTick: (accumulated) => {
         setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: stripStageMarker(accumulated) } : m));
       },
-      onDone: (finalText, rawAccum) => {
+      onDone: (finalText, rawAccum, elapsedMs) => {
         const newStage = parseStage(rawAccum) || stage;
         const withRefs = newStage === "proposal" || newStage === "references" || stage === "greeting"
-          ? { text: finalText, references: matchedRefs }
-          : { text: finalText };
+          ? { text: finalText, references: matchedRefs, timingMs: elapsedMs, startedAt: undefined }
+          : { text: finalText, timingMs: elapsedMs, startedAt: undefined };
         setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, ...withRefs } : m));
         setStage(newStage);
         if (newStage === "planning" || newStage === "brainstorming" || newStage === "proposal") {
@@ -402,18 +421,18 @@ export default function ComposerPage({
       model,
       maxTokens: 4096,
       onTick: () => { /* 插画生成中不逐 token 更新,保持「生成插画稿…」 */ },
-      onDone: (finalText, rawAccum) => {
+      onDone: (finalText, rawAccum, elapsedMs) => {
         const html = extractHtmlBlock(rawAccum);
         if (html) {
           setIllustHtml(html);
           setIllustMsgId(assistantId);
           setMsgs((xs) => xs.map((m) => m.id === assistantId
-            ? { ...m, text: "✅ 插画稿已生成,可在右侧画布查看;告诉我要调整的地方。", html }
+            ? { ...m, text: `✅ 插画稿已生成(${formatDuration(elapsedMs)}),可在右侧画布查看;告诉我要调整的地方。`, html, timingMs: elapsedMs }
             : m));
           setStage("presenting-html");
         } else {
           setMsgs((xs) => xs.map((m) => m.id === assistantId
-            ? { ...m, text: "⚠ 未检测到 HTML 输出,请重试或调整方案。" }
+            ? { ...m, text: `⚠ 未检测到 HTML 输出(${formatDuration(elapsedMs)}),请重试或调整方案。`, timingMs: elapsedMs }
             : m));
           setStage("proposal");
         }
@@ -452,18 +471,18 @@ export default function ComposerPage({
       model,
       maxTokens: 4096,
       onTick: () => { },
-      onDone: (finalText, rawAccum) => {
+      onDone: (finalText, rawAccum, elapsedMs) => {
         const html = extractHtmlBlock(rawAccum);
         if (html) {
           setIllustHtml(html);
           setIllustMsgId(assistantId);
           setMsgs((xs) => xs.map((m) => m.id === assistantId
-            ? { ...m, text: "✅ 插画稿已更新,可在右侧画布查看;继续调整或确认。", html }
+            ? { ...m, text: `✅ 插画稿已更新(${formatDuration(elapsedMs)}),可在右侧画布查看;继续调整或确认。`, html, timingMs: elapsedMs }
             : m));
           setStage("presenting-html");
         } else {
           setMsgs((xs) => xs.map((m) => m.id === assistantId
-            ? { ...m, text: "⚠ 未检测到 HTML 输出,请重试。" }
+            ? { ...m, text: `⚠ 未检测到 HTML 输出(${formatDuration(elapsedMs)}),请重试。`, timingMs: elapsedMs }
             : m));
         }
       },
@@ -484,7 +503,8 @@ export default function ComposerPage({
     // 单品 / 系列 → 线稿;插画 → 最终图
     const isLineart = mode !== "illustration";
     setStage(isLineart ? "generating-lineart" : "generating");
-    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: isLineart ? "开始生成设计线稿…" : "开始生成设计图…" }]);
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: isLineart ? "⏳ 正在生成设计线稿…" : "⏳ 正在生成设计图…", startedAt: Date.now() }]);
+    const t0 = Date.now();
     try {
       const path = isLineart ? "/design/lineart" : "/design/generate";
       const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", path), {
@@ -501,12 +521,15 @@ export default function ComposerPage({
       const data = await res.json();
       setImages(data.images || []);
       setStage(isLineart ? "presenting-lineart" : "presenting");
+      const elapsed = Date.now() - t0;
       setMsgs((xs) => [...xs, {
         id: crypto.randomUUID(), role: "assistant",
-        text: isLineart ? "✏️ 设计线稿已生成! 看看结构是否满意,可以修改单张线稿,确认后进入选材料。" : "✨ 设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。"
+        text: isLineart ? `✏️ 设计线稿已生成(${formatDuration(elapsed)})! 看看结构是否满意,可以修改单张线稿,确认后进入选材料。` : `✨ 设计图已生成(${formatDuration(elapsed)})! 看看这套作品,有需要调整的地方随时告诉我。`,
+        timingMs: elapsed,
       }]);
     } catch (e: any) {
-      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败: ${e.message}` }]);
+      const elapsed = Date.now() - t0;
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败(${formatDuration(elapsed)}): ${e.message}`, timingMs: elapsed }]);
       // 回退到当前方案阶段
       setStage((cur) => cur === "generating-lineart" || cur === "generating" ? "proposal" : cur);
     } finally {
@@ -546,7 +569,8 @@ export default function ComposerPage({
     if (!recommendation || !recommendation.name.trim() || generating) return;
     setGenerating(true);
     setStage("generating-final");
-    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `使用「${recommendation.name}」(${recommendation.colors.join(' / ')})生成最终设计图…` }]);
+    const t0 = Date.now();
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⏳ 使用「${recommendation.name}」(${recommendation.colors.join(' / ')})生成最终设计图…`, startedAt: t0 }]);
     try {
       const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/generate-final"), {
         method: "POST",
@@ -562,9 +586,11 @@ export default function ComposerPage({
       // 线稿保留,最终图追加(final 槽)
       setImages((prev) => [...prev.filter((im) => im.slot === "lineart"), ...(data.images || [])]);
       setStage("presenting");
-      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "✨ 最终设计图已生成! 看看这套作品,有需要调整的地方随时告诉我。" }]);
+      const elapsed = Date.now() - t0;
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `✨ 最终设计图已生成(${formatDuration(elapsed)})! 看看这套作品,有需要调整的地方随时告诉我。`, timingMs: elapsed }]);
     } catch (e: any) {
-      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败: ${e.message}` }]);
+      const elapsed = Date.now() - t0;
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败(${formatDuration(elapsed)}): ${e.message}`, timingMs: elapsed }]);
       setStage("material-recommend");
     } finally {
       setGenerating(false);
@@ -576,6 +602,7 @@ export default function ComposerPage({
     if (!instruction.trim()) return;
     setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "user", text: `修改「${label}」: ${instruction}` }]);
     setBusy(true);
+    const t0 = Date.now();
     try {
       const isFinal = slot === "final";
       const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/regenerate"), {
@@ -589,14 +616,16 @@ export default function ComposerPage({
         throw new Error(`服务暂不可用 (HTTP ${res.status})${errText.slice(0, 80) ? `: ${errText.slice(0, 80)}` : ''}`);
       }
       const data = await res.json();
+      const elapsed = Date.now() - t0;
       if (data.url) {
         setImages((prev) => prev.map((im) => im.slot === slot ? { ...im, url: data.url, prompt: data.prompt } : im));
-        setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `✅ 已更新「${label}」` }]);
+        setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `✅ 已更新「${label}」(${formatDuration(elapsed)})`, timingMs: elapsed }]);
       } else {
-        setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 修图失败: ${data.error || "未知错误"}` }]);
+        setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 修图失败(${formatDuration(elapsed)}): ${data.error || "未知错误"}`, timingMs: elapsed }]);
       }
     } catch (e: any) {
-      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 修图失败: ${e.message}` }]);
+      const elapsed = Date.now() - t0;
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 修图失败(${formatDuration(elapsed)}): ${e.message}`, timingMs: elapsed }]);
     } finally {
       setBusy(false);
     }
@@ -712,8 +741,11 @@ export default function ComposerPage({
                   </div>
                 )}
                 {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
-                {busy && m.role === "assistant" && (
-                  <div className="text-gray-500 max-w-[80%] inline-block whitespace-nowrap">请求中…</div>
+                {busy && m.role === "assistant" && m.startedAt && (
+                  <LiveElapsed startedAt={m.startedAt} setTick={setTick} />
+                )}
+                {!busy && m.timingMs && m.role === "assistant" && (
+                  <span className="text-[10px] text-gray-400 ml-1">{formatDuration(m.timingMs)}</span>
                 )}
               </div>
             ))}
@@ -758,22 +790,29 @@ export default function ComposerPage({
             )}
 
             {/* 最终成图:进入 generating-final 时展示提示 */}
-            {stage === "generating-final" && (
-              <div className="flex justify-center">
-                <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
-                  正在结合「{recommendation?.name}」生成最终设计图…
+            {stage === "generating-final" && (() => {
+              const lastMsg = [...msgs].reverse().find((m) => m.startedAt);
+              return (
+                <div className="flex justify-center">
+                  <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
+                    {lastMsg?.startedAt ? <>⏳ 正在结合「{recommendation?.name}」生成最终设计图…<LiveElapsed startedAt={lastMsg.startedAt} setTick={setTick} /></> : `正在结合「{recommendation?.name}」生成最终设计图…`}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* 生成中(单品/系列:图片;插画:图片 / HTML) */}
-            {(generating || inIllustGenerating) && (
-              <div className="flex justify-center">
-                <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
-                  {mode === "illustration" ? (illustOutputMode === "html" ? "正在生成插画 HTML…" : "正在生成插画图…") : "正在生成设计图…"}
+            {(generating || inIllustGenerating) && (() => {
+              const lastMsg = [...msgs].reverse().find((m) => m.startedAt);
+              const label = mode === "illustration" ? (illustOutputMode === "html" ? "正在生成插画 HTML" : "正在生成插画图") : "正在生成设计图";
+              return (
+                <div className="flex justify-center">
+                  <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
+                    {lastMsg?.startedAt ? <>{label}…<LiveElapsed startedAt={lastMsg.startedAt} setTick={setTick} /></> : `${label}…`}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* 设计图展示(线稿 / 最终图 / 插画+图片) —— 录入按钮已移到右侧 preview 区 */}
             {showImages && images.length > 0 && (
@@ -1207,6 +1246,20 @@ function ImageCard({ image, onRegenerate }: { image: GeneratedImage; onRegenerat
       </div>
     </div>
   );
+}
+
+/** 实时计时器(请求进行中显示) */
+function LiveElapsed({ startedAt, setTick }: { startedAt: number; setTick: React.Dispatch<React.SetStateAction<number>> }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = globalThis.setInterval(() => {
+      setNow(Date.now());
+      setTick((t) => t + 1);
+    }, 500);
+    return () => globalThis.clearInterval(id);
+  }, [setTick]);
+  const elapsed = now - startedAt;
+  return <div className="text-gray-500 max-w-[80%] inline-block whitespace-nowrap">请求中…{formatDuration(elapsed)}</div>;
 }
 
 function Field({ label, value }: { label: string; value: string }) {
