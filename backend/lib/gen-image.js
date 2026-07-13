@@ -117,10 +117,8 @@ async function generateImage(prompt, opts) {
   const size = cfg.sizeMap[String(aspectRatio)] || cfg.fallbackSize;
   const source = `${provider}:${model}/${size}`;
 
-  // 单张生成超时(默认 300s)——SeedDream 大尺寸图首 token + 生成常超 120s
-  const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 300000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+  // 单张生成超时(默认 180s / 3 分钟)——SeedDream 大尺寸图首 token + 生成常超 120s
+  const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 180000;
 
   // 对可重试的错误(网络/超时/5xx)自动重试 1 次
   const MAX_RETRIES = 1;
