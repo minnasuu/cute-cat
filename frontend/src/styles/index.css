@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode: <html class="dark"> controls the theme,
+   instead of following prefers-color-scheme everywhere. The `dark:` variant
+   in Tailwind utilities also keys off this class. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @keyframes toast-in {
   from { opacity: 0; transform: translateX(100%); }
   to { opacity: 1; transform: translateX(0); }
@@ -107,4 +112,95 @@ body {
 }
 .cat-bubble {
   animation: bubble-pop 0.2s ease-out forwards;
+}
+
+/* =========================================================================
+   Dark theme — override the design tokens. All components reference colors
+   through semantic utilities (bg-surface, text-text-primary, etc.) which
+   resolve to these CSS variables, so overriding here re-themes the whole
+   app. Hard-coded gray-* / white utilities are mirrored (reversed) so the
+   existing markup adapts without touching every component.
+   ========================================================================= */
+.dark {
+  /* ── Surface & layout ── */
+  --color-surface: #16191f;
+  --color-surface-secondary: #0f1112;
+  --color-surface-tertiary: #1c2027;
+
+  /* ── Border ── */
+  --color-border: #2a2f3a;
+  --color-border-strong: #3a414f;
+  --color-border-hover: var(--color-primary-300);
+
+  /* ── Text ── */
+  --color-text-primary: #e6e8eb;
+  --color-text-secondary: #9aa3b2;
+  --color-text-tertiary: #6b7280;
+  --color-text-inverse: #0f1112;
+
+  /* ── Danger (brighter on dark ground) ── */
+  --color-danger-50: #450a0a;
+  --color-danger-100: #7f1d1d;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #f87171;
+  --color-danger-700: #fca5a5;
+
+  /* ── Brand Primary (green): dark ends → deep tint, light ends → readable accent ── */
+  --color-primary-50: #052e16;
+  --color-primary-100: #064e3b;
+  --color-primary-200: #065f46;
+  --color-primary-300: #16a34a;
+  --color-primary-400: #22c55e;
+  --color-primary-500: #22c55e;
+  --color-primary-600: #16a34a;
+  --color-primary-700: #86efac;
+  --color-primary-800: #bbf7d0;
+  --color-primary-900: #dcfce7;
+
+  /* ── Brand Secondary (orange) ── */
+  --color-secondary-50: #431407;
+  --color-secondary-100: #7c2d12;
+  --color-secondary-200: #9a3412;
+  --color-secondary-300: #c2410c;
+  --color-secondary-400: #f97316;
+  --color-secondary-500: #f97316;
+  --color-secondary-600: #ea580c;
+  --color-secondary-700: #fdba74;
+  --color-secondary-800: #fed7aa;
+  --color-secondary-900: #ffedd5;
+
+  /* ── Accent (blue) ── */
+  --color-accent-50: #172554;
+  --color-accent-100: #1e3a8a;
+  --color-accent-200: #1e40af;
+  --color-accent-300: #1d4ed8;
+  --color-accent-400: #3b82f6;
+  --color-accent-500: #3b82f6;
+  --color-accent-600: #2563eb;
+  --color-accent-700: #93c5fd;
+  --color-accent-800: #bfdbfe;
+  --color-accent-900: #dbeafe;
+
+  /* ── Neutral gray scale (reversed: light value now means dark surface) ── */
+  --color-gray-50: #111827;
+  --color-gray-100: #1f2937;
+  --color-gray-200: #2a313c;
+  --color-gray-300: #374151;
+  --color-gray-400: #4b5563;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #9ca3af;
+  --color-gray-700: #d1d5db;
+  --color-gray-800: #e5e7eb;
+  --color-gray-900: #f3f4f6;
+  --color-gray-950: #f9fafb;
+
+  /* ── Black / White (semantic swap for surfaces / text) ── */
+  --color-white: #16191f;
+  --color-black: #f9fafb;
+}
+
+/* Keep true white text readable on dark ground for the common `text-white`
+   utility (used on solid primary buttons etc.). Map it to the surface text. */
+.dark .text-white {
+  color: var(--color-text-inverse);
 }

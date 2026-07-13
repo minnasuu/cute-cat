@@ -113,12 +113,12 @@ export const LandHeroCtas = () => {
                     top: 0,
                     transform: 'translateX(-50%)',
                     whiteSpace: 'nowrap',
-                    background: 'white',
-                    border: '1.5px solid #e5e7eb',
+                    background: 'var(--color-surface)',
+                    border: '1.5px solid var(--color-border-strong)',
                     borderRadius: 12,
                     padding: '4px 12px',
                     fontSize: 12,
-                    color: '#374151',
+                    color: 'var(--color-text-primary)',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                     zIndex: 10,
                   }}
@@ -132,9 +132,9 @@ export const LandHeroCtas = () => {
                       transform: 'translateX(-50%) rotate(45deg)',
                       width: 10,
                       height: 10,
-                      background: 'white',
-                      borderRight: '1.5px solid #e5e7eb',
-                      borderBottom: '1.5px solid #e5e7eb',
+                      background: 'var(--color-surface)',
+                      borderRight: '1.5px solid var(--color-border-strong)',
+                      borderBottom: '1.5px solid var(--color-border-strong)',
                     }}
                   />
                 </div>

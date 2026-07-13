@@ -245,6 +245,11 @@ model LAInspirationAsset {
   width         Int      @default(0)
   height        Int      @default(0)
   category      String?
+  // —— 新 AI 分析结果(4 维度) ——
+  visualStyle     String?  @db.Text
+  designApproach  String?  @db.Text
+  inspiration     Json     @default("[]")
+  // —— 旧字段(弃用,保留兼容旧数据,新代码不再写入) ——
   silhouette    String?
   colors        Json     @default("[]")
   brandAnalysis String?  @db.Text
@@ -290,6 +295,8 @@ model LAMaterial {
   priceCur    String?
   priceUnit   String?
   priceNote   String?
+  /** 材料参考图 URL(上传接口 /materials/:id/image 写入) */
+  image       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   @@index([teamId])
@@ -337,7 +344,15 @@ model LAProduct {
   gradingNotes      String?  @db.Text
   patternUrl        String?
   techPackUrl       String?
+  /** 设计工作流选定的材料 id(线稿→选材料→成图流程写入) */
+  materialId        String?
+  /** 设计工作流生成的图片数组:[{slot, label, url}] */
+  images            Json     @default("[]")
+  /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */
+  html              String?  @db.Text
   aiDraftRaw        String?  @db.Text
+  /** 解析后的设计提案结构化字段(JSON,Lookbook 详情页分块展示) */
+  sections          Json?
   fitAcknowledge    String?
   fitDetail         String?  @db.Text
   patternFinalUrl   String?

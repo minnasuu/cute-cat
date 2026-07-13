@@ -4,9 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type Dispatch,
-  type ReactNode,
-  type SetStateAction,
 } from "react";
 import clsx from "clsx";
 import {
@@ -23,6 +20,9 @@ import {
 import type { VibeStyleLibLibraryItem } from "./vibeStyleLibApi";
 import { useAuth } from "../../contexts/AuthContext";
 import Navbar from "../../components/Navbar";
+import { ResultPanel } from "./ResultPanel";
+import { DetailEditForm } from "./DetailEditForm";
+import { IconCopy, IconUpload, Spinner, ModalChrome, ui } from "./ui";
 
 const STORAGE_KEY = "vibesnap-library-v1";
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -32,36 +32,7 @@ const COMPRESS_MAX_EDGE = 1920;
 const COMPRESS_QUALITY = 0.85;
 
 type MainTab = "library" | "extractor";
-type ResultTab = "summary" | "prompt";
-
-/** CuCaTopia 品牌主色为 primary（绿），与 Dashboard / 团队页一致 */
-const ui = {
-  page: "h-screen flex flex-col bg-surface text-text-primary selection:bg-primary-100 selection:text-primary-900",
-  header: "shrink-0 border-b border-border bg-surface",
-  navBtn:
-    "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium border border-transparent transition-colors",
-  navActive: "text-primary-600 bg-primary-100 border-primary-600",
-  navIdle:
-    "text-text-secondary hover:bg-primary-50/80 hover:text-primary-800 border-border",
-  card: "border border-border bg-surface",
-  cardPad: "p-5",
-  sectionTitle:
-    "text-xs font-semibold uppercase tracking-wider text-primary-700",
-  body: "text-sm text-text-secondary leading-relaxed",
-  mono: "text-xs font-mono text-primary-900",
-  tag: "text-xs px-2 py-0.5 rounded-md border border-primary-200 bg-primary-50/90 text-primary-800",
-  btnGhost:
-    "text-sm text-text-secondary hover:text-primary-700 hover:bg-primary-50 px-2 py-1 rounded-md",
-  btnPrimary:
-    "text-xs font-medium px-3 py-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-45 disabled:pointer-events-none",
-  fab: "flex items-center justify-center rounded-full border-2 border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-600 hover:text-white hover:border-primary-600 transition-colors",
-  modalBackdrop:
-    "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50",
-  modalPanel:
-    "bg-surface border border-border max-w-[70vw] w-full p-6 relative",
-  inputZone:
-    "border border-dashed border-border-strong bg-surface-secondary flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary-400 hover:bg-primary-50/60 transition-colors",
-} as const;
+export type ResultTab = "summary" | "prompt";
 
 function loadStoredLibrary(): VibeStyleLibLibraryItem[] | null {
   try {
@@ -180,331 +151,17 @@ function dataUrlFromFile(file: File): Promise<string> {
   });
 }
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-  }
-}
-
-function IconCopy({ className = "w-4 h-4" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-      />
-    </svg>
-  );
-}
-
-function IconUpload({ className = "w-4 h-4" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="32"
-      height="32"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-      />
-    </svg>
-  );
-}
-
-function Spinner({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        className="h-8 w-8 animate-spin rounded-full border-2 border-primary-100 border-t-primary-600"
-        aria-hidden
-      />
-      <span className="text-xs text-text-tertiary">{label}</span>
-    </div>
-  );
-}
-
-function ModalChrome({
-  children,
-  onClose,
-  wide,
-  ariaLabelledBy,
-}: {
-  children: ReactNode;
-  onClose: () => void;
-  wide?: boolean;
-  ariaLabelledBy?: string;
-}) {
-  return (
-    <div className={ui.modalBackdrop} role="presentation" onClick={onClose}>
-      <div
-        className={clsx(
-          ui.modalPanel,
-          wide && "max-h-[90vh] max-w-[70vw] flex flex-col overflow-hidden p-0",
-        )}
-        role="dialog"
-        aria-modal
-        aria-labelledby={ariaLabelledBy}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-const RESULT_TAB_DEF: { key: ResultTab; label: string }[] = [
+export const RESULT_TAB_DEF: { key: ResultTab; label: string }[] = [
   { key: "summary", label: "设计总结" },
   { key: "prompt", label: "设计提示词" },
 ];
 
-const VISUAL_ATTR_KEYS = [
+export const VISUAL_ATTR_KEYS = [
   ["圆角", "borderRadius"],
   ["阴影", "shadow"],
   ["边框", "border"],
   ["间距", "spacing"],
 ] as const;
-
-/** 详情弹窗内：编辑卡片文案与通用视觉方向（designPrompt） */
-function DetailEditForm({
-  draft,
-  setDraft,
-  disabled,
-}: {
-  draft: { summary: string; styleDescription: string; designPrompt: string };
-  setDraft: Dispatch<
-    SetStateAction<{
-      summary: string;
-      styleDescription: string;
-      designPrompt: string;
-    } | null>
-  >;
-  disabled?: boolean;
-}) {
-  return (
-    <div className="scrollbar-hide flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-      <section className={clsx(ui.card, ui.cardPad)}>
-        <h3 className={clsx(ui.sectionTitle, "mb-2")}>卡片摘要</h3>
-        <p className={clsx(ui.body, "mb-2")}>
-          显示在灵感库缩略卡片上的短文案（libraryBlurb / summary）。
-        </p>
-        <textarea
-          value={draft.summary}
-          disabled={disabled}
-          onChange={(e) =>
-            setDraft((prev) =>
-              prev ? { ...prev, summary: e.target.value } : prev,
-            )
-          }
-          rows={3}
-          className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50"
-        />
-      </section>
-      <section className={clsx(ui.card, ui.cardPad)}>
-        <h3 className={clsx(ui.sectionTitle, "mb-2")}>设计风格简述</h3>
-        <p className={clsx(ui.body, "mb-2")}>
-          designSummary.styleDescription，建议保持品类中立的气质描述。
-        </p>
-        <textarea
-          value={draft.styleDescription}
-          disabled={disabled}
-          onChange={(e) =>
-            setDraft((prev) =>
-              prev ? { ...prev, styleDescription: e.target.value } : prev,
-            )
-          }
-          rows={4}
-          className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50"
-        />
-      </section>
-      <section className={clsx(ui.card, ui.cardPad)}>
-        <h3 className={clsx(ui.sectionTitle, "mb-2")}>设计提示词（通用视觉方向）</h3>
-        <p className={clsx(ui.body, "mb-2")}>
-          供下游模型套用的外观与版式约束；宜写可迁移的视觉语言，避免绑死某一行业。
-        </p>
-        <textarea
-          value={draft.designPrompt}
-          disabled={disabled}
-          onChange={(e) =>
-            setDraft((prev) =>
-              prev ? { ...prev, designPrompt: e.target.value } : prev,
-            )
-          }
-          rows={14}
-          className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs leading-relaxed text-text-primary placeholder:text-text-tertiary focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50"
-        />
-      </section>
-    </div>
-  );
-}
-
-function ResultPanel({
-  data,
-  tab,
-  setTab,
-}: {
-  data: VibeStyleLibExtractResult;
-  tab: ResultTab;
-  setTab: (t: ResultTab) => void;
-}) {
-  const summaryJson = JSON.stringify(data.designSummary, null, 2);
-  const va = data.designSummary.visualAttributes;
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 flex shrink-0 overflow-hidden rounded-lg border border-primary-200/80 bg-primary-50/30">
-        {RESULT_TAB_DEF.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={clsx(
-              "flex-1 py-2.5 text-sm font-medium transition-colors",
-              tab === key
-                ? "bg-primary-600 text-white"
-                : "text-primary-800/80 hover:bg-primary-100/80",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "summary" ? (
-        <div className="scrollbar-hide flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-          <section className={clsx(ui.card, ui.cardPad)}>
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <h3 className={ui.sectionTitle}>设计风格</h3>
-              <button
-                type="button"
-                className={clsx(ui.btnPrimary)}
-                onClick={() => void copyText(summaryJson)}
-              >
-                复制 JSON
-              </button>
-            </div>
-            <p className={clsx(ui.body, "mb-3")}>
-              {data.designSummary.styleDescription}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {data.designSummary.styleTags.map((t) => (
-                <span key={t} className={ui.tag}>
-                  {t}
-                </span>
-              ))}
-            </div>
-          </section>
-
-          <section className={clsx(ui.card, ui.cardPad)}>
-            <h3 className={clsx(ui.sectionTitle, "mb-4")}>核心色板</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {data.designSummary.colors.map((c) => (
-                <div
-                  key={c.hex + c.name}
-                  className="flex gap-3 border border-border p-3 rounded-lg"
-                >
-                  <div
-                    className="h-14 w-14 shrink-0 border border-border-strong rounded-md"
-                    style={{ backgroundColor: c.hex }}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-text-primary">
-                      {c.name}
-                    </p>
-                    <p className={ui.mono}>{c.hex}</p>
-                    <p className="mt-0.5 line-clamp-2 text-xs text-text-tertiary">
-                      {c.usage}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className={clsx(ui.card, ui.cardPad)}>
-            <h3 className={clsx(ui.sectionTitle, "mb-3")}>字体排版</h3>
-            <ul className="space-y-2">
-              {data.designSummary.typography.map((f) => (
-                <li
-                  key={f.family}
-                  className="flex items-center justify-between gap-2 border border-border px-3 py-2 text-sm text-text-secondary rounded-lg"
-                >
-                  <span className="font-medium">{f.family}</span>
-                  <button
-                    type="button"
-                    aria-label={`复制 ${f.family}`}
-                    onClick={() => void copyText(f.family)}
-                    className="p-1 text-text-tertiary hover:text-text-primary"
-                  >
-                    <IconCopy />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className={clsx(ui.card, ui.cardPad)}>
-            <h3 className={clsx(ui.sectionTitle, "mb-4")}>视觉属性</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {VISUAL_ATTR_KEYS.map(([label, k]) => (
-                <div key={k} className="border border-border p-4 rounded-lg">
-                  <p className="mb-2 text-xs font-semibold text-text-tertiary">
-                    {label}
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm text-text-secondary leading-relaxed">
-                    {va[k]}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-primary-800/50 bg-primary-900">
-          <div className="flex shrink-0 items-center justify-between border-b border-primary-700/60 bg-primary-800 px-4 py-3">
-            <span className="text-sm font-medium text-primary-50">
-              设计提示词
-            </span>
-            <button
-              type="button"
-              onClick={() => void copyText(data.designPrompt)}
-              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-primary-50 text-primary-900 hover:bg-white disabled:opacity-45 disabled:pointer-events-none"
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <IconCopy className="h-3.5 w-3.5" />
-                复制提示词
-              </span>
-            </button>
-          </div>
-          <pre className="scrollbar-hide flex-1 overflow-auto p-4 font-sans text-sm leading-relaxed text-primary-50/95 whitespace-pre-wrap">
-            {data.designPrompt}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export const VibeStyleLib = () => {
   const { user } = useAuth();

@@ -19,7 +19,8 @@ const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
-const { callLongcatStream, callQwenStream, callGeminiStream, callGlmStream } = require('../workflow-executor');
+const { asyncHandler } = require('../middleware/asyncHandler');
+const { callArkStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const storage = require('../lib/storage');
 const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
@@ -45,16 +46,12 @@ const debugImageUpload = multer({
   limits: { fileSize: 12 * 1024 * 1024 },
 }).single('file');
 
+// TMP_DIR 必须在 multer 启动前物理存在(multer 不等待 async callback)
+fs.mkdirSync(TMP_DIR, { recursive: true });
 const multerStorage = multer.diskStorage({
   // 统一先落到本地 tmp,后续由 saveUpload() 路由到本地最终目录或 S3,避免容器重建丢失文件
-  destination: async (_req, _file, cb) => {
-    try {
-      await fs.promises.mkdir(TMP_DIR, { recursive: true });
-      cb(null, TMP_DIR);
-    } catch (err) {
-      cb(err);
-    }
-  },
+  // 注意:multer diskStorage.destination 是同步回调,不可用 async/await
+  destination: (_req, _file, cb) => cb(null, TMP_DIR),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     const stem = `${Date.now().toString(36)}${crypto.randomUUID().slice(0, 8)}`;
@@ -105,12 +102,12 @@ router.use('/design', designGeneratorRouter);
 
 // GET/PATCH /api/teams/:teamId/brand
 router.route('/brand')
-  .get(async (req, res) => {
+  .get(asyncHandler(async (req, res) => {
     const profile = await prisma.lABrandProfile.findUnique({ where: { teamId: req.team.id } });
     const pairs = await prisma.lAColorPair.findMany({ where: { teamId: req.team.id }, orderBy: { createdAt: 'asc' } });
     res.json({ profile, colors: pairs });
-  })
-  .patch(async (req, res) => {
+  }))
+  .patch(asyncHandler(async (req, res) => {
     const data = pickDefined(req.body ?? {}, [
       'nameZh', 'nameEn', 'cnFont', 'enFont', 'sloganZh', 'sloganEn',
       'greetingEn', 'voice', 'audienceAgeMin', 'audienceAgeMax', 'priceMin', 'priceMax',
@@ -131,11 +128,11 @@ router.route('/brand')
     }
     const pairs = await prisma.lAColorPair.findMany({ where: { teamId: req.team.id } });
     res.json({ profile, colors: pairs });
-  });
+  }));
 
 /* ─── assets (通用资产,替代旧 visual-assets) ──────────────────── */
 
-router.get('/assets', async (req, res) => {
+router.get('/assets', asyncHandler(async (req, res) => {
   const { kind } = req.query;
   const where = { teamId: req.team.id };
   if (kind && kind !== 'all') where.kind = String(kind);
@@ -144,10 +141,10 @@ router.get('/assets', async (req, res) => {
     orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
   });
   res.json(assets);
-});
+}));
 
 // POST /api/teams/:teamId/assets — JSON body {kind,title,description,src,tags,seasons,pinned}
-router.post('/assets', async (req, res) => {
+router.post('/assets', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, ['kind', 'title', 'description', 'src', 'tags', 'seasons', 'pinned']);
   if (!data.kind || !data.title || !data.src) {
     return res.status(400).json({ error: 'kind, title, src required' });
@@ -165,34 +162,36 @@ router.post('/assets', async (req, res) => {
     },
   });
   res.status(201).json(asset);
-});
+}));
 
-router.patch('/assets/:id', async (req, res) => {
+router.patch('/assets/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAVisualAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, ['kind', 'title', 'description', 'src', 'tags', 'seasons', 'pinned']);
   const asset = await prisma.lAVisualAsset.update({ where: { id: owned.id }, data });
   res.json(asset);
-});
+}));
 
-router.delete('/assets/:id', async (req, res) => {
+router.delete('/assets/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAVisualAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAVisualAsset.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── inspirations (灵感图) ──────────────────────────────────── */
 
-router.get('/inspirations', async (req, res) => {
-  const { q, category, take: takeStr, cursor } = req.query;
+router.get('/inspirations', asyncHandler(async (req, res) => {
+  const { q, category, visualStyle, take: takeStr, cursor } = req.query;
   const take = Math.min(parseInt(takeStr, 10) || 24, 96);
   const where = { teamId: req.team.id };
   if (category) where.category = String(category);
+  if (visualStyle) where.visualStyle = { contains: String(visualStyle), mode: 'insensitive' };
   if (q) {
     where.OR = [
       { category: { contains: String(q), mode: 'insensitive' } },
-      { brandAnalysis: { contains: String(q), mode: 'insensitive' } },
+      { visualStyle: { contains: String(q), mode: 'insensitive' } },
+      { designApproach: { contains: String(q), mode: 'insensitive' } },
     ];
   }
   const total = await prisma.lAInspirationAsset.count({ where });
@@ -205,13 +204,14 @@ router.get('/inspirations', async (req, res) => {
   const hasMore = rows.length > take;
   const items = hasMore ? rows.slice(0, take) : rows;
   res.json({ items, nextCursor: hasMore ? items[items.length - 1].id : null, total });
-});
+}));
 
 // GET /api/teams/:teamId/inspirations/debug —— AI 配置诊断(返回各 provider 可用性)
 // 注意:上线后应删除或加 admin 校验
-router.get('/inspirations/debug', async (req, res) => {
+router.get('/inspirations/debug', asyncHandler(async (req, res) => {
   try {
-    const prefs = ['qwen', 'openai', 'longcat'];
+    // ark = 主力(文本/视觉解析/生图);qwen = 仅 vibe-snap-extract 子系统
+    const prefs = ['ark', 'qwen'];
     const providers = [];
     const openAiEndpoint = (base) => {
       const b = (base || '').replace(/\/+$/, '');
@@ -243,21 +243,17 @@ router.get('/inspirations/debug', async (req, res) => {
       }
       providers.push({ name, ok: probe.ok ? 'ok' : 'fail', model, baseUrl: base.replace(/^https?:\/\/[^/]+/, '***'), probe });
     }
-    if (process.env.GEMINI_API_KEY) {
-      providers.push({ name: 'gemini', ok: 'sdk-only', model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' });
-    }
     res.json({
-      INSPIRATION_AI_PROVIDER: process.env.INSPIRATION_AI_PROVIDER || '(未设置,按 gemini→qwen→openai 顺序回退)',
       providers,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // POST /api/teams/:teamId/inspirations/debug —— 真正用一张图调 analyzeInspiration,看哪个 provider 能出 JSON
 // 注意:上线后应删除或加 admin 校验
-router.post('/inspirations/debug', debugImageUpload, async (req, res) => {
+router.post('/inspirations/debug', debugImageUpload, asyncHandler(async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '请上传一张图(field 名 "file")' });
     const buf = fs.readFileSync(req.file.path);
@@ -269,7 +265,7 @@ router.post('/inspirations/debug', debugImageUpload, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // POST /api/teams/:teamId/inspirations — multipart form-data with field "file"
 router.post('/inspirations', (req, res) => {
@@ -303,8 +299,9 @@ router.post('/inspirations', (req, res) => {
       res.status(201).json(asset);
 
       // 异步 AI 视觉分析(不阻塞上传响应)——本地模式下 url 相对路径需要转为绝对 /app/backend/… 文件路径
+      // savePath 已是 'inspiration/filename' 形式(无 'uploads/' 前缀,UPLOAD_ROOT 已含)
       const filePath = storage.mode === 'local'
-        ? path.join(storage.UPLOAD_ROOT, savePath.split('/').slice(1).join(path.sep))
+        ? path.join(storage.UPLOAD_ROOT, ...savePath.split('/'))
         : null;
       void runInspirationAnalysis(asset.id, filePath, url);
     } catch (e) {
@@ -314,40 +311,46 @@ router.post('/inspirations', (req, res) => {
   });
 });
 
+// 把/publicUrl 转成 Ark 可访问的绝对 URL
+//  - 已是 http(s):// → 直接返回(S3 公网 / data URL)
+//  - /uploads/... 相对路径 → 用 FRONTEND_URL 拼成绝对 URL(本地模式,走前端同域反代访问 /uploads)
+function toAbsoluteImageUrl(publicUrl) {
+  if (!publicUrl) return publicUrl;
+  if (/^https?:\/\//i.test(publicUrl) || publicUrl.startsWith('data:')) return publicUrl;
+  const base = (process.env.FRONTEND_URL || '').split(',')[0].trim().replace(/\/+$/, '');
+  return base ? `${base.replace(/\/+$/, '')}${publicUrl}` : publicUrl;
+}
+
 // 异步分析灵感图片,失败把原因写入 analysisError(供前端重试接口返回)
 // 返回 'success' | 'failed',调用方可据此响应前端
-// filePath:本地绝对路径(本地模式);publicUrl:公网 URL(所有模式,含 S3)
+// filePath:本地绝对路径(本地模式,保留以兼容,已不再用于读图);publicUrl:公网 URL(所有模式,含 S3)
 async function runInspirationAnalysis(id, filePath, publicUrl) {
   try {
-    let buf;
-    if (storage.mode === 'local') {
-      // filePath = /app/backend/uploads/... 本地绝对路径
-      if (!filePath || !fs.existsSync(filePath)) {
-        const reason = `file:${filePath || '(none)'}`;
-        console.warn(`[team-workbench] image file not found: ${filePath}`);
-        await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: reason } }).catch(() => {});
-        return 'failed';
-      }
-      buf = fs.readFileSync(filePath);
-    } else {
-      // S3 模式:从公网 URL 下载 bytes
-      try {
-        const r = await fetch(publicUrl);
-        if (!r.ok) throw new Error(`download ${publicUrl} HTTP ${r.status}`);
-        buf = Buffer.from(await r.arrayBuffer());
-      } catch (e) {
-        console.warn(`[team-workbench] download image for analysis failed: ${e.message}`);
-        await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: `net:${e.message}` } }).catch(() => {});
-        return 'failed';
-      }
-    }
+    // 直接用过 Ark 能拉取的图片 URL(不再绕回读本地磁盘),省 base64 传输且绕过本地文件路径错位
+    let imageUrl = toAbsoluteImageUrl(publicUrl);
+
     // 从 url 中解析 mime: 取文件扩展名
-    const ext = path.extname(filePath).toLowerCase();
+    const ext = path.extname(publicUrl || filePath || '').toLowerCase();
     const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
       : ext === '.png' ? 'image/png'
       : ext === '.webp' ? 'image/webp'
       : 'image/jpeg';
-    const { result, error } = await analyzeInspiration(buf, mime);
+
+    // 诊断:排查 400 MissingParameter:input.content.image_url(空 URL 直接送 Ark)
+    console.log(`[team-workbench] inspiration ${id} analyze: mode=${storage.mode}, publicUrl=${publicUrl}, imageUrl=${imageUrl}, filePath=${filePath}`);
+
+    // 保护:imageUrl 为空时,回退到读最终落盘位置拼 buffer(避免空 URL 送 Ark 报 400)
+    let buf = null;
+    if (!imageUrl) {
+      // 用 storage.UPLOAD_ROOT + publicUrl(不含 /uploads 前缀)拼出本地真实路径
+      const localRel = publicUrl && publicUrl.replace(/^\/uploads\//, '');
+      const localAbs = localRel ? path.join(storage.UPLOAD_ROOT, localRel) : filePath;
+      if (localAbs && fs.existsSync(localAbs)) {
+        buf = fs.readFileSync(localAbs);
+        console.log(`[team-workbench] inspiration ${id}: imageUrl empty, fallback to buffer(${buf.length}B) from ${localAbs}`);
+      }
+    }
+    const { result, error } = await analyzeInspiration(buf, mime, imageUrl || undefined);
     if (!result) {
       // AI 接口失败 / 返回空 / JSON 解析失败 → 写 failed + analysisError,避免前端永久 "analysing…"
       console.warn(`[team-workbench] inspiration ${id} analysis failed: ${error}`);
@@ -360,11 +363,9 @@ async function runInspirationAnalysis(id, filePath, publicUrl) {
         analysisStatus: 'success',
         analysisError: null,
         category: result.category || null,
-        silhouette: result.silhouette || null,
-        colors: Array.isArray(result.colors) ? result.colors : [],
-        brandAnalysis: result.brandAnalysis || null,
-        designHighlights: Array.isArray(result.designHighlights) ? result.designHighlights : [],
-        styleFeatures: Array.isArray(result.styleFeatures) ? result.styleFeatures : [],
+        visualStyle: result.visualStyle || null,
+        designApproach: result.designApproach || null,
+        inspiration: Array.isArray(result.inspiration) ? result.inspiration : [],
       },
     });
     console.log(`[team-workbench] inspiration ${id} analyzed: category=${result.category}`);
@@ -378,31 +379,68 @@ async function runInspirationAnalysis(id, filePath, publicUrl) {
 }
 
 // POST /api/teams/:teamId/inspirations/:id/analyze —— 重试 AI 分析(同步等待,返回详细状态给前端排错)
-router.post('/inspirations/:id/analyze', async (req, res) => {
+router.post('/inspirations/:id/analyze', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   // 清除上次失败原因,重置为 pending
   await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data: { analysisStatus: 'pending', analysisError: null } });
-  const status = await runInspirationAnalysis(owned.id, owned.url);
+  // owned.url 是公网/相对 URL,必须作为 publicUrl(第 3 参数)传入,才能让 toAbsoluteImageUrl 拼出
+  // Ark 可拉取的绝对 URL;若误作 filePath(第 2 参数)传入,publicUrl 为 undefined,会走本地文件兜底并
+  // 因路径不存在而必然返回 error:'file',导致重试永远失败。
+  const status = await runInspirationAnalysis(owned.id, null, owned.url);
   const updated = await prisma.lAInspirationAsset.findUnique({
     where: { id: owned.id },
     select: { id: true, analysisStatus: true, analysisError: true, category: true },
   });
   res.json({ ok: true, status, ...updated });
-});
+}));
 
 // PATCH /api/teams/:teamId/inspirations/:id — 更新 AI 分析/归类字段
-router.patch('/inspirations/:id', async (req, res) => {
+router.patch('/inspirations/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, [
-    'category', 'silhouette', 'colors', 'brandAnalysis', 'designHighlights', 'styleFeatures',
+    'category', 'visualStyle', 'designApproach', 'inspiration',
+    // 旧字段(兼容旧前端/旧数据)
+    'silhouette', 'colors', 'brandAnalysis', 'designHighlights', 'styleFeatures',
   ]);
   const row = await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data });
   res.json(row);
+}));
+
+// PATCH /api/teams/:teamId/inspirations/:id/image — 替换灵感图片
+// multipart form-data with field "file";只换图(url/bytes/mime),保留 category/visualStyle 等
+// AI 分析字段不变,不触发重新解析(避免覆盖已有分析或重复耗时)
+router.patch('/inspirations/:id/image', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('[team-workbench] replace image multer error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'no file' });
+    }
+    const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
+    if (!owned) return res.status(404).json({ error: 'not found' });
+    try {
+      // 新图保存到同一位置(同 teamId 子目录),文件名用新文件的唯一名
+      const savePath = createSavePath(`inspirations/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      // 只更新图的 url/bytes/mime;保留 category/visualStyle/designApproach/inspiration/analysisStatus 等分析字段
+      const updated = await prisma.lAInspirationAsset.update({
+        where: { id: owned.id },
+        data: { url, thumbUrl: url, mime: req.file.mimetype, bytes: req.file.size },
+      });
+      res.json(updated);
+    } catch (e) {
+      console.error('[team-workbench] replace inspiration image failed:', e);
+      res.status(500).json({ error: `替换失败: ${e.message}` });
+    }
+  });
 });
 
-router.post('/inspirations/:id/touch', async (req, res) => {
+router.post('/inspirations/:id/touch', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const row = await prisma.lAInspirationAsset.update({
@@ -411,32 +449,33 @@ router.post('/inspirations/:id/touch', async (req, res) => {
     select: { id: true, useCount: true },
   });
   res.json(row);
-});
+}));
 
-router.delete('/inspirations/:id', async (req, res) => {
+router.delete('/inspirations/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAInspirationAsset.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── materials (面料·工艺·辅材·毛线·串珠) ─────────────────── */
 
-router.get('/materials', async (req, res) => {
+router.get('/materials', asyncHandler(async (req, res) => {
   const { category } = req.query;
   const where = { teamId: req.team.id };
   if (category && category !== 'all') where.category = String(category);
   const rows = await prisma.lAMaterial.findMany({ where, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
   res.json(rows);
-});
+}));
 
-router.post('/materials', async (req, res) => {
+router.post('/materials', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, [
     'slug', 'category', 'name', 'code', 'supplier', 'origin',
     'colors', 'composition', 'weight', 'texture', 'finish',
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
+    'image',
   ]);
   if (!data.name || !data.category) return res.status(400).json({ error: 'name,category required' });
   if (!data.slug) data.slug = `${data.category}-${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
@@ -469,12 +508,13 @@ router.post('/materials', async (req, res) => {
       priceCur: data.priceCur || 'CNY',
       priceUnit: data.priceUnit || null,
       priceNote: data.priceNote || null,
+      image: data.image || null,
     },
   });
   res.status(201).json(mat);
-});
+}));
 
-router.patch('/materials/:id', async (req, res) => {
+router.patch('/materials/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, [
@@ -483,17 +523,47 @@ router.patch('/materials/:id', async (req, res) => {
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
+    'image',
   ]);
   const mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data });
   res.json(mat);
+}));
+
+// POST /api/teams/:teamId/materials/:id/image —— 上传/替换材料参考图
+// multipart form-data, field "file";写入材料的 image 字段
+router.post('/materials/:id/image', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('[team-workbench] material image multer error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'no file' });
+    }
+    const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
+    if (!owned) return res.status(404).json({ error: 'not found' });
+    try {
+      const savePath = createSavePath(`materials/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      const updated = await prisma.lAMaterial.update({
+        where: { id: owned.id },
+        data: { image: url },
+      });
+      res.json({ id: updated.id, url });
+    } catch (e) {
+      console.error('[team-workbench] upload material image failed:', e);
+      res.status(500).json({ error: `上传失败: ${e.message}` });
+    }
+  });
 });
 
-router.delete('/materials/:id', async (req, res) => {
+router.delete('/materials/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAMaterial.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── skills 知识库(团队级通用) ──────────────────────────────── */
 /* 引入 10 phase taxonomy 的校验 + 旧 6 key 兼容 */
@@ -501,7 +571,7 @@ const {
   normalizeCategory, VALID_PHASE_SET, WRITEABLE_PHASE_SET,
 } = require('../data/skill-phases');
 
-router.get('/skills', async (req, res) => {
+router.get('/skills', asyncHandler(async (req, res) => {
   const { category } = req.query;
   const where = { teamId: req.team.id };
   if (category && category !== 'all') {
@@ -512,9 +582,9 @@ router.get('/skills', async (req, res) => {
   }
   const rows = await prisma.lASkillArticle.findMany({ where, orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }] });
   res.json(rows);
-});
+}));
 
-router.post('/skills', async (req, res) => {
+router.post('/skills', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, [
     'category', 'title', 'zhTitle', 'body', 'tags',
     'relatedProducts', 'relatedMaterials', 'systemHint', 'pinned',
@@ -542,9 +612,9 @@ router.post('/skills', async (req, res) => {
     },
   });
   res.status(201).json(a);
-});
+}));
 
-router.patch('/skills/:id', async (req, res) => {
+router.patch('/skills/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lASkillArticle, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, [
@@ -561,27 +631,27 @@ router.patch('/skills/:id', async (req, res) => {
   }
   const a = await prisma.lASkillArticle.update({ where: { id: owned.id }, data });
   res.json(a);
-});
+}));
 
-router.delete('/skills/:id', async (req, res) => {
+router.delete('/skills/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lASkillArticle, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lASkillArticle.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── products (设计稿 → lookbook 总表) ─────────────────────── */
 
-router.get('/products', async (req, res) => {
+router.get('/products', asyncHandler(async (req, res) => {
   const { mode, status } = req.query;
   const where = { teamId: req.team.id };
   if (mode && mode !== 'all') where.mode = String(mode);
   if (status) where.status = String(status);
   const rows = await prisma.lAProduct.findMany({ where, orderBy: [{ updatedAt: 'desc' }] });
   res.json(rows);
-});
+}));
 
-router.post('/products', async (req, res) => {
+router.post('/products', asyncHandler(async (req, res) => {
   const data = req.body ?? {};
   if (!data.title) return res.status(400).json({ error: 'title required' });
   const now = new Date().toISOString();
@@ -612,16 +682,20 @@ router.post('/products', async (req, res) => {
       gradingNotes: data.gradingNotes || null,
       patternUrl: data.patternUrl || null,
       techPackUrl: data.techPackUrl || null,
+      // 设计工作流生成的图片数组:[{slot, label, url}]
+      images: Array.isArray(data.images) ? data.images : [],
+      html: typeof data.html === 'string' ? data.html : null,
       aiDraftRaw: data.aiDraftRaw || null,
       imageUrl: data.imageUrl || null,
+      sections: data.sections && typeof data.sections === 'object' ? data.sections : null,
       status,
       statusHistory: history,
     },
   });
   res.status(201).json(p);
-});
+}));
 
-router.patch('/products/:id', async (req, res) => {
+router.patch('/products/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = req.body ?? {};
@@ -634,10 +708,10 @@ router.patch('/products/:id', async (req, res) => {
   if ('imageUrl' in update && !update.imageUrl) update.imageUrl = null;
   const p = await prisma.lAProduct.update({ where: { id: owned.id }, data: update });
   res.json(p);
-});
+}));
 
 // POST /api/teams/:teamId/products/:id/advance
-router.post('/products/:id/advance', async (req, res) => {
+router.post('/products/:id/advance', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const next = String(req.body.status);
@@ -653,7 +727,7 @@ router.post('/products/:id/advance', async (req, res) => {
     data: { status: next, statusHistory: [...(owned.statusHistory || []), entry] },
   });
   res.json(p);
-});
+}));
 
 // POST /api/teams/:teamId/products/:id/image — multipart form-data, field "file"
 // 保存产品主图到本地/S3,更新 imageUrl,返回更新后的产品。
@@ -704,25 +778,25 @@ router.post('/products/:id/status', async (req, res) => {
   res.json(p);
 });
 
-router.delete('/products/:id', async (req, res) => {
+router.delete('/products/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAProduct.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── collections (系列 / 专题) ──────────────────────────────── */
 
-router.get('/collections', async (req, res) => {
+router.get('/collections', asyncHandler(async (req, res) => {
   const rows = await prisma.lACollection.findMany({
     where: { teamId: req.team.id },
     orderBy: [{ createdAt: 'desc' }],
     include: { products: { select: { id: true, title: true, status: true } } },
   });
   res.json(rows);
-});
+}));
 
-router.post('/collections', async (req, res) => {
+router.post('/collections', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, ['mode', 'title', 'occasion', 'theme', 'seasons', 'palette', 'designerNote']);
   if (!data.title) return res.status(400).json({ error: 'title required' });
   const c = await prisma.lACollection.create({
@@ -738,22 +812,22 @@ router.post('/collections', async (req, res) => {
     },
   });
   res.status(201).json(c);
-});
+}));
 
-router.patch('/collections/:id', async (req, res) => {
+router.patch('/collections/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lACollection, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, ['mode', 'title', 'occasion', 'theme', 'seasons', 'palette', 'designerNote']);
   const c = await prisma.lACollection.update({ where: { id: owned.id }, data });
   res.json(c);
-});
+}));
 
-router.delete('/collections/:id', async (req, res) => {
+router.delete('/collections/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lACollection, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lACollection.delete({ where: { id: owned.id } });
   res.json({ ok: true });
-});
+}));
 
 /* ─── chat proxy → SSE 流式(设计主流程) ──────────────────────── */
 
@@ -764,10 +838,10 @@ router.delete('/collections/:id', async (req, res) => {
 const CHAT_TIMEOUT_MS = Number.parseInt(process.env.LAISSE_ANCIE_CHAT_TIMEOUT_MS || '', 10) || 180000;
 const CHAT_HEARTBEAT_MS = Number.parseInt(process.env.LAISSE_ANCIE_CHAT_HEARTBEAT_MS || '', 10) || 8000;
 
-router.post('/chat', async (req, res) => {
+router.post('/chat', asyncHandler(async (req, res) => {
   const system = String(req.body.system || '');
   const prompt = String(req.body.prompt || '');
-  const requestedModel = req.body.model || process.env.DEFAULT_AI_MODEL || 'qwen';
+  const requestedModel = req.body.model || process.env.DEFAULT_AI_MODEL || 'ark';
   const maxTokens = Math.min(Number(req.body.maxTokens) || 2048, 8192);
   if (!system && !prompt) return res.status(400).json({ error: 'system or prompt required' });
 
@@ -800,18 +874,12 @@ router.post('/chat', async (req, res) => {
   };
 
   try {
-    console.log(`[team-workbench] chat stream: model=${requestedModel}, maxTokens=${maxTokens}, system=${system.length}c, prompt=${prompt.length}c, timeout=${CHAT_TIMEOUT_MS}ms`);
-    if (requestedModel === 'qwen') {
-      await callQwenStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
-    } else if (requestedModel === 'longcat') {
-      await callLongcatStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
-    } else if (requestedModel === 'glm') {
-      await callGlmStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
-    } else {
-      await callGeminiStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
-    }
-    sendSSE('done', { text: fullText, model: requestedModel });
-    console.log(`[team-workbench] chat stream done: model=${requestedModel}, length=${fullText.length}`);
+    // 唯一文本模型: ARK 豆包
+    const model = 'ark';
+    console.log(`[team-workbench] chat stream: model=${model}, maxTokens=${maxTokens}, system=${system.length}c, prompt=${prompt.length}c, timeout=${CHAT_TIMEOUT_MS}ms`);
+    await callArkStream(system, prompt, maxTokens, { onDelta, signal: controller.signal });
+    sendSSE('done', { text: fullText, model });
+    console.log(`[team-workbench] chat stream done: model=${model}, length=${fullText.length}`);
   } catch (err) {
     console.error('[team-workbench] chat stream error', err.name, err.message);
     const msg = err.name === 'AbortError'
@@ -822,6 +890,6 @@ router.post('/chat', async (req, res) => {
     clearTimeout(hardTimeout);
   }
   endSSE();
-});
+}));
 
 module.exports = router;

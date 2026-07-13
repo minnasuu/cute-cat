@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
+const storage = require('./lib/storage');
 
 // ======================== 全局异常兜底（防止进程崩溃导致 502）========================
 process.on('uncaughtException', (err) => {
@@ -42,7 +43,9 @@ app.use(
 );
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// 静态服务 与 文件写入 走同一个目录(resolveUploadRoot 返回值),
+// 解决 cucatopia 部署中 __dirname + 'uploads' ≠ 卷挂载位导致 404 的问题。
+app.use('/uploads', express.static(storage.UPLOAD_ROOT));
 
 // V2.0 Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -54,7 +57,6 @@ app.use('/api/uploads', require('./routes/uploads'));
 app.use('/api/dify', require('./routes/dify'));
 app.use('/api/assets', require('./routes/assets'));
 app.use('/api/email', require('./routes/email'));
-app.use('/api/laisse-ancie', require('./routes/laisse-ancie'));
 app.use('/health', require('./routes/health'));
 
 if (process.env.NODE_ENV === 'production') {

@@ -200,29 +200,8 @@ router.post('/generate-goal', optionalAuth, async (req, res) => {
   }
 });
 
-// 通用 Skill 路由：各 skill 共用 Gemini 模型
+// 通用 Skill 路由：各 skill 共用 AI 模型
 // POST /api/dify/skill  body: { taskId, text }
-
-// 延迟加载 GoogleGenAI（ESM-only 包，需用 dynamic import）
-let _GoogleGenAI = null;
-async function getGoogleGenAI() {
-  if (!_GoogleGenAI) {
-    const mod = await import('@google/genai');
-    _GoogleGenAI = mod.GoogleGenAI;
-  }
-  return _GoogleGenAI;
-}
-
-// 创建 Gemini AI 客户端（支持自定义代理地址）
-async function createGeminiClient(apiKey) {
-  const GoogleGenAI = await getGoogleGenAI();
-  const baseUrl = process.env.GEMINI_BASE_URL; // 可选：自定义代理地址
-  const opts = { apiKey };
-  if (baseUrl) {
-    opts.httpOptions = { baseUrl };
-  }
-  return new GoogleGenAI(opts);
-}
 
 // Skill 对应的系统提示词
 const SKILL_SYSTEM_PROMPTS = {
@@ -287,63 +266,20 @@ Engineer: fix-bug,
 规则：agentId/skillId 正常模式下必须来自用户提供的真实 id；每个步骤必须有唯一 stepId（格式如 s_abc123）；params 不需要则空数组；定时任务设 scheduled=true 填 cron/startTime/endTime；inputFrom 填来源步骤的 stepId（不是 agentId），第一步不需要。`,
 };
 
-// Qwen (通义千问) 调用 — 兼容 OpenAI Chat Completions 格式
-async function callQwen(systemPrompt, userText, maxTokens = 4096) {
-  const apiKey = process.env.QWEN_API_KEY;
-  if (!apiKey) throw new Error('QWEN_API_KEY not set');
-
-  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-  const model = process.env.QWEN_MODEL || 'qwen3.6-plus';
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000); // 90s 超时
-
-  try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userText },
-        ],
-        max_tokens: maxTokens,
-        temperature: 0.7,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Qwen API ${response.status}: ${errText}`);
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 // 可用模型列表
 const AVAILABLE_MODELS = {
-  gemini: { name: 'Gemini', provider: 'Google' },
-  qwen: { name: 'Qwen', provider: 'Alibaba' },
+  ark: { name: '豆包', provider: '火山方舟' },
 };
 
 // 获取可用模型列表
 router.get('/models', (_req, res) => {
   const models = Object.entries(AVAILABLE_MODELS).map(([id, info]) => {
     let available = false;
-    if (id === 'gemini') available = !!process.env.GEMINI_API_KEY;
-    if (id === 'qwen') available = !!process.env.QWEN_API_KEY;
+    if (id === 'ark') available = !!process.env.ARK_API_KEY;
     return { id, ...info, available };
   });
-  res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'qwen' });
+  res.json({ models, default: process.env.DEFAULT_AI_MODEL || 'ark' });
 });
 
 // =====================================================================
@@ -392,7 +328,7 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
 
     // 与非流式 POST /skill 一致：优先使用前端传入的 systemPrompt / maxTokens
     const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
-    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
+    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'ark';
 
     const TASK_MAX_TOKENS = {
       'workflow-gen': 8192, 'mece-analysis': 8192, 'scamper-creative': 8192,
@@ -401,135 +337,79 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
     };
     const maxTokens = customMaxTokens ? Math.min(Number(customMaxTokens), 32768) : (TASK_MAX_TOKENS[taskId] || 4096);
 
-    const qwenStreamTimeoutMs = Number.parseInt(process.env.QWEN_STREAM_TIMEOUT_MS || '', 10);
-    const streamAbortMs = qwenStreamTimeoutMs > 0 ? qwenStreamTimeoutMs : 180000;
+    const streamAbortMs = 180000;
 
-    console.log(`[ai/skill/stream] taskId=${taskId}, model=${selectedModel}, text length=${text.length}, maxTokens=${maxTokens}${customSystemPrompt ? ', customPrompt=true' : ''}, streamTimeoutMs=${streamAbortMs}`);
+    console.log(`[ai/skill/stream] taskId=${taskId}, model=ark, text length=${text.length}, maxTokens=${maxTokens}, streamTimeoutMs=${streamAbortMs}`);
 
-    if (selectedModel === 'qwen') {
-      // --- Qwen Streaming ---
-      const apiKey = process.env.QWEN_API_KEY;
-      if (!apiKey) {
-        sendSSE('error', { error: 'QWEN_API_KEY not set' });
-        return endSSE();
-      }
-      const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-      const qwenModel = process.env.QWEN_MODEL || 'qwen3.6-plus';
+    // ── 唯一文本模型: ARK 豆包 (火山方舟, OpenAI 兼容) ──
+    const apiKey = process.env.ARK_API_KEY;
+    if (!apiKey) {
+      sendSSE('error', { error: 'ARK_API_KEY not set' });
+      return endSSE();
+    }
+    const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+    const arkModel = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), streamAbortMs);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), streamAbortMs);
 
-      try {
-        const response = await fetch(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: qwenModel,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: text },
-            ],
-            max_tokens: maxTokens,
-            temperature: 0.7,
-            stream: true,
-          }),
-          signal: controller.signal,
-        });
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: arkModel,
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
+          max_tokens: maxTokens,
+          temperature: 0.7,
+          stream: true,
+        }),
+        signal: controller.signal,
+      });
 
-        if (!response.ok) {
-          const errText = await response.text();
-          sendSSE('error', { error: `Qwen API ${response.status}: ${errText.slice(0, 200)}` });
-          return endSSE();
-        }
-
-        let fullAnswer = '';
-        const reader = response.body;
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        for await (const chunk of reader) {
-          buffer += decoder.decode(chunk, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed === 'data: [DONE]') continue;
-            if (!trimmed.startsWith('data: ')) continue;
-            try {
-              const json = JSON.parse(trimmed.slice(6));
-              const delta = json.choices?.[0]?.delta?.content || '';
-              if (delta) {
-                fullAnswer += delta;
-                sendSSE('chunk', { text: delta });
-              }
-            } catch { /* skip malformed */ }
-          }
-        }
-
-        clearTimeout(timeout);
-
-        // 记录 AI 用量
-        const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
-        sendSSE('done', {
-          answer: fullAnswer,
-          model: selectedModel,
-          ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
-        });
-      } catch (err) {
-        clearTimeout(timeout);
-        const msg = err.name === 'AbortError'
-          ? `AI 流式请求超时（当前上限 ${streamAbortMs / 1000}s，可通过环境变量 QWEN_STREAM_TIMEOUT_MS 调大）`
-          : (err.message || String(err));
-        sendSSE('error', { error: msg });
-      }
-    } else {
-      // --- Gemini Streaming ---
-      const GoogleGenAI = await getGoogleGenAI();
-      if (!GoogleGenAI) {
-        sendSSE('error', { error: '@google/genai module not available' });
-        return endSSE();
-      }
-      const geminiApiKey = process.env.GEMINI_API_KEY;
-      if (!geminiApiKey) {
-        sendSSE('error', { error: 'GEMINI_API_KEY not set' });
+      if (!response.ok) {
+        const errText = await response.text();
+        sendSSE('error', { error: `Ark API ${response.status}: ${errText.slice(0, 200)}` });
         return endSSE();
       }
 
-      try {
-        const ai = await createGeminiClient(geminiApiKey);
-        const stream = await ai.models.generateContentStream({
-          model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-          contents: text,
-          config: {
-            systemInstruction: systemPrompt,
-            maxOutputTokens: maxTokens,
-            temperature: 0.7,
-          },
-        });
+      let fullAnswer = '';
+      const reader = response.body;
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-        let fullAnswer = '';
-        for await (const chunk of stream) {
-          const delta = chunk.text || '';
-          if (delta) {
-            fullAnswer += delta;
-            sendSSE('chunk', { text: delta });
-          }
+      for await (const chunk of reader) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === 'data: [DONE]') continue;
+          if (!trimmed.startsWith('data: ')) continue;
+          try {
+            const json = JSON.parse(trimmed.slice(6));
+            const delta = json.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              fullAnswer += delta;
+              sendSSE('chunk', { text: delta });
+            }
+          } catch { /* skip malformed */ }
         }
-
-        const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
-        sendSSE('done', {
-          answer: fullAnswer,
-          model: selectedModel,
-          ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
-        });
-      } catch (err) {
-        const msg = err.message || String(err);
-        sendSSE('error', { error: msg });
       }
+
+      clearTimeout(timeout);
+      const usage = await recordAiUsage(req.userId, { taskId, model: 'ark', teamId, catId });
+      sendSSE('done', {
+        answer: fullAnswer,
+        model: 'ark',
+        ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      const msg = err.name === 'AbortError'
+        ? `AI 流式请求超时（当前上限 ${streamAbortMs / 1000}s）`
+        : (err.message || String(err));
+      sendSSE('error', { error: msg });
     }
 
     endSSE();
@@ -558,7 +438,7 @@ router.post('/skill', optionalAuth, async (req, res) => {
 
     // 优先使用前端传入的 systemPrompt，否则 fallback 到 taskId 对应的默认值
     const systemPrompt = customSystemPrompt || SKILL_SYSTEM_PROMPTS[taskId] || '你是一位专业的 AI 助手，请用中文回复用户的问题。';
-    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'qwen';
+    const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'ark';
 
     // 根据 taskId 动态调整 token 限制
     // 结构化输出类（JSON 格式）需要更大空间防止截断
@@ -580,34 +460,34 @@ router.post('/skill', optionalAuth, async (req, res) => {
 
     let answer = '';
 
-    if (selectedModel === 'qwen') {
-      // --- Qwen ---
-      answer = await callQwen(systemPrompt, text, maxTokens);
-    } else {
-      // --- Gemini (默认) ---
-      const GoogleGenAI = await getGoogleGenAI();
-      if (!GoogleGenAI) {
-        return res.status(500).json({ error: 'Server configuration error: @google/genai module not available' });
+    if (selectedModel === 'ark') {
+      // --- ARK 豆包 (火山方舟, OpenAI 兼容) ---
+      const apiKey = process.env.ARK_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'ARK_API_KEY not set' });
       }
-
-      const geminiApiKey = process.env.GEMINI_API_KEY;
-      if (!geminiApiKey) {
-        return res.status(500).json({ error: 'Server configuration error: GEMINI_API_KEY not set' });
-      }
-
-      const ai = await createGeminiClient(geminiApiKey);
-      const response = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-        contents: text,
-        config: {
-          systemInstruction: systemPrompt,
-          maxOutputTokens: maxTokens,
+      const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+      const arkModel = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: arkModel,
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
+          max_tokens: maxTokens,
           temperature: 0.7,
-        },
+        }),
       });
-
-      answer = response.text || '';
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(500).json({ error: `Ark API ${response.status}: ${errText.slice(0, 200)}` });
+      }
+      const data = await response.json();
+      answer = data.choices?.[0]?.message?.content || '';
+    } else {
+      return res.status(400).json({ error: 'unsupported model' });
     }
+
 
     console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, answer length=${answer.length}`);
 
@@ -625,7 +505,7 @@ router.post('/skill', optionalAuth, async (req, res) => {
     // 返回更具体的错误信息帮助定位
     let errDetail = error.message || String(error);
     if (errDetail.includes('API_KEY') || errDetail.includes('apiKey')) {
-      errDetail = 'AI API Key 未配置或无效，请检查 .env 中的 GEMINI_API_KEY 或 QWEN_API_KEY';
+      errDetail = 'AI API Key 未配置或无效，请检查 .env 中的 ARK_API_KEY';
     } else if (errDetail.includes('ECONNREFUSED') || errDetail.includes('ENOTFOUND') || errDetail.includes('fetch failed')) {
       errDetail = 'AI 服务连接失败，请检查网络或 API 地址配置';
     } else if (errDetail.includes('aborted') || errDetail.includes('timeout')) {

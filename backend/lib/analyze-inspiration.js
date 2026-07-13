@@ -1,31 +1,42 @@
 /**
  * analyze-inspiration —— 用 AI 视觉模型分析灵感图片,提取归类 + 设计信息。
  *
- * 输入:图片 buffer + mime。
+ * 输入:图片 buffer + mime,或 imageUrl(http(s) URL / base64 data URL)。
  * 输出:{ result, error }:
  *   - 成功 → { result: {...}, error: null }
  *   - 失败 → { result: null, error: 'key' | 'mime' | 'file' | 'api:xxx' | 'json:...' | 'empty' }
  *
- * provider(INSPIRATION_AI_PROVIDER):
- *   - openai(LONGCAT_BASE_URL/LONGCAT_API_KEY/LONGCAT_MODEL 或 OPENAI_BASE_URL/OPENAI_API_KEY/OPENAI_MODEL)
- *   - qwen(QWEN_BASE_URL/QWEN_API_KEY/QWEN_MODEL)
- *   - gemini(GEMINI_BASE_URL/GEMINI_API_KEY/GEMINI_MODEL)  -- 通过 @google/genai SDK,支持 inline image
- * 默认:打开可用 key 的第一个(qwen → gemini → openai)
+ * provider:火山方舟(Ark) Seed 视觉模型,调用 /chat/completions 视觉接口(流式)。
+ *   请求体格式(messages[].content 混合 image_url + text):
+ *     { model, stream:true, messages:[{ role:"system", content:[{type:"text",text:SYSTEM_PROMPT}] },
+ *                                    { role:"user",   content:[{type:"image_url",image_url:{url:<图片URL或data:>}},
+ *                                                           {type:"text",text:PROMPT}] } ] }
+ *   环境变量:
+ *     ARK_API_KEY      必需 —— 方舟 API Key(全局 2 个豆包模型共用同一 Key)
+ *     ARK_BASE_URL     可选 —— 默认 https://ark.cn-beijing.volces.com/api/v3
+ *     ARK_TEXT_MODEL   可选 —— 文本/视觉解析模型 ID,默认 doubao-seed-2-1-pro-260628
+ *                        (与 workflow-executor 文本生成共用同一变量)
+ *   注意:image_url 支持 http(s) URL 与 base64 data URL;优先外部 URL(省 base64 传输),
+ *        无 URL 时把 buffer 编码为 data URL 兜底。
  */
 
 'use strict';
 
-const PROMPT = `你是一位时尚品牌 Laisse Ancie (来兮·安兮)的资深设计研究员。仔细观察这张图片,从服装设计专业视角输出 JSON 分析。
+const SYSTEM_PROMPT = `你是 Laisse Ancie (来兮·安兮)的 AI 设计研究员。基于用户给的灵感图片做归类分析 + 设计解读,只输出严格的 JSON(不要 Markdown 代码块、不要寒暄、不要前后说明文字)。`;
 
-要求:
-- category: 图片主体分类 —— 上装 | 下装 | 连衣裙 | 外套 | 配饰 | 印花 | 灵感 | 其他
-- silhouette: 整体廓形 — A字 | H字 | O型 | 茧型 | 修身 | 宽松 | 直筒 | 鱼尾 | 层叠 | 其他
-- colors: 图片中的主要配色(Hex 数组,最多 4 个),如 ["#1f3a44","#d8c9a3"]
-- designHighlights(3-5 条): 设计亮点 — 结构、面料、工艺、细节元素上的突出之处
-- styleFeatures(2-3 条): 整体风格关键词 — 如 极简、浪漫、前卫、东方、街头、松弛、华丽
-- brandAnalysis: 100 字以内的整体设计语言叙述,告诉设计师"这件产品讲了一个什么样的故事"
+const PROMPT = `仔细观察这张图片 —— 它可能是一件服装(T恤、连衣裙、外套...)、一件配饰(包袋、鞋履、首饰...)、一个时尚单品(手机壳、玩偶挂件...)、一张插画或平面作品,甚至任何激发时尚灵感的物件。
 
-只输出 JSON,不要寒暄,不要代码块标记:`;
+请按以下 4 个维度输出 JSON 分析:
+
+1. category(字符串): 图片主体是什么 —— 用简短的名词短语描述,如「T恤」、「托特包」、「油画风插画」、「亚克力手机壳」、「羊毛针织帽」,避免笼统写「服装」或「单品」
+2. visualStyle(字符串,1-2 句): 视觉风格定位 —— 如「手绘日系插画风,线条轻盈,低饱和莫兰迪色」、「Y2K 未来主义,金属质感搭配高饱和渐变」、「法式田园油画感,柔和的笔触和暖色调光影」
+3. designApproach(字符串,1-2 句): 设计思路 —— 核心创意、构图手法、色彩策略、材质运用、最巧妙的设计决策是什么,要用设计师能读懂的语言描述(举例格式:「巧妙地把气球轮廓作为领口镂空的图形语言,形成正负形的趣味转换」)
+4. inspiration(数组,3-5 条): 设计启发 —— 从这张图可以提取哪些可复用的设计方法,每条一行,可操作、可落地,如「可尝试将植物叶脉纹理用作绗缝走线图案」「高饱和撞色方案值得在春夏系列中沿用」
+
+注意:
+- 如果图片是插画/平面作品,designApproach 聚焦构图、配色、线条、图形语言的妙处
+- 如果图片是产品/实物,designApproach 聚焦造型、材质、工艺、结构的妙处
+- 只输出一个合法 JSON 对象,不要寒暄,不要代码块标记,不要任何前后说明文字:`;
 
 function extractJson(text) {
   if (!text) return '';
@@ -40,178 +51,143 @@ function extractJson(text) {
 function mediaTypeToExtension(mimeType) {
   return mimeType === 'image/jpeg' ? 'jpeg'
     : mimeType === 'image/png' ? 'png'
-    : mimeType === 'image/webp' ? 'webp'
-    : mimeType === 'image/gif' ? 'gif'
-    : null;
+      : mimeType === 'image/webp' ? 'webp'
+        : mimeType === 'image/gif' ? 'gif'
+          : null;
 }
 
-// ─── OpenAI‑compatible (Qwen/LongCat/OpenAI) ───────────────────
-async function analyzeOpenAi({ endpoint, apiKey, model, dataUrl, mimeType, timeoutMs }) {
+// ─── Ark Seed 视觉模型 (POST /chat/completions,流式,视觉接口) ──
+// 请求体格式(messages[].content 混合 image_url + text):
+//   { model, stream:true,
+//     messages:[{ role:"system", content:[{type:"text",text:SYSTEM_PROMPT}] },
+//                { role:"user",  content:[{type:"image_url",image_url:{url:imageRef}},
+//                                       {type:"text",text:PROMPT}] } ] }
+async function analyzeArk({ apiKey, baseUrl, model, imageRef, timeoutMs }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
   try {
-    const res = await fetch(endpoint, {
+    res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model, max_tokens: 1024,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: dataUrl } },
-            { type: 'text', text: PROMPT },
-          ],
-        }],
+        model,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 2048,
+        messages: [
+          { role: 'system', content: [{ type: 'text', text: SYSTEM_PROMPT }] },
+          {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: imageRef } },
+              { type: 'text', text: PROMPT },
+            ],
+          },
+        ],
       }),
       signal: controller.signal,
     });
-    if (!res.ok) {
-      const t = (await res.text()).replace(/\s+/g, ' ').slice(0, 200);
-      return { error: `api:${res.status}:${t}` };
-    }
-    const data = await res.json();
-    const raw = data?.choices?.[0]?.message?.content || '';
-    if (!raw) return { error: 'empty' };
-    return { raw };
   } catch (err) {
     if (err.name === 'AbortError') return { error: `net:timeout(${timeoutMs}ms)` };
     return { error: `net:${err.name || 'unknown'}` };
   } finally {
     clearTimeout(timer);
   }
-}
 
-// ─── Gemini (原生 SDK,内联 base64 小图) ───────────────────────
-async function analyzeGemini({ apiKey, model, imageBuffer, mimeType, timeoutMs }) {
-  let GoogleGenAI;
+  if (!res.ok) {
+    const t = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300);
+    return { error: `api:${res.status}:${t}` };
+  }
+
+  // 流式解析:SSE data: {choices:[{delta:{content:"..."}}]} → 拼接 fullText
+  const reader = res.body;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
   try {
-    GoogleGenAI = (await import('@google/genai')).GoogleGenAI;
-  } catch (e) {
-    return { error: `no-sdk:@google/genai` };
-  }
-  const ext = mediaTypeToExtension(mimeType);
-  if (!ext) return { error: 'mime' };
-  const client = new GoogleGenAI({ apiKey });
-
-  const timer = setTimeout(() => {}, timeoutMs);
-  try {
-    const resp = await client.models.generateContent({
-      model,
-      contents: [
-        { inlineData: { mimeType, data: imageBuffer.toString('base64') } },
-        { text: PROMPT },
-      ],
-      generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
-    });
-    const raw = resp?.text || '';
-    if (!raw) return { error: 'empty' };
-    return { raw };
-  } catch (err) {
-    if (err.name === 'AbortError') return { error: `net:timeout(${timeoutMs}ms)` };
-    return { error: `net:${err.name || 'unknown'}:${(err.message || '').slice(0, 100)}` };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function analyzeInspiration(imageBuffer, mimeType) {
-  if (!imageBuffer || !imageBuffer.length) {
-    return { result: null, error: 'file' };
-  }
-  const ext = mediaTypeToExtension(mimeType);
-  if (!ext) {
-    return { result: null, error: 'mime' };
-  }
-  const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 30000;
-
-  /** @type {Array<{name:string,run:Function}>} */
-  const providers = [];
-
-  // 优先级 1: INSPIRATION_AI_PROVIDER 显式指定
-  const forced = (process.env.INSPIRATION_AI_PROVIDER || '').toLowerCase().trim();
-  const explicitModel = (process.env.INSPIRATION_AI_MODEL || '').trim();
-
-  // 组合出完整 OpenAI 端点:如果 base 已经以 /v1 结尾,只追加 /chat/completions;否则追加 /v1/chat/completions
-  function openAiEndpoint(base) {
-    const b = base.replace(/\/+$/, '');
-    return b.endsWith('/v1') ? `${b}/chat/completions` : `${b}/v1/chat/completions`;
-  }
-
-  // 默认顺序:gemini 优先(渲染上唯一确定支持 vision 的),再 qwen/text-compat
-  // 原因:qwen3.5-plus 是纯文本模型, vision 调用会 400;longcat 上游 403;gemini flash 稳
-
-  // 1) gemini(首选,vision 稳定)
-  if (process.env.GEMINI_API_KEY) {
-    providers.push({
-      name: 'gemini',
-      run: () => analyzeGemini({
-        apiKey: process.env.GEMINI_API_KEY,
-        model: explicitModel || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-        imageBuffer, mimeType, timeoutMs,
-      }),
-    });
-  }
-
-  // 2) OpenAI‑compatible 大类 (qwen/openai/longcat)
-  const openVariants = [
-    { name: 'qwen',  base: process.env.QWEN_BASE_URL,  key: process.env.QWEN_API_KEY,  model: process.env.QWEN_MODEL },
-    { name: 'openai', base: process.env.OPENAI_BASE_URL, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL },
-    { name: 'longcat', base: process.env.LONGCAT_BASE_URL, key: process.env.LONGCAT_API_KEY, model: process.env.LONGCAT_MODEL },
-  ].filter((v) => v.key && v.base);
-  for (const v of openVariants) {
-    if (!v.base) v.base = 'https://api.openai.com';
-  }
-
-  for (const v of openVariants) {
-    const model = explicitModel || v.model || (v.name === 'openai' ? 'gpt-4o-mini' : '');
-    if (!model) continue;
-    providers.push({
-      name: v.name,
-      run: () => analyzeOpenAi({
-        endpoint: openAiEndpoint(v.base),
-        apiKey: v.key, model,
-        dataUrl: `data:${mimeType};base64,${imageBuffer.toString('base64')}`,
-        mimeType, timeoutMs,
-      }),
-    });
-  }
-
-  if (forced) {
-    const match = providers.filter((p) => p.name === forced);
-    if (match.length === 0) {
-      return { result: null, error: `no-provider:${forced}` };
+    for await (const chunk of reader) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data: ')) continue;
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const delta = json.choices?.[0]?.delta?.content || '';
+          if (delta) fullText += delta;
+        } catch { /* skip malformed line */ }
+      }
     }
-    providers.splice(0, providers.length, ...match);
+  } catch (e) {
+    return { error: `net:stream-read:${e.message}` };
   }
 
-  if (providers.length === 0) {
-    console.warn('[analyze-inspiration] no AI provider (qwen/openai/gemini) configured with both key + base');
+  if (!fullText.trim()) {
+    return { error: `empty:stream-returned-no-text` };
+  }
+  return { raw: fullText };
+}
+
+/**
+ * AI 视觉分析灵感图片。
+ * 两种二选一输入(优先 imageUrl):
+ *   - imageUrl: 图片 HTTP(S) URL 或 base64 data URL,直接给 Ark 服务端拉取(推荐,省 base64 传输)
+ *   - imageBuffer + mimeType: 本地 buffer → base64 data URL(兜底)
+ * 返回 { result, error }(error 为 'file'|'mime'|'key'|'api:..' 等,供前端/重试接口定位)
+ */
+async function analyzeInspiration(imageBuffer, mimeType, imageUrl) {
+  // 视觉分析需要更长的超时:图片 base64 传输 + 视觉模型推理 + 4 维度 JSON 生成 (默认 90s)
+  const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 90000;
+
+  const apiKey = (process.env.ARK_API_KEY || '').trim();
+  if (!apiKey) {
+    console.warn('[analyze-inspiration] ARK_API_KEY not set');
     return { result: null, error: 'key' };
+  }
+  const baseUrl = (process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/+$/, '');
+  const model = (process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628').trim();
+
+  // 决定给 Ark 的图片引用:优先外部 URL,否则把 buffer 编码为 base64 data URL
+  let imageRef;
+  if (imageUrl) {
+    imageRef = imageUrl;
+  } else {
+    if (!imageBuffer || !imageBuffer.length) {
+      return { result: null, error: 'file' };
+    }
+    const ext = mediaTypeToExtension(mimeType);
+    if (!ext) {
+      return { result: null, error: 'mime' };
+    }
+    imageRef = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
   }
 
   let lastError = 'key';
-  for (const p of providers) {
-    try {
-      console.log(`[analyze-inspiration] try provider=${p.name}`);
-      const { raw, error } = await p.run();
-      if (error) {
-        lastError = `${p.name}:${error}`;
-        console.warn(`[analyze-inspiration] provider=${p.name} failed: ${error}`);
-        continue;
+  try {
+    // 诊断:截断打印 imageRef 前 60 字符,排查空 URL / 错误格式(400 MissingParameter 时直接对照)
+    console.log(`[analyze-inspiration] Ark model=${model}, via=${imageUrl ? 'url' : 'base64'}, imageRef=${imageRef.slice(0, 60)}…`);
+    const { raw, error } = await analyzeArk({ apiKey, baseUrl, model, imageRef, timeoutMs });
+    if (error) {
+      if (error.startsWith('empty:')) {
+        // Ark 返回了但没提取到文本——携带响应结构到 error 里,便于排查
+        return { result: null, error: `ark-empty` };
       }
-      try {
-        const parsed = JSON.parse(extractJson(raw));
-        console.log(`[analyze-inspiration] done via ${p.name}: category=${parsed.category}`);
-        return { result: parsed, error: null };
-      } catch (e) {
-        console.error(`[analyze-inspiration] provider=${p.name} JSON parse fail: ${e.message}; raw=${raw.slice(0, 120)}`);
-        lastError = `${p.name}:json`;
-        continue;
-      }
-    } catch (err) {
-      lastError = `${p.name}:exception:${err.message}`;
-      console.error(`[analyze-inspiration] provider=${p.name} threw: ${err.message}`);
+      return { result: null, error };
     }
+    try {
+      const parsed = JSON.parse(extractJson(raw));
+      console.log(`[analyze-inspiration] done: category=${parsed.category}`);
+      return { result: parsed, error: null };
+    } catch (e) {
+      console.error(`[analyze-inspiration] JSON parse fail: ${e.message}; raw=${raw.slice(0, 200)}`);
+      return { result: null, error: `json:${e.message}` };
+    }
+  } catch (err) {
+    lastError = `exception:${err.message}`;
+    console.error(`[analyze-inspiration] Ark threw: ${err.message}`);
   }
   return { result: null, error: lastError };
 }

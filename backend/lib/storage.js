@@ -29,7 +29,37 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
+/**
+ * 解析上传根目录 —— 运行时探测,兼容两种部署目录结构:
+ *   本地开发 / minna 部署:卷挂载在 /app/backend/uploads
+ *   cucatopia 部署:        卷挂载在 /app/backend/uploads (index.js 在 /app/)
+ * 返回已存在且有数据的目录(优先卷挂载点);都不存在时建在卷挂载位(首轮部署)。
+ *
+ * 导出供 index.js 静态服务使用 → 读写走同一路径,消除错位 404。
+ */
+function resolveUploadRoot() {
+  const candidates = [
+    '/app/backend/uploads', // minna 部署 / cucatopia 部署 / 本地开发:卷挂载点
+    path.join(__dirname, '..', 'uploads'), // 兜底推算(本地开发非标准结构)
+  ];
+  // 优先返回已存在且有数据的目录(容器重启后命名卷数据仍在)
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c) && fs.statSync(c).isDirectory()) {
+        // 有数据(至少一个子项)→ 认定是卷挂载点
+        let entries;
+        try { entries = fs.readdirSync(c); } catch { continue; }
+        if (entries.length > 0) return c;
+      }
+    } catch { /* skip */ }
+  }
+  // 都不存在/都为空 → 选卷挂载位(创建目录,命名卷首次启动时落到卷里)
+  const primary = candidates[0];
+  try { fs.mkdirSync(primary, { recursive: true }); } catch { /* 不可写则回退 */ }
+  return primary;
+}
+
+const UPLOAD_ROOT = resolveUploadRoot();
 const TMP_DIR = path.join(UPLOAD_ROOT, '.tmp');
 
 const mode = (process.env.S3_BUCKET && process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY) ? 's3' : 'local';
@@ -41,11 +71,24 @@ function localSave(buf, relPath) {
   fs.writeFileSync(abs, buf);
 }
 function localPublicUrl(relPath) {
-  return `/${relPath.split(path.sep).join('/')}`;
+  // relPath 不含 'uploads/' 前缀,静态挂载在 /uploads → UPLOAD_ROOT,这里要补齐
+  return `/uploads/${relPath.split(path.sep).join('/')}`;
 }
+/** 清洗一个路径 segment:移除非安全字符(保留中文),单个 segment 限长 60。 */
+function cleanSegment(seg) {
+  return String(seg || '').replace(/[^a-zA-Z0-9_一-龥-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+}
+
+/** 清洗 folder 路径:按 '/' 分段、逐段清洗后再拼回(保留层级,不压扁)。 */
+function cleanFolderPath(folder) {
+  const segs = String(folder || 'misc').split('/').map(cleanSegment).filter(Boolean);
+  return segs.length ? segs.join('/') : 'misc';
+}
+
 function createLocalSavePath(folder, filename) {
-  const cleanFolder = String(folder || 'misc').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 60) || 'misc';
-  return path.posix.join('uploads', cleanFolder, filename);
+  // 注意:不含 'uploads/' 前缀——UPLOAD_ROOT 已经是 ../uploads,localSave 做 join(UPLOAD_ROOT, relPath)
+  // public URL 前缀 '/' 由 localPublicUrl 统一添加
+  return `${cleanFolderPath(folder)}/${filename}`;
 }
 
 // ─── s3(SigV4 手写,零依赖) ─────────────────────────────────
@@ -127,9 +170,8 @@ function s3PublicUrl(key) {
   return `${endpoint}/${process.env.S3_BUCKET}/${canonKey(key)}`;
 }
 function createS3SavePath(folder, filename) {
-  const cleanFolder = String(folder || 'misc').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 60) || 'misc';
   const prefix = (process.env.S3_FOLDER_PREFIX || '').replace(/^\/+|\/+$/g, '');
-  const key = prefix ? `${prefix}/${cleanFolder}/${filename}` : `${cleanFolder}/${filename}`;
+  const key = prefix ? `${prefix}/${cleanFolderPath(folder)}/${filename}` : `${cleanFolderPath(folder)}/${filename}`;
   return key;
 }
 
@@ -155,6 +197,7 @@ module.exports = {
   mode,
   UPLOAD_ROOT,
   TMP_DIR,
+  resolveUploadRoot,
   saveUpload,
   getPublicUrl,
   createSavePath,

@@ -1,6 +1,6 @@
 import type { AgentContext, AgentResult } from './types';
 import { extractUpstreamText } from './_framework';
-import { callDifySkillStream } from '../utils/backendClient';
+import { callDifySkillStream, getCurrentAIModel } from '../utils/backendClient';
 import { listVibeAssetsStyles } from '../pages/VibeAssets/vibeAssetsApi';
 
 /**
@@ -137,7 +137,7 @@ ${upstreamForSystem}`;
       '请根据上文「上游产品 / 交互参考」与风格库，只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
 
     const TIMEOUT_MS = 120_000;
-    const resultPromise = callDifySkillStream('ai-chat', userText, 'qwen', ctx.onChunk, {
+    const resultPromise = callDifySkillStream('ai-chat', userText, getCurrentAIModel(), ctx.onChunk, {
       systemPrompt: fullSystemPrompt,
       maxTokens: 4096,
     });

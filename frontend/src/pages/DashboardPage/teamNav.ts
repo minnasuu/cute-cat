@@ -2,7 +2,7 @@
  * 团队导航元数据。
  *
  * 左栏结构:
- *   ★ 设计(主工作台,带 单品/插画/系列 模式切换子菜单)
+ *   ★ 单品 / 插画 / 系列                 ← 三个平级一级设计 tab,点击进入各自创作
  *   ─────
  *   资源  ▾ (灵感 / Lookbook / 材料)     ← 合并为一组,作为设计调用的素材库
  *   ─────
@@ -28,12 +28,24 @@ export interface NavSection {
   tabs: NavSubTab[];
 }
 
-/** 设计主工作台的「模式切换」子菜单(不属于数据 tab,直接切 Composer mode) */
-export const DESIGN_MODES: { id: DesignMode; label: string }[] = [
-  { id: "single", label: "单品" },
-  { id: "illustration", label: "插画" },
-  { id: "collection", label: "系列" },
+/**
+ * 一级设计 tab(平级)。点击后右侧进入对应模式的创作(chat+preview):
+ *   - 单品/系列: 走现有图片生成(/design/generate)
+ *   - 插画: chat 输出 HTML,右侧用画布渲染
+ */
+export const DESIGN_TABS: { id: DesignMode; label: string; icon: string }[] = [
+  { id: "single", label: "单品", icon: "◧" },
+  { id: "illustration", label: "插画", icon: "◨" },
+  { id: "collection", label: "系列", icon: "◫" },
 ];
+
+/** 检测一个 tab id 是否为一级设计 tab */
+export function isDesignTab(id: string): id is DesignMode {
+  return (DESIGN_TABS as { id: DesignMode }[]).some((t) => t.id === id);
+}
+
+/** 默认 landing tab(单品) */
+export const DEFAULT_TAB_ID = "single";
 
 /** 「资源」分类下的子 tab(数据浏览 tab) */
 export const RESOURCE_SECTIONS: NavSection[] = [
@@ -44,8 +56,9 @@ export const RESOURCE_SECTIONS: NavSection[] = [
     defaultExpanded: true,
     tabs: [
       { id: "inspirations", label: "灵感", icon: "◐" },
-      { id: "lookbook", label: "Lookbook", icon: "✦" },
       { id: "materials", label: "材料", icon: "◫" },
+      { id: "assets", label: "品牌信息", icon: "◻" },
+      { id: "lookbook", label: "Lookbook", icon: "✦" },
     ],
   },
 ];
@@ -59,7 +72,6 @@ export const KNOWLEDGE_SECTIONS: NavSection[] = [
     defaultExpanded: true,
     tabs: [
       { id: "skills", label: "知识库", icon: "✎" },
-      { id: "assets", label: "资产", icon: "◻" },
     ],
   },
 ];
@@ -68,3 +80,14 @@ export const KNOWLEDGE_SECTIONS: NavSection[] = [
 export const ALL_DATA_TABS: Record<string, NavSubTab & { section: "resources" | "knowledge" }> = {};
 for (const s of RESOURCE_SECTIONS) for (const t of s.tabs) ALL_DATA_TABS[t.id] = { ...t, section: "resources" };
 for (const s of KNOWLEDGE_SECTIONS) for (const t of s.tabs) ALL_DATA_TABS[t.id] = { ...t, section: "knowledge" };
+
+/** 校验一个 tab id 是否合法(设计 tab + 数据 tab) */
+export function isValidTabId(id: string | null | undefined): boolean {
+  return !!id && (isDesignTab(id) || id in ALL_DATA_TABS);
+}
+
+/** 把 URL ?tab= 解析为合法 tab id,非法时回落到 DEFAULT_TAB_ID */
+export function resolveTabFromSearch(search: string): string {
+  const id = new URLSearchParams(search).get("tab");
+  return isValidTabId(id) ? id! : DEFAULT_TAB_ID;
+}

@@ -8,137 +8,13 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// 延迟加载 Google GenAI
-let _GoogleGenAI = null;
-async function getGoogleGenAI() {
-  if (!_GoogleGenAI) {
-    const mod = await import('@google/genai');
-    _GoogleGenAI = mod.GoogleGenAI;
-  }
-  return _GoogleGenAI;
-}
-
-async function createGeminiClient(apiKey) {
-  const GoogleGenAI = await getGoogleGenAI();
-  const baseUrl = process.env.GEMINI_BASE_URL;
-  const opts = { apiKey };
-  if (baseUrl) opts.httpOptions = { baseUrl };
-  return new GoogleGenAI(opts);
-}
-
-// ─── LongCat-2.0 (Anthropic‑compatible) ───────────────────────
-async function callLongcat(systemPrompt, userText, maxTokens = 4096) {
-  const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('LONGCAT_API_KEY (or ANTHROPIC_API_KEY) not set');
-  const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-  const model = process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
-  try {
-    const response = await fetch(`${baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userText }],
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`LongCat API ${response.status}: ${errText}`);
-    }
-    const data = await response.json();
-    // Anthropic returns content[] of blocks; emit text blocks
-    return (data.content || [])
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join('');
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// ─── 流式 LongCat 调用 (Anthropic‑compatible SSE) ────────────
-// Anthropic streaming 事件流：content_block_delta → delta.text_delta.text
-async function callLongcatStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
-  const apiKey = process.env.LONGCAT_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('LONGCAT_API_KEY (or ANTHROPIC_API_KEY) not set');
-  const baseUrl = process.env.LONGCAT_BASE_URL || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-  const model = process.env.LONGCAT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-opus-4-1-20250805';
-
-  const controller = new AbortController();
-  const hardTimeout = Number.parseInt(process.env.LONGCAT_STREAM_TIMEOUT_MS || '', 10) || 180000;
-  const timeout = setTimeout(() => controller.abort(), hardTimeout);
-  // 外部 signal（路由级）也允许中断
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', () => controller.abort(), { once: true });
-  }
-  try {
-    const response = await fetch(`${baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userText }],
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`LongCat API ${response.status}: ${errText}`);
-    }
-    const reader = response.body;
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let fullText = '';
-    for await (const chunk of reader) {
-      buffer += decoder.decode(chunk, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        try {
-          const json = JSON.parse(trimmed.slice(6));
-          // Anthropic delta: {"type":"content_block_delta","delta":{"type":"text_delta","text":"..."}}
-          const delta = json.delta?.text || (json.type === 'content_block_delta' ? json.delta?.text : '');
-          if (delta) {
-            fullText += delta;
-            onDelta?.(delta);
-          }
-        } catch { /* skip malformed */ }
-      }
-    }
-    return fullText;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// ─── Qwen 调用 (仍保留，可 fallback) ─────────────────────────
-async function callQwen(systemPrompt, userText, maxTokens = 4096) {
-  const apiKey = process.env.QWEN_API_KEY;
-  if (!apiKey) throw new Error('QWEN_API_KEY not set');
-  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-  const model = process.env.QWEN_MODEL || 'qwen3.6-plus';
+// ─── ARK 豆包文本调用 (火山方舟, OpenAI 兼容) — 唯一文本模型 ──
+// 模型: doubao-seed-2-1-pro-260628 (与灵感视觉分析共用同一 ARK key)
+async function callArk(systemPrompt, userText, maxTokens = 4096) {
+  const apiKey = process.env.ARK_API_KEY;
+  if (!apiKey) throw new Error('ARK_API_KEY not set');
+  const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+  const model = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90000);
@@ -156,7 +32,7 @@ async function callQwen(systemPrompt, userText, maxTokens = 4096) {
     });
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Qwen API ${response.status}: ${errText}`);
+      throw new Error(`Ark API ${response.status}: ${errText}`);
     }
     const data = await response.json();
     return data.choices?.[0]?.message?.content || '';
@@ -165,37 +41,13 @@ async function callQwen(systemPrompt, userText, maxTokens = 4096) {
   }
 }
 
-// ─── Gemini 调用 (仍保留，可 fallback) ────────────────────────
-async function callGemini(systemPrompt, userText, maxTokens = 4096) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
-  const ai = await createGeminiClient(apiKey);
-
-  // 超时保护：与 callQwen 一致，避免无超时导致 nginx 504
-  const controller = new AbortController();
-  const timeoutMs = Number.parseInt(process.env.GEMINI_TIMEOUT_MS || '', 10) || 90000;
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-      contents: userText,
-      config: { systemInstruction: systemPrompt, maxOutputTokens: maxTokens, temperature: 0.7 },
-      // @google/genai 支持 signal 以中断请求
-      ...(controller.signal ? { signal: controller.signal } : {}),
-    });
-    return response.text || '';
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-// ─── 流式 Qwen 调用 ───
-// onDelta(delta: string) 每收到一个 token 回调；signal 用于中断
-async function callQwenStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
-  const apiKey = process.env.QWEN_API_KEY;
-  if (!apiKey) throw new Error('QWEN_API_KEY not set');
-  const baseUrl = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
-  const model = process.env.QWEN_MODEL || 'qwen3.6-plus';
+// ─── 流式 ARK 豆包文本调用 (火山方舟, OpenAI 兼容) — 唯一文本流模型
+// 文档: https://www.volcengine.com/docs/82379 —— /chat/completions SSE,格式与 OpenAI 一致
+async function callArkStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
+  const apiKey = process.env.ARK_API_KEY;
+  if (!apiKey) throw new Error('ARK_API_KEY not set');
+  const baseUrl = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+  const model = process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628';
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -212,13 +64,15 @@ async function callQwenStream(systemPrompt, userText, maxTokens = 4096, { onDelt
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Qwen API ${response.status}: ${errText}`);
+    throw new Error(`Ark API ${response.status}: ${errText}`);
   }
 
   const reader = response.body;
   const decoder = new TextDecoder();
   let buffer = '';
   let fullText = '';
+  const startedAt = Date.now();
+  let gotFirstDelta = false;
 
   for await (const chunk of reader) {
     buffer += decoder.decode(chunk, { stream: true });
@@ -232,97 +86,28 @@ async function callQwenStream(systemPrompt, userText, maxTokens = 4096, { onDelt
         const json = JSON.parse(trimmed.slice(6));
         const delta = json.choices?.[0]?.delta?.content || '';
         if (delta) {
+          if (!gotFirstDelta) {
+            gotFirstDelta = true;
+            console.log(`[callArkStream] first delta after ${Date.now() - startedAt}ms, model=${model}`);
+          }
           fullText += delta;
           onDelta?.(delta);
         }
       } catch { /* skip malformed line */ }
     }
   }
-  return fullText;
-}
-
-// ─── 流式 Gemini 调用 ───
-async function callGeminiStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
-  const ai = await createGeminiClient(apiKey);
-
-  const stream = await ai.models.generateContentStream({
-    model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-    contents: userText,
-    config: { systemInstruction: systemPrompt, maxOutputTokens: maxTokens, temperature: 0.7 },
-  });
-
-  let fullText = '';
-  for await (const chunk of stream) {
-    if (signal?.aborted) break;
-    const delta = chunk.text || '';
-    if (delta) {
-      fullText += delta;
-      onDelta?.(delta);
-    }
+  // 诊断:全程无 delta 几乎一定是首 token 超时或响应格式异常,便于区分排查
+  if (!gotFirstDelta) {
+    console.warn(`[callArkStream] no delta extracted in ${Date.now() - startedAt}ms, model=${model}, baseUrl=${baseUrl}`);
   }
   return fullText;
 }
 
-// ─── 流式 GLM 调用 (智谱, OpenAI 兼容) ───────────────────────
-// 文档: https://open.bigmodel.cn/dev/api   ——  /chat/completions SSE,格式与 OpenAI 一致
-async function callGlmStream(systemPrompt, userText, maxTokens = 4096, { onDelta, signal } = {}) {
-  const apiKey = process.env.GLM_API_KEY;
-  if (!apiKey) throw new Error('GLM_API_KEY not set');
-  const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-  const model = process.env.GLM_MODEL || 'glm-4-flash';
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-      max_tokens: maxTokens,
-      temperature: 0.7,
-      stream: true,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`GLM API ${response.status}: ${errText}`);
-  }
-
-  const reader = response.body;
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullText = '';
-
-  for await (const chunk of reader) {
-    buffer += decoder.decode(chunk, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === 'data: [DONE]') continue;
-      if (!trimmed.startsWith('data: ')) continue;
-      try {
-        const json = JSON.parse(trimmed.slice(6));
-        const delta = json.choices?.[0]?.delta?.content || '';
-        if (delta) {
-          fullText += delta;
-          onDelta?.(delta);
-        }
-      } catch { /* skip malformed line */ }
-    }
-  }
-  return fullText;
-}
-
-// ─── 通用 AI 调用 (默认 longcat) ──────────────────────────────
+// ─── 通用 AI 调用 (唯一文本模型: ARK 豆包) ────────────────────
 async function callAI(systemPrompt, userText, model, maxTokens = 4096) {
-  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'longcat';
-  if (selectedModel === 'qwen') return callQwen(systemPrompt, userText, maxTokens);
-  if (selectedModel === 'gemini') return callGemini(systemPrompt, userText, maxTokens);
-  return callLongcat(systemPrompt, userText, maxTokens);
+  const selectedModel = model || process.env.DEFAULT_AI_MODEL || 'ark';
+  // 当前仅支持 ARK 豆包文本模型
+  return callArk(systemPrompt, userText, maxTokens);
 }
 
 // ─── 单步执行：merged 仅为 { text: 本步 user 正文 } ───
@@ -678,8 +463,5 @@ module.exports = {
   executeWorkflowIntoExistingRun,
   executeStep,
   callAI,
-  callLongcatStream,
-  callQwenStream,
-  callGeminiStream,
-  callGlmStream,
+  callArkStream,
 };

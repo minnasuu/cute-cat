@@ -1,12 +1,18 @@
 /**
- * gen-image —— 智谱 CogView 文生图公共 helper。
+ * gen-image —— 文生图公共 helper,单 provider。
  *
- * generateImage(prompt, { teamId, aspectRatio, safeName }) →
+ * provider:
+ *   'ark'  —— 火山方舟 SeedDream,doubao-seedream-5-0-pro-260628 (全局唯一生图模型)
+ *
+ * 全局共 2 个豆包模型,同一 ARK_API_KEY / ARK_BASE_URL:
+ *   生图: doubao-seedream-5-0-pro-260628 (本模块, /images/generations)
+ *   文本/视觉解析: doubao-seed-2-1-pro-260628 (workflow-executor / analyze-inspiration)
+ *
+ * generateImage(prompt, { teamId, aspectRatio, safeName, provider }) →
  *   成功 { url, prompt, model }
  *   失败 { error }(具体错误信息,便于前端/日志定位)
  *
- * 接口:OpenAI 兼容 /images/generations (智谱开放平台),返回临时 URL → 下载落盘。
- * 供设计工作流/旧流水线共用。
+ * 返回临时 URL → 下载落盘,供设计工作流/旧流水线共用。
  */
 
 'use strict';
@@ -16,91 +22,172 @@ const path = require('path');
 const crypto = require('crypto');
 const storage = require('./storage');
 
+/* ─── provider 配置 ─────────────────────────────────────────── */
+// 当前仅支持 ark(火山方舟 SeedDream) —— 唯一生图模型。
+// 新增模型只加一项即可。
+const PROVIDERS = {
+  ark: {
+    apiKey: () => process.env.ARK_API_KEY,
+    missingKeyError: 'ARK_API_KEY not set',
+    baseUrl: () => process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+    defaultModel: () => process.env.ARK_IMAGE_MODEL || 'doubao-seedream-5-0-pro-260628',
+    // SeedDream 支持 "2K" 或 "WxH" 字符串;这里按设计工作流比例给固定尺寸
+    sizeMap: { '1:1': '1024x1024', '3:4': '864x1152', '4:3': '1152x864', '9:16': '768x1344', '16:9': '1344x768' },
+    fallbackSize: '2K',
+    // referenceImageUrl 被忽略(SeedDream 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
+    buildBody: (model, prompt, size, _referenceImageUrl) => ({ model, prompt, size, output_format: 'png', watermark: false }),
+    extractUrl: (data) => data?.data?.[0]?.url,
+    label: 'SeedDream',
+  },
+};
+
 /**
- * 把设计工作流的 aspectRatio 映射到 CogView 支持的 size。
- * CogView-3/3-Plus 常用:1024x1024 / 864x1152(3:4) / 1440x720(≈16:9) / 768x1344 等。
- * 未匹配到的退回 1024x1024(全模型支持)。
+ * imageRef —— 占位扩展点:声明一个支持「真·参考图」的供应商(如 Ark 图像编辑 / FLUX)。
+ * 当 provider 匹配到此配置且传入 referenceImageUrl 时,走参考图请求体;
+ * 未配置时 resolveProvider 会回退到 ark。
+ *
+ * 启用方式:在 PROVIDERS 中补充该 provider 的apiKey / baseUrl / sizeMap / buildBody(需带上 image)。
+ * 例:
+ *   'ark-image-edit': {
+ *     apiKey: () => process.env.ARK_API_KEY,
+ *     baseUrl: () => process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+ *     defaultModel: () => process.env.ARK_IMAGE_EDIT_MODEL || 'doubao-seededit-...',
+ *     imageRef: true,
+ *     sizeMap: { '1:1': '1024x1024', ... },
+ *     fallbackSize: '1024x1024',
+ *     buildBody: (model, prompt, size, referenceImageUrl) => ({
+ *       model, prompt, image: referenceImageUrl, size, ...     // 具体视 Ark 图像编辑文档
+ *     }),
+ *     extractUrl: (data) => data?.data?.[0]?.url,
+ *     label: 'Ark-ImageEdit',
+ *   },
  */
-function aspectRatioToSize(aspectRatio) {
-  const map = {
-    '1:1': '1024x1024',
-    '3:4': '864x1152',
-    '4:3': '1152x864',
-    '9:16': '768x1344',
-    '16:9': '1440x720',
-  };
-  return map[String(aspectRatio)] || '1024x1024';
+
+/**
+ * 解析本次请求使用的 provider。
+ * 当前全局唯一 provider 为 'ark'(火山方舟);保留入参/env 仅为向后兼容,
+ * 传入其它值一律回退到 ark。
+ */
+function resolveProvider(opts) {
+  const p = (opts?.provider || process.env.IMAGE_PROVIDER || 'ark').toLowerCase();
+  if (!PROVIDERS[p]) {
+    console.warn(`[gen-image] unknown provider="${p}", fall back to ark`);
+    return 'ark';
+  }
+  return p;
 }
 
 /**
- * 调用 CogView 生成一张图片。
+ * 调用指定 provider 生成一张图片。
  * @param {string} prompt 英文 prompt
  * @param {object} opts
  * @param {string} opts.teamId 团队 ID(用作 uploads 子目录)
- * @param {string} [opts.aspectRatio='1:1'] 设计工作流比例(自动映射到 CogView size)
+ * @param {string} [opts.aspectRatio='1:1'] 设计工作流比例
  * @param {string} [opts.safeName='image'] 文件名前缀
- * @param {number} [opts.numberOfImages=1] 张数(CogView 单张生成,>1 时只取 1)
+ * @param {string} [opts.provider='ark'] 生图模型提供商('ark')
+ * @param {string} [opts.model] 覆盖 provider 默认模型 ID
+ * @param {string} [opts.referenceImageUrl] 参考图 URL(材料图等)
+ *   若 provider 声明 imageRef:true → 走图生图/参考图请求体(真·参考图);
+ *   否则 → 将材料视觉信息以文字形式追加到 prompt(降级),保证所有供应商可用
  * @returns {Promise<{ url: string, prompt: string, model: string } | { error: string }>}
  */
 async function generateImage(prompt, opts) {
-  const { teamId, aspectRatio = '1:1', safeName = 'image', numberOfImages = 1 } = opts || {};
+  const { teamId, aspectRatio = '1:1', safeName = 'image', model: modelOverride, referenceImageUrl } = opts || {};
   if (!prompt || !prompt.trim()) {
     return { error: 'empty prompt' };
-  }
-  const apiKey = process.env.GLM_API_KEY;
-  if (!apiKey) {
-    return { error: 'GLM_API_KEY not set' };
   }
   if (!teamId) {
     return { error: 'teamId required' };
   }
 
-  const baseUrl = process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-  const model = process.env.GLM_IMAGE_MODEL || 'cogview-3';
-  const size = aspectRatioToSize(aspectRatio);
-  // CogView 单张生成;调用方 numberOfImages 通常为 1
-  const n = Math.min(Math.max(Number(numberOfImages) || 1, 1), 1);
-  const source = `${model}/${size}`;
+  const provider = resolveProvider(opts);
+  const cfg = PROVIDERS[provider];
 
-  // 单张生成超时(默认 120s)——CogView 通常 30~90s
-  const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 120000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
-
-  let imageUrl;
-  try {
-    console.log(`[gen-image] generating: model=${model}, size=${size}, prompt=${prompt.slice(0, 60)}…`);
-    const res = await fetch(`${baseUrl}/images/generations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ model, prompt, size, n, response_format: 'url' }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`[gen-image] CogView API ${res.status} (${source}): ${errText.slice(0, 300)}`);
-      return { error: `CogView HTTP ${res.status}: ${errText.slice(0, 200)}` };
-    }
-
-    const data = await res.json();
-    imageUrl = data?.data?.[0]?.url || null;
-    if (!imageUrl) {
-      console.error('[gen-image] CogView returned no image URL:', JSON.stringify(data).slice(0, 200));
-      return { error: `CogView 返回无图片 URL: ${JSON.stringify(data).slice(0, 120)}` };
-    }
-  } catch (e) {
-    const msg = e?.name === 'AbortError' ? `生成超时(${IMAGE_TIMEOUT_MS}ms)` : (e?.message || String(e));
-    console.error('[gen-image] CogView call failed:', msg);
-    return { error: msg };
-  } finally {
-    clearTimeout(timer);
+  const apiKey = cfg.apiKey();
+  if (!apiKey) {
+    return { error: cfg.missingKeyError };
   }
 
-  // CogView 返回的 URL 是临时的,立即下载并持久化到 storage(本地或 S3)
+  // 文字降级:provider 不支持参考图时,把「参考图」降级为 prompt 末尾的材料描述
+  // (调用方也可在调之前就写好材料描述;此处仅在未显式描述时追加一句提示,避免重复)
+  const effectivePrompt = prompt;
+
+  const baseUrl = cfg.baseUrl();
+  const model = modelOverride || cfg.defaultModel();
+  const size = cfg.sizeMap[String(aspectRatio)] || cfg.fallbackSize;
+  const source = `${provider}:${model}/${size}`;
+
+  // 单张生成超时(默认 180s / 3 分钟)——SeedDream 大尺寸图首 token + 生成常超 120s
+  const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 180000;
+
+  // 对可重试的错误(网络/超时/5xx)自动重试 1 次
+  const MAX_RETRIES = 1;
+  let lastError = null;
+  let _imageUrl = null;
+  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+    // 每次尝试新建 controller/计时器
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+    try {
+      console.log(`[gen-image] attempt ${attempt}: ${source}, prompt=${effectivePrompt.slice(0, 60)}…${referenceImageUrl ? `, refImage=${referenceImageUrl.slice(0, 40)}…` : ''}`);
+      const res = await fetch(`${baseUrl}/images/generations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, referenceImageUrl)),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[gen-image] ${cfg.label} API ${res.status} (attempt ${attempt}, ${source}): ${errText.slice(0, 300)}`);
+        // 5xx / 429 可重试,4xx(参数错误)不重试
+        if (attempt < MAX_RETRIES + 1 && (res.status >= 500 || res.status === 429)) {
+          lastError = `${cfg.label} HTTP ${res.status}: ${errText.slice(0, 200)}`;
+          await new Promise((r) => setTimeout(r, 2000 * attempt)); // 退避:2s
+          continue;
+        }
+        return { error: `${cfg.label} HTTP ${res.status}: ${errText.slice(0, 200)}` };
+      }
+
+      const data = await res.json();
+      let imageUrl = cfg.extractUrl(data) || null;
+      if (!imageUrl) {
+        console.error(`[gen-image] ${cfg.label} returned no image URL (attempt ${attempt}):`, JSON.stringify(data).slice(0, 200));
+        if (attempt < MAX_RETRIES + 1) {
+          lastError = '返回无图片 URL';
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        return { error: `${cfg.label} 返回无图片 URL: ${JSON.stringify(data).slice(0, 120)}` };
+      }
+      // 成功 — 跳出循环进入下载阶段
+      _imageUrl = imageUrl;
+      break;
+    } catch (e) {
+      const isTimeout = e?.name === 'AbortError';
+      const msg = isTimeout ? `生成超时(${IMAGE_TIMEOUT_MS}ms)` : (e?.message || String(e));
+      console.error(`[gen-image] ${cfg.label} call failed (attempt ${attempt}):`, msg);
+      // 超时或网络错误可重试
+      if (attempt < MAX_RETRIES + 1 && (isTimeout || e?.name === 'TypeError' || /network|ECONN|socket/i.test(msg))) {
+        lastError = msg;
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        continue;
+      }
+      return { error: msg };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  let imageUrl = _imageUrl;
+  if (!imageUrl) {
+    return { error: lastError || `${cfg.label} 生成失败(已重试 ${MAX_RETRIES} 次)` };
+  }
+
+  // 返回的 URL 是临时的,立即下载并持久化到 storage(本地或 S3)
   try {
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) {
@@ -127,4 +214,4 @@ async function generateImage(prompt, opts) {
   }
 }
 
-module.exports = { generateImage };
+module.exports = { generateImage, PROVIDERS, resolveProvider };

@@ -31,28 +31,30 @@ services:
     ports:
       - "8002:8002"
     volumes:
-      # 持久化上传的图片文件（容器内工作目录为 /app，multer 写入 /app/backend/uploads）
-      - ./backend/uploads:/app/backend/uploads
+      # 持久化上传的图片文件。
+      # 不能用 bind mount(./backend/uploads:/...)——backend/uploads 在 .gitignore 里,
+      # git pull / git clean / 重新克隆等重新部署流程会清空宿主机目录 → 容器内看不到旧文件 → 404。
+      # 改用 named volume(Docker 管理),只有显式 `docker volume rm` 才会删除,重新部署自动保留。
+      - cucatopiacom_uploads:/app/backend/uploads
     environment:
       PORT: 8002
       # 与 db 服务必须一致；entrypoint 优先用下面两项连库，避免从 URL 解析密码时截断（密码含 @ # : 等）
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/cute_cat
-      LONGCAT_API_KEY: ${LONGCAT_API_KEY:-sk-placeholder}
-      LONGCAT_BASE_URL: ${LONGCAT_BASE_URL:-https://api.anthropic.com}
-      LONGCAT_MODEL: ${LONGCAT_MODEL:-LongCat-2.0}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      # QWEN 仅 vibe-snap-extract 独立子系统使用(视觉模型,支持 image_url 输入);豆包之外唯一保留的 provider
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen3.5-plus}
-      GLM_API_KEY: ${GLM_API_KEY:-}
-      GLM_BASE_URL: ${GLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
-      GLM_MODEL: ${GLM_MODEL:-glm-4-flash}
-      GLM_IMAGE_MODEL: ${GLM_IMAGE_MODEL:-cogview-3}
-      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-longcat}
+      QWEN_VISION_MODEL: ${QWEN_VISION_MODEL:-qwen3.6-plus}
+      # 豆包 2 模型(同一 ARK_API_KEY / ARK_BASE_URL):
+      #   生图: doubao-seedream-5-0-pro-260628 (/images/generations)
+      #   文本/视觉解析: doubao-seed-2-1-pro-260628 (/chat/completions, /responses)
+      ARK_API_KEY: ${ARK_API_KEY:-}
+      ARK_BASE_URL: ${ARK_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      ARK_TEXT_MODEL: ${ARK_TEXT_MODEL:-doubao-seed-2-1-pro-260628}
+      ARK_IMAGE_MODEL: ${ARK_IMAGE_MODEL:-doubao-seedream-5-0-pro-260628}
+      DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-ark}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
       BETA_CODES: ${BETA_CODES:-CAT2026}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -62,6 +64,12 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       # 逗号分隔；需与浏览器访问前端的 Origin 一致（含端口），否则带 Cookie 的跨域请求会被 CORS 拒绝
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4000,http://localhost:5173}
+      # 豆包大 system prompt 场景首 token 延迟高,聊天硬超时上限(默认 180s);首 token 诊断日志定位后可回调
+      LAISSE_ANCIE_CHAT_TIMEOUT_MS: ${LAISSE_ANCIE_CHAT_TIMEOUT_MS:-300000}
+      # SeedDream 大尺寸生图首 token + 生成常超 120s,统一 3 分钟(180s)
+      IMAGE_TIMEOUT_MS: ${IMAGE_TIMEOUT_MS:-180000}
+      # Ark 灵感视觉分析超时(默认 90s)
+      INSPIRATION_AI_TIMEOUT_MS: ${INSPIRATION_AI_TIMEOUT_MS:-120000}
     depends_on:
       db:
         condition: service_healthy
@@ -79,3 +87,4 @@ services:
 
 volumes:
   cucatopiacom_postgres_data:
+  cucatopiacom_uploads:
