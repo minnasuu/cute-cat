@@ -17,5 +17,9 @@ export async function compressForUpload(
 
 function replaceExt(name: string, next: string): string {
   const dot = name.lastIndexOf(".");
-  return dot === -1 ? `${name}${next}` : `${name.slice(0, dot)}${next}`;
+  // 空文件名(如剪贴板粘贴的图片 name="")→ 退回为 "inspiration",避免生成 ".jpg" 这种
+  // 纯扩展名文件;后端 multer 用 path.extname 取扩展名时会把 ".jpg" 当 dotfile 返回 "",
+  // 导致落盘文件没有扩展名、URL 解析失败。
+  const stem = dot === -1 ? name : name.slice(0, dot);
+  return `${stem || "inspiration"}${next}`;
 }
