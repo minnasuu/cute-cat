@@ -25,7 +25,6 @@ import type { InspirationItem } from "../store/resource";
 import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { Markdown } from "../lib/markdown";
-import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
 import { parseDesignIntent, hasLetteringElement, type DesignIntent } from "../lib/design-intent";
 import { parseDesignProposal } from "../lib/design-proposal";
 import { useEditingProduct } from "../contexts/editing-product";
@@ -54,24 +53,27 @@ const MODELS = [
 ] as const;
 type ModelId = typeof MODELS[number]["id"];
 
-/** 设计顾问总 prompt:引导 AI 走完 "匹配灵感 → 设计方案 → 确认出图" 三步工作流。 */
-const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的品牌服装、单品、视觉设计师。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套以灵感为核心的设计流程。
+/** 设计顾问总 prompt:引导 AI 走完 "汲取灵感库 → 设计方案 → 确认出图" 三步工作流。 */
+const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的品牌服装、单品、视觉设计师。你的工作不是一次性输出 JSON,而是通过多轮对话引导用户完成一套以灵感库为核心的设计流程。
 
 ## 工作流(3 步)
 
-### 步骤 1 · references(匹配灵感借鉴)= 前端已完成后置处理,你无需处理这一步
-前端根据用户输入已从灵感库中匹配出 3 个最相关的灵感借鉴(会作为「参考灵感」卡片嵌在对话里)。
-你只需在下一步方案中**显式引用**这些灵感即可,不要再自己重新推荐灵感。
+### 步骤 1 · 汲取品牌风格灵感池(最关键的一步)
+前端已把整个灵感库作为「品牌风格灵感池」注入到 system prompt(每张灵感一行摘要,标记 #[ID])。
+这个灵感库就是品牌积淀的全部视觉资产,是你的**唯一设计出发点**——不要在对话里再让用户上传/推荐灵感,直接从库里汲取:
+- 对应用户想要的品类/元素/场景,从灵感池中挑选最契合的 2-4 张作为本次方案的借鉴来源
+- 汲取维度可以是:配色、构图、风格、设计手法、图形元素、肌理、氛围……自由组合
+- 引用时用 #[ID] 标注具体借鉴了谁(如「从 #[abc123] 汲取复古玫瑰配色,呼应 #[def456] 的满铺构图」),让用户可溯源
 
 ### 步骤 2 · proposal(生成 1 个整合方案)——必须严格输出
 结合下面几部分信息,**输出 1 个完整设计方案**(不要给多个方向让用户选):
-1. 「参考灵感」卡片中的 3 张灵感图(会作为 #[灵感ID] 注入到 system prompt,包含其 category / visualStyle / designApproach / inspiration / colors / 图片 URL 等)
+1. 「品牌风格灵感池」中你挑出的那几张灵感(已作为 #[ID] 注入到 system prompt,含 category / visualStyle / designApproach / 配色 / 特征等)
 2. 「团队知识库」中注入的资产 / 品牌 / Lookbook(如已注入)
 3. 用户的历史对话上下文、本次 mode(illustration / single / collection)
 
 **方案必须包含:**
 - **产品名**(有调性)+ **主题叙述**(2-3 句话,讲清核心概念)
-- **灵感借鉴说明**:明确写"从 #[灵感ID1] 汲取 ××、从 #[灵感ID2] 借鉴 ××、呼应 #[灵感ID3] 的 ××"——必须把 3 张灵感都用上
+- **灵感借鉴说明**:明确写出从灵感池中哪几张汲取什么,用 #[ID] 标注(如「从 #[abc123] 汲取 ××、呼应 #[def456] 的 ××」)——不要求把整张库都用上,挑最契合的即可
 - **材质与色彩方案**:具体色值/色号,指明「材料库 ×× 面料，如果库中没有符合要求的材料，可以根据实际进行调整」
 - **形态 / 结构 / 细节**:闭合方式、工艺、尺寸感知等(按品类自适应,服装问廓形/包包问款型/家居问肌理/文创问形态……不要默认是衣服)
 - **目标价格带**
@@ -93,7 +95,7 @@ const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的品牌服装、�
 前端会自动重新生成修改的那张图。
 
 ## 贴近叙事与素材(硬约束)
-- 方案必须从真实灵感/材料出发,而不是空想。**每份方案必须引用 system prompt 中「参考灵感」的 3 张灵感图**(#[灵感ID] 的形式),说明具体借鉴了它们的什么(配色 / 构图 / 风格 / 元素…)。
+- 方案必须从真实灵感/材料出发,而不是空想。**每份方案必须从「品牌风格灵感池」中挑选 2-4 张最契合的灵感作为借鉴来源**,用 #[ID] 标注,说明具体借鉴了什么(配色 / 构图 / 风格 / 元素…)。
 - 必须参考「团队知识库」中的面料与工艺,从真实可用的面料出发。如果库中没有符合要求的材料，可以根据实际进行调。
 - 引用格式示例:「—— 灵感:#abc123 复古玫瑰油画的配色」「—— 材料:纯棉」。
 - 如果当前灵感库为空,告知用户「灵感库还是空的,建议先到左侧上传灵感图后再开始」;并加 <!--STAGE:proposal-->。
@@ -443,12 +445,15 @@ export default function ComposerPage({
     clearEditingProduct();
   }
 
-  /** 构建「参考灵感」注入块(前端本地模糊匹配 Top N 灵感 + 品牌 slogan 结构化注入) */
+  /**
+   * 构建「品牌风格灵感池」注入块 —— 把整个灵感库作为品牌风格来源与设计思路参考,
+   * 每张灵感压缩为一行文本摘要(保留 #[id] 标记供 AI 自由引用),不再做 Top-N 筛选。
+   */
   function buildReferencesBlock(raw: string): { block: string; refs: InspirationItem[]; intent: DesignIntent } {
     const intent = parseDesignIntent(raw);
-    const matchedRefs = matchInspirations(intent, knowledge?.inspirations ?? [], 3);
-    setReferences(matchedRefs);
-    referencesRef.current = matchedRefs; // ref 镜像供 saveToLookbook 读取
+    const allRefs = knowledge?.inspirations ?? [];
+    setReferences(allRefs);
+    referencesRef.current = allRefs; // ref 镜像供 saveToLookbook 解析 #[id] 引用
 
     // ── 品牌 slogan 结构化注入:当用户意图含「字母/文字/标语」元素,且品牌有英文 slogan ──
     const sloganEn = knowledge?.brand?.sloganEn?.trim();
@@ -461,22 +466,24 @@ export default function ComposerPage({
         ].filter(Boolean).join("\n")
       : "";
 
+    // ── 全库一行摘要: #[id] category · visualStyle · designApproach | 配色 | 特征 ──
+    const MAX_LIB = 60; // 上限 60 张(控制 token 预算)
+    const libLines = allRefs.slice(0, MAX_LIB).map((it) => {
+      const head = `#[${it.id}] ${it.category ?? "general"}`;
+      const styleBits = [it.visualStyle, it.designApproach].filter(Boolean).join(" · ").slice(0, 80);
+      const colors = it.colors?.length ? `配色: ${it.colors.slice(0, 5).join("/")}` : "";
+      const features = it.styleFeatures?.length ? `特征: ${it.styleFeatures.slice(0, 4).join("/")}`
+        : it.designHighlights?.length ? `特征: ${it.designHighlights.slice(0, 4).join("/")}` : "";
+      return [head, styleBits, [colors, features].filter(Boolean).join(" | ")].filter(Boolean).join(" ");
+    });
+
     const block = [
-      matchedRefs.length
+      allRefs.length
         ? [
-            "## 参考灵感(前端已模糊匹配,方案必须引用以下灵感,用 #[ID]的形式)",
-            ...matchedRefs.map((it) => [
-              `### #[${it.id}] ${it.category ?? "general"}`,
-              it.visualStyle ? `风格: ${it.visualStyle}` : null,
-              it.designApproach ? `设计手法: ${it.designApproach}` : null,
-              it.colors?.length ? `配色: ${it.colors.join(", ")}` : null,
-              it.inspiration?.length ? `启发:\n${it.inspiration.map((h) => `- ${h}`).join("\n")}` : null,
-              it.silhouette ? `廓形/款型: ${it.silhouette}` : null,
-              it.styleFeatures?.length ? `特征: ${it.styleFeatures.join(", ")}` : null,
-              `图片: ${it.thumbUrl || it.url}`,
-            ].filter(Boolean).join("\n")),
-          ].join("\n\n")
-        : "## 参考灵感(灵感库为空,建议先到左侧上传灵感图)",
+            `## 品牌风格灵感池(共 ${allRefs.length} 张,作为品牌风格来源与设计思路参考,自由汲取,引用时用 #[ID] 标注)`,
+            ...libLines,
+          ].join("\n")
+        : "## 品牌风格灵感池(灵感库为空,建议先到左侧上传灵感图,作为设计参考)",
       // 意图解析摘要(帮助 AI 快速理解维度)
       `## 设计意图(前端已解析)`,
       `- 品类簇: ${intent.categoryCluster ?? "未识别"}  关键词: ${intent.category ?? "—"}`,
@@ -486,7 +493,7 @@ export default function ComposerPage({
       sloganElement,
     ].filter(Boolean).join("\n\n");
 
-    return { block, refs: matchedRefs, intent };
+    return { block, refs: allRefs, intent };
   }
 
   /** 单品 / 系列:chat 主流程(设计顾问 + 灵感 + 知识 → 方案) */
@@ -938,25 +945,6 @@ export default function ComposerPage({
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
             {msgs.map((m) => (
               <div key={m.id} className={`w-fit rounded-2xl px-4 py-3 max-w-[85%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
-                {/* 灵感引用卡片(仅 assistant 消息附带 references 时渲染) */}
-                {m.role === "assistant" && m.references && m.references.length > 0 && (
-                  <div className="mb-3 pb-3 border-b border-gray-100">
-                    <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">参考灵感 · 方案将借鉴这 {m.references.length} 张</div>
-                    <div className="flex gap-2 overflow-x-auto">
-                      {m.references.map((ref) => (
-                        <div key={ref.id} className="shrink-0 w-24 rounded-lg border border-gray-200 overflow-hidden bg-gray-50" title={`${ref.category ?? ""}${ref.visualStyle ? ` · ${ref.visualStyle}` : ""}`}>
-                          <div className="bg-gray-100 overflow-hidden">
-                            <img src={ref.thumbUrl || ref.url} alt={ref.category ?? "inspiration"} className="w-full h-full object-cover" loading="lazy" />
-                          </div>
-                          <div className="px-1.5 py-1">
-                            <div className="text-[10px] text-gray-700 font-medium truncate">{ref.category ?? "灵感"}</div>
-                            {ref.visualStyle && <div className="text-[9px] text-gray-400 truncate">{ref.visualStyle}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
                 {busy && m.role === "assistant" && m.startedAt && (
                   <LiveElapsed startedAt={m.startedAt} setTick={setTick} />

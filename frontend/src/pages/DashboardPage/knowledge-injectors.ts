@@ -78,44 +78,6 @@ const assetInjector: Injector = (prompt, deps) => {
  * 灵感注入:按 category/silhouette/color/brandAnalysis + AI 分析字段(visualStyle/designApproach/inspiration)匹配。
  * visualStyle / designApproach 是单值文案,inspiration 是数组,一并纳入相关性打分。
  */
-const inspirationInjector: Injector = (prompt, deps) => {
-  if (!deps.inspirations.length) return "";
-  const tokens = tokenize(prompt);
-  const scored = deps.inspirations
-    .map((it) => {
-      let s = 0;
-      const hay = [
-        it.category ?? "",
-        it.silhouette ?? "",
-        (it.colors ?? []).join(" "),
-        it.brandAnalysis ?? "",
-        // AI 视觉分析新增字段
-        it.visualStyle ?? "",
-        it.designApproach ?? "",
-        (it.inspiration ?? []).join(" "),
-        (it.styleFeatures ?? []).join(" "),
-        (it.designHighlights ?? []).join(" "),
-      ].join(" ").toLowerCase();
-      for (const t of tokens) if (hay.includes(t)) s += 2;
-      return { it, s };
-    })
-    .filter(({ s }) => s > 0)
-    .sort((x, y) => y.s - x.s)
-    .slice(0, 2);
-  if (!scored.length) return "";
-  const blocks = scored
-    .map(({ it }) => {
-      const head = `[Inspiration · ${it.category ?? "general"}] ${it.silhouette ?? ""}`;
-      const sub = [it.visualStyle, it.designApproach].filter(Boolean).join(" · ");
-      const body = it.brandAnalysis
-        ? `${it.brandAnalysis}${sub ? `\nStyle: ${sub}` : ""}`
-        : `${sub ? `Style: ${sub}\n` : ""}colors: ${(it.colors ?? []).join(", ") || "—"}`;
-      return `### ${head}\n${body}`;
-    })
-    .join("\n\n");
-  return `## Inspirations (reference these in your reply)\n${blocks}`;
-};
-
 /** 品牌资产注入:作为设计基调约束(不按相关性打分,始终注入) */
 const brandInjector: Injector = (_prompt, deps) => {
   const b = deps.brand;
@@ -149,9 +111,11 @@ function tokenize(prompt: string): Set<string> {
 /**
  * 构建设计阶段要注入 chat system prompt 的 injector。
  *
- * 设计阶段只引用:品牌(基调) + 知识库(技能) + 视觉资产 + 灵感。
+ * 设计阶段引用:品牌(基调) + 知识库(技能) + 视觉资产。
+ * 灵感库不再通过本 injector 注入,改为在 Composer.buildReferencesBlock 里以
+ * 「品牌风格灵感池」形式整体注入(全库一行摘要 + #[ID] 标记),作为品牌风格来源。
  * 不引用材料(materials)和既有作品(products)—— 避免设计被实物/已有系列锚定,保持创意开放性。
  */
 export function buildKnowledgeInjectors(deps: KnowledgeDeps): Injector[] {
-  return [brandInjector, skillInjector, assetInjector, inspirationInjector];
+  return [brandInjector, skillInjector, assetInjector];
 }
