@@ -81,7 +81,7 @@ export default function TeamWorkbench() {
 
   if (teamLoading || !teamId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafafa] text-gray-500">
+      <div className="min-h-screen flex items-center justify-center bg-surface-secondary text-text-secondary">
         加载团队中…
       </div>
     );
@@ -179,7 +179,7 @@ export default function TeamWorkbench() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] text-gray-900">
+    <div className="min-h-screen bg-surface-secondary text-text-primary">
       <Navbar
         afterLogo={
           <div className="flex items-center gap-3">

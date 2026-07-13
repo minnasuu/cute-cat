@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import CatLogo from './CatLogo';
+import ThemeToggle from './ThemeToggle';
 
 /* ── Shared Navbar ── */
 
@@ -59,13 +60,15 @@ const Navbar: React.FC<NavbarProps> = ({
   const initial = (user?.nickname || user?.email || "?").trim().charAt(0).toUpperCase();
   const defaultRight = user ? (
     <div className="flex items-center gap-2">
+      <ThemeToggle />
       <span className="text-sm font-medium text-text-secondary max-w-[120px] truncate">{user.nickname || user.email}</span>
       <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-bold flex items-center justify-center shrink-0">
         {initial}
       </div>
     </div>
   ) : (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-2">
+      <ThemeToggle />
       <Link to="/login" className="text-sm font-semibold text-text-secondary hover:text-text-primary transition-colors">登录</Link>
       <Link to="/register" className="px-5 py-2.5 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all">申请内测</Link>
     </div>

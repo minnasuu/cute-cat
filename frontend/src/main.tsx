@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './components/Toast';
+import { ThemeProvider } from './contexts/ThemeContext';
 import './styles/index.css';
 
 // 首屏关键路径(Landing / Auth)保持同步,其余按路由懒加载以减小主包
@@ -64,6 +65,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const App: React.FC = () => {
   return (
+    <ThemeProvider>
     <ToastProvider>
       <LanguageProvider>
         <AuthProvider>
@@ -151,6 +153,7 @@ const App: React.FC = () => {
         </AuthProvider>
       </LanguageProvider>
     </ToastProvider>
+    </ThemeProvider>
   );
 };
 
