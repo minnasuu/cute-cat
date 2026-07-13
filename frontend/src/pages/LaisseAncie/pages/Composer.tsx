@@ -357,13 +357,26 @@ export default function ComposerPage({
     if (ep.recommendation) setRecommendation(ep.recommendation);
     if (ep.images?.length) {
       setImages(ep.images.map((im) => ({ slot: im.slot, label: im.label, url: im.url })));
-      setStage(ep.sections ? "proposal" : "presenting");
     }
     if (ep.html) {
       setIllustHtml(ep.html);
       setIllustOutputMode("html");
-      setStage("presenting-html");
     }
+
+    // 智能判断恢复到哪个阶段:根据已有产物自动跳到最远的完成阶段,
+    // 避免每次编辑都从方案重走「方案→线稿→配色→效果图」全流程。
+    // 例:只有效果图要改 → 直接落在 presenting,调 PromptBar/卡片即可重生成。
+    const resumeStage = (() => {
+      if (ep.html) return "presenting-html";
+      const hasFinal = (ep.images ?? []).some((im) => im.slot === "final");
+      const hasLineart = (ep.images ?? []).some((im) => im.slot === "lineart");
+      const hasImages = (ep.images ?? []).length > 0;
+      if (hasFinal) return "presenting";
+      if (hasLineart) return "presenting-lineart";
+      if (hasImages) return "presenting";
+      return "proposal";
+    })();
+    setStage(resumeStage);
 
     // 构建 3 条欢迎消息:①产品条 ②灵感条 ③方案条
     const title = ep.sections?.productName || ep.title || "未命名款式";
@@ -372,10 +385,18 @@ export default function ComposerPage({
       return `${refAsset?.category ?? "灵感"} #${r.id.slice(0, 8)}${r.summary ? " — " + r.summary : ""}`;
     }).join("\n");
 
+    // 按恢复阶段给出对应引导,让用户知道可以直接定点修改而非重走全流程
+    const stageHint = resumeStage === "presenting"
+      ? "已载入最终效果图。告诉我要调整哪里,我会按你的要求直接重新生成。"
+      : resumeStage === "presenting-lineart"
+        ? "已载入设计线稿。可以修改单张线稿,或确认后进入选材料。"
+        : resumeStage === "presenting-html"
+          ? "已载入插画 HTML 画布。告诉我调整方向即可重出。"
+          : "已载入设计方案。确认出图,或提出修改意见。";
     const welcome: ChatMsg[] = [
       {
         id: crypto.randomUUID(), role: "assistant",
-        text: `🔄 已载入 **${title}** 的设计上下文。\n你可以直接提出修改意见,我会基于这张方案继续深化:`,
+        text: `🔄 已载入 **${title}** 的设计上下文。\n${stageHint}`,
       },
       ...(matchInfo ? [{
         id: crypto.randomUUID(), role: "assistant" as const,
