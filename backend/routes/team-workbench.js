@@ -683,6 +683,7 @@ router.post('/products', asyncHandler(async (req, res) => {
       images: Array.isArray(data.images) ? data.images : [],
       html: typeof data.html === 'string' ? data.html : null,
       aiDraftRaw: data.aiDraftRaw || null,
+      sections: data.sections && typeof data.sections === 'object' ? data.sections : null,
       status,
       statusHistory: history,
     },

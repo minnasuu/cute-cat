@@ -351,6 +351,8 @@ model LAProduct {
   /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */
   html              String?  @db.Text
   aiDraftRaw        String?  @db.Text
+  /** 解析后的设计提案结构化字段(JSON,Lookbook 详情页分块展示) */
+  sections          Json?
   fitAcknowledge    String?
   fitDetail         String?  @db.Text
   patternFinalUrl   String?

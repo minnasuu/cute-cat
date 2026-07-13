@@ -95,11 +95,26 @@ export interface Product {
   /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */
   html?: string;
   aiDraftRaw?: string;
+  /** 解析后的设计提案结构化字段(产品名/主题/灵感/材质/色彩/形态/价格) */
+  sections?: DesignSections;
   status: ProductStatus;
   statusHistory: StatusLogEntry[];
   createdAt: string;
   updatedAt: string;
   tech_pack_url?: string;
+}
+
+/** 解析后的设计提案结构化字段(Lookbook 详情页分块展示) */
+export interface DesignSections {
+  productName?: string;          // 产品名
+  themeNarrative?: string;       // 主题叙述(设计理念)
+  inspirationRefs?: { id: string; category?: string; summary: string }[]; // 引用的灵感 + 借鉴说明
+  colorway?: { pantone?: string; hex: string[]; description?: string }[]; // 色彩方案
+  fabric?: { name: string; composition?: string; description?: string }[]; // 材质
+  silhouette?: string;           // 形态 / 结构 / 版型
+  targetPrice?: string;          // 目标价格带
+  /** 原始完整方案文本(用于 Lookbook 一键回看) */
+  rawPlan?: string;
 }
 
 export interface Collection {

@@ -93,6 +93,8 @@ const inspirationInjector: Injector = (prompt, deps) => {
         it.visualStyle ?? "",
         it.designApproach ?? "",
         (it.inspiration ?? []).join(" "),
+        (it.styleFeatures ?? []).join(" "),
+        (it.designHighlights ?? []).join(" "),
       ].join(" ").toLowerCase();
       for (const t of tokens) if (hay.includes(t)) s += 2;
       return { it, s };

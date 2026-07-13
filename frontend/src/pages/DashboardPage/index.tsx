@@ -14,6 +14,7 @@ import { SkillStoreProvider } from '../LaisseAncie/store/skill';
 import { DesignStoreProvider } from '../LaisseAncie/store/design';
 import { VisualAssetStoreProvider } from '../LaisseAncie/store/visual-asset';
 import { ResourceStoreProvider } from '../LaisseAncie/store/resource';
+import { EditingProductProvider } from '../LaisseAncie/contexts/editing-product';
 import TeamWorkbench from './TeamWorkbench';
 
 const DashboardPage: React.FC = () => {
@@ -23,7 +24,9 @@ const DashboardPage: React.FC = () => {
         <DesignStoreProvider>
           <VisualAssetStoreProvider>
             <ResourceStoreProvider>
-              <TeamWorkbench />
+              <EditingProductProvider>
+                <TeamWorkbench />
+              </EditingProductProvider>
             </ResourceStoreProvider>
           </VisualAssetStoreProvider>
         </DesignStoreProvider>

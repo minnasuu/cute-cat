@@ -26,6 +26,9 @@ import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { Markdown } from "../lib/markdown";
 import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
+import { parseDesignIntent, hasLetteringElement, type DesignIntent } from "../lib/design-intent";
+import { parseDesignProposal } from "../lib/design-proposal";
+import { useEditingProduct } from "../contexts/editing-product";
 import { SwatchStrip } from "../pages/Materials";
 
 type DesignStage =
@@ -95,6 +98,15 @@ const DESIGNER_SYSTEM = `你是 Laisse Ancie (来兮·安兮)的品牌服装、�
 - 引用格式示例:「—— 灵感:#abc123 复古玫瑰油画的配色」「—— 材料:纯棉」。
 - 如果当前灵感库为空,告知用户「灵感库还是空的,建议先到左侧上传灵感图后再开始」;并加 <!--STAGE:proposal-->。
 
+## 品牌印花/图形元素作为方案组成部分(硬约束)
+当「参考灵感 / 团队知识库」注入块里出现了**品牌印花文案**(如「推荐品牌印花文案:"Good morning, It's another beautiful day."」),意味着用户想做**字母/文字/标语**类单品。方案中**必须**把 brand slogan 作为印花/图形的核心文字元素来设计,不能跳过或一笔带过:
+- 具体给出「文字排版方案」:位置 / 字体风格 / 字号层级 / 配色 / 与主图形的关系
+- 排版四选一(或微调): ① 弧形(前胸/包面环绕) ② 横排居中 ③ 竖排侧缝/侧边 ④ 散落满铺小字
+- 字体建议: sans-serif modern / serif editorial / hand-brush script —— 选与灵感 visualStyle 一致的那种
+- 配色: 取自灵感中的具体色号;且 slogan 颜色与底色要有足够印刷对比度
+- 如果 slogan 较长,可以只取其一两句或适应该排版(但必须保留原句意)
+- 不要输出抽象描述"加上品牌标语",要具体:「把 along the upper chest in arched hand-brush serif …」
+
 ## 重要规则
 - 每轮回复末尾必须加 <!--STAGE:当前阶段--> 标记
 - 用中文对话,专业但不生硬,体现 Laisse Ancie 的「优雅·松弛·乐趣」调性
@@ -107,6 +119,7 @@ function parseStage(text: string): DesignStage | null {
   const m = text.match(STAGE_MARKER);
   return m ? (m[1] as DesignStage) : null;
 }
+
 
 function stripStageMarker(text: string): string {
   return text.replace(STAGE_MARKER, "").trim();
@@ -276,6 +289,7 @@ export default function ComposerPage({
   const store = useDesignStore();
   const skillStore = useSkillStore();
   const { teamId, navigateTab } = useCurrentTeam();
+  const { editingProduct, clearEditingProduct } = useEditingProduct();
 
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [busy, setBusy] = useState(false);
@@ -290,8 +304,16 @@ export default function ComposerPage({
     return (MODELS.some((m) => m.id === saved) ? saved : "ark") as ModelId;
   });
   const [references, setReferences] = useState<InspirationItem[]>([]); // 最近一次匹配到的灵感引用
+  const referencesRef = useRef<InspirationItem[]>([]); // ref 镜像,避免 saveToLookbook 闭包读到旧值
   const [recommendation, setRecommendation] = useState<MaterialRecommendation | null>(null); // AI 推荐的材质+配色方案
   const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
+
+  /** 从已解析灵感列表中取最多 2 个 category 作为产品品类展示 */
+  const intentCategory = (m: DesignMode): string => {
+    const cats = referencesRef.current?.map((r) => r.category).filter(Boolean) ?? [];
+    const unique = [...new Set(cats)].slice(0, 2);
+    return unique.join(" / ") || MODE_LABEL[m] || m;
+  };
   const isMobile = useIsMobile();
   const [planOpen, setPlanOpen] = useState(false); // 移动端企划(单品/系列)抽屉开关
   const [canvasOpen, setCanvasOpen] = useState(false); // 移动端画布(插画)抽屉开关
@@ -320,24 +342,97 @@ export default function ComposerPage({
     }
   }, []);
 
-  /** 构建「参考灵感」注入块(前端本地匹配 3 张灵感) */
-  function buildReferencesBlock(raw: string): { block: string; refs: InspirationItem[] } {
-    const matchedRefs = matchInspirations(raw, knowledge?.inspirations ?? [], 3);
+  // ── 编辑模式:从 Lookbook 跳转过来时,回填产品方案到 chat 上下文 ──
+  const editInitializedRef = useRef(false);
+  useEffect(() => {
+    if (editInitializedRef.current) return;
+    const ep = editingProduct;
+    if (!ep || mode !== "single") return; // 仅单品模式支持继续编辑
+    if (!ep.sections && !ep.description) return;
+    editInitializedRef.current = true;
+
+    // 回填方案文本 + 图片 + 材料推荐到 chat
+    const rawPlan = ep.sections?.rawPlan || ep.description || "";
+    setPlanText(rawPlan);
+    if (ep.recommendation) setRecommendation(ep.recommendation);
+    if (ep.images?.length) {
+      setImages(ep.images.map((im) => ({ slot: im.slot, label: im.label, url: im.url })));
+      setStage(ep.sections ? "proposal" : "presenting");
+    }
+    if (ep.html) {
+      setIllustHtml(ep.html);
+      setIllustOutputMode("html");
+      setStage("presenting-html");
+    }
+
+    // 构建 3 条欢迎消息:①产品条 ②灵感条 ③方案条
+    const title = ep.sections?.productName || ep.title || "未命名款式";
+    const matchInfo = (ep.sections?.inspirationRefs || []).map((r) => {
+      const refAsset = knowledge?.inspirations?.find((i) => i.id === r.id);
+      return `${refAsset?.category ?? "灵感"} #${r.id.slice(0, 8)}${r.summary ? " — " + r.summary : ""}`;
+    }).join("\n");
+
+    const welcome: ChatMsg[] = [
+      {
+        id: crypto.randomUUID(), role: "assistant",
+        text: `🔄 已载入 **${title}** 的设计上下文。\n你可以直接提出修改意见,我会基于这张方案继续深化:`,
+      },
+      ...(matchInfo ? [{
+        id: crypto.randomUUID(), role: "assistant" as const,
+        text: `📎 引用的灵感:\n${matchInfo}`,
+      }] : []),
+    ];
+    setMsgs(welcome);
+
+    // 清空编辑上下文(避免重复注入)
+    clearEditingProduct();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingProduct]);
+
+  /** 构建「参考灵感」注入块(前端本地模糊匹配 Top N 灵感 + 品牌 slogan 结构化注入) */
+  function buildReferencesBlock(raw: string): { block: string; refs: InspirationItem[]; intent: DesignIntent } {
+    const intent = parseDesignIntent(raw);
+    const matchedRefs = matchInspirations(intent, knowledge?.inspirations ?? [], 3);
     setReferences(matchedRefs);
-    const block = matchedRefs.length
+    referencesRef.current = matchedRefs; // ref 镜像供 saveToLookbook 读取
+
+    // ── 品牌 slogan 结构化注入:当用户意图含「字母/文字/标语」元素,且品牌有英文 slogan ──
+    const sloganEn = knowledge?.brand?.sloganEn?.trim();
+    const sloganZh = knowledge?.brand?.sloganZh?.trim();
+    const sloganElement = hasLetteringElement(intent) && sloganEn
       ? [
-        "## 参考灵感(前端已匹配,方案必须引用以下 3 张灵感,用 #[ID] 的形式)",
-        ...matchedRefs.map((it) => [
-          `### #[${it.id}] ${it.category ?? "general"}`,
-          it.visualStyle ? `风格: ${it.visualStyle}` : null,
-          it.designApproach ? `设计手法: ${it.designApproach}` : null,
-          it.colors?.length ? `配色: ${it.colors.join(", ")}` : null,
-          it.inspiration?.length ? `启发:\n${it.inspiration.map((h) => `- ${h}`).join("\n")}` : null,
-          `图片: ${it.thumbUrl || it.url}`,
-        ].filter(Boolean).join("\n")),
-      ].join("\n\n")
-      : "## 参考灵感\n(灵感库为空,建议先到左侧上传灵感图)";
-    return { block, refs: matchedRefs };
+          "## 推荐品牌印花文案(方案中必须把这段 slogan 作为字母/文字/标语元素设计进去)",
+          `"${sloganEn}"`,
+          sloganZh ? `中文对照: ${sloganZh}` : null,
+        ].filter(Boolean).join("\n")
+      : "";
+
+    const block = [
+      matchedRefs.length
+        ? [
+            "## 参考灵感(前端已模糊匹配,方案必须引用以下灵感,用 #[ID]的形式)",
+            ...matchedRefs.map((it) => [
+              `### #[${it.id}] ${it.category ?? "general"}`,
+              it.visualStyle ? `风格: ${it.visualStyle}` : null,
+              it.designApproach ? `设计手法: ${it.designApproach}` : null,
+              it.colors?.length ? `配色: ${it.colors.join(", ")}` : null,
+              it.inspiration?.length ? `启发:\n${it.inspiration.map((h) => `- ${h}`).join("\n")}` : null,
+              it.silhouette ? `廓形/款型: ${it.silhouette}` : null,
+              it.styleFeatures?.length ? `特征: ${it.styleFeatures.join(", ")}` : null,
+              `图片: ${it.thumbUrl || it.url}`,
+            ].filter(Boolean).join("\n")),
+          ].join("\n\n")
+        : "## 参考灵感(灵感库为空,建议先到左侧上传灵感图)",
+      // 意图解析摘要(帮助 AI 快速理解维度)
+      `## 设计意图(前端已解析)`,
+      `- 品类簇: ${intent.categoryCluster ?? "未识别"}  关键词: ${intent.category ?? "—"}`,
+      intent.elements.length ? `- 设计元素: ${intent.elements.join(", ")}` : null,
+      intent.scene.length ? `- 场景/季节: ${intent.scene.join(", ")}` : null,
+      intent.mode ? `- 大类: ${intent.mode}` : null,
+      sloganElement,
+    ].filter(Boolean).join("\n\n");
+
+    return { block, refs: matchedRefs, intent };
   }
 
   /** 单品 / 系列:chat 主流程(设计顾问 + 灵感 + 知识 → 方案) */
@@ -631,30 +726,56 @@ export default function ComposerPage({
     }
   }
 
-  /** 把本次设计录入 Lookbook。
+  /** 把本次设计录入 Lookbook(含结构化解析)。
    *  - 单品/系列/插画+图片:必须有图片;
-   *  - 插画+HTML:必须有 html。 */
+   *  - 插画+HTML:必须有 html。
+   *  - 解析 planText 为 DesignSections,填充 title/category/colors/targetPrice 等字段。 */
   async function saveToLookbook() {
-    const hasImage = mode === "illustration" ? images.length > 0 : images.length > 0;
+    const hasImage = images.length > 0;
     const hasHtml = !!(mode === "illustration" && illustOutputMode === "html" && illustHtml);
     if (!hasImage && !hasHtml) return;
     const now = new Date().toISOString();
     const mainImage = images.find((im) => im.url);
     // 收集所有可访问的图片(结构化数组,供 Lookbook 直接展示缩略图)
     const productImages = images.filter((im): im is typeof im & { url: string } => !!im.url).map((im) => ({ slot: im.slot, label: im.label, url: im.url }));
+
+    // ── 解析设计提案:把 AI 方案文本拆成结构化字段 ──
+    const planSource = planText || msgs.filter((m) => m.role === "assistant" && m.references && m.references.length > 0).slice(-1)[0]?.text || "";
+    const sections = parseDesignProposal(planSource, recommendation ?? undefined, referencesRef.current ?? undefined);
+
+    // 颜色:解析 inline hex + recommendation.colors 合并
+    const parsedColors: string[] = [];
+    if (sections.colorway?.length) parsedColors.push(...sections.colorway[0].hex);
+    if (recommendation?.colors) parsedColors.push(...recommendation.colors);
+    const colors = [...new Set(parsedColors.map((c) => c.toUpperCase()))];
+
+    // 目标价:从 sections.targetPrice 解析数字
+    const priceNum = sections.targetPrice?.replace(/[^\d.]/g, "");
+    const targetPriceNum = priceNum && !isNaN(Number(priceNum)) ? Math.round(Number(priceNum)) : undefined;
+
     const product: Product = {
       id: crypto.randomUUID(),
       mode,
-      title: `Design ${now.slice(0, 10)}`,
-      description: planText,
+      title: sections.productName || `Design ${now.slice(0, 10)}`,
+      description: sections.themeNarrative || planSource.slice(0, 500),
       seasons: [],
-      category: mode,
-      colors: recommendation?.colors ?? [],
+      category: intentCategory(mode),
+      colors,
+      targetPriceNum,
+      silhouette: sections.silhouette,
+      fabricComposition: sections.fabric?.[0]?.composition || recommendation?.composition || undefined,
       recommendation: recommendation ?? undefined,
       tech_pack_url: mainImage?.url,
       images: productImages,
       ...(hasHtml ? { html: illustHtml! } : {}),
-      aiDraftRaw: JSON.stringify({ plan: planText, images, ...(recommendation ? { recommendation } : {}), ...(hasHtml ? { html: illustHtml! } : {}) }),
+      sections,
+      aiDraftRaw: JSON.stringify({
+        plan: planSource,
+        images,
+        ...(recommendation ? { recommendation } : {}),
+        ...(hasHtml ? { html: illustHtml! } : {}),
+        sections, // sections 也入 raw,方便回看
+      }),
       status: "draft",
       statusHistory: [],
       createdAt: now,
@@ -781,7 +902,7 @@ export default function ComposerPage({
             {canConfirmLineart && (
               <div className="flex justify-center gap-3">
                 <button onClick={saveToLookbook} className="px-5 py-3 rounded-2xl border border-gray-300 hover:border-gray-400 text-gray-600 font-medium text-sm transition-colors">
-                  直接录入 Lookbook
+                  保存到 Lookbook
                 </button>
                 <button onClick={confirmLineart} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
                   线稿确认,下一步选材料
@@ -890,11 +1011,11 @@ function IllustrationCanvas({ html, generating, stage, onModify, onSaveToLookboo
           </div>
         )}
       </div>
-      {/* 录入 Lookbook —— 统一放右侧 preview 区底部 */}
+      {/* 保存到 Lookbook —— 统一放右侧 preview 区底部 */}
       {canSave && (
         <button onClick={onSaveToLookbook}
           className="mt-4 shrink-0 w-full text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
-          录入 Lookbook
+          保存到 Lookbook
         </button>
       )}
       {/* 修图输入 */}
@@ -972,12 +1093,12 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation
         }
       </div>
 
-      {/* ③ 录入 Lookbook */}
+      {/* ③ 保存到 Lookbook */}
       {canSave && (
         <div className="shrink-0 p-4 pt-0">
           <button onClick={onSaveToLookbook}
             className="w-full text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
-            录入 Lookbook
+            保存到 Lookbook
           </button>
         </div>
       )}
@@ -1169,7 +1290,7 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
           <div className="shrink-0 p-4 pt-0">
             <button onClick={onSaveToLookbook}
               className="w-full text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
-              录入 Lookbook
+              保存到 Lookbook
             </button>
           </div>
         )}
