@@ -122,7 +122,7 @@ function pickCover(product: Product): string | null {
 function CardItem({ product, cover, onClick }: { product: Product; cover: string | null; onClick: () => void }) {
   return (
     <div onClick={onClick} className="group cursor-pointer rounded-2xl border border-gray-200 bg-white overflow-hidden hover:shadow-lg hover:border-primary-300 transition-all">
-      <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
+      <div className="relative aspect-[1/1] bg-gray-100 overflow-hidden">
         {cover
           ? <img src={cover} alt={product.title} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
           : <div className="w-full h-full flex items-center justify-center text-[12px] text-gray-400">暂无图片</div>}
