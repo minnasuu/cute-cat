@@ -60,6 +60,7 @@ export default function LookbookPage() {
     const updated = await teamApi(teamId).setProductStatus(p.id, { status });
     await store.refresh();
     setActiveProduct((prev) => (prev && prev.id === p.id ? updated : prev));
+  }
   /** 状态变更 → 调 PATCH 更新状态 + 追加 statusHistory */
   async function handleStatusChange(id: string, newStatus: ProductStatus) {
     const now = new Date().toISOString();
@@ -541,4 +542,4 @@ function DesignSections({ product }: { product: Product }) {
       )}
     </section>
   );
-}}
+}
