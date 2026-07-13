@@ -25,7 +25,7 @@ import type { InspirationItem } from "../store/resource";
 import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { Markdown } from "../lib/markdown";
-import { parseDesignIntent, hasLetteringElement, type DesignIntent } from "../lib/design-intent";
+import { parseDesignIntent, hasLetteringElement, categorizeCategory, type DesignIntent } from "../lib/design-intent";
 import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
 import { parseDesignProposal } from "../lib/design-proposal";
 import { useEditingProduct } from "../contexts/editing-product";
@@ -447,16 +447,43 @@ export default function ComposerPage({
     clearEditingProduct();
   }
 
+  /** 灵感池排序优先级:细品类精准命中 > 同 mode > 未分类 */
+  function rankByIntent(cluster: ReturnType<typeof categorizeCategory>, intent: DesignIntent): number {
+    if (!cluster) return 3;
+    if (intent.categoryCluster && cluster.id === intent.categoryCluster) return 0;
+    if (cluster.mode === intent.mode) return 1;
+    return 2;
+  }
+
   /**
-   * 构建「品牌风格灵感池」注入块 —— 把整个灵感库作为品牌风格来源与设计思路参考,
-   * 每张灵感压缩为一行文本摘要(保留 #[id] 标记供 AI 自由引用),不再做 Top-N 筛选。
+   * 构建「品牌风格灵感池」注入块 —— 按用户输入的「大品类」(mode)筛选灵感库,
+   * 只把同品类的灵感作为参考;细品类精准命中的排在最前。
+   * 每张灵感压缩为一行文本摘要(保留 #[id] 标记供 AI 自由引用)。
    */
   function buildReferencesBlock(raw: string): { block: string; refs: InspirationItem[]; intent: DesignIntent } {
     const intent = parseDesignIntent(raw);
     intentRef.current = intent; // 记录意图,供 startGeneration 取 top-2 参考灵感
     const allRefs = knowledge?.inspirations ?? [];
-    setReferences(allRefs);
-    referencesRef.current = allRefs; // ref 镜像供 saveToLookbook 解析 #[id] 引用
+
+    // ── 按「大品类」筛选:只把与用户输入同 mode 的灵感作为参考 ──
+    //   排序优先级:① 细品类精准命中(categoryCluster 相同) ② 同 mode 兜底 ③ 未分类放最后
+    const ranked = allRefs
+      .map((it) => ({ it, cluster: categorizeCategory(it.category ?? "") }))
+      .sort((a, b) => {
+        const ra = rankByIntent(a.cluster, intent);
+        const rb = rankByIntent(b.cluster, intent);
+        if (ra !== rb) return ra - rb;
+        // 同级时:有命中的排前、useCount 高的优先
+        if (a.cluster && !b.cluster) return -1;
+        if (!a.cluster && b.cluster) return 1;
+        return (b.it.useCount ?? 0) - (a.it.useCount ?? 0);
+      });
+    // 筛选出同 mode 的作为主池(若无命中则回退到全库,避免空白)
+    const sameMode = ranked.filter((x) => x.cluster && x.cluster.mode === intent.mode);
+    const pool = sameMode.length ? sameMode : ranked;
+    const refs = pool.map((x) => x.it);
+    setReferences(refs);
+    referencesRef.current = refs; // ref 镜像供 saveToLookbook 解析 #[id] 引用
 
     // ── 品牌 slogan 结构化注入:当用户意图含「字母/文字/标语」元素,且品牌有英文 slogan ──
     const sloganEn = knowledge?.brand?.sloganEn?.trim();
@@ -469,9 +496,9 @@ export default function ComposerPage({
         ].filter(Boolean).join("\n")
       : "";
 
-    // ── 全库一行摘要: #[id] category · visualStyle · designApproach | 配色 | 特征 ──
+    // ── 灵感池一行摘要: #[id] category · visualStyle · designApproach | 配色 | 特征 ──
     const MAX_LIB = 60; // 上限 60 张(控制 token 预算)
-    const libLines = allRefs.slice(0, MAX_LIB).map((it) => {
+    const libLines = refs.slice(0, MAX_LIB).map((it) => {
       const head = `#[${it.id}] ${it.category ?? "general"}`;
       const styleBits = [it.visualStyle, it.designApproach].filter(Boolean).join(" · ").slice(0, 80);
       const colors = it.colors?.length ? `配色: ${it.colors.slice(0, 5).join("/")}` : "";
@@ -480,10 +507,13 @@ export default function ComposerPage({
       return [head, styleBits, [colors, features].filter(Boolean).join(" | ")].filter(Boolean).join(" ");
     });
 
+    const poolLabel = sameMode.length
+      ? `已按「${intent.categoryCluster ?? intent.mode}」大品类筛选 ${refs.length} 张`
+      : `全库 ${refs.length} 张(未识别具体大品类)`;
     const block = [
-      allRefs.length
+      refs.length
         ? [
-            `## 品牌风格灵感池(共 ${allRefs.length} 张,作为品牌风格来源与设计思路参考,自由汲取,引用时用 #[ID] 标注)`,
+            `## 品牌风格灵感池(${poolLabel},同品类作为品牌风格来源与设计思路参考,自由汲取,引用时用 #[ID] 标注)`,
             ...libLines,
           ].join("\n")
         : "## 品牌风格灵感池(灵感库为空,建议先到左侧上传灵感图,作为设计参考)",
@@ -496,7 +526,7 @@ export default function ComposerPage({
       sloganElement,
     ].filter(Boolean).join("\n\n");
 
-    return { block, refs: allRefs, intent };
+    return { block, refs, intent };
   }
 
   /** 单品 / 系列:chat 主流程(设计顾问 + 灵感 + 知识 → 方案) */
@@ -685,10 +715,18 @@ export default function ComposerPage({
     const t0 = Date.now();
     try {
       const path = isLineart ? "/design/lineart" : "/design/generate";
-      // 线稿:取最相关的 top-2 灵感作为图像参考,注入线稿 prompt 引导结构/风格/配色
-      const topRefs: MatchedInspiration[] = isLineart && intentRef.current
-        ? matchInspirations(intentRef.current, knowledge?.inspirations ?? [], 2)
-        : [];
+      // 线稿:从「同大品类」的灵感池子里,取最相关的 top-2 作为图像参考
+      //   (与 text 参考池品类对齐,让图参考与文字方案方向一致)
+      let topRefs: MatchedInspiration[] = [];
+      if (isLineart && intentRef.current) {
+        const intent = intentRef.current;
+        const sameMode = (knowledge?.inspirations ?? [])
+          .map((it) => ({ it, cluster: categorizeCategory(it.category ?? "") }))
+          .filter((x) => x.cluster && x.cluster.mode === intent.mode)
+          .map((x) => x.it);
+        const candidatePool = sameMode.length ? sameMode : knowledge?.inspirations ?? [];
+        topRefs = matchInspirations(intent, candidatePool, 2);
+      }
       const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", path), {
         method: "POST",
         headers: { "Content-Type": "application/json" },

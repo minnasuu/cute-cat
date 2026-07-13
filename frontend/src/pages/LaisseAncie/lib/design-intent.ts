@@ -51,7 +51,7 @@ export const CATEGORY_CLUSTERS: CategoryCluster[] = [
   // 文创
   { id: "stationery", label: "文创",       aliases: ["明信片", "贴纸", "手账", "本子", "手机壳", "sticker", "postcard", "phone case", "文创", "胶带", "鼠標墊", "書籤", "book"], mode: "stationery" },
   // 其他
-  { id: "jewelry-wearable", label: "穿戴配饰", aliases: ["发箍", "发夹", "发卡", "hair", "领结", "领带", "tie", "腰带", "belt"], mode: "accessory" },
+  { id: "jewelry-wearable", label: "穿戴配饰", aliases: ["发箍", "发夹", "发卡", "发圈", "大肠圈", "发饰", "hair", "头绳", "头饰", "发带", "领结", "领带", "tie", "腰带", "belt"], mode: "accessory" },
 ];
 
 // ── 设计元素 ──────────────────────────────────────────────────
@@ -153,4 +153,25 @@ export function parseDesignIntent(raw: string): DesignIntent {
 /** 快捷判定:意图是否包含「字母/文字/标语」元素 */
 export function hasLetteringElement(intent: DesignIntent): boolean {
   return intent.elements.includes("lettering");
+}
+
+/**
+ * 把灵感库的 category 字段(如「T恤」「发饰 大肠圈」)归类到品类簇。
+ * 复用 CATEGORY_CLUSTERS 同义词表,找最长命中(更精准)。
+ * 返回 null 表示未识别大品类。
+ */
+export function categorizeCategory(category: string): CategoryCluster | null {
+  const text = (category || "").trim();
+  if (!text) return null;
+  let best: CategoryCluster | null = null;
+  let bestLen = 0;
+  for (const cluster of CATEGORY_CLUSTERS) {
+    for (const alias of cluster.aliases) {
+      if (text.toLowerCase().includes(alias) && alias.length > bestLen) {
+        best = cluster;
+        bestLen = alias.length;
+      }
+    }
+  }
+  return best;
 }
