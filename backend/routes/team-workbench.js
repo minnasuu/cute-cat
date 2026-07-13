@@ -384,7 +384,10 @@ router.post('/inspirations/:id/analyze', asyncHandler(async (req, res) => {
   if (!owned) return res.status(404).json({ error: 'not found' });
   // 清除上次失败原因,重置为 pending
   await prisma.lAInspirationAsset.update({ where: { id: owned.id }, data: { analysisStatus: 'pending', analysisError: null } });
-  const status = await runInspirationAnalysis(owned.id, owned.url);
+  // owned.url 是公网/相对 URL,必须作为 publicUrl(第 3 参数)传入,才能让 toAbsoluteImageUrl 拼出
+  // Ark 可拉取的绝对 URL;若误作 filePath(第 2 参数)传入,publicUrl 为 undefined,会走本地文件兜底并
+  // 因路径不存在而必然返回 error:'file',导致重试永远失败。
+  const status = await runInspirationAnalysis(owned.id, null, owned.url);
   const updated = await prisma.lAInspirationAsset.findUnique({
     where: { id: owned.id },
     select: { id: true, analysisStatus: true, analysisError: true, category: true },
