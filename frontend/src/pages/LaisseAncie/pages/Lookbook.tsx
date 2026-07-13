@@ -17,6 +17,71 @@ import { Markdown } from "../lib/markdown";
 import { teamApi } from "../lib/api";
 import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type Product, type ProductStatus } from "../types/design";
 
+/**
+ * 图片悬停放大预览。
+ * 鼠标悬停时跟手浮起一张 320px 大图,自动贴近视口边缘避免溢出;
+ * 切图/平铺图默认放大 2.5 倍,长图(版型/细节)放大 1.8 倍以保持整体入框。
+ */
+function HoverZoomImg({ src, alt, zoom = 2.5, className = "" }: { src: string; alt?: string; zoom?: number; className?: string }) {
+  const [hovered, setHovered] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [placed, setPlaced] = useState(false);
+
+  const PREV_W = 320;
+  const PREV_H = 320;
+  const GAP = 16;
+
+  function onMove(e: React.MouseEvent) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    // 优先放在鼠标右侧,右侧不够就改到上方
+    let left = e.clientX + GAP;
+    let top = e.clientY + GAP;
+    if (left + PREV_W > vw) left = e.clientX - PREV_W - GAP;
+    if (top + PREV_H > vh) top = vh - PREV_H - GAP;
+    if (top < GAP) top = GAP;
+    setPos({ x: left, y: top });
+    setPlaced(true);
+  }
+
+  return (
+    <>
+      <div
+        className={`relative inline-block ${className}`}
+        onMouseEnter={() => { setPlaced(false); setHovered(true); }}
+        onMouseLeave={() => setHovered(false)}
+        onMouseMove={onMove}
+      >
+        {hovered && (
+          <div className="absolute inset-0 ring-2 ring-primary-400 ring-offset-1 rounded-md pointer-events-none z-10" />
+        )}
+        <img src={src} alt={alt} className="w-full h-full object-cover" draggable={false} />
+      </div>
+      {hovered && (
+        <div
+          className="fixed z-[60] rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden pointer-events-none"
+          style={{
+            left: pos.x,
+            top: pos.y,
+            width: PREV_W,
+            height: PREV_H,
+            opacity: placed ? 1 : 0,
+            transition: "opacity 120ms ease-out",
+          }}
+        >
+          <img
+            src={src}
+            alt={alt}
+            draggable={false}
+            className="bg-[#f8f8f8]"
+            style={{ width: PREV_W * zoom, height: PREV_H * zoom, maxWidth: "none", transformOrigin: "top left" }}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 /** 简易行内删除确认状态:id → 是否正在确认中。 */
 function useRowDelete() {
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -342,10 +407,10 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
         <div className="mb-5 flex gap-4 items-start">
           <div className="shrink-0">
             <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">替换预览图</div>
-            <div className="w-32 h-32 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center">
+            <div className="w-32 h-32 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
               {product.imageUrl
-                ? <img src={product.imageUrl} alt={product.title} className="w-full h-full object-cover" />
-                : <span className="text-[11px] text-gray-400 px-2 text-center">暂无<br/>将覆盖生成图</span>}
+                ? <HoverZoomImg src={product.imageUrl} alt={product.title} zoom={2.5} />
+                : <div className="w-full h-full flex items-center justify-center text-[11px] text-gray-400 px-2 text-center">暂无<br/>将覆盖生成图</div>}
             </div>
             <div className="mt-2 flex flex-col gap-1.5">
               <label className="cursor-pointer text-center text-[12px] rounded-lg border border-gray-200 bg-white text-gray-700 py-1.5 hover:border-primary-500 hover:text-primary-600 disabled:opacity-50">
@@ -383,14 +448,17 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {productImages.map((im) => (
-                  <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-                    <div className="aspect-[1/1] bg-gray-100 overflow-hidden">
-                      <img src={im.url} alt={im.label} className="w-full h-full object-cover" loading="lazy" />
-                    </div>
-                    <figcaption className="px-2 py-1.5 text-[10px] text-gray-600 font-medium truncate">{im.label}</figcaption>
-                  </figure>
-                ))}
+                {productImages.map((im) => {
+                  const zoom = im.slot === "editorial" || im.slot === "hero-editorial" ? 1.8 : 2.5;
+                  return (
+                    <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+                      <div className="aspect-[1/1] bg-gray-100 overflow-hidden">
+                        <HoverZoomImg src={im.url} alt={im.label} zoom={zoom} />
+                      </div>
+                      <figcaption className="px-2 py-1.5 text-[10px] text-gray-600 font-medium truncate">{im.label}</figcaption>
+                    </figure>
+                  );
+                })}
               </div>
             )}
           </div>
