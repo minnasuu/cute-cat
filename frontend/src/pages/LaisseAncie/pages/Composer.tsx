@@ -816,11 +816,19 @@ export default function ComposerPage({
     const planSource = planText || msgs.filter((m) => m.role === "assistant" && m.references && m.references.length > 0).slice(-1)[0]?.text || "";
     const sections = parseDesignProposal(planSource, recommendation ?? undefined, referencesRef.current ?? undefined);
 
-    // 颜色:解析 inline hex + recommendation.colors 合并
-    const parsedColors: string[] = [];
-    if (sections.colorway?.length) parsedColors.push(...sections.colorway[0].hex);
-    if (recommendation?.colors) parsedColors.push(...recommendation.colors);
-    const colors = [...new Set(parsedColors.map((c) => c.toUpperCase()))];
+    // 颜色:以 recommendation(可编辑的材质配色方案)为权威来源,与生成最终图时注入
+    // 的 material.colors 保持一致。计划文本里解析出的 colorway 是 AI 原始方案,
+    // 若与 recommendation 合并会同时出现两套配色(原方案 + 修改后),因此仅在没有
+    // recommendation 时(如插画模式)回退到计划色板。
+    const colors = (() => {
+      if (recommendation?.colors?.length) {
+        return [...new Set(recommendation.colors.map((c) => c.toUpperCase()))];
+      }
+      if (sections.colorway?.length) {
+        return [...new Set(sections.colorway[0].hex.map((c) => c.toUpperCase()))];
+      }
+      return [];
+    })();
 
     // 目标价:从 sections.targetPrice 解析数字
     const priceNum = sections.targetPrice?.replace(/[^\d.]/g, "");
