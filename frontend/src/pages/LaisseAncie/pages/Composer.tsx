@@ -26,6 +26,7 @@ import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { Markdown } from "../lib/markdown";
 import { parseDesignIntent, hasLetteringElement, type DesignIntent } from "../lib/design-intent";
+import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
 import { parseDesignProposal } from "../lib/design-proposal";
 import { useEditingProduct } from "../contexts/editing-product";
 import { SwatchStrip } from "../pages/Materials";
@@ -320,6 +321,7 @@ export default function ComposerPage({
   });
   const [references, setReferences] = useState<InspirationItem[]>([]); // 最近一次匹配到的灵感引用
   const referencesRef = useRef<InspirationItem[]>([]); // ref 镜像,避免 saveToLookbook 闭包读到旧值
+  const intentRef = useRef<DesignIntent | null>(null); // 最近一次解析的设计意图,供线稿生成取 top-2 参考灵感
   const [recommendation, setRecommendation] = useState<MaterialRecommendation | null>(null); // AI 推荐的材质+配色方案
   const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
 
@@ -451,6 +453,7 @@ export default function ComposerPage({
    */
   function buildReferencesBlock(raw: string): { block: string; refs: InspirationItem[]; intent: DesignIntent } {
     const intent = parseDesignIntent(raw);
+    intentRef.current = intent; // 记录意图,供 startGeneration 取 top-2 参考灵感
     const allRefs = knowledge?.inspirations ?? [];
     setReferences(allRefs);
     referencesRef.current = allRefs; // ref 镜像供 saveToLookbook 解析 #[id] 引用
@@ -682,11 +685,27 @@ export default function ComposerPage({
     const t0 = Date.now();
     try {
       const path = isLineart ? "/design/lineart" : "/design/generate";
+      // 线稿:取最相关的 top-2 灵感作为图像参考,注入线稿 prompt 引导结构/风格/配色
+      const topRefs: MatchedInspiration[] = isLineart && intentRef.current
+        ? matchInspirations(intentRef.current, knowledge?.inspirations ?? [], 2)
+        : [];
       const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", path), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ mode, plan: planText }),
+        body: JSON.stringify({
+          mode,
+          plan: planText,
+          referenceImages: topRefs.map((r) => ({
+            url: r.thumbUrl || r.url,
+            category: r.category,
+            visualStyle: r.visualStyle,
+            designApproach: r.designApproach,
+            styleFeatures: r.styleFeatures,
+            designHighlights: r.designHighlights,
+            colors: r.colors,
+          })),
+        }),
       });
       // 504/代理层返回 HTML 时,res.json() 会抛 "Unexpected token '<'" —— 先校验避免无意义报错
       if (!res.ok) {
@@ -697,9 +716,14 @@ export default function ComposerPage({
       setImages(data.images || []);
       setStage(isLineart ? "presenting-lineart" : "presenting");
       const elapsed = Date.now() - t0;
+      const refHint = isLineart && topRefs.length
+        ? ` 线稿参考了灵感库中的「${topRefs.map((r) => r.category ?? "灵感").join("」「")}」。`
+        : "";
       setMsgs((xs) => [...xs, {
         id: crypto.randomUUID(), role: "assistant",
-        text: isLineart ? `✏️ 设计线稿已生成(${formatDuration(elapsed)})! 看看结构是否满意,可以修改单张线稿,确认后进入选材料。` : `✨ 设计图已生成(${formatDuration(elapsed)})! 看看这套作品,有需要调整的地方随时告诉我。`,
+        text: isLineart
+          ? `✏️ 设计线稿已生成(${formatDuration(elapsed)})!${refHint}看看结构是否满意,可以修改单张线稿,确认后进入选材料。`
+          : `✨ 设计图已生成(${formatDuration(elapsed)})! 看看这套作品,有需要调整的地方随时告诉我。`,
         timingMs: elapsed,
       }]);
     } catch (e: any) {

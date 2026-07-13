@@ -137,8 +137,36 @@ Catalog-quality technical drawing.`,
  * body: { mode: 'single'|'collection', plan: string, provider?: 'ark' }
  * 返回: { mode, images: [{ slot, label, url, prompt, error? }] }
  */
+/**
+ * 把参考灵感数组压成一段视觉引导文本,追加到线稿 prompt。
+ * 每个参考灵感取 category / visualStyle / designApproach / styleFeatures / colors ——
+ * 让线稿在结构、元素、配色上贴近灵感图,同时保持 SeedDream 纯文本输入兼容。
+ */
+function buildReferenceVisionBlock(referenceImages) {
+  if (!Array.isArray(referenceImages) || !referenceImages.length) return "";
+  const lines = referenceImages.map((r, i) => {
+    const head = `Reference ${i + 1} (${r.category ?? "inspiration"}):`;
+    const bits = [];
+    if (r.visualStyle) bits.push(`visual style ${r.visualStyle}`);
+    if (r.designApproach) bits.push(`design approach ${r.designApproach}`);
+    if (r.styleFeatures?.length) bits.push(`key features ${r.styleFeatures.join(", ")}`);
+    if (r.designHighlights?.length) bits.push(`highlights ${r.designHighlights.join(", ")}`);
+    if (r.colors?.length) bits.push(`palette ${r.colors.join(", ")}`);
+    const body = bits.join("; ");
+    return body ? `${head} ${body}` : null;
+  }).filter(Boolean);
+  if (!lines.length) return "";
+  return `\n\nVisual references — draw structural, stylistic, and color guidance from these inspiration images: ${lines.join(". ")}. Incorporate their silhouettes, motifs, composition, and palette into the line drawing.`;
+}
+
+/**
+ * POST /api/teams/:teamId/design/lineart —— 生成线稿(设计稿模式)
+ * body: { mode: 'single'|'collection', plan: string, provider?: 'ark',
+ *         referenceImages?: [{ url, category?, visualStyle?, designApproach?, styleFeatures?, designHighlights?, colors? }] }
+ * 返回: { mode, images: [{ slot, label, url, prompt, error? }] }
+ */
 router.post('/lineart', async (req, res) => {
-  const { mode = 'single', plan, provider } = req.body || {};
+  const { mode = 'single', plan, provider, referenceImages } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
   if (mode === 'illustration') {
     // 插画不进线稿流程,回退到标准图(防御性)
@@ -148,14 +176,20 @@ router.post('/lineart', async (req, res) => {
   const slots = planLineart(mode, plan);
   const results = await Promise.all(slots.map(async (slot) => {
     try {
-      const r = await generateImage(slot.prompt, {
+      // 把参考灵感视觉描述注入线稿 prompt;把首图 URL 作为参考图传入 gen-image
+      // (当前 SeedDream 忽略 referenceImageUrl,留作 imageRef provider 扩展点)
+      const visionBlock = buildReferenceVisionBlock(referenceImages);
+      const enrichedPrompt = visionBlock ? `${slot.prompt}${visionBlock}` : slot.prompt;
+      const referenceImageUrl = (Array.isArray(referenceImages) && referenceImages[0]?.url) || undefined;
+      const r = await generateImage(enrichedPrompt, {
         teamId: req.team.id,
         aspectRatio: slot.aspectRatio,
         safeName: slot.slot,
+        referenceImageUrl,
         ...imgOptsBase,
       });
-      if (r?.url) return { slot: slot.slot, label: slot.label, url: r.url, prompt: r.prompt };
-      return { slot: slot.slot, label: slot.label, error: r?.error || '生成失败', prompt: slot.prompt };
+      if (r?.url) return { slot: slot.slot, label: slot.label, url: r.url, prompt: enrichedPrompt };
+      return { slot: slot.slot, label: slot.label, error: r?.error || '生成失败', prompt: enrichedPrompt };
     } catch (e) {
       console.error(`[design-generator] lineart slot ${slot.slot} error:`, e?.message || String(e));
       return { slot: slot.slot, label: slot.label, error: e?.message || '生成失败', prompt: slot.prompt };
