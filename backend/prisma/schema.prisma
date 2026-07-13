@@ -353,6 +353,7 @@ model LAProduct {
   sku               String?
   barcode           String?
   whLocation        String?
+  imageUrl          String?
   status            String   @default("draft")
   statusHistory     Json     @default("[]")
   createdAt         DateTime @default(now())

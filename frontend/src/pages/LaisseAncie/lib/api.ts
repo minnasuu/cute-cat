@@ -104,6 +104,14 @@ export function teamApi(teamId: string) {
     createProduct: (body: any) => _apiClient.post(pre('/products'), body),
     updateProduct: (id: string, body: any) => _apiClient.patch(pre(`/products/${id}`), body),
     advanceProduct: (id: string, body: any) => _apiClient.post(pre(`/products/${id}/advance`), body),
+    // 产品主图上传(multipart, field "file"),返回更新后的产品
+    uploadProductImage: (id: string, formData: FormData) =>
+      fetch(pre(`/products/${id}/image`), { method: 'POST', body: formData, credentials: 'include' }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      }),
+    // 自由切换到任意合法状态,返回更新后的产品
+    setProductStatus: (id: string, body: any) => _apiClient.post(pre(`/products/${id}/status`), body),
     deleteProduct: (id: string) => _apiClient.delete(pre(`/products/${id}`)),
 
     // collections

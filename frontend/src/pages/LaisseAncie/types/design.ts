@@ -69,6 +69,7 @@ export interface Product {
   patternUrl?: string;
   techPackUrl?: string;
   aiDraftRaw?: string;
+  imageUrl?: string;
   status: ProductStatus;
   statusHistory: StatusLogEntry[];
   createdAt: string;

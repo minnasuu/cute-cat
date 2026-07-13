@@ -613,6 +613,7 @@ router.post('/products', async (req, res) => {
       patternUrl: data.patternUrl || null,
       techPackUrl: data.techPackUrl || null,
       aiDraftRaw: data.aiDraftRaw || null,
+      imageUrl: data.imageUrl || null,
       status,
       statusHistory: history,
     },
@@ -629,6 +630,8 @@ router.patch('/products/:id', async (req, res) => {
     if (k === 'status') continue;
     update[k] = data[k];
   }
+  // 空字符串 imageUrl 视为清除
+  if ('imageUrl' in update && !update.imageUrl) update.imageUrl = null;
   const p = await prisma.lAProduct.update({ where: { id: owned.id }, data: update });
   res.json(p);
 });
@@ -648,6 +651,55 @@ router.post('/products/:id/advance', async (req, res) => {
   const p = await prisma.lAProduct.update({
     where: { id: owned.id },
     data: { status: next, statusHistory: [...(owned.statusHistory || []), entry] },
+  });
+  res.json(p);
+});
+
+// POST /api/teams/:teamId/products/:id/image — multipart form-data, field "file"
+// 保存产品主图到本地/S3,更新 imageUrl,返回更新后的产品。
+router.post('/products/:id/image', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('[team-workbench] product image upload multer error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    if (!req.file) return res.status(400).json({ error: 'no file' });
+    try {
+      const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
+      if (!owned) return res.status(404).json({ error: 'not found' });
+      const savePath = createSavePath(`products/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      const p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { imageUrl: url } });
+      res.status(201).json(p);
+    } catch (e) {
+      console.error('[team-workbench] product image save failed:', e);
+      res.status(500).json({ error: `写入失败: ${e.message}` });
+    }
+  });
+});
+
+// POST /api/teams/:teamId/products/:id/status
+// 自由切换到任意合法状态(前端下拉),追加 history 条目。body: { status, note? }
+const PRODUCT_STATUSES = new Set([
+  'draft','submitted','proto1','proto1_done','proto2','proto2_done',
+  'bulk','bulk_done','finished','pending_list','live',
+]);
+router.post('/products/:id/status', async (req, res) => {
+  const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const status = String(req.body.status || '');
+  if (!PRODUCT_STATUSES.has(status)) return res.status(400).json({ error: `非法状态: ${status}` });
+  const entry = {
+    id: crypto.randomUUID(),
+    status,
+    at: new Date().toISOString(),
+    actor: 'atelier',
+    note: req.body.note || null,
+  };
+  const p = await prisma.lAProduct.update({
+    where: { id: owned.id },
+    data: { status, statusHistory: [...(owned.statusHistory || []), entry] },
   });
   res.json(p);
 });

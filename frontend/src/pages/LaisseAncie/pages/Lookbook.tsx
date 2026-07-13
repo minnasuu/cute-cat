@@ -25,12 +25,21 @@ export default function LookbookPage() {
     return store.products.filter((p) => p.mode === tab);
   }, [store.products, tab]);
 
+  // 行内切换状态(自由切换到任意工序),成功后刷新列表并同步弹窗
+  async function changeStatus(p: Product, status: ProductStatus) {
+    if (status === p.status) return;
+    if (!teamId) return;
+    const updated = await teamApi(teamId).setProductStatus(p.id, { status });
+    await store.refresh();
+    setActiveProduct((prev) => (prev && prev.id === p.id ? updated : prev));
+  }
+
   return (
     <div className="p-8 lg:p-12 max-w-[1400px] mx-auto">
       <header className="flex items-end justify-between mb-6">
         <div>
           <h1 className="text-5xl font-semibold text-primary-600 tracking-tight">Lookbook</h1>
-          <p className="text-sm text-gray-500 mt-1">款式总览 — 按创作模式分类 · 点击状态推进工序</p>
+          <p className="text-sm text-gray-500 mt-1">款式总览 — 按创作模式分类 · 下拉切换工序 · 点击行编辑详情</p>
         </div>
         <span className="text-xs text-gray-500">{store.products.length} items</span>
       </header>
@@ -48,8 +57,8 @@ export default function LookbookPage() {
           <table className="w-full text-[13px] border-collapse">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-200">
-                {["产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新"].map((h) => (
-                  <th key={h} className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wider">{h}</th>
+                {["", "产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新"].map((h) => (
+                  <th key={h || "$img"} className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -57,6 +66,13 @@ export default function LookbookPage() {
               {items.map((p) => (
                 <tr key={p.id} className="border-b border-gray-200 hover:bg-primary-50/40 cursor-pointer"
                   onClick={() => setActiveProduct(p)}>
+                  <td className="px-2 py-2">
+                    <div className="w-12 h-12 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                      {p.imageUrl
+                        ? <img src={p.imageUrl} alt="" className="w-full h-full object-cover" />
+                        : <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">无图</div>}
+                    </div>
+                  </td>
                   <td className="px-3 py-3">
                     <div className="font-medium text-gray-900">{p.title || "(untitled)"}</div>
                     {p.description && <div className="text-[11px] text-gray-500 truncate max-w-[280px]">{p.description}</div>}
@@ -65,7 +81,7 @@ export default function LookbookPage() {
                   <td className="px-3 py-3">{p.category || "—"}</td>
                   <td className="px-3 py-3 max-w-[200px] truncate">{p.fabricComposition || "—"}</td>
                   <td className="px-3 py-3">{typeof p.targetPriceNum === "number" ? `¥${p.targetPriceNum}` : "—"}</td>
-                  <td className="px-3 py-3"><StatusPill product={p} onClick={() => setActiveProduct(p)} /></td>
+                  <td className="px-3 py-3"><StatusSelect product={p} onChange={(s) => changeStatus(p, s)} /></td>
                   <td className="px-3 py-3"><SkillsBadge productId={p.id} /></td>
                   <td className="px-3 py-3 text-gray-500 font-mono text-[11px]">{new Date(p.updatedAt).toLocaleDateString()}</td>
                 </tr>
@@ -95,14 +111,19 @@ function TabBtn({ current, value, onClick, label }: { current: TabKey; value: Ta
   );
 }
 
-function StatusPill({ product, onClick }: { product: Product; onClick: () => void }) {
-  const nxt = nextStatus(product.status);
+function StatusSelect({ product, onChange }: { product: Product; onChange: (s: ProductStatus) => void }) {
   return (
-    <button onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap transition-colors ${product.status === "live" ? "bg-primary-50 border-primary-500 text-primary-600" : product.status === "draft" ? "bg-gray-100 border-gray-300 text-gray-600" : "bg-gray-800 border-gray-800 text-white"}`}>
-      {STATUS_LABEL[product.status]}
-      {nxt && <span className="ml-1 opacity-60">→ {STATUS_LABEL[nxt]}</span>}
-    </button>
+    <select
+      value={product.status}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(e.target.value as ProductStatus)}
+      className="text-[12px] px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:border-primary-500 max-w-[150px]"
+      title="点击切换工序状态"
+    >
+      {STATUS_FLOW.map((s) => (
+        <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+      ))}
+    </select>
   );
 }
 
@@ -117,6 +138,26 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
   const target = nextStatus(product.status);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  // 本地上传/替换产品主图
+  async function uploadImage(file: File) {
+    if (!teamId) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const updated = await teamApi(teamId).uploadProductImage(product.id, fd);
+      await onSave(updated);
+    } finally { setUploading(false); }
+  }
+
+  // 清除产品主图
+  async function clearImage() {
+    if (!teamId) return;
+    const updated = { ...product, imageUrl: "" };
+    await onSave(updated);
+  }
 
   async function advance() {
     if (!target) return;
@@ -142,6 +183,33 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
           </div>
           <button onClick={onClose} className="text-xl text-gray-400 hover:text-gray-800">×</button>
         </header>
+
+        <div className="mb-5 flex gap-4 items-start">
+          <div className="shrink-0">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">产品主图</div>
+            <div className="w-32 h-32 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center">
+              {product.imageUrl
+                ? <img src={product.imageUrl} alt={product.title} className="w-full h-full object-cover" />
+                : <span className="text-[11px] text-gray-400 px-2 text-center">暂无图片<br/>点击下方上传</span>}
+            </div>
+            <div className="mt-2 flex flex-col gap-1.5">
+              <label className="cursor-pointer text-center text-[12px] rounded-lg border border-gray-200 bg-white text-gray-700 py-1.5 hover:border-primary-500 hover:text-primary-600 disabled:opacity-50">
+                {product.imageUrl ? "替换" : "上传"}
+                <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f); e.target.value = ""; }} />
+              </label>
+              {product.imageUrl && (
+                <button onClick={() => void clearImage()} disabled={uploading}
+                  className="text-[12px] rounded-lg border border-gray-200 bg-white text-gray-500 py-1.5 hover:border-red-400 hover:text-red-500 disabled:opacity-50">
+                  清除
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="text-[11px] text-gray-400 leading-relaxed pt-6">
+            支持 JPG / PNG / WebP<br/>本地上传保存为产品封面
+          </div>
+        </div>
 
         <div className="mb-5">
           <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">工序时间线</div>
