@@ -39,6 +39,10 @@ export default function InspinationsPage() {
   const cursorRef = useRef<string | null>(null);
   useEffect(() => { cursorRef.current = cursor; }, [cursor]);
 
+  // 粘贴图片:保有一份最新 handleFiles,避免闭包过期(循环依赖)
+  const handleFilesRef = useRef(handleFiles);
+  useEffect(() => { handleFilesRef.current = handleFiles; }, [handleFiles]);
+
   const fetchList = useCallback(async (append: boolean, appendCursor: string | null) => {
     if (!teamId) return;
     setLoading(true);
@@ -93,6 +97,29 @@ export default function InspinationsPage() {
   }
 
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files); };
+
+  // 粘贴图片自动识别:监听页面级 paste,把剪贴板里的图片直接送入上传+AI 分析流程
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      // 编辑 modal / 搜索框等输入态下不拦截,避免干扰正常文本粘贴
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || (active instanceof HTMLElement && active.isContentEditable)) return;
+      const items = e.clipboardData?.items;
+      if (!items?.length) return;
+      const images: File[] = [];
+      for (const it of Array.from(items)) {
+        if (it.kind === "file" && it.type.startsWith("image/")) {
+          const f = it.getAsFile();
+          if (f) images.push(f);
+        }
+      }
+      if (!images.length) return;
+      e.preventDefault();
+      void handleFilesRef.current(images);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
 
   // 重试 AI 分析
   async function handleRetry(id: string) {
@@ -450,6 +477,7 @@ function EmptyDrop({ onDrop, onFiles }: { onDrop: (e: React.DragEvent) => void; 
       className="border-2 border-dashed border-gray-300 rounded-2xl py-20 text-center hover:border-primary-400 transition-colors">
       <div className="text-gray-500 text-sm">Drag & drop inspiration images here, or</div>
       <button onClick={() => ref.current?.click()} className="mt-3 inline-flex rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-5 py-2 text-sm font-medium">Choose files</button>
+      <div className="text-gray-500 text-sm mt-2">or paste from clipboard <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">⌘V</span></div>
       <input ref={ref} type="file" accept="image/*" multiple className="hidden"
         onChange={(e) => { if (e.target.files) onFiles(e.target.files); e.target.value = ""; }} />
       <p className="text-[11px] text-gray-500 mt-4 max-w-md mx-auto leading-relaxed">
