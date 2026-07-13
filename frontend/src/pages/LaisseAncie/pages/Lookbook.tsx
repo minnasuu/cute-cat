@@ -99,16 +99,47 @@ function useRowDelete() {
 
 const ALL_MODES = ["illustration", "single", "collection", "occasion"] as const;
 type TabKey = "illustration" | "single" | "collection" | "occasion" | "all";
+type ViewMode = "table" | "card";
 
 function nextStatus(s: ProductStatus): ProductStatus | null {
   const i = STATUS_FLOW.indexOf(s);
   return i === -1 || i >= STATUS_FLOW.length - 1 ? null : STATUS_FLOW[i + 1]!;
 }
 
+/** 选卡片封面:优先「效果图」类 slot(跳过线稿),回退到 imageUrl 兜底 */
+function pickCover(product: Product): string | null {
+  const imgs = (product.images ?? []).filter((im) => im.url);
+  if (!imgs.length) return product.imageUrl ?? null;
+  const renderSlots = ["editorial", "flat", "single", "collection", "illustration", "hero-editorial", "detail", "final"];
+  for (const slot of renderSlots) {
+    const found = imgs.find((im) => im.slot === slot);
+    if (found) return found.url;
+  }
+  return imgs[0]?.url ?? product.imageUrl ?? null;
+}
+
+/** 卡片视图的单张卡片:效果图作封面 + 标题文字 + 点击打开详情弹窗 */
+function CardItem({ product, cover, onClick }: { product: Product; cover: string | null; onClick: () => void }) {
+  return (
+    <div onClick={onClick} className="group cursor-pointer rounded-2xl border border-gray-200 bg-white overflow-hidden hover:shadow-lg hover:border-primary-300 transition-all">
+      <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
+        {cover
+          ? <img src={cover} alt={product.title} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
+          : <div className="w-full h-full flex items-center justify-center text-[12px] text-gray-400">暂无图片</div>}
+      </div>
+      <div className="px-3 py-2.5">
+        <div className="text-[13px] font-medium text-gray-900 truncate">{product.title || "(untitled)"}</div>
+        {product.category && <div className="text-[11px] text-gray-500 truncate mt-0.5">{product.category}</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function LookbookPage() {
   const { teamId, navigateTab } = useCurrentTeam();
   const store = useDesignStore();
   const [tab, setTab] = useState<TabKey>("all");
+  const [view, setView] = useState<ViewMode>("table");
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const { confirming, setConfirming, pending, doDelete } = useRowDelete();
   const { setEditingProduct } = useEditingProduct();
@@ -169,14 +200,31 @@ export default function LookbookPage() {
         </div>
         <span className="text-xs text-gray-500">{store.products.length} items</span>
       </header>
-      <div className="inline-flex rounded-2xl border border-gray-200 overflow-hidden text-sm mb-6">
-        <TabBtn current={tab} value="all" onClick={setTab} label="全部" />
-        {ALL_MODES.map((m) => <TabBtn key={m} current={tab} value={m} onClick={setTab} label={MODE_LABEL[m]} />)}
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="inline-flex rounded-2xl border border-gray-200 overflow-hidden text-sm">
+          <TabBtn current={tab} value="all" onClick={setTab} label="全部" />
+          {ALL_MODES.map((m) => <TabBtn key={m} current={tab} value={m} onClick={setTab} label={MODE_LABEL[m]} />)}
+        </div>
+        <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-[12px]">
+          <button onClick={() => setView("table")}
+            className={`px-3 py-1.5 transition-colors ${view === "table" ? "bg-primary-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+            title="表格视图">☰ 表格</button>
+          <button onClick={() => setView("card")}
+            className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${view === "card" ? "bg-primary-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+            title="卡片视图">▦ 卡片</button>
+        </div>
       </div>
 
       {items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-300 py-16 text-center text-gray-500 text-sm">
           要去往 <span className="text-primary-600">Design</span> 开始创作，产品才会进入 Lookbook
+        </div>
+      ) : view === "card" ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {items.map((p) => (
+            <CardItem key={p.id} product={p} cover={pickCover(p)}
+              onClick={() => setActiveProduct(p)} onDelete={() => setConfirming(p.id)} />
+          ))}
         </div>
       ) : (
         <div className="overflow-x-auto">
