@@ -118,8 +118,8 @@ export default function LookbookPage() {
           <table className="w-full text-[13px] border-collapse">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-200">
-                {["", "产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新"].map((h) => (
-                  <th key={h || "$img"} className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wider">{h}</th>
+                {["预览", "产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新"].map((h) => (
+                  <th key={h} className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -127,12 +127,8 @@ export default function LookbookPage() {
               {items.map((p) => (
                 <tr key={p.id} className="border-b border-gray-200 hover:bg-primary-50/40 cursor-pointer transition-colors"
                   onClick={() => setActiveProduct(p)}>
-                  <td className="px-2 py-2">
-                    <div className="w-12 h-12 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                      {p.imageUrl
-                        ? <img src={p.imageUrl} alt="" className="w-full h-full object-cover" />
-                        : <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">无图</div>}
-                    </div>
+                  <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                    <StackedThumbs product={p} overrideUrl={p.imageUrl} />
                   </td>
                   <td className="px-3 py-3">
                     <div className="font-medium text-gray-900">{p.title || "(untitled)"}</div>
@@ -191,8 +187,32 @@ export default function LookbookPage() {
 
 // ── 子组件 ───────────────────────────────────────────────────
 
-/** 图片堆叠错位预览:最多 4 张 + N 标记 */
-function StackedThumbs({ product }: { product: Product }) {
+/** 产品各工序对应色(从草稿灰→已上架绿) */
+const STATUS_COLORS: Record<ProductStatus, { text: string; bg: string; border: string }> = {
+  draft:        { text: "text-gray-600", bg: "bg-gray-100",   border: "border-gray-300" },
+  submitted:    { text: "text-sky-700",   bg: "bg-sky-50",     border: "border-sky-300" },
+  proto1:       { text: "text-amber-700", bg: "bg-amber-50",   border: "border-amber-300" },
+  proto1_done:  { text: "text-amber-800", bg: "bg-amber-100",  border: "border-amber-400" },
+  proto2:       { text: "text-orange-700",bg: "bg-orange-50",  border: "border-orange-300" },
+  proto2_done:  { text: "text-orange-800",bg: "bg-orange-100", border: "border-orange-400" },
+  bulk:         { text: "text-indigo-700",bg: "bg-indigo-50",  border: "border-indigo-300" },
+  bulk_done:    { text: "text-indigo-800",bg: "bg-indigo-100", border: "border-indigo-400" },
+  finished:     { text: "text-teal-700",  bg: "bg-teal-50",    border: "border-teal-300" },
+  pending_list: { text: "text-violet-700",bg: "bg-violet-50",  border: "border-violet-300" },
+  live:         { text: "text-green-700", bg: "bg-green-50",   border: "border-green-300" },
+};
+
+/** 图片堆叠错位预览:最多 4 张 + N 标记; overrideUrl(用户上传)优先级最高,作为生成图的替换覆盖 */
+function StackedThumbs({ product, overrideUrl }: { product: Product; overrideUrl?: string }) {
+  // 用户上传的替换图:单张铺满预览,标记"已替换"
+  if (overrideUrl) {
+    return (
+      <div className="relative w-[72px] h-[72px]" title="已用上传图替换)">
+        <img src={overrideUrl} alt="替换图" className="absolute inset-0 w-full h-full rounded-md border-2 border-white shadow-sm object-cover bg-gray-100" />
+        <span className="absolute top-0 left-0 px-1 py-0.5 rounded-br-md bg-primary-500 text-white text-[8px] font-medium z-10">替换</span>
+      </div>
+    );
+  }
   const imgs = (product.images ?? []).filter((im): im is typeof im & { url: string } => !!im.url);
   if (imgs.length === 0) {
     return product.html ? (
@@ -245,12 +265,13 @@ function TabBtn({ current, value, onClick, label }: { current: TabKey; value: Ta
 }
 
 function StatusSelect({ product, onChange }: { product: Product; onChange: (s: ProductStatus) => void }) {
+  const c = STATUS_COLORS[product.status] ?? STATUS_COLORS.draft;
   return (
     <select
       value={product.status}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => onChange(e.target.value as ProductStatus)}
-      className="text-[12px] px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:border-primary-500 max-w-[150px]"
+      className={`text-[12px] px-2 py-1 rounded-lg border ${c.bg} ${c.text} ${c.border} focus:outline-none focus:border-primary-500 max-w-[150px]`}
       title="点击切换工序状态"
     >
       {STATUS_FLOW.map((s) => (
@@ -320,11 +341,11 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
 
         <div className="mb-5 flex gap-4 items-start">
           <div className="shrink-0">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">产品主图</div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">替换预览图</div>
             <div className="w-32 h-32 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center">
               {product.imageUrl
                 ? <img src={product.imageUrl} alt={product.title} className="w-full h-full object-cover" />
-                : <span className="text-[11px] text-gray-400 px-2 text-center">暂无图片<br/>点击下方上传</span>}
+                : <span className="text-[11px] text-gray-400 px-2 text-center">暂无<br/>将覆盖生成图</span>}
             </div>
             <div className="mt-2 flex flex-col gap-1.5">
               <label className="cursor-pointer text-center text-[12px] rounded-lg border border-gray-200 bg-white text-gray-700 py-1.5 hover:border-primary-500 hover:text-primary-600 disabled:opacity-50">
@@ -341,7 +362,7 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
             </div>
           </div>
           <div className="text-[11px] text-gray-400 leading-relaxed pt-6">
-            支持 JPG / PNG / WebP<br/>本地上传保存为产品封面
+            支持 JPG / PNG / WebP<br/>上传后将覆盖首列生成图预览
           </div>
         </div>
         {/* 设计工作流生成的图片 / 插画 HTML */}
