@@ -1080,7 +1080,7 @@ function RecForm({ recommendation, onChange, onRefresh, onConfirm, loading, disa
       </div>
 
       {/* 配色预览 */}
-      <div className="h-6 rounded-lg overflow-hidden border border-gray-200 mb-3">
+      <div className="relative h-6 rounded-lg overflow-hidden border border-gray-200 mb-3">
         <SwatchStrip colors={recommendation.colors} />
       </div>
 
