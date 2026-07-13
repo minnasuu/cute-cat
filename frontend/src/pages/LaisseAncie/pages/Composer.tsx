@@ -442,6 +442,12 @@ export default function ComposerPage({
     setMsgs((xs) => [...xs, userMsg]);
     setBusy(true);
 
+    // 展示阶段(presenting / presenting-html):AI 给出反馈后,按用户修改要求立即重新生成
+    // (系统 prompt 约定「前端会自动重新生成修改的那张图」)。暂存意图,send 结束后触发,避免 busy 状态被 finally 提前翻转。
+    // 用 const 容器持有可变值,避免 TS 对闭包内赋值的 let 收窄为 never。
+    const postSendRegen = { value: null as { slot: string; label: string; instruction: string } | null };
+    let postSendRegenHtml = false;
+
     const assistantId = crypto.randomUUID();
     const t0 = Date.now();
     setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "", startedAt: t0 }]);
@@ -476,9 +482,22 @@ export default function ComposerPage({
         if (newStage === "planning" || newStage === "brainstorming" || newStage === "proposal") {
           setPlanText(finalText);
         }
+        // 展示阶段:AI 反馈后按用户修改要求立即重新生成主图
+        if ((newStage === "presenting" || newStage === "presenting-html") && raw.trim()) {
+          if (newStage === "presenting-html") {
+            postSendRegenHtml = true;
+          } else {
+            const primary = images.find((im) => im.slot === "final" && im.url)
+              ?? images.find((im) => im.url);
+            if (primary) postSendRegen.value = { slot: primary.slot, label: primary.label, instruction: raw };
+          }
+        }
       },
     });
     setBusy(false);
+    // send 的 chat 轮次结束后,触发展示阶段的立即重新生成(此时 busy 已释放,regenerate 自行管理 busy)
+    if (postSendRegenHtml) void regenerateHtml(raw);
+    if (postSendRegen.value) void regenerateOne(postSendRegen.value.slot, postSendRegen.value.label, postSendRegen.value.instruction);
   }
 
   /**
