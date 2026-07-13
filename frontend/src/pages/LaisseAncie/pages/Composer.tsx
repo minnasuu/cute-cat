@@ -185,6 +185,15 @@ function formatDuration(ms: number): string {
   return `${m}m${rem}s`;
 }
 
+/** 新手指引开场白(按 mode 给不同引导)。新会话复位时复用。 */
+function getGreeting(mode: DesignMode): string {
+  return mode === "illustration"
+    ? "欢迎来到 Laisse Ancie 插画工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**风格**(水彩、矢量、现代极简、装饰艺术…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个插画方案\n3️⃣ 你确认后,生成插画(默认出图,可切换为 HTML 画布)\n\n下方会在你确认方案后出现【图片 / HTML】切换,两种输出都可在这切换。"
+    : mode === "collection"
+      ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成**系列线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图"
+      : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成**设计线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图";
+}
+
 async function streamChat(opts: {
   chatUrl: string;
   system: string;
@@ -299,6 +308,10 @@ export default function ComposerPage({
   const [, setTick] = useState(0); // 触发实时计时器重渲染
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [generating, setGenerating] = useState(false);
+  // 当前正在编辑的 Lookbook 产品 id:录入后继续 chat 视为编辑同一产品(原地更新而非复制)
+  const [currentProductId, setCurrentProductId] = useState<string | null>(null);
+  // 已录入产品的快照(status / statusHistory / createdAt),再次录入时保留原有工序信息
+  const savedProductRef = useRef<Product | null>(null);
   const [model, setModelState] = useState<ModelId>(() => {
     const saved = localStorage.getItem("laisse-ancie:model");
     return (MODELS.some((m) => m.id === saved) ? saved : "ark") as ModelId;
@@ -332,12 +345,7 @@ export default function ComposerPage({
   // 开场自动发一条 assistant 消息(按 mode 给不同引导)
   useEffect(() => {
     if (msgs.length === 0 && !busy) {
-      const greeting = mode === "illustration"
-        ? "欢迎来到 Laisse Ancie 插画工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**风格**(水彩、矢量、现代极简、装饰艺术…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个插画方案\n3️⃣ 你确认后,生成插画(默认出图,可切换为 HTML 画布)\n\n下方会在你确认方案后出现【图片 / HTML】切换,两种输出都可在这切换。"
-        : mode === "collection"
-          ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成**系列线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图"
-          : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成**设计线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图";
-      setMsgs([{ id: "greeting", role: "assistant", text: greeting }]);
+      setMsgs([{ id: "greeting", role: "assistant", text: getGreeting(mode) }]);
       setStage("greeting");
     }
   }, []);
@@ -405,10 +413,35 @@ export default function ComposerPage({
     ];
     setMsgs(welcome);
 
+    // 编辑模式:记录当前产品 id 与快照,后续 chat / 再次录入视为编辑同一产品
+    if (ep.id) {
+      setCurrentProductId(ep.id);
+      savedProductRef.current = ep;
+    }
+
     // 清空编辑上下文(避免重复注入)
     clearEditingProduct();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingProduct]);
+
+  /** 新会话:清空聊天窗口与 AI 上下文,回到开场白重新开始一个全新设计 */
+  function resetSession() {
+    const hasContent = msgs.length > 1 || planText || images.length > 0 || recommendation || illustHtml || stage !== "greeting";
+    if (hasContent && !confirm("开始新会话将清空当前聊天与方案,确定继续?")) return;
+    setMsgs([{ id: crypto.randomUUID(), role: "assistant", text: getGreeting(mode) }]);
+    setStage("greeting");
+    setPlanText("");
+    setImages([]);
+    setRecommendation(null);
+    setIllustHtml(null);
+    setIllustOutputMode("image");
+    setDraft(null);
+    setCurrentProductId(null);
+    savedProductRef.current = null;
+    setReferences([]);
+    referencesRef.current = [];
+    clearEditingProduct();
+  }
 
   /** 构建「参考灵感」注入块(前端本地模糊匹配 Top N 灵感 + 品牌 slogan 结构化注入) */
   function buildReferencesBlock(raw: string): { block: string; refs: InspirationItem[]; intent: DesignIntent } {
@@ -793,8 +826,11 @@ export default function ComposerPage({
     const priceNum = sections.targetPrice?.replace(/[^\d.]/g, "");
     const targetPriceNum = priceNum && !isNaN(Number(priceNum)) ? Math.round(Number(priceNum)) : undefined;
 
+    // 已有当前产品 id(录入后继续 chat / 再次录入)→ 编辑同一产品,保留工序信息;
+    // 否则新建。这样「录入后再 chat」等同于编辑,不会在 Lookbook 里产生重复条目。
+    const previous = savedProductRef.current;
     const product: Product = {
-      id: crypto.randomUUID(),
+      id: currentProductId ?? crypto.randomUUID(),
       mode,
       title: sections.productName || `Design ${now.slice(0, 10)}`,
       description: sections.themeNarrative || planSource.slice(0, 500),
@@ -816,13 +852,17 @@ export default function ComposerPage({
         ...(hasHtml ? { html: illustHtml! } : {}),
         sections, // sections 也入 raw,方便回看
       }),
-      status: "draft",
-      statusHistory: [],
-      createdAt: now,
+      // 编辑已有产品时保留原始状态与工序历史,仅更新时间戳
+      status: previous?.status ?? "draft",
+      statusHistory: previous?.statusHistory ?? [],
+      createdAt: previous?.createdAt ?? now,
       updatedAt: now,
     };
     try {
       await store.upsertProduct(product);
+      // 记录为当前产品:后续 chat / 再次录入继续编辑同一产品
+      setCurrentProductId(product.id);
+      savedProductRef.current = product;
       // 录入成功 → 跳转到 Lookbook
       navigateTab("lookbook");
     } catch (e: any) {
@@ -877,6 +917,14 @@ export default function ComposerPage({
               )}
               <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
             </div>
+            <button
+              onClick={resetSession}
+              disabled={busy || generating || illustBusy}
+              title="清空当前聊天与方案,开始一个全新设计"
+              className="shrink-0 text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 hover:border-gray-800 hover:text-gray-900 disabled:opacity-40"
+            >
+              + 新会话
+            </button>
           </header>
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
