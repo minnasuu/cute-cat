@@ -359,26 +359,21 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
   const target = nextStatus(product.status);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [replacingSlot, setReplacingSlot] = useState<string | null>(null);
 
-  // 本地上传/替换产品主图
-  async function uploadImage(file: File) {
+  // 本地上传替换 slot 对应的那张图(线稿/效果图单张替换)
+  async function replaceSlotImage(slot: string, file: File) {
     if (!teamId) return;
-    setUploading(true);
+    setReplacingSlot(slot);
     try {
       const fd = new FormData();
       fd.append("file", file);
+      fd.append("slot", slot);
       const updated = await teamApi(teamId).uploadProductImage(product.id, fd);
       await onSave(updated);
-    } finally { setUploading(false); }
+    } finally { setReplacingSlot(null); }
   }
 
-  // 清除产品主图
-  async function clearImage() {
-    if (!teamId) return;
-    const updated = { ...product, imageUrl: "" };
-    await onSave(updated);
-  }
   const productImages = (product.images ?? []).filter((im) => im.url);
   const hasHtml = !!product.html;
 
@@ -404,32 +399,6 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
           <button onClick={onClose} className="text-xl text-gray-400 hover:text-gray-800">×</button>
         </header>
 
-        <div className="mb-5 flex gap-4 items-start">
-          <div className="shrink-0">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">替换预览图</div>
-            <div className="w-32 h-32 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
-              {product.imageUrl
-                ? <HoverZoomImg src={product.imageUrl} alt={product.title} zoom={2.5} />
-                : <div className="w-full h-full flex items-center justify-center text-[11px] text-gray-400 px-2 text-center">暂无<br/>将覆盖生成图</div>}
-            </div>
-            <div className="mt-2 flex flex-col gap-1.5">
-              <label className="cursor-pointer text-center text-[12px] rounded-lg border border-gray-200 bg-white text-gray-700 py-1.5 hover:border-primary-500 hover:text-primary-600 disabled:opacity-50">
-                {product.imageUrl ? "替换" : "上传"}
-                <input type="file" accept="image/*" className="hidden" disabled={uploading}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f); e.target.value = ""; }} />
-              </label>
-              {product.imageUrl && (
-                <button onClick={() => void clearImage()} disabled={uploading}
-                  className="text-[12px] rounded-lg border border-gray-200 bg-white text-gray-500 py-1.5 hover:border-red-400 hover:text-red-500 disabled:opacity-50">
-                  清除
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="text-[11px] text-gray-400 leading-relaxed pt-6">
-            支持 JPG / PNG / WebP<br/>上传后将覆盖首列生成图预览
-          </div>
-        </div>
         {/* 设计工作流生成的图片 / 插画 HTML */}
         {(productImages.length > 0 || hasHtml) && (
           <div className="mb-5">
@@ -450,12 +419,20 @@ function StageEditor({ product, onClose, onSave }: { product: Product; onClose: 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {productImages.map((im) => {
                   const zoom = im.slot === "editorial" || im.slot === "hero-editorial" ? 1.8 : 2.5;
+                  const busy = replacingSlot === im.slot;
                   return (
                     <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
                       <div className="aspect-[1/1] bg-gray-100 overflow-hidden">
                         <HoverZoomImg src={im.url} alt={im.label} zoom={zoom} />
                       </div>
-                      <figcaption className="px-2 py-1.5 text-[10px] text-gray-600 font-medium truncate">{im.label}</figcaption>
+                      <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
+                        <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
+                        <label className="shrink-0 cursor-pointer text-[10px] text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50">
+                          {busy ? "替换中" : "替换"}
+                          <input type="file" accept="image/*" className="hidden" disabled={busy}
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) void replaceSlotImage(im.slot, f); e.target.value = ""; }} />
+                        </label>
+                      </figcaption>
                     </figure>
                   );
                 })}

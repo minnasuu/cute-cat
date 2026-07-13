@@ -730,7 +730,8 @@ router.post('/products/:id/advance', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/teams/:teamId/products/:id/image — multipart form-data, field "file"
-// 保存产品主图到本地/S3,更新 imageUrl,返回更新后的产品。
+// 可选 field "slot":有 slot 时替换 images[] 中对应条目的 url(线稿/效果图单张替换);
+// 无 slot 时写入 imageUrl(兼容主图/封面)。返回更新后的产品。
 router.post('/products/:id/image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
     if (err) {
@@ -744,7 +745,19 @@ router.post('/products/:id/image', (req, res) => {
       const savePath = createSavePath(`products/${req.team.id}`, req.file.filename);
       await saveUpload(req.file.path, savePath, req.file.mimetype);
       const url = getPublicUrl(savePath);
-      const p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { imageUrl: url } });
+
+      const slot = req.body?.slot?.toString().trim();
+      let p;
+      if (slot) {
+        // 替换 images[] 中对应 slot 的 url;找不到则追加一条
+        const imgs = Array.isArray(owned.images) ? owned.images.map((im) => ({ ...im })) : [];
+        const idx = imgs.findIndex((im) => im && im.slot === slot);
+        if (idx >= 0) imgs[idx] = { ...imgs[idx], url };
+        else imgs.push({ slot, label: slot, url });
+        p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { images: imgs } });
+      } else {
+        p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { imageUrl: url } });
+      }
       res.status(201).json(p);
     } catch (e) {
       console.error('[team-workbench] product image save failed:', e);
