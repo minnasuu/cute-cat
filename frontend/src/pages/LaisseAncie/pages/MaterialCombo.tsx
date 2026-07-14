@@ -421,7 +421,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                     <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">库</span>
                   )}
                   {!batchRunningOrAnalyzing && (
-                    <button onClick={() => removeRow("style", row.id}
+                    <button onClick={() => removeRow("style", row.id)}
                       className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                   )}
                   <div className="px-1 py-0.5 text-[8px] text-gray-400 truncate" title={row.name}>{row.name}</div>
