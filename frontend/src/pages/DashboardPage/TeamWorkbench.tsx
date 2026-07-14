@@ -2,7 +2,7 @@
  * TeamWorkbench —— 通用团队工作台主组件。
  *
  * 左栏结构:
- *   ★ 设计(主工作台,带 单品/插画/系列 模式切换子菜单)
+ *   ★ 设计(主工作台,带 灵感扩散/插画/材料组合 模式切换子菜单)
  *   ─────
  *   资源  ▾ (灵感 / Lookbook / 材料)     ← 合并为一组,作为设计调用的素材库
  *   ─────
@@ -27,6 +27,9 @@ import type { KnowledgeDeps } from './knowledge-injectors';
 
 /** 设计 Composer —— 团队主页/主流程(默认展示)。 */
 import ComposerPage from '../LaisseAncie/pages/Composer';
+
+/** 材料组合 —— 固定表单(名称+面料图+款式参考+描述)→ 白底效果图。 */
+import MaterialComboPage from '../LaisseAncie/pages/MaterialCombo';
 
 /** 数据 tab 懒加载(避免首屏过大)。 */
 const InspirationsPage = lazy(() => import('../LaisseAncie/pages/Inspirations'));
@@ -54,7 +57,7 @@ export default function TeamWorkbench() {
   const [brandLoading, setBrandLoading] = useState(true);
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // 3 个 design tab(单品/插画/系列)预挂载 → 各自 chat 路径完全独立且常驻
+  // 3 个 design tab(灵感扩散/插画/材料组合)预挂载 → 各自路径完全独立且常驻
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(
     () => new Set(DESIGN_TABS.map((t) => t.id)),
   );
@@ -95,22 +98,37 @@ export default function TeamWorkbench() {
   function renderActive() {
     return (
       <>
-        {/* 3 个一级设计 tab —— 各自独立的 Composer 实例 */}
+        {/* 3 个一级设计 tab —— 灵感扩散/插画 走 Composer;材料组合 走 MaterialCombo */}
         {DESIGN_TABS.map((t) => visitedTabs.has(t.id) && (
           <div key={t.id} className={activeTab === t.id ? '' : 'hidden'}>
-            <ComposerPage
-              mode={t.id}
-              brandLoading={brandLoading}
-              knowledgeLoading={knowledgeLoading}
-              knowledge={{
-                skills: skillStore.articles,
-                assets: visualAssetStore.assets,
-                inspirations: resourceStore.inspirations,
-                materials: resourceStore.materials,
-                products: designStore.products,
-                brand,
-              }}
-            />
+            {t.id === "material-combo" ? (
+              <MaterialComboPage
+                brandLoading={brandLoading}
+                knowledgeLoading={knowledgeLoading}
+                knowledge={{
+                  skills: skillStore.articles,
+                  assets: visualAssetStore.assets,
+                  inspirations: resourceStore.inspirations,
+                  materials: resourceStore.materials,
+                  products: designStore.products,
+                  brand,
+                }}
+              />
+            ) : (
+              <ComposerPage
+                mode={t.id}
+                brandLoading={brandLoading}
+                knowledgeLoading={knowledgeLoading}
+                knowledge={{
+                  skills: skillStore.articles,
+                  assets: visualAssetStore.assets,
+                  inspirations: resourceStore.inspirations,
+                  materials: resourceStore.materials,
+                  products: designStore.products,
+                  brand,
+                }}
+              />
+            )}
           </div>
         ))}
         {/* 数据 tab(惰性加载过就常驻挂载) */}

@@ -33,8 +33,9 @@ function useRowDelete() {
   return { confirming, setConfirming, pending, doDelete };
 }
 
-const ALL_MODES = ["illustration", "single", "collection", "occasion"] as const;
-type TabKey = "illustration" | "single" | "collection" | "occasion" | "all";
+// 展示给用户的 Lookbook 创作模式 tab,与当前可用的设计工作台 tab 一致(系列已下线,仅「全部」中能看到历史系列数据)。
+const ALL_MODES = ["illustration", "single", "material-combo", "occasion"] as const;
+type TabKey = "illustration" | "single" | "material-combo" | "occasion" | "all";
 type ViewMode = "table" | "card";
 
 function nextStatus(s: ProductStatus): ProductStatus | null {
@@ -46,7 +47,7 @@ function nextStatus(s: ProductStatus): ProductStatus | null {
 function pickCover(product: Product): string | null {
   const imgs = (product.images ?? []).filter((im) => im.url);
   if (!imgs.length) return product.imageUrl ?? null;
-  const renderSlots = ["editorial", "flat", "single", "collection", "illustration", "hero-editorial", "detail", "final"];
+  const renderSlots = ["editorial", "flat", "single", "material-combo", "collection", "illustration", "hero-editorial", "detail", "final"];
   for (const slot of renderSlots) {
     const found = imgs.find((im) => im.slot === slot);
     if (found) return found.url;

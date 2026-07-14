@@ -10,13 +10,50 @@
  * POST /api/teams/:teamId/design/lineart        —— 生成设计线稿(单品/系列)
  * POST /api/teams/:teamId/design/generate-final —— 材料驱动的最终成图
  * POST /api/teams/:teamId/design/recommend-materials —— AI 材料推荐(库内+库外)
+ * POST /api/teams/:teamId/design/material-combo —— 材料组合:面料图+款式参考+品牌 → 白底效果图
  */
 
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const multer = require('multer');
 const { generateImage } = require('../lib/gen-image');
 const { callArkStream } = require('../workflow-executor');
+const { analyzeInspiration } = require('../lib/analyze-inspiration');
+const storage = require('../lib/storage');
 
 const router = express.Router();
+
+// ── material-combo 专用 multer ─────────────────────────────────
+const multerStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    fs.mkdirSync(storage.TMP_DIR, { recursive: true });
+    cb(null, storage.TMP_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    cb(null, `mc-${Date.now().toString(36)}${crypto.randomUUID().slice(0, 6)}${ext}`);
+  },
+});
+const mcUpload = multer({
+  storage: multerStorage,
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpe?g|png|webp|avif|gif)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('unsupported mime'));
+  },
+}).fields([
+  { name: 'fabric', maxCount: 1 },
+  { name: 'style', maxCount: 1 },
+]);
+
+/** 把 multer 暂存文件落到最终位置(本地或 S3),返回公网/相对 URL */
+async function persistTempFile(tmpPath, filename, mime) {
+  const savePath = storage.createSavePath(`design/material-combo`, filename);
+  await storage.saveUpload(tmpPath, savePath, mime);
+  return storage.getPublicUrl(savePath);
+}
 
 /**
  * 根据 plan 出现的品类关键词判断是否为服装(否则按物品处理)。
@@ -390,5 +427,303 @@ router.post('/generate-final', async (req, res) => {
   }));
   res.json({ mode, images: results });
 });
+
+/**
+ * POST /api/teams/:teamId/design/material-combo —— 材料组合:固定表单 → 白底效果图
+ *
+ * multipart form-data:
+ *   - name: string (产品名称)
+ *   - description: string (其他描述)
+ *   - fabric: file (面料图片)
+ *   - style: file (款式参考图片)
+ *   - brand: JSON string (可选,品牌信息;不传则从 DB 读)
+ *
+ * 流程:
+ *   1. 暂存两张图到本地 + 上传至最终存储
+ *   2. 用 Ark 视觉模型分别分析面料图(材质/色彩/质感)与款式参考图(廓形/结构/细节)
+ *   3. 综合品牌信息 + 用户描述 + 视觉分析结果,构建英文 prompt
+ *   4. 调 Maizi(gpt-image-2)生成 1:1 白底效果图
+ *
+ * 返回: { images: [{ slot, label, url, prompt, error? }], analysis?: { fabric, style } }
+ */
+router.post('/material-combo', (req, res) => {
+  mcUpload(req, res, async (err) => {
+    if (err) {
+      console.error('[design-generator] material-combo upload error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    const files = req.files || {};
+    const fabricFile = files.fabric?.[0];
+    const styleFile = files.style?.[0];
+    const { name = '', description = '' } = req.body || {};
+
+    if (!fabricFile || !styleFile) {
+      return res.status(400).json({ error: '需要上传面料图片和款式参考图片' });
+    }
+    if (!name.trim()) {
+      return res.status(400).json({ error: '请填写名称' });
+    }
+
+    try {
+      // 1) 持久化两张图
+      const [fabricUrl, styleUrl] = await Promise.all([
+        persistTempFile(fabricFile.path, fabricFile.filename, fabricFile.mimetype),
+        persistTempFile(styleFile.path, styleFile.filename, styleFile.mimetype),
+      ]);
+
+      // 2) Ark 视觉分析:面料 + 款式
+      const [fabricAnalysis, styleAnalysis] = await Promise.all([
+        analyzeFabric(fabricFile, fabricUrl),
+        analyzeStyleRef(styleFile, styleUrl),
+      ]);
+
+      // 3) 构建综合 prompt
+      const brand = await resolveBrand(req);
+      const prompt = buildMaterialComboPrompt({
+        name: name.trim(),
+        description: description.trim(),
+        brand,
+        fabric: fabricAnalysis,
+        style: styleAnalysis,
+      });
+
+      // 4) 生图
+      const img = await generateImage(prompt, {
+        teamId: req.team.id,
+        aspectRatio: '1:1',
+        safeName: 'material-combo',
+      });
+
+      if (img?.url) {
+        res.json({
+          images: [{ slot: 'material-combo', label: '白底效果图', url: img.url, prompt }],
+          analysis: { fabric: fabricAnalysis, style: styleAnalysis },
+        });
+      } else {
+        res.status(500).json({
+          images: [{ slot: 'material-combo', label: '白底效果图', error: img?.error || '生成失败', prompt }],
+          analysis: { fabric: fabricAnalysis, style: styleAnalysis },
+        });
+      }
+    } catch (e) {
+      console.error('[design-generator] material-combo error:', e?.message || String(e));
+      res.status(500).json({ error: e?.message || '生成失败' });
+    }
+  });
+});
+
+// ─── material-combo helper ─────────────────────────────────────
+
+/**
+ * Ark 视觉分析面料图片:提取材质类型 / 表面质感 / 克重垂感 / 主色与配色图案。
+ * 返回 { text, raw } —— text 为自然语言摘要(用于拼 prompt),raw 为原始 JSON。
+ */
+async function analyzeFabric(tmpFile, publicUrl) {
+  const system = `你是 Laisse Ancie (来兮·安兮)的面料专家。基于用户给的面料图片做视觉分析,只输出严格的 JSON(不要 Markdown 代码块、不要寒暄、不要前后说明文字)。`;
+
+  const prompt = `仔细观察这张面料图片 —— 它可能是一块服装面料(真丝/棉麻/羊毛/化纤...)、皮革、针织、蕾丝、或者其他服饰材质。
+
+请输出 JSON 分析:
+{
+  "material": "材质类型(如:真丝双斜纹 / 棉麻平纹 / 羊毛法兰绒 / 牛皮)",
+  "surface": "表面质感(如:哑光自然 / 光滑垂坠 / 粗粝颗粒感 / 细腻磨砂)",
+  "weightDrape": "克重与垂感(如:轻薄飘逸 / 中等挺括 / 重磅有支撑)",
+  "pattern": "图案纹理(如:纯色 / 细条纹 / 碎花提花 / 人字纹;纯色写「纯色」)",
+  "colors": ["主色hex","辅色hex"],
+  "bestFor": "最适合做的品类(如:连衣裙/衬衫/西装/半裙)"
+}
+
+只输出一个合法 JSON 对象,不要前后说明文字。`;
+
+  return analyzeImageWithArk(tmpFile, publicUrl, system, prompt, 'fabric');
+}
+
+/**
+ * Ark 视觉分析款式参考图片:提取廓形 / 结构细节 / 设计语言。
+ */
+async function analyzeStyleRef(tmpFile, publicUrl) {
+  const system = `你是 Laisse Ancie (来兮·安兮)的版型与款式专家。基于用户给的款式参考图片做视觉分析,只输出严格的 JSON(不要 Markdown 代码块、不要寒暄、不要前后说明文字)。`;
+
+  const prompt = `仔细观察这张款式参考图片 —— 它可能是一件服装(T恤、连衣裙、外套...)、配饰(包袋、鞋履、帽子...)或其他时尚单品。
+
+请输出 JSON 分析:
+{
+  "silhouette": "整体廓形(如:A 型及膝 / 直筒长款 / 收腰X型 / 宽松oversized)",
+  "category": "品类(如:连衣裙 / 衬衫 / 托特包 / 针织开衫)",
+  "structure": "结构细节(如:小翻领 / 无领杯领 / 插肩缝 / 对开式门襟 / 隐形拉链)",
+  "designLanguage": "设计语言与风格关键词(如:极简Clean Fit / 法式田园 / 都市通勤 / Y2K未来感;用2–5个短语)",
+  "keyDetails": "最突出的1–2个设计亮点(如:泡泡袖、荷叶边下摆、明线装饰)"
+}
+
+只输出一个合法 JSON 对象,不要前后说明文字。`;
+
+  return analyzeImageWithArk(tmpFile, publicUrl, system, prompt, 'style');
+}
+
+/**
+ * 通用 Ark 视觉分析:把 tmp 文件优先作 data URL 传入,publicUrl 作后备。
+ * 返回 { text, raw } —— text 为失败友好型描述,raw 为原始 JSON 字符串。
+ */
+async function analyzeImageWithArk(tmpFile, publicUrl, system, contextPrompt, tag) {
+  const apiKey = (process.env.ARK_API_KEY || '').trim();
+  if (!apiKey) return { text: '(视觉分析未配置 ARK_API_KEY,跳过)', raw: '' };
+
+  const baseUrl = (process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/+$/, '');
+  const model = (process.env.ARK_TEXT_MODEL || 'doubao-seed-2-1-pro-260628').trim();
+  const timeoutMs = Number.parseInt(process.env.INSPIRATION_AI_TIMEOUT_MS || '', 10) || 90000;
+
+  // 读取 buffer 作 data URL(与 analyzeInspiration 一致;不走公网 URL 避免内网抓不到)
+  let imageRef = '';
+  try {
+    const buf = fs.readFileSync(tmpFile.path);
+    const ext = (tmpFile.mimetype || 'image/jpeg').split('/')[1] || 'jpeg';
+    imageRef = `data:${tmpFile.mimetype || 'image/jpeg'};base64,${buf.toString('base64')}`;
+  } catch (e) {
+    console.warn(`[design-generator] ${tag} read buffer failed, fallback to url: ${e?.message}`);
+    imageRef = publicUrl;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 1024,
+        messages: [
+          { role: 'system', content: [{ type: 'text', text: system }] },
+          { role: 'user', content: [
+            { type: 'image_url', image_url: { url: imageRef } },
+            { type: 'text', text: contextPrompt },
+          ] },
+        ],
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const t = (await res.text().catch(() => '')).slice(0, 200);
+      console.warn(`[design-generator] ${tag} Ark HTTP ${res.status}: ${t}`);
+      return { text: `(视觉分析失败 HTTP ${res.status})`, raw: '' };
+    }
+
+    const reader = res.body;
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+    for await (const chunk of reader) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data: ')) continue;
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const delta = json.choices?.[0]?.delta?.content || '';
+          if (delta) fullText += delta;
+        } catch { /* skip */ }
+      }
+    }
+
+    if (!fullText.trim()) return { text: '(视觉分析返回为空)', raw: '' };
+    // 提取 JSON
+    const fence = fullText.match(/`{3}(?:json)?\s*([\s\S]*?)\s*`{3}/);
+    const candidate = fence?.[1]?.trim() || fullText.trim();
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      const jsonStr = candidate.slice(start, end + 1);
+      try {
+        const parsed = JSON.parse(jsonStr);
+        return { text: formatAnalysis(tag, parsed), raw: jsonStr };
+      } catch { /* fall through */ }
+    }
+    return { text: fullText.trim().slice(0, 400), raw: fullText };
+  } catch (e) {
+    console.warn(`[design-generator] ${tag} Ark call failed: ${e?.message}`);
+    return { text: `(视觉分析失败: ${e?.message || 'unknown'})`, raw: '' };
+  }
+}
+
+/** 把 Ark 分析 JSON 压缩成一句自然语言描述,便于拼到 prompt 中 */
+function formatAnalysis(tag, j) {
+  if (tag === 'fabric') {
+    const part = [j.material, j.surface, j.weightDrape, j.pattern].filter(Boolean).join(', ');
+    const colors = Array.isArray(j.colors) ? j.colors.slice(0, 3).join('/') : '';
+    const best = j.bestFor ? `, 适合 ${j.bestFor}` : '';
+    return `${part}${colors ? `, 色彩 ${colors}` : ''}${best}`;
+  }
+  // style
+  const part = [j.silhouette, j.structure].filter(Boolean).join(', ');
+  const lang = j.designLanguage ? `, ${j.designLanguage}` : '';
+  const detail = j.keyDetails ? `, 亮点: ${j.keyDetails}` : '';
+  return `${part}${lang}${detail}`;
+}
+
+/**
+ * 综合所有输入构建单张白底效果图的英文 prompt。
+ * 目标是 gpt-image-2 直出白底产品图:服装/包袋/配饰按品类描述。
+ */
+function buildMaterialComboPrompt({ name, description, brand, fabric, style }) {
+  const bits = [
+    `Product photography of a single ${style?.category || 'fashion product'} called "${name}", on pure white background.`,
+  ];
+  if (fabric?.text) bits.push(`Fabric & material: ${fabric.text}.`);
+  if (style?.text) bits.push(`Silhouette & design: ${style.text}.`);
+  if (description.trim()) bits.push(`Design details: ${description.trim()}.`);
+
+  // 品牌注入
+  if (brand) {
+    const brandBits = [];
+    if (brand.nameZh || brand.nameEn) brandBits.push(`for the brand "${brand.nameZh || brand.nameEn}"`);
+    if (brand.voice) brandBits.push(`brand voice "${brand.voice}"`);
+    if (brand.sloganEn) brandBits.push(`tagline "${brand.sloganEn}"`);
+    if (brandBits.length) bits.push(`Brand context: ${brandBits.join(', ')}.`);
+    // 品牌色板
+    const brandColors = Array.isArray(brand.colors) ? brand.colors.map((c) => c?.bg || c).filter(Boolean).slice(0, 5) : [];
+    if (brandColors.length) bits.push(`Brand palette reference: ${brandColors.join(', ')}.`);
+  }
+
+  bits.push([
+    'Clean studio lighting, sharp detail, e-commerce catalog style.',
+    'NO model, NO mannequin, NO background clutter, pure white backdrop.',
+    'Flat-laid or hung neatly, full product clearly visible, front-facing composition.',
+  ].join(' '));
+
+  return bits.join('\n');
+}
+
+/**
+ * 解析品牌信息:优先从请求体 brand 字段,否则回退到数据库。
+ * brand 字段解析失败时静默忽略以避免阻塞主流程。
+ */
+async function resolveBrand(req) {
+  // 请求直传
+  if (req.body?.brand) {
+    if (typeof req.body.brand === 'string') {
+      try { return JSON.parse(req.body.brand); } catch { /* ignore */ }
+    } else if (typeof req.body.brand === 'object') {
+      return req.body.brand;
+    }
+  }
+  // 回退:从 DB 拉
+  try {
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
+    const profile = await prisma.lABrandProfile.findUnique({ where: { teamId: req.team.id } });
+    const pairs = await prisma.lAColorPair.findMany({ where: { teamId: req.team.id }, orderBy: { createdAt: 'asc' } });
+    if (profile) return { ...profile, colors: pairs || [] };
+  } catch (e) {
+    console.warn('[design-generator] resolveBrand fallback failed:', e?.message);
+  }
+  return undefined;
+}
 
 module.exports = router;

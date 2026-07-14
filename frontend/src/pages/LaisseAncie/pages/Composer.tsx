@@ -193,9 +193,7 @@ function formatDuration(ms: number): string {
 function getGreeting(mode: DesignMode): string {
   return mode === "illustration"
     ? "欢迎来到 Laisse Ancie 插画工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**风格**(水彩、矢量、现代极简、装饰艺术…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个插画方案\n3️⃣ 你确认后,生成插画(默认出图,可切换为 HTML 画布)\n\n下方会在你确认方案后出现【图片 / HTML】切换,两种输出都可在这切换。"
-    : mode === "collection"
-      ? "欢迎来到 Laisse Ancie 系列设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…)和**品类方向**,我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整系列方案\n3️⃣ 你确认后,生成**系列线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图"
-      : "欢迎来到 Laisse Ancie 设计工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成**设计线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图";
+    : "欢迎来到 Laisse Ancie 灵感扩散工作室 ✨\n\n告诉我你想做的**主题**(猫咪、玫瑰、海洋、节气、复古、极简…),或者直接说品类(连衣裙、托特包、香薰、贴纸…),我会:\n\n1️⃣ 从灵感库匹配 3 个最相关的借鉴\n2️⃣ 结合灵感 + 品牌 / 知识,生成 1 个完整方案\n3️⃣ 你确认后,生成**设计线稿** → 再选材料 → 生成最终成图\n\n工作流:方案 → 线稿 → 选材料 → 成图";
 }
 
 async function streamChat(opts: {
@@ -1183,7 +1181,7 @@ export default function ComposerPage({
           <PromptBar
             placeholder={
               knowledgeLoading ? "加载知识库中…" :
-                stage === "greeting" ? (mode === "illustration" ? "输入一个主题 + 风格(如:猫咪 / 复古水彩)…" : mode === "collection" ? "输入一个主题 + 品类方向…" : "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)") :
+                stage === "greeting" ? (mode === "illustration" ? "输入一个主题 + 风格(如:猫咪 / 复古水彩)…" : "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)") :
                   stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
                     (stage === "planning" || stage === "proposal") ? "确认方案(OK/开始),或提出修改意见…" :
                       (stage === "presenting" || stage === "presenting-html") ? "描述你想修改的地方…" :

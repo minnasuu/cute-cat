@@ -18,7 +18,7 @@ import { useDesignStore } from "../store/design";
 import { teamApi } from "../lib/api";
 import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type DesignMode, type Product, type ProductStatus } from "../types/design";
 
-const ALL_MODES: DesignMode[] = ["illustration", "single", "collection", "occasion"];
+const ALL_MODES: DesignMode[] = ["illustration", "single", "material-combo", "occasion"];
 const SEASON_PRESETS = ["春", "夏", "秋", "冬", "春秋", "秋冬", "春夏", "四季"];
 
 interface Props {

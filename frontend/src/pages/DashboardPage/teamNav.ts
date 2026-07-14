@@ -2,7 +2,7 @@
  * 团队导航元数据。
  *
  * 左栏结构:
- *   ★ 单品 / 插画 / 系列                 ← 三个平级一级设计 tab,点击进入各自创作
+ *   ★ 灵感扩散 / 插画 / 材料组合          ← 三个平级一级设计 tab,点击进入各自创作
  *   ─────
  *   资源  ▾ (灵感 / Lookbook / 材料)     ← 合并为一组,作为设计调用的素材库
  *   ─────
@@ -12,7 +12,7 @@
  */
 
 /** 设计模式 */
-export type DesignMode = "single" | "illustration" | "collection";
+export type DesignMode = "single" | "illustration" | "material-combo";
 
 export interface NavSubTab {
   id: string;
@@ -29,14 +29,15 @@ export interface NavSection {
 }
 
 /**
- * 一级设计 tab(平级)。点击后右侧进入对应模式的创作(chat+preview):
- *   - 单品/系列: 走现有图片生成(/design/generate)
- *   - 插画: chat 输出 HTML,右侧用画布渲染
+ * 一级设计 tab(平级)。点击后右侧进入对应模式的创作:
+ *   - 灵感扩散(single): chat → 灵感 → 方案 → 线稿 → 选材料 → 成图
+ *   - 插画(illustration): chat 输出图片 / HTML 画布
+ *   - 材料组合(material-combo): 固定表单(名称+面料图+款式参考图+描述) → 白底效果图
  */
 export const DESIGN_TABS: { id: DesignMode; label: string; icon: string }[] = [
-  { id: "single", label: "单品", icon: "◧" },
+  { id: "single", label: "灵感扩散", icon: "◧" },
   { id: "illustration", label: "插画", icon: "◨" },
-  { id: "collection", label: "系列", icon: "◫" },
+  { id: "material-combo", label: "材料组合", icon: "◫" },
 ];
 
 /** 检测一个 tab id 是否为一级设计 tab */
@@ -44,7 +45,7 @@ export function isDesignTab(id: string): id is DesignMode {
   return (DESIGN_TABS as { id: DesignMode }[]).some((t) => t.id === id);
 }
 
-/** 默认 landing tab(单品) */
+/** 默认 landing tab(灵感扩散) */
 export const DEFAULT_TAB_ID = "single";
 
 /** 「资源」分类下的子 tab(数据浏览 tab) */

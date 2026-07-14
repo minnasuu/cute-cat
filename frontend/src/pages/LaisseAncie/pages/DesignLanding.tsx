@@ -4,20 +4,20 @@ import { MODE_HINT, MODE_LABEL, type DesignMode } from "../types/design";
 import { Card } from "../components/ui";
 
 const ICONS: Record<DesignMode, string> = {
-  illustration: "✎", single: "✦", collection: "✸", occasion: "✺",
+  illustration: "✎", single: "✦", "material-combo": "◫", occasion: "✺",
 };
 
 const SUMMARIES: Record<DesignMode, string> = {
   illustration: "原创插画 / 印花 / 主视觉作品 — 输出英文 prompt 可用于 Midjourney / SD。可同步存入视觉资产库。",
-  single: "一款具体产品，专注 silhouette · colorway · fabric 的 AI chat 创作流。",
-  collection: "一个季节方向下的多品协同：系列主题、联合色板、Lookbook 输出。",
+  single: "围绕单件产品的灵感扩散：chat 汲取灵感库 → 方案 → 线稿 → 选材料 → 成图。",
+  "material-combo": "名称 + 面料图 + 款式参考 + 描述，AI 结合品牌信息自动出白底效果图。",
   occasion: "重要节日（春节、情人节、圣诞…）驱动的主题系列 — 节日、主题、色系、走秀节奏对齐。",
 };
 
 const CTAS: Record<DesignMode, string> = {
   illustration: "开始插画创作",
-  single: "开始单品创作",
-  collection: "开始系列创作",
+  single: "开始灵感扩散",
+  "material-combo": "开始材料组合",
   occasion: "开始专题系列",
 };
 
@@ -32,7 +32,7 @@ export default function DesignLandingPage() {
         </p>
       </header>
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        {(["illustration", "single", "collection", "occasion"] as DesignMode[]).map((m) => (
+        {(["illustration", "single", "material-combo", "occasion"] as DesignMode[]).map((m) => (
           <button key={m} onClick={() => void navigate(`/laisse-ancie/design/${m}`)} className="text-left">
             <Card interactive className="h-full flex flex-col gap-3 min-h-[220px]">
               <div className="text-4xl text-primary-600 leading-none">{ICONS[m]}</div>
