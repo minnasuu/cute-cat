@@ -60,7 +60,7 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Pro
   return (
     <Modal open onClose={onClose} title={title} maxWidth={isEditing ? "max-w-3xl" : "max-w-5xl"}>
       {!isEditing ? (
-        <ProductView product={state.product} onEdit={() => onRequestEdit(state!.product)} />
+        <ProductView product={state.product} onEdit={() => onRequestEdit(state!.product)} onClose={onClose} />
       ) : (
         <ProductForm
           key={state.mode === "edit" ? state.product.id : "new"}
@@ -75,7 +75,7 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Pro
 
 // ── 只读详情 ───────────────────────────────────────────────────
 
-function ProductView({ product, onEdit }: { product: Product; onEdit: () => void }) {
+function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: () => void; onClose: () => void }) {
   const { teamId } = useCurrentTeam();
   const store = useDesignStore();
   const target = nextStatus(product.status);
