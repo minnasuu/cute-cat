@@ -6,81 +6,17 @@
  *  - 预览列:所有图片堆叠错位展示 + N 标记;
  *  - 状态列:下拉 select,直接调 advance 接口推进 / 回退工序;
  *  - 操作列:「编辑」→ 跳转单品设计工作台(携带产品上下文) / 「删除」行内确认。
- *  - 点击行 → 详情弹窗(含结构化方案、色块、灵感引用、完整方案 Markdown、工序时间线、推进按钮)。
+ *  - 点击行 / 卡片 → 详情弹窗(含结构化方案、色块、灵感引用、工序时间线、推进按钮、编辑入口)。
+ *  - 头部「+ 录入产品」→ 手动完整字段录入弹窗(view / edit / create 三态)。
  */
 import { useMemo, useState } from "react";
 import { useDesignStore } from "../store/design";
 import { useSkillStore } from "../store/skill";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useEditingProduct } from "../contexts/editing-product";
-import { Markdown } from "../lib/markdown";
 import { teamApi } from "../lib/api";
+import { ProductFormModal } from "../components/ProductFormModal";
 import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type Product, type ProductStatus } from "../types/design";
-
-/**
- * 图片悬停放大预览。
- * 鼠标悬停时跟手浮起一张 320px 大图,自动贴近视口边缘避免溢出;
- * 切图/平铺图默认放大 2.5 倍,长图(版型/细节)放大 1.8 倍以保持整体入框。
- */
-function HoverZoomImg({ src, alt, zoom = 2.5, className = "" }: { src: string; alt?: string; zoom?: number; className?: string }) {
-  const [hovered, setHovered] = useState(false);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [placed, setPlaced] = useState(false);
-
-  const PREV_W = 320;
-  const PREV_H = 320;
-  const GAP = 16;
-
-  function onMove(e: React.MouseEvent) {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    // 优先放在鼠标右侧,右侧不够就改到上方
-    let left = e.clientX + GAP;
-    let top = e.clientY + GAP;
-    if (left + PREV_W > vw) left = e.clientX - PREV_W - GAP;
-    if (top + PREV_H > vh) top = vh - PREV_H - GAP;
-    if (top < GAP) top = GAP;
-    setPos({ x: left, y: top });
-    setPlaced(true);
-  }
-
-  return (
-    <>
-      <div
-        className={`relative inline-block ${className}`}
-        onMouseEnter={() => { setPlaced(false); setHovered(true); }}
-        onMouseLeave={() => setHovered(false)}
-        onMouseMove={onMove}
-      >
-        {hovered && (
-          <div className="absolute inset-0 ring-2 ring-primary-400 ring-offset-1 rounded-md pointer-events-none z-10" />
-        )}
-        <img src={src} alt={alt} className="w-full h-full object-cover" draggable={false} />
-      </div>
-      {hovered && (
-        <div
-          className="fixed z-[60] rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden pointer-events-none"
-          style={{
-            left: pos.x,
-            top: pos.y,
-            width: PREV_W,
-            height: PREV_H,
-            opacity: placed ? 1 : 0,
-            transition: "opacity 120ms ease-out",
-          }}
-        >
-          <img
-            src={src}
-            alt={alt}
-            draggable={false}
-            className="bg-[#f8f8f8]"
-            style={{ width: PREV_W * zoom, height: PREV_H * zoom, maxWidth: "none", transformOrigin: "top left" }}
-          />
-        </div>
-      )}
-    </>
-  );
-}
 
 /** 简易行内删除确认状态:id → 是否正在确认中。 */
 function useRowDelete() {
@@ -140,14 +76,18 @@ export default function LookbookPage() {
   const store = useDesignStore();
   const [tab, setTab] = useState<TabKey>("all");
   const [view, setView] = useState<ViewMode>("table");
-  const [activeProduct, setActiveProduct] = useState<Product | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ProductStatus | "all">("all");
+  // 产品详情/编辑/新增三态弹窗:create | view.p | edit.p
+  const [editor, setEditor] = useState<null | { mode: "create" } | { mode: "view" | "edit"; product: Product }>(null);
   const { confirming, setConfirming, pending, doDelete } = useRowDelete();
   const { setEditingProduct } = useEditingProduct();
 
   const items = useMemo(() => {
-    if (tab === "all") return store.products;
-    return store.products.filter((p) => p.mode === tab);
-  }, [store.products, tab]);
+    let r = store.products;
+    if (tab !== "all") r = r.filter((p) => p.mode === tab);
+    if (statusFilter !== "all") r = r.filter((p) => p.status === statusFilter);
+    return r;
+  }, [store.products, tab, statusFilter]);
 
   // 行内切换状态(自由切换到任意工序),成功后刷新列表并同步弹窗
   async function changeStatus(p: Product, status: ProductStatus) {
@@ -155,33 +95,7 @@ export default function LookbookPage() {
     if (!teamId) return;
     const updated = await teamApi(teamId).setProductStatus(p.id, { status });
     await store.refresh();
-    setActiveProduct((prev) => (prev && prev.id === p.id ? updated : prev));
-  }
-  /** 状态变更 → 调 PATCH 更新状态 + 追加 statusHistory */
-  async function handleStatusChange(id: string, newStatus: ProductStatus) {
-    const now = new Date().toISOString();
-    const entry = { id: crypto.randomUUID(), status: newStatus, at: now, actor: "atelier" };
-    // 先乐观更新本地 store,再调接口
-    store.products.forEach((p) => {
-      // 找到产品并更新 —— 通过 upsertProduct 同步
-    });
-    try {
-      // PATCH /products/:id 状态字段透传
-      const target = store.products.find((p) => p.id === id);
-      if (target) {
-        const updated: Product = {
-          ...target,
-          status: newStatus,
-          statusHistory: [...(target.statusHistory || []), entry],
-          updatedAt: now,
-        };
-        await store.upsertProduct(updated);
-        // 同步 activeProduct 引用(弹窗中)
-        setActiveProduct((cur) => cur?.id === id ? updated : cur);
-      }
-    } catch (e: any) {
-      alert(`状态更新失败: ${e?.message || e}`);
-    }
+    setEditor((prev) => (prev && "product" in prev && prev.product.id === p.id ? { ...prev, product: updated } : prev));
   }
 
   /** 编辑:把产品塞入编辑上下文 + 跳转单品设计工作台 */
@@ -196,34 +110,61 @@ export default function LookbookPage() {
       <header className="flex items-end justify-between mb-6">
         <div>
           <h1 className="text-5xl font-semibold text-primary-600 tracking-tight">Lookbook</h1>
-          <p className="text-sm text-gray-500 mt-1">款式总览 — 按创作模式分类 · 下拉切换工序 · 点击行编辑详情</p>
+          <p className="text-sm text-gray-500 mt-1">款式总览 — 按创作模式与工序筛选 · 下发推进工序 · 点击行编辑详情</p>
         </div>
-        <span className="text-xs text-gray-500">{store.products.length} items</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">
+            {items.length === store.products.length ? `${items.length} items` : `${items.length} / ${store.products.length}`}
+          </span>
+          <button onClick={() => setEditor({ mode: "create" })}
+            className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-xl font-medium transition-colors">
+            + 录入产品
+          </button>
+        </div>
       </header>
       <div className="flex items-center justify-between gap-4 mb-6">
         <div className="inline-flex rounded-2xl border border-gray-200 overflow-hidden text-sm">
           <TabBtn current={tab} value="all" onClick={setTab} label="全部" />
           {ALL_MODES.map((m) => <TabBtn key={m} current={tab} value={m} onClick={setTab} label={MODE_LABEL[m]} />)}
         </div>
-        <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-[12px]">
-          <button onClick={() => setView("table")}
-            className={`px-3 py-1.5 transition-colors ${view === "table" ? "bg-primary-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-            title="表格视图">☰ 表格</button>
-          <button onClick={() => setView("card")}
-            className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${view === "card" ? "bg-primary-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-            title="卡片视图">▦ 卡片</button>
+        <div className="flex items-center gap-3">
+          {/* 工序状态筛选 */}
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ProductStatus | "all")}
+            className="text-[12px] border border-gray-200 rounded-xl px-3 py-1.5 bg-white text-gray-600 focus:outline-none focus:border-primary-500"
+            title="按工序状态筛选">
+            <option value="all">全部状态</option>
+            {STATUS_FLOW.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+          </select>
+          <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-[12px]">
+            <button onClick={() => setView("table")}
+              className={`px-3 py-1.5 transition-colors ${view === "table" ? "bg-primary-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              title="表格视图">☰ 表格</button>
+            <button onClick={() => setView("card")}
+              className={`px-3 py-1.5 transition-colors border-l border-gray-200 ${view === "card" ? "bg-primary-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              title="卡片视图">▦ 卡片</button>
+          </div>
         </div>
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-300 py-16 text-center text-gray-500 text-sm">
-          要去往 <span className="text-primary-600">Design</span> 开始创作，产品才会进入 Lookbook
+        <div className="rounded-2xl border border-dashed border-gray-300 py-16 text-center text-gray-500 text-sm space-y-2">
+          {store.products.length === 0 ? (
+            <>要去往 <span className="text-primary-600">Design</span> 开始创作，或点击「录入产品」，产品才会进入 Lookbook</>
+          ) : (
+            <>没有符合「{tab === "all" ? "" : MODE_LABEL[tab] + " / "}{statusFilter === "all" ? "" : STATUS_LABEL[statusFilter]}」的产品</>
+          )}
+          {(tab !== "all" || statusFilter !== "all") && (
+            <div>
+              <button onClick={() => { setTab("all"); setStatusFilter("all"); }}
+                className="text-primary-600 hover:underline text-[13px]">清除筛选</button>
+            </div>
+          )}
         </div>
       ) : view === "card" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {items.map((p) => (
             <CardItem key={p.id} product={p} cover={pickCover(p)}
-              onClick={() => setActiveProduct(p)} onDelete={() => setConfirming(p.id)} />
+              onClick={() => setEditor({ mode: "view", product: p })} onDelete={() => setConfirming(p.id)} />
           ))}
         </div>
       ) : (
@@ -239,7 +180,7 @@ export default function LookbookPage() {
             <tbody>
               {items.map((p) => (
                 <tr key={p.id} className="border-b border-gray-200 hover:bg-primary-50/40 cursor-pointer transition-colors"
-                  onClick={() => setActiveProduct(p)}>
+                  onClick={() => setEditor({ mode: "view", product: p })}>
                   <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
                     <StackedThumbs product={p} overrideUrl={p.imageUrl} />
                   </td>
@@ -287,13 +228,12 @@ export default function LookbookPage() {
         </div>
       )}
 
-      {activeProduct && (
-        <StageEditor
-          product={activeProduct}
-          onClose={() => setActiveProduct(null)}
-          onSave={async (p) => { await store.upsertProduct(p); setActiveProduct(null); }}
-        />
-      )}
+      <ProductFormModal
+        state={editor}
+        onClose={() => setEditor(null)}
+        onSaved={async () => { await store.refresh(); setEditor(null); }}
+        onRequestEdit={(p) => setEditor({ mode: "edit", product: p })}
+      />
     </div>
   );
 }
@@ -401,259 +341,3 @@ function SkillsBadge({ productId }: { productId: string }) {
   return <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary-100 text-primary-600">ⓢ {n}</span>;
 }
 
-// ── 详情弹窗 ──────────────────────────────────────────────────
-
-function StageEditor({ product, onClose, onSave }: { product: Product; onClose: () => void; onSave: (p: Product) => Promise<void> }) {
-  const target = nextStatus(product.status);
-  const [note, setNote] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [replacingSlot, setReplacingSlot] = useState<string | null>(null);
-
-  // 本地上传替换 slot 对应的那张图(线稿/效果图单张替换)
-  async function replaceSlotImage(slot: string, file: File) {
-    if (!teamId) return;
-    setReplacingSlot(slot);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("slot", slot);
-      const updated = await teamApi(teamId).uploadProductImage(product.id, fd);
-      await onSave(updated);
-    } finally { setReplacingSlot(null); }
-  }
-
-  const productImages = (product.images ?? []).filter((im) => im.url);
-  const hasHtml = !!product.html;
-
-  async function advance() {
-    if (!target) return;
-    setSubmitting(true);
-    try {
-      const now = new Date().toISOString();
-      const entry = { id: crypto.randomUUID(), status: target, at: now, actor: "atelier", note: note.trim() || undefined };
-      const updated = { ...product, status: target, statusHistory: [...(product.statusHistory || []), entry], updatedAt: now };
-      await onSave(updated);
-    } finally { setSubmitting(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-3xl border border-gray-200 bg-white p-7 shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <header className="mb-5 flex items-start justify-between">
-          <div>
-            <h2 className="text-[26px] font-medium text-gray-900">{product.title || "(untitled)"}</h2>
-            <p className="text-[11px] text-gray-500 font-mono mt-1">{product.id}</p>
-          </div>
-          <button onClick={onClose} className="text-xl text-gray-400 hover:text-gray-800">×</button>
-        </header>
-
-        {/* 设计工作流生成的图片 / 插画 HTML */}
-        {(productImages.length > 0 || hasHtml) && (
-          <div className="mb-5">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
-              {hasHtml ? "插画 HTML 画布" : `设计图 (${productImages.length})`}
-            </div>
-            {hasHtml ? (
-              <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
-                <iframe
-                  srcDoc={product.html!}
-                  sandbox="allow-scripts"
-                  title="插画 HTML 画布"
-                  className="w-full bg-white"
-                  style={{ aspectRatio: "1 / 1", border: "none" }}
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {productImages.map((im) => {
-                  const zoom = im.slot === "editorial" || im.slot === "hero-editorial" ? 1.8 : 2.5;
-                  const busy = replacingSlot === im.slot;
-                  return (
-                    <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-                      <div className="aspect-[1/1] bg-gray-100 overflow-hidden">
-                        <HoverZoomImg src={im.url} alt={im.label} zoom={zoom} />
-                      </div>
-                      <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
-                        <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
-                        <label className="shrink-0 cursor-pointer text-[10px] text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50">
-                          {busy ? "替换中" : "替换"}
-                          <input type="file" accept="image/*" className="hidden" disabled={busy}
-                            onChange={(e) => { const f = e.target.files?.[0]; if (f) void replaceSlotImage(im.slot, f); e.target.value = ""; }} />
-                        </label>
-                      </figcaption>
-                    </figure>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="mb-5">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">工序时间线</div>
-          <ol className="space-y-2 max-h-32 overflow-y-auto pr-2">
-            {(product.statusHistory || []).length === 0 && (
-              <li className="text-[12px] text-gray-500">尚无工序记录</li>
-            )}
-            {(product.statusHistory || []).concat(
-              (product.statusHistory || []).length === 0 ? [{ id: "init", status: "draft" as ProductStatus, at: product.createdAt, actor: "atelier" }] : []
-            ).sort((a, b) => a.at.localeCompare(b.at)).map((e) => (
-              <li key={e.id} className="text-[12px] flex items-baseline gap-3">
-                <span className="font-mono text-[10px] text-gray-500 w-36">{new Date(e.at).toLocaleString()}</span>
-                <span className={`px-2 py-0.5 rounded-full border ${e.status === product.status ? "bg-gray-800 border-gray-800 text-white" : "bg-gray-50 border-gray-200 text-gray-600"}`}>
-                  {STATUS_LABEL[e.status]}
-                </span>
-                {e.note && <span className="text-gray-600">{e.note}</span>}
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        <DesignSections product={product} />
-
-        <section className="grid grid-cols-2 gap-x-6 gap-y-3 text-[12px] border-t border-gray-200 pt-4 mb-5">
-          <Detail k="季节" v={product.seasons?.join(", ")} />
-          <Detail k="品类" v={product.category} />
-          <Detail k="面料" v={product.fabricComposition || "—"} />
-          <Detail k="目标价" v={typeof product.targetPriceNum === "number" ? `¥${product.targetPriceNum}` : product.sections?.targetPrice || "—"} />
-          <Detail k="颜色" v={product.colors?.join(", ")} />
-          <Detail k="版型" v={product.silhouette} />
-          <Detail k="工艺" v={product.stitchNotes} />
-        </section>
-
-        {target ? (
-          <div className="border-t border-gray-200 pt-5">
-            <div className="text-[11px] text-gray-500 mb-1.5">推进至下工序:</div>
-            <div className="flex items-center gap-3 mb-3">
-              <span className="bg-gray-800 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[product.status]}</span>
-              <span className="text-gray-500">→</span>
-              <span className="bg-primary-500 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[target]}</span>
-            </div>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)}
-              placeholder="(可选) 批注 · 工厂 / 成本 / 样品反馈 …" rows={3}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500" />
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={onClose} className="rounded-xl border border-gray-200 text-gray-700 font-medium py-2 px-4 text-sm hover:border-gray-800">关闭</button>
-              <button disabled={submitting} onClick={advance}
-                className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-medium py-2.5 px-5 text-sm transition-colors disabled:opacity-50">
-                确认推进 → {STATUS_LABEL[target]}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="border-t border-gray-200 pt-5 text-primary-600 text-[13px]">✓ 产品已上架,流水完成</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Detail({ k, v }: { k: string; v?: string }) {
-  if (!v) return null;
-  return (
-    <div>
-      <span className="text-gray-500 text-[10px] uppercase tracking-wider">{k}</span>
-      <div className="text-gray-700 whitespace-pre-wrap">{v}</div>
-    </div>
-  );
-}
-
-function DesignSections({ product }: { product: Product }) {
-  const s = product.sections;
-  if (!s) return null;
-  const hasAny = s.productName || s.themeNarrative || s.inspirationRefs?.length || s.colorway?.length || s.fabric?.length || s.silhouette || s.targetPrice;
-  if (!hasAny) return null;
-
-  return (
-    <section className="mb-5 space-y-4">
-      <div className="text-[10px] uppercase tracking-wider text-gray-500">设计提案</div>
-
-      {s.productName && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">产品名</div>
-          <div className="text-[18px] font-semibold text-gray-900 leading-snug">{s.productName}</div>
-        </div>
-      )}
-
-      {s.themeNarrative && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">主题叙述</div>
-          <div className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-wrap">{s.themeNarrative}</div>
-        </div>
-      )}
-
-      {s.inspirationRefs && s.inspirationRefs.length > 0 && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">灵感借鉴</div>
-          <div className="space-y-1.5">
-            {s.inspirationRefs.map((r) => (
-              <div key={r.id} className="text-[12px] text-gray-700 flex items-start gap-2">
-                <span className="shrink-0 px-1.5 py-0.5 rounded bg-primary-50 text-primary-600 font-mono text-[10px]">#{r.id.slice(0, 8)}</span>
-                <span>
-                  {r.category && <span className="text-gray-500 mr-1.5">{r.category}</span>}
-                  {r.summary && <span className="text-gray-600">{r.summary}</span>}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {s.colorway?.map((cw, i) => (
-        <div key={i}>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">
-            材质与色彩方案{cw.pantone ? ` · ${cw.pantone}` : ""}
-          </div>
-          {cw.hex?.length > 0 && (
-            <div className="flex gap-1.5 mb-2">
-              {cw.hex.map((c) => (
-                <div key={c} className="flex flex-col items-center gap-0.5" title={c}>
-                  <div className="w-7 h-7 rounded-md border border-gray-200" style={{ backgroundColor: c }} />
-                  <span className="text-[9px] text-gray-500 font-mono">{c}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {cw.description && <div className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{cw.description}</div>}
-        </div>
-      ))}
-
-      {s.fabric && s.fabric.length > 0 && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">材质</div>
-          <ul className="text-[12px] text-gray-700 space-y-0.5">
-            {s.fabric.map((f, i) => (
-              <li key={i}>
-                <span className="font-medium">{f.name}</span>
-                {f.composition && <span className="text-gray-500 ml-1.5">· {f.composition}</span>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {s.silhouette && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">形态 / 结构 / 细节</div>
-          <div className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{s.silhouette}</div>
-        </div>
-      )}
-
-      {s.targetPrice && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">目标价格带</div>
-          <div className="text-[12px] text-gray-700">{s.targetPrice}</div>
-        </div>
-      )}
-
-      {s.rawPlan && s.rawPlan.length > 30 && (
-        <details className="group" open={false}>
-          <summary className="cursor-pointer text-[11px] text-primary-600 hover:text-primary-700 select-none">查看完整方案 ▾</summary>
-          <div className="mt-2 rounded-xl border border-gray-200 p-4 bg-gray-50 max-h-72 overflow-y-auto">
-            <Markdown source={s.rawPlan} />
-          </div>
-        </details>
-      )}
-    </section>
-  );
-}
