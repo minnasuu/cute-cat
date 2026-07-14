@@ -480,38 +480,44 @@ router.post('/materials', asyncHandler(async (req, res) => {
   ]);
   if (!data.name || !data.category) return res.status(400).json({ error: 'name,category required' });
   if (!data.slug) data.slug = `${data.category}-${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
-  const mat = await prisma.lAMaterial.create({
-    data: {
-      teamId: req.team.id,
-      slug: String(data.slug),
-      category: String(data.category),
-      name: String(data.name),
-      code: data.code || null,
-      supplier: data.supplier || null,
-      origin: data.origin || null,
-      colors: Array.isArray(data.colors) ? data.colors : [],
-      composition: data.composition || null,
-      weight: data.weight || null,
-      texture: data.texture || null,
-      finish: data.finish || null,
-      width: data.width || null,
-      thickness: data.thickness || null,
-      diameter: data.diameter || null,
-      size: data.size || null,
-      tex: data.tex || null,
-      shape: data.shape || null,
-      originNote: data.originNote || null,
-      care: Array.isArray(data.care) ? data.care : [],
-      uses: Array.isArray(data.uses) ? data.uses : [],
-      seasons: Array.isArray(data.seasons) ? data.seasons : [],
-      notes: data.notes || null,
-      priceAmount: typeof data.priceAmount === 'number' ? data.priceAmount : null,
-      priceCur: data.priceCur || 'CNY',
-      priceUnit: data.priceUnit || null,
-      priceNote: data.priceNote || null,
-      image: data.image || null,
-    },
-  });
+  let mat;
+  try {
+    mat = await prisma.lAMaterial.create({
+      data: {
+        teamId: req.team.id,
+        slug: String(data.slug),
+        category: String(data.category),
+        name: String(data.name),
+        code: data.code || null,
+        supplier: data.supplier || null,
+        origin: data.origin || null,
+        colors: Array.isArray(data.colors) ? data.colors : [],
+        composition: data.composition || null,
+        weight: data.weight || null,
+        texture: data.texture || null,
+        finish: data.finish || null,
+        width: data.width || null,
+        thickness: data.thickness || null,
+        diameter: data.diameter || null,
+        size: data.size || null,
+        tex: data.tex || null,
+        shape: data.shape || null,
+        originNote: data.originNote || null,
+        care: Array.isArray(data.care) ? data.care : [],
+        uses: Array.isArray(data.uses) ? data.uses : [],
+        seasons: Array.isArray(data.seasons) ? data.seasons : [],
+        notes: data.notes || null,
+        priceAmount: typeof data.priceAmount === 'number' ? data.priceAmount : null,
+        priceCur: data.priceCur || 'CNY',
+        priceUnit: data.priceUnit || null,
+        priceNote: data.priceNote || null,
+        image: data.image || null,
+      },
+    });
+  } catch (eCreate) {
+    console.error('[team-workbench] createMaterial failed:', eCreate?.message || eCreate);
+    return res.status(500).json({ error: `[create] ${eCreate?.message || '创建失败'}` });
+  }
   res.status(201).json(mat);
 }));
 
@@ -526,7 +532,13 @@ router.patch('/materials/:id', asyncHandler(async (req, res) => {
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
     'image',
   ]);
-  const mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data });
+  let mat;
+  try {
+    mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data });
+  } catch (eUpdate) {
+    console.error('[team-workbench] updateMaterial failed:', eUpdate?.message || eUpdate);
+    return res.status(500).json({ error: `[update] ${eUpdate?.message || '更新失败'}` });
+  }
   res.json(mat);
 }));
 

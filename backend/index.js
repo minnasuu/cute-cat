@@ -72,7 +72,9 @@ if (process.env.NODE_ENV === 'production') {
 app.use((err, req, res, _next) => {
   console.error('🔥 [EXPRESS] Unhandled error on', req.method, req.originalUrl, ':', err);
   if (!res.headersSent) {
-    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
+    // 开发/调试期返回真实错误,避免被前端「服务器内部错误」吞掉细节
+    const detail = (err && (err.message || err.code)) ? `[${err.code || 'ERR'}] ${err.message}` : '服务器内部错误，请稍后重试';
+    res.status(500).json({ error: detail, stack: process.env.NODE_ENV === 'production' ? undefined : err?.stack });
   }
 });
 
