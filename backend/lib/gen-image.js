@@ -2,11 +2,9 @@
  * gen-image —— 文生图公共 helper,单 provider。
  *
  * provider:
- *   'ark'  —— 火山方舟 SeedDream,doubao-seedream-5-0-pro-260628 (全局唯一生图模型)
+ *   'maizi' —— MaiziTech (maizitech.xyz),OpenAI 兼容格式,gpt-image-2
  *
- * 全局共 2 个豆包模型,同一 ARK_API_KEY / ARK_BASE_URL:
- *   生图: doubao-seedream-5-0-pro-260628 (本模块, /images/generations)
- *   文本/视觉解析: doubao-seed-2-1-pro-260628 (workflow-executor / analyze-inspiration)
+ * 文本/视觉解析模型仍走火山方舟(workflow-executor / analyze-inspiration),与生图模块无关。
  *
  * generateImage(prompt, { teamId, aspectRatio, safeName, provider }) →
  *   成功 { url, prompt, model }
@@ -23,56 +21,56 @@ const crypto = require('crypto');
 const storage = require('./storage');
 
 /* ─── provider 配置 ─────────────────────────────────────────── */
-// 当前仅支持 ark(火山方舟 SeedDream) —— 唯一生图模型。
+// 当前仅支持 maizi(MaiziTech,gpt-image-2) —— 唯一生图模型。
 // 新增模型只加一项即可。
 const PROVIDERS = {
-  ark: {
-    apiKey: () => process.env.ARK_API_KEY,
-    missingKeyError: 'ARK_API_KEY not set',
-    baseUrl: () => process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
-    defaultModel: () => process.env.ARK_IMAGE_MODEL || 'doubao-seedream-5-0-pro-260628',
-    // SeedDream 支持 "2K" 或 "WxH" 字符串;这里按设计工作流比例给固定尺寸
-    sizeMap: { '1:1': '1024x1024', '3:4': '864x1152', '4:3': '1152x864', '9:16': '768x1344', '16:9': '1344x768' },
-    fallbackSize: '2K',
-    // referenceImageUrl 被忽略(SeedDream 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
-    buildBody: (model, prompt, size, _referenceImageUrl) => ({ model, prompt, size, output_format: 'png', watermark: false }),
+  maizi: {
+    apiKey: () => process.env.MAIZI_API_KEY,
+    missingKeyError: 'MAIZI_API_KEY not set',
+    baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v1',
+    defaultModel: () => process.env.MAIZI_IMAGE_MODEL || 'gpt-image-2',
+    // gpt-image-2 仅支持正方形 —— 所有设计工作流比例统一走 1024x1024
+    sizeMap: { '1:1': '1024x1024', '3:4': '1024x1024', '4:3': '1024x1024', '9:16': '1024x1024', '16:9': '1024x1024' },
+    fallbackSize: '1024x1024',
+    // referenceImageUrl 被忽略(gpt-image-2 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
+    buildBody: (model, prompt, size, _referenceImageUrl) => ({ model, prompt, size, n: 1 }),
     extractUrl: (data) => data?.data?.[0]?.url,
-    label: 'SeedDream',
+    label: 'MaiziTech',
   },
 };
 
 /**
- * imageRef —— 占位扩展点:声明一个支持「真·参考图」的供应商(如 Ark 图像编辑 / FLUX)。
+ * imageRef —— 占位扩展点:声明一个支持「真·参考图」的供应商(如 Maizi 图像编辑 / FLUX)。
  * 当 provider 匹配到此配置且传入 referenceImageUrl 时,走参考图请求体;
- * 未配置时 resolveProvider 会回退到 ark。
+ * 未配置时 resolveProvider 会回退到 maizi。
  *
  * 启用方式:在 PROVIDERS 中补充该 provider 的apiKey / baseUrl / sizeMap / buildBody(需带上 image)。
  * 例:
- *   'ark-image-edit': {
- *     apiKey: () => process.env.ARK_API_KEY,
- *     baseUrl: () => process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
- *     defaultModel: () => process.env.ARK_IMAGE_EDIT_MODEL || 'doubao-seededit-...',
+ *   'maizi-image-edit': {
+ *     apiKey: () => process.env.MAIZI_API_KEY,
+ *     baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v1',
+ *     defaultModel: () => process.env.MAIZI_IMAGE_EDIT_MODEL || 'gpt-image-edit-...',
  *     imageRef: true,
  *     sizeMap: { '1:1': '1024x1024', ... },
  *     fallbackSize: '1024x1024',
  *     buildBody: (model, prompt, size, referenceImageUrl) => ({
- *       model, prompt, image: referenceImageUrl, size, ...     // 具体视 Ark 图像编辑文档
+ *       model, prompt, image: referenceImageUrl, size, ...     // 具体视图像编辑文档
  *     }),
  *     extractUrl: (data) => data?.data?.[0]?.url,
- *     label: 'Ark-ImageEdit',
+ *     label: 'Maizi-ImageEdit',
  *   },
  */
 
 /**
  * 解析本次请求使用的 provider。
- * 当前全局唯一 provider 为 'ark'(火山方舟);保留入参/env 仅为向后兼容,
- * 传入其它值一律回退到 ark。
+ * 当前全局唯一 provider 为 'maizi'(MaiziTech);保留入参/env 仅为向后兼容,
+ * 传入其它值一律回退到 maizi。
  */
 function resolveProvider(opts) {
-  const p = (opts?.provider || process.env.IMAGE_PROVIDER || 'ark').toLowerCase();
+  const p = (opts?.provider || process.env.IMAGE_PROVIDER || 'maizi').toLowerCase();
   if (!PROVIDERS[p]) {
-    console.warn(`[gen-image] unknown provider="${p}", fall back to ark`);
-    return 'ark';
+    console.warn(`[gen-image] unknown provider="${p}", fall back to maizi`);
+    return 'maizi';
   }
   return p;
 }
@@ -84,7 +82,7 @@ function resolveProvider(opts) {
  * @param {string} opts.teamId 团队 ID(用作 uploads 子目录)
  * @param {string} [opts.aspectRatio='1:1'] 设计工作流比例
  * @param {string} [opts.safeName='image'] 文件名前缀
- * @param {string} [opts.provider='ark'] 生图模型提供商('ark')
+ * @param {string} [opts.provider='maizi'] 生图模型提供商('maizi')
  * @param {string} [opts.model] 覆盖 provider 默认模型 ID
  * @param {string} [opts.referenceImageUrl] 参考图 URL(材料图等)
  *   若 provider 声明 imageRef:true → 走图生图/参考图请求体(真·参考图);
@@ -117,7 +115,7 @@ async function generateImage(prompt, opts) {
   const size = cfg.sizeMap[String(aspectRatio)] || cfg.fallbackSize;
   const source = `${provider}:${model}/${size}`;
 
-  // 单张生成超时(默认 180s / 3 分钟)——SeedDream 大尺寸图首 token + 生成常超 120s
+  // 单张生成超时(默认 180s / 3 分钟)——gpt-image-2 大尺寸图生成常超 120s
   const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 180000;
 
   // 对可重试的错误(网络/超时/5xx)自动重试 1 次
