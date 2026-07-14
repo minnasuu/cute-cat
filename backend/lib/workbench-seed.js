@@ -19,7 +19,7 @@ async function ensureWorkbenchTeam(prisma, userId) {
   if (!team) {
     team = await prisma.team.create({
       data: {
-        name: '我的工作台',
+        name: '服装工作台',
         description: WORKBENCH_MARKER,
         ownerId: userId,
       },
