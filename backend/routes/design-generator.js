@@ -32,6 +32,7 @@ const router = express.Router();
 const MAX_FABRIC = 6;
 const MAX_STYLE = 6;
 const MAX_CELLS = MAX_FABRIC * MAX_STYLE;        // 36 张上限
+const MAX_FABRIC_MIXED = 12;                       // 拼色模式面料软上限(仅 UI 提示)
 const MC_BATCH_CAP = Number.parseInt(process.env.MC_BATCH_CAP || '', 10) || 4; // 并发生成上限
 const MC_BATCH_TTL_MS = 15 * 60 * 1000;           // 批次在内存保留 15 分钟
 
@@ -129,26 +130,38 @@ async function runBatch(batchId) {
     b.status = 'running';
     b.updatedAt = Date.now();
 
+    const makePrompt = b.mode === 'color-mix'
+      ? () => buildColorMixPrompt({
+          name: b.name, description: b.description, brand: b.brand,
+          fabrics: b.fabrics, style: b.styles[0],
+        })
+      : (cell) => buildMaterialComboPrompt({
+          name: b.name, description: b.description, brand: b.brand,
+          fabric: b.fabrics[cell.fi], style: b.styles[cell.si],
+        });
+
     const tasks = b.items.map((cell) => async () => {
-      const fabric = b.fabrics[cell.fi];
-      const style = b.styles[cell.si];
-      if (!fabric || !style) {
-        cell.status = 'error';
-        cell.error = '该格的面料或款式分析结果缺失';
-        return cell;
+      // 输入校验
+      if (b.mode === 'color-mix') {
+        if (!b.fabrics?.length || !b.styles?.[0]) {
+          cell.status = 'error'; cell.error = '拼色需要面料 + 款式'; return cell;
+        }
+      } else {
+        const fabric = b.fabrics[cell.fi];
+        const style = b.styles[cell.si];
+        if (!fabric || !style) {
+          cell.status = 'error'; cell.error = '该格的面料或款式分析结果缺失'; return cell;
+        }
       }
-      const prompt = buildMaterialComboPrompt({
-        name: b.name,
-        description: b.description,
-        brand: b.brand,
-        fabric,
-        style,
-      });
+      const prompt = b.mode === 'color-mix' ? makePrompt() : makePrompt(cell);
       cell.prompt = prompt;
+      const safeName = b.mode === 'color-mix'
+        ? `material-combo-mix-${cell.fi}-${cell.si}`
+        : `material-combo-f${cell.fi}-s${cell.si}`;
       const img = await generateImage(prompt, {
         teamId: b.teamId,
         aspectRatio: '1:1',
-        safeName: `material-combo-f${cell.fi}-s${cell.si}`,
+        safeName,
       });
       if (img?.url) {
         cell.url = img.url;
@@ -595,12 +608,11 @@ router.post('/material-combo', (req, res) => {
       return res.status(400).json({ error: 'stylesMeta 缺失或为空' });
     }
 
+    // 生成模式:叉乘(cross,默认) | 拼色(color-mix, m 面料 + 1 款式 → 1 图)
+    const mode = req.body?.mode === 'color-mix' ? 'color-mix' : 'cross';
+
     // 守卫(基于元数据数组长度 —— 即「槽位数」,而非文件数)
     if (!name.trim()) return res.status(400).json({ error: '请填写名称' });
-    if (fabricsMeta.length > MAX_FABRIC) return res.status(400).json({ error: `面料最多 ${MAX_FABRIC} 项` });
-    if (stylesMeta.length > MAX_STYLE) return res.status(400).json({ error: `款式最多 ${MAX_STYLE} 项` });
-    const totalCells = fabricsMeta.length * stylesMeta.length;
-    if (totalCells > MAX_CELLS) return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
     // 文件数必须等于「上传」槽位数(后端只接 order 一致的上传文件)
     const uploadFabricCount = fabricsMeta.filter((m) => m.kind === 'upload').length;
     const uploadStyleCount = stylesMeta.filter((m) => m.kind === 'upload').length;
@@ -609,6 +621,25 @@ router.post('/material-combo', (req, res) => {
     }
     if (uploadStyleCount !== styleFiles.length) {
       return res.status(400).json({ error: `款式文件数不匹配,期望 ${uploadStyleCount},收到 ${styleFiles.length}` });
+    }
+
+    if (mode === 'color-mix') {
+      // 拼色:恰好 1 项款式 + 1~N 项面料(软上限 MAX_FABRIC_MIXED 仅提示)
+      if (stylesMeta.length !== 1) {
+        return res.status(400).json({ error: '拼色模式需要恰好一项款式' });
+      }
+      if (fabricsMeta.length > MAX_FABRIC_MIXED) {
+        return res.status(400).json({ error: `拼色面料建议 ${MAX_FABRIC_MIXED} 项以内,避免 prompt 过长` });
+      }
+      if (fabricsMeta.length < 2) {
+        // 仅 1 面料也可以用拼色(视为单料出图),放宽但给提示;仍允许执行
+      }
+    } else {
+      // 叉乘
+      if (fabricsMeta.length > MAX_FABRIC) return res.status(400).json({ error: `面料最多 ${MAX_FABRIC} 项` });
+      if (stylesMeta.length > MAX_STYLE) return res.status(400).json({ error: `款式最多 ${MAX_STYLE} 项` });
+      const totalCells = fabricsMeta.length * stylesMeta.length;
+      if (totalCells > MAX_CELLS) return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
     }
 
     try {
@@ -687,18 +718,24 @@ router.post('/material-combo', (req, res) => {
         }
       }
 
-      // 3) 构建 batch(每格待生成)
+      // 3) 构建 batch
+      //    叉乘(cross):m×n 格;拼色(color-mix):1 格(全部面料 × 单个款式)
       const batchId = `mc-${crypto.randomUUID()}`;
       const now = Date.now();
-      const items = [];
-      for (let fi = 0; fi < fabrics.length; fi++) {
-        for (let si = 0; si < styles.length; si++) {
-          items.push({ fi, si, status: 'pending' });
+      let items = [];
+      if (mode === 'color-mix') {
+        items = [{ fi: 0, si: 0, status: 'pending' }];
+      } else {
+        for (let fi = 0; fi < fabrics.length; fi++) {
+          for (let si = 0; si < styles.length; si++) {
+            items.push({ fi, si, status: 'pending' });
+          }
         }
       }
       const batch = {
         batchId,
         teamId: req.team.id,
+        mode,
         name: name.trim(),
         description: description.trim(),
         brand,
@@ -766,18 +803,24 @@ router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
 
   // 后台生成
   try {
-    const prompt = buildMaterialComboPrompt({
-      name: batch.name,
-      description: batch.description,
-      brand: batch.brand,
-      fabric,
-      style,
-    });
+    const mode = batch.mode === 'color-mix' ? 'color-mix' : 'cross';
+    const prompt = mode === 'color-mix'
+      ? buildColorMixPrompt({
+          name: batch.name, description: batch.description, brand: batch.brand,
+          fabrics: batch.fabrics, style: batch.styles[0],
+        })
+      : buildMaterialComboPrompt({
+          name: batch.name, description: batch.description, brand: batch.brand,
+          fabric, style,
+        });
     cell.prompt = prompt;
+    const safeName = mode === 'color-mix'
+      ? `material-combo-mix-${fi}-${si}`
+      : `material-combo-f${fi}-s${si}`;
     const img = await generateImage(prompt, {
       teamId: batch.teamId,
       aspectRatio: '1:1',
-      safeName: `material-combo-f${fi}-s${si}`,
+      safeName,
     });
     if (img?.url) {
       cell.url = img.url;
@@ -992,6 +1035,35 @@ function formatAnalysis(tag, j) {
  *   4. 品牌注入(名称/调性/色板)
  *   5. 白底产品图硬约束
  */
+/**
+ * 品牌信息注入(共用)。
+ * 修复历史 bug:brand.voice 为 string[],需先 join。
+ * 返回是否写入 brandBits(是否至少一项)。
+ */
+function appendBrandBits(bits, brand) {
+  if (!brand) return;
+  const brandBits = [];
+  if (brand.nameZh || brand.nameEn) brandBits.push(`for the brand "${brand.nameZh || brand.nameEn}"`);
+  const voice = Array.isArray(brand.voice) ? brand.voice.filter(Boolean).join(' / ') : brand.voice;
+  if (voice) brandBits.push(`brand voice "${voice}"`);
+  if (brand.sloganEn) brandBits.push(`tagline "${brand.sloganEn}"`);
+  if (brandBits.length) bits.push(`Brand context: ${brandBits.join(', ')}.`);
+  const brandColors = Array.isArray(brand.colors) ? brand.colors.map((c) => c?.bg || c).filter(Boolean).slice(0, 5) : [];
+  if (brandColors.length) bits.push(`Brand palette reference: ${brandColors.join(', ')}.`);
+}
+
+/** 白底产品图硬约束(共用) */
+function finalStyleBits() {
+  return [
+    'Clean studio lighting, sharp detail, e-commerce catalog style.',
+    'NO model, NO mannequin, NO background clutter, pure white backdrop.',
+    'Flat-laid or hung neatly, full product clearly visible, front-facing composition.',
+  ].join(' ');
+}
+
+/**
+ * 叉乘模式 prompt:单面料替换到单款式(原逻辑)。
+ */
 function buildMaterialComboPrompt({ name, description, brand, fabric, style }) {
   const category = style?.category || 'fashion product';
 
@@ -1004,38 +1076,57 @@ function buildMaterialComboPrompt({ name, description, brand, fabric, style }) {
   const sText = style?.text || '';
   const fText = fabric?.text || '';
   if (sText && fText) {
-    // 两者都有:明确表达"形保留、质替换"的关系
     bits.push(
       `Take the silhouette, structure and design of the reference garment — ${sText.replace(/\.$/, '')} — and remake it in a completely different fabric: ${fText.replace(/\.$/, '')}.`,
     );
   } else if (fText) {
-    // 只有面料分析成功(款式分析失败回退)
     bits.push(`Make it from this fabric: ${fText}.`);
   } else if (sText) {
-    // 只有款式分析成功(面料分析失败回退)
     bits.push(`Match this silhouette and design: ${sText}.`);
   }
 
-  // 3. 用户备注 —— 对应「${备注信息}」
   if (description.trim()) bits.push(`Design notes: ${description.trim()}.`);
+  appendBrandBits(bits, brand);
+  bits.push(finalStyleBits());
 
-  // 4. 品牌注入(名称/调性/slogan/色板)
-  if (brand) {
-    const brandBits = [];
-    if (brand.nameZh || brand.nameEn) brandBits.push(`for the brand "${brand.nameZh || brand.nameEn}"`);
-    if (brand.voice) brandBits.push(`brand voice "${brand.voice}"`);
-    if (brand.sloganEn) brandBits.push(`tagline "${brand.sloganEn}"`);
-    if (brandBits.length) bits.push(`Brand context: ${brandBits.join(', ')}.`);
-    const brandColors = Array.isArray(brand.colors) ? brand.colors.map((c) => c?.bg || c).filter(Boolean).slice(0, 5) : [];
-    if (brandColors.length) bits.push(`Brand palette reference: ${brandColors.join(', ')}.`);
+  return bits.join('\n');
+}
+
+/**
+ * 拼色(color-mix)模式 prompt:多个面料撞色/拼接构成同一款式 → 1 张图。
+ * 每块面料单独列为一个"色块 / 拼接块",并把款式的形作为结构参考。
+ */
+function buildColorMixPrompt({ name, description, brand, fabrics, style }) {
+  const category = style?.category || 'fashion product';
+  const fabricsArr = Array.isArray(fabrics) ? fabrics : [];
+
+  const bits = [
+    `Product photography of a single ${category} called "${name}", on pure white background.`,
+  ];
+
+  // 款式结构参考(可选)
+  const sText = style?.text || '';
+  if (sText) {
+    bits.push(
+      `Use the silhouette, structure and design of the reference garment as the structural base: ${sText.replace(/\.$/, '')}.`,
+    );
   }
 
-  // 5. 白底产品图硬约束 —— 对应「生成白底产品图」
-  bits.push([
-    'Clean studio lighting, sharp detail, e-commerce catalog style.',
-    'NO model, NO mannequin, NO background clutter, pure white backdrop.',
-    'Flat-laid or hung neatly, full product clearly visible, front-facing composition.',
-  ].join(' '));
+  // 多块面料拼色叙事
+  const panels = fabricsArr.map((f, i) => `· ${(f?.text || f?.name || `fabric ${i + 1}`).replace(/\.$/, '')}`);
+  bits.push(
+    [
+      'Construct the garment as a color-blocked / patchwork piece that combines ALL of the following distinct fabric panels:',
+      ...panels,
+    ].join('\n'),
+  );
+  bits.push(
+    'Each fabric should appear as a clearly distinct panel or block on the garment with a color-blocked / patchwork aesthetic; seams between different fabrics may be visible.',
+  );
+
+  if (description.trim()) bits.push(`Design notes: ${description.trim()}.`);
+  appendBrandBits(bits, brand);
+  bits.push(finalStyleBits());
 
   return bits.join('\n');
 }

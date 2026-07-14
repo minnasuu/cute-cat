@@ -26,8 +26,11 @@ import { Modal } from "../components/ui";
 const MAX_FABRIC = 6;   // 面料上限
 const MAX_STYLE = 6;    // 款式上限
 const MAX_CELLS = MAX_FABRIC * MAX_STYLE; // 36 张上限
+const MAX_FABRIC_MIXED = 12; // 拼色模式面料软上限
 const POLL_MS = 3000;   // 轮询间隔
 const POLL_MAX_ATTEMPTS = 120; // 最长轮询 6 分钟
+
+type Mode = "cross" | "color-mix";
 
 // ─── 槽位 discriminated union ─────────────────────────────────
 type FabricRow =
@@ -78,6 +81,15 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [picker, setPicker] = useState<null | "fabric" | "style">(null);
+  const [mode, setMode] = useState<Mode>("cross");
+
+  // 切换生成模式(叉乘 / 拼色):清空槽位与批次,保留名称/描述
+  function switchMode(next: Mode) {
+    if (next === mode) return;
+    setFabricRows([]); setStyleRows([]); setBatch(null); setError(null);
+    setMode(next);
+    if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
+  }
 
   // ── 批次状态 ──
   const [batch, setBatch] = useState<MaterialComboBatch | null>(null);
@@ -92,10 +104,14 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   // ── 派生态 ──
   const batchDone = !!batch && batch.status === "done";
   const batchRunningOrAnalyzing = !!batch && batch.status === "running";
-  const cellCount = fabricRows.length * styleRows.length;
+  // 叉乘模式:m×n;拼色模式:1
+  const cellCount = mode === "color-mix" ? (fabricRows.length > 0 && styleRows.length === 1 ? 1 : 0) : fabricRows.length * styleRows.length;
+  const fabricsLimit = mode === "color-mix" ? MAX_FABRIC_MIXED : MAX_FABRIC;
+  const stylesLimit = mode === "color-mix" ? 1 : MAX_STYLE;
   const canSubmit = !!name.trim()
-    && fabricRows.length > 0 && styleRows.length > 0
-    && cellCount > 0 && cellCount <= MAX_CELLS
+    && fabricRows.length > 0
+    && (mode === "color-mix" ? styleRows.length === 1 : styleRows.length > 0)
+    && cellCount > 0 && cellCount <= (mode === "color-mix" ? 1 : MAX_CELLS)
     && !batchRunningOrAnalyzing && !submitting
     && !brandLoading && !knowledgeLoading;
 
@@ -140,11 +156,11 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     if (!list || !list.length) return;
     const incoming = Array.from(list);
     const setter = which === "fabric" ? setFabricRows : setStyleRows;
-    const limit = which === "fabric" ? MAX_FABRIC : MAX_STYLE;
+    const limit = which === "fabric" ? fabricsLimit : stylesLimit;
     const label = which === "fabric" ? "面料" : "款式";
     setter((prev) => {
       const room = limit - prev.length;
-      if (room <= 0) return prev;
+      if (room <= 0) { setError(`${label}已达上限 ${limit} 项`); return prev; }
       const accepted = incoming.slice(0, room);
       if (incoming.length > room) setError(`${label}最多容纳 ${limit} 项,已取前 ${room} 个`);
       const newRows = accepted.map((file) => ({
@@ -156,7 +172,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
   // ── 追加库选择 ──
   function addLibraryFabric(pick: FabricPick) {
-    if (fabricRows.length >= MAX_FABRIC) { setError(`面料最多容纳 ${MAX_FABRIC} 项`); return; }
+    if (fabricRows.length >= fabricsLimit) { setError(`面料已达上限 ${fabricsLimit} 项`); return; }
     // 同一面料颜色去重
     if (fabricRows.some((r) => r.kind === "library-fabric" && r.matId === pick.matId && r.colorIdx === pick.colorIdx)) {
       setError("该面料颜色已添加"); return;
@@ -168,7 +184,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   }
 
   function addLibraryStyle(pick: StylePick) {
-    if (styleRows.length >= MAX_STYLE) { setError(`款式最多容纳 ${MAX_STYLE} 项`); return; }
+    if (styleRows.length >= stylesLimit) { setError(`款式已达上限 ${stylesLimit} 项`); return; }
     if (styleRows.some((r) => r.kind === "library-style" && r.styleId === pick.styleId)) {
       setError("该款式已添加"); return;
     }
@@ -208,6 +224,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       fd.append("description", description.trim());
       fd.append("fabricsMeta", JSON.stringify(fabricsMeta));
       fd.append("stylesMeta", JSON.stringify(stylesMeta));
+      fd.append("mode", mode);
       for (const r of fabricRows) if (r.kind === "upload") fd.append("fabrics", await compressForUpload(r.file));
       for (const r of styleRows) if (r.kind === "upload") fd.append("styles", await compressForUpload(r.file));
       if (knowledge?.brand) fd.append("brand", JSON.stringify(knowledge.brand));
@@ -267,6 +284,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     if (!doneItems.length) { setError("暂无成功生成的图片"); return; }
     const now = new Date().toISOString();
     const brandColors = (knowledge?.brand?.colors || []).map((c: any) => c?.bg || c).filter(Boolean);
+    const mixName = batch.fabrics?.slice(0, 6).map((f) => (f?.name || "").split("·")[0].trim()).filter(Boolean).join(" + ");
     const product: any = {
       mode: "material-combo",
       title: name || "未命名材料组合",
@@ -274,11 +292,11 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       colors: brandColors,
       images: doneItems.map((it) => ({
         slot: "material-combo",
-        label: `面料${it.fi + 1} × 款式${it.si + 1}`,
+        label: mode === "color-mix" && mixName ? `拼色（${mixName}）` : `面料${it.fi + 1} × 款式${it.si + 1}`,
         url: it.url!,
       })),
       aiDraftRaw: JSON.stringify({
-        batchId: batch.batchId, name, description,
+        batchId: batch.batchId, mode, name, description,
         fabrics: batch.fabrics, styles: batch.styles, items: batch.items,
       }),
       status: "draft",
@@ -318,9 +336,17 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
       {/* 左:表单 */}
       <div className="overflow-y-auto bg-white">
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-          <h1 className="text-[15px] font-medium text-gray-800">材料组合</h1>
-          <span className="text-[11px] text-gray-500">m 面料 × n 款式 → m×n 白底图(≤{MAX_CELLS})</span>
+        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <h1 className="text-[15px] font-medium text-gray-800">材料组合</h1>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
+              <button onClick={() => switchMode("cross")} className={`px-2 py-1 rounded-md ${mode === "cross" ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>叉乘</button>
+              <button onClick={() => switchMode("color-mix")} className={`px-2 py-1 rounded-md ${mode === "color-mix" ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>拼色</button>
+            </div>
+          </div>
+          <span className="text-[10px] text-gray-500">
+            {mode === "cross" ? `m 面料 × n 款式 → m×n 白底图(≤${MAX_CELLS})` : `多面料 × 1 款式 → 1 张拼色图(面料≤${MAX_FABRIC_MIXED})`}
+          </span>
         </header>
 
         <div className="p-6 space-y-5 max-w-2xl">
@@ -332,7 +358,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
           {/* 面料槽位(上传 + 库)*/}
           <div>
-            <label className={labelCls}>面料 <span className="text-gray-400 normal-case tracking-normal">({fabricRows.length}/{MAX_FABRIC})</span></label>
+            <label className={labelCls}>面料 <span className="text-gray-400 normal-case tracking-normal">({fabricRows.length}/{fabricsLimit})</span></label>
             <div className="flex flex-wrap gap-2">
               {fabricRows.map((row) => (
                 <div key={row.id} className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group">
@@ -356,7 +382,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                   <div className="px-1 py-0.5 text-[8px] text-gray-400 truncate" title={row.name}>{row.name}</div>
                 </div>
               ))}
-              {fabricRows.length < MAX_FABRIC && !batchRunningOrAnalyzing && (
+              {fabricRows.length < fabricsLimit && !batchRunningOrAnalyzing && (
                 <>
                   <button onClick={() => fabricRef.current?.click()}
                     className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0">
@@ -373,11 +399,14 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
             </div>
             <input ref={fabricRef} type="file" accept="image/*" multiple className="hidden"
               onChange={(e) => addUploads("fabric", e.target.files)} />
+            <span className="text-[10px] text-gray-400">
+              {mode === "cross" ? "面料上限 6 项" : `拼色模式:按款式自由上传(建议≤${MAX_FABRIC_MIXED})`}
+            </span>
           </div>
 
           {/* 款式槽位(上传 + 库)*/}
           <div>
-            <label className={labelCls}>款式参考 <span className="text-gray-400 normal-case tracking-normal">({styleRows.length}/{MAX_STYLE})</span></label>
+            <label className={labelCls}>款式参考 <span className="text-gray-400 normal-case tracking-normal">({styleRows.length}/{stylesLimit})</span></label>
             <div className="flex flex-wrap gap-2">
               {styleRows.map((row) => (
                 <div key={row.id} className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group">
@@ -392,13 +421,13 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                     <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">库</span>
                   )}
                   {!batchRunningOrAnalyzing && (
-                    <button onClick={() => removeRow("style", row.id)}
+                    <button onClick={() => removeRow("style", row.id}
                       className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                   )}
                   <div className="px-1 py-0.5 text-[8px] text-gray-400 truncate" title={row.name}>{row.name}</div>
                 </div>
               ))}
-              {styleRows.length < MAX_STYLE && !batchRunningOrAnalyzing && (
+              {styleRows.length < stylesLimit && !batchRunningOrAnalyzing && (
                 <>
                   <button onClick={() => styleRef.current?.click()}
                     className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0">
@@ -437,8 +466,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           {/* 张数预览 */}
           {fabricRows.length > 0 && styleRows.length > 0 && (
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-              将生成 <span className="font-medium text-primary-600">{fabricRows.length} × {styleRows.length} = {cellCount}</span> 张白底效果图
-              {cellCount > MAX_CELLS && <span className="text-red-500 ml-2">超过上限 {MAX_CELLS},请减少图片</span>}
+              {mode === "cross" ? (<>将生成 <span className="font-medium text-primary-600">{fabricRows.length} × {styleRows.length} = {cellCount}</span> 张白底效果图{cellCount > MAX_CELLS && <span className="text-red-500 ml-2">超过上限 {MAX_CELLS},请减少图片</span>}</>) : (<>将生成 <span className="font-medium text-primary-600">1</span> 张拼色白底效果图（共 {fabricRows.length} 块面料拼接）</>)}
             </div>
           )}
 
@@ -482,65 +510,69 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         )}
 
         {batch && batch.fabrics.length > 0 && batch.styles.length > 0 && (
-          <>
-            <div className="flex items-center justify-between">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">
-                结果矩阵 {fabricRows.length}×{styleRows.length}
+          batch.mode === "color-mix" ? (
+            // 拼色模式:单张大图 + 底部面料缩略条(不标「拼色」标签)
+            <ColorMixResult batch={batch} retryCell={retryCell} hasSuccess={hasSuccess} onSave={saveToLookbook} />
+          ) : (
+            // 叉乘模式:矩阵网格
+            <>
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">
+                  结果矩阵 {fabricRows.length}×{styleRows.length}
+                </div>
+                {hasSuccess && (
+                  <button onClick={saveToLookbook}
+                    className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+                    保存到 Lookbook ({batch.completed}/{batch.total})
+                  </button>
+                )}
               </div>
-              {hasSuccess && (
-                <button onClick={saveToLookbook}
-                  className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-                  保存到 Lookbook ({batch.completed}/{batch.total})
-                </button>
-              )}
-            </div>
 
-            <div className="overflow-x-auto">
-              <div className="inline-grid gap-2"
-                style={{ gridTemplateColumns: `110px repeat(${styleRows.length}, minmax(100px, 1fr))` }}>
-                {/* 角 + 列头(面料) */}
-                <div />
-                {fabricRows.map((row, fi) => (
-                  <div key={`fh-${row.id}`} className="text-center space-y-1">
-                    <div className="w-full aspect-square rounded-lg overflow-hidden border border-gray-200 bg-white">
-                      {row.kind === "upload" ? (
-                        <img src={batch.fabrics[fi]?.url || row.preview} alt={`面料${fi + 1}`} className="w-full h-full object-cover" />
-                      ) : (
-                        row.url
-                          ? <img src={batch.fabrics[fi]?.url || row.url} alt={row.name} className="w-full h-full object-cover" />
-                          : <div className="w-full h-full" style={{ backgroundColor: row.hex || "#e5e7eb" }} />
+              <div className="overflow-x-auto">
+                <div className="inline-grid gap-2"
+                  style={{ gridTemplateColumns: `110px repeat(${styleRows.length}, minmax(100px, 1fr))` }}>
+                  <div />
+                  {fabricRows.map((row, fi) => (
+                    <div key={`fh-${row.id}`} className="text-center space-y-1">
+                      <div className="w-full aspect-square rounded-lg overflow-hidden border border-gray-200 bg-white">
+                        {row.kind === "upload" ? (
+                          <img src={batch.fabrics[fi]?.url || row.preview} alt={`面料${fi + 1}`} className="w-full h-full object-cover" />
+                        ) : (
+                          row.url
+                            ? <img src={batch.fabrics[fi]?.url || row.url} alt={row.name} className="w-full h-full object-cover" />
+                            : <div className="w-full h-full" style={{ backgroundColor: row.hex || "#e5e7eb" }} />
+                        )}
+                      </div>
+                      <div className="text-[9px] text-gray-400 px-1 truncate" title={row.name}>{row.kind !== "upload" ? row.name : `面料${fi + 1}`}</div>
+                      {row.analysisText && (
+                        <div className="flex flex-wrap gap-0.5 justify-center">
+                          {splitAnalysisTags(row.analysisText).slice(0, 4).map((t, ti) => (
+                            <span key={ti} className={`text-[8px] px-1 py-px rounded-full border ${/^#[0-9a-fA-F]{3,8}$/.test(t) ? "bg-white border-gray-300 inline-flex items-center gap-0.5" : "bg-primary-50 border-primary-100 text-primary-700"}`}>
+                              {/^#[0-9a-fA-F]{3,8}$/.test(t) && <span className="inline-block w-2 h-2 rounded-full border border-gray-300" style={{ backgroundColor: t }} />}
+                              {/^#[0-9a-fA-F]{3,8}$/.test(t) ? "" : t}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <div className="text-[9px] text-gray-400 px-1 truncate" title={row.name}>{row.kind !== "upload" ? row.name : `面料${fi + 1}`}</div>
-                    {row.analysisText && (
-                      <div className="flex flex-wrap gap-0.5 justify-center">
-                        {splitAnalysisTags(row.analysisText).slice(0, 4).map((t, ti) => (
-                          <span key={ti} className={`text-[8px] px-1 py-px rounded-full border ${/^#[0-9a-fA-F]{3,8}$/.test(t) ? "bg-white border-gray-300 inline-flex items-center gap-0.5" : "bg-primary-50 border-primary-100 text-primary-700"}`}>
-                            {/^#[0-9a-fA-F]{3,8}$/.test(t) && <span className="inline-block w-2 h-2 rounded-full border border-gray-300" style={{ backgroundColor: t }} />}
-                            {/^#[0-9a-fA-F]{3,8}$/.test(t) ? "" : t}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
 
-                {/* 行 */}
-                {styleRows.map((row, si) => (
-                  <StyleRowFragment key={`row-${row.id}`} row={row} si={si} batch={batch} retryCell={retryCell} />
-                ))}
+                  {styleRows.map((row, si) => (
+                    <StyleRowFragment key={`row-${row.id}`} row={row} si={si} batch={batch} retryCell={retryCell} />
+                  ))}
+                </div>
               </div>
-            </div>
 
-            {batch.items.find((it) => it.prompt) && (
-              <details className="text-[11px] text-gray-500">
-                <summary className="cursor-pointer hover:text-gray-700">查看某个生成 prompt</summary>
-                <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">
+              {batch.items.find((it) => it.prompt) && (
+                <details className="text-[11px] text-gray-500">
+                  <summary className="cursor-pointer hover:text-gray-700">查看生成 prompt</summary>
+                  <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">
 {batch.items.filter((it) => it.prompt).slice(0, 1).map((it, i) => `# 面料${it.fi + 1} × 款式${it.si + 1}\n${it.prompt}`).join("\n\n")}
-                </pre>
-              </details>
-            )}
-          </>
+                  </pre>
+                </details>
+              )}
+            </>
+          )
         )}
       </aside>
 
@@ -552,6 +584,79 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         onFabric={addLibraryFabric}
         onStyle={(p) => addLibraryStyle(p)}
       />
+    </div>
+  );
+}
+
+/**
+ * 拼色模式结果面板:单张大图 + 底部面料缩略条。
+ * 严格不出现「拼色」文案,让用户感知与叉乘单图一致。
+ */
+function ColorMixResult({ batch, retryCell, hasSuccess, onSave }: { batch: MaterialComboBatch; retryCell: (fi: number, si: number) => void; hasSuccess: boolean; onSave: () => void }) {
+  const cell = batch.items?.[0];
+  const styleRow = batch.styles?.[0];
+  const showingFabrics = batch.fabrics || [];
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500">结果</div>
+        {hasSuccess && (
+          <button onClick={onSave}
+            className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+            保存到 Lookbook
+          </button>
+        )}
+      </div>
+
+      {/* 左侧 1 款式信息 */}
+      <div className="flex items-center gap-3 text-[11px] text-gray-600">
+        <span className="text-gray-400 shrink-0">款式:</span>
+        {styleRow?.url
+          ? <img src={styleRow.url} alt="" className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+          : <div className="w-12 h-12 rounded-lg bg-gray-100" />}
+        <span className="truncate">{styleRow?.name || "(无)"}</span>
+      </div>
+
+      {/* 单张主图 */}
+      <div className="mx-auto w-full max-w-[360px] aspect-square rounded-xl border border-gray-200 bg-white overflow-hidden">
+        {cell?.status === "pending" && (
+          <div className="w-full h-full flex items-center justify-center flex-col gap-1">
+            <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+            <span className="text-[12px] text-gray-400">生成中…</span>
+          </div>
+        )}
+        {cell?.status === "done" && <img src={cell.url} alt="拼色结果" className="w-full h-full object-contain" />}
+        {cell?.status === "error" && (
+          <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-4 text-center">
+            <span className="text-[12px] text-red-500">{cell.error || "生成失败"}</span>
+            <button onClick={() => retryCell(0, 0)} className="text-[12px] text-primary-600 underline hover:text-primary-700">重试</button>
+          </div>
+        )}
+      </div>
+
+      {/* 面料缩略条 */}
+      <div>
+        <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">面料 ({showingFabrics.length})</div>
+        <div className="flex flex-wrap gap-2">
+          {showingFabrics.map((f, i) => (
+            <div key={i} className="w-16 text-center">
+              <div className="w-16 h-16 rounded-lg border border-gray-200 bg-white overflow-hidden">
+                {f?.url
+                  ? <img src={f.url} alt={f.name || `面料${i + 1}`} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full bg-gray-100" />}
+              </div>
+              <div className="text-[8px] text-gray-400 mt-0.5 truncate">{f?.name || `面料${i + 1}`}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {cell?.prompt && (
+        <details className="text-[11px] text-gray-500">
+          <summary className="cursor-pointer hover:text-gray-700">查看生成 prompt</summary>
+          <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">{cell.prompt}</pre>
+        </details>
+      )}
     </div>
   );
 }
