@@ -89,50 +89,27 @@ export default function MaterialsPage() {
       (m.supplier || "").toLowerCase().includes(needle));
   }, [q, rows]);
 
+  // 主记录 create/update 完全不带 colorImages(避免旧 schema 写入失败);
+  // 颜色图上传走独立 /materials/:id/color-image 端点。
   const handleSave = useCallback(async (values: Partial<MaterialRow> & { colorImages: Card[] }, pendingFiles?: (File | null)[]) => {
     if (!teamId) return;
     const api = teamApi(teamId);
-    const { colorImages, ...data } = values;
+    // 从 payload 中剥离 colorImages,永远不写入 create/update
+    const { colorImages: _ci, ...data } = values;
+    void _ci;
     const files = pendingFiles || [];
     const payload: any = { ...data };
     for (const k of Object.keys(payload)) { if (payload[k] === "") payload[k] = null; }
     let id = payload.id as string | undefined;
-    // 1) 创建/更新主记录(colorImages 先只带 hex + name; 保留旧 url 避免被覆盖)
-    let ciListRaw: any[] = [];
     if (id) {
-      const existingColorImages = (() => {
-        try { return rows.find((r) => r.id === id)?.colorImages ?? []; } catch { return []; }
-      })();
-      ciListRaw = colorImages.map((c, i) => {
-        const old: any = Array.isArray(existingColorImages) ? existingColorImages[i] : null;
-        return { hex: c.hex, name: c.name, url: old?.url || c.url || "" };
-      });
-      await api.updateMaterial(id, { ...payload, colorImages: ciListRaw }).catch(async (e) => {
-        // 线上 schema 未同步时(colorImages 列不存在)退化为不带 colorImages 重试
-        const msg = String(e?.message || "");
-        if (msg.includes("column") || msg.includes("colorImages") || msg.includes("Unknown field")) {
-          const { colorImages: _omit, ...withoutCi } = payload;
-          return await api.updateMaterial(id, withoutCi);
-        }
-        throw e;
-      });
+      await api.updateMaterial(id, payload);
     } else {
-      ciListRaw = colorImages.map((c) => ({ hex: c.hex, name: c.name, url: "" }));
-      try {
-        const created = await api.createMaterial({ ...payload, category: "面料", colorImages: ciListRaw });
-        id = created.id;
-      } catch (e) {
-        const msg = String(e?.message || "");
-        if (msg.includes("column") || msg.includes("colorImages") || msg.includes("Unknown field")) {
-          const { colorImages: _omit, ...withoutCi } = payload;
-          const created = await api.createMaterial({ ...withoutCi, category: "面料" });
-          id = created.id;
-        } else throw e;
-      }
+      const created = await api.createMaterial({ ...payload, category: "面料" });
+      id = created.id;
     }
-    // 2) 逐卡上传新图(后端不覆盖 hex/name,只更新 url)
+    // 颜色图逐张上传(后端已创建迁移 /materials/:id/color-image 端点)
     if (id) {
-      for (let i = 0; i < colorImages.length; i++) {
+      for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (file) {
           const fd = new FormData();
@@ -141,18 +118,10 @@ export default function MaterialsPage() {
           await api.uploadMaterialColorImage(id, fd).catch(() => {});
         }
       }
-      // 3) 上传后最终再同步一次 colorImages(hex/name 对齐卡片)
-      const finalCi: any[] = [];
-      for (let i = 0; i < colorImages.length; i++) {
-        const c = colorImages[i];
-        const cur: any = ciListRaw[i] || {};
-        finalCi.push({ hex: c.hex, name: c.name, url: cur.url || c.url || "" });
-      }
-      await api.updateMaterial(id, { colorImages: finalCi }).catch(() => {});
     }
     setEditor(null);
     await refresh(teamId);
-  }, [teamId, refresh, rows]);
+  }, [teamId, refresh]);
 
   if (loading) return <div className="p-10 text-gray-500">加载中…</div>;
 
@@ -394,9 +363,8 @@ function MaterialForm({ initial, onCancel, onSave }: {
         care: care.split("\n").map((s) => s.trim()).filter(Boolean),
         seasons: seasons.split("\n").map((s) => s.trim()).filter(Boolean),
         // colorImages 仅含可 JSON 序列化的字段;File 对象单独走 uploadMaterialColorImage
-        colorImages: cards.map((c) => ({ hex: c.hex, name: c.name, url: c.url || "" })),
       };
-      // 单独传 File 数组,避免 JSON 序列化失败
+      // 颜色图逐张压缩后单独传;create/update 接口不带 colorImages
       const pendingFiles = await Promise.all(cards.map(async (c) => {
         if (!c.imageFile) return null;
         try { return await compressForUpload(c.imageFile); } catch { return null; }

@@ -476,45 +476,42 @@ router.post('/materials', asyncHandler(async (req, res) => {
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
-    'image', 'colorImages',
+    'image',
   ]);
   if (!data.name || !data.category) return res.status(400).json({ error: 'name,category required' });
   if (!data.slug) data.slug = `${data.category}-${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
-  // 色卡列表:[{hex,url,name?}],清理掉空 url 项
-  const colorImages = Array.isArray(data.colorImages)
-    ? data.colorImages.filter((c) => c && typeof c === 'object' && c.url)
-    : [];
-  const createData = {
-    teamId: req.team.id,
-    slug: String(data.slug),
-    category: String(data.category),
-    name: String(data.name),
-    code: data.code || null,
-    supplier: data.supplier || null,
-    origin: data.origin || null,
-    colors: Array.isArray(data.colors) ? data.colors : [],
-    composition: data.composition || null,
-    weight: data.weight || null,
-    texture: data.texture || null,
-    finish: data.finish || null,
-    width: data.width || null,
-    thickness: data.thickness || null,
-    diameter: data.diameter || null,
-    size: data.size || null,
-    tex: data.tex || null,
-    shape: data.shape || null,
-    originNote: data.originNote || null,
-    care: Array.isArray(data.care) ? data.care : [],
-    uses: Array.isArray(data.uses) ? data.uses : [],
-    seasons: Array.isArray(data.seasons) ? data.seasons : [],
-    notes: data.notes || null,
-    priceAmount: typeof data.priceAmount === 'number' ? data.priceAmount : null,
-    priceCur: data.priceCur || 'CNY',
-    priceUnit: data.priceUnit || null,
-    priceNote: data.priceNote || null,
-    image: data.image || null,
-    colorImages,
-  };
+  const mat = await prisma.lAMaterial.create({
+    data: {
+      teamId: req.team.id,
+      slug: String(data.slug),
+      category: String(data.category),
+      name: String(data.name),
+      code: data.code || null,
+      supplier: data.supplier || null,
+      origin: data.origin || null,
+      colors: Array.isArray(data.colors) ? data.colors : [],
+      composition: data.composition || null,
+      weight: data.weight || null,
+      texture: data.texture || null,
+      finish: data.finish || null,
+      width: data.width || null,
+      thickness: data.thickness || null,
+      diameter: data.diameter || null,
+      size: data.size || null,
+      tex: data.tex || null,
+      shape: data.shape || null,
+      originNote: data.originNote || null,
+      care: Array.isArray(data.care) ? data.care : [],
+      uses: Array.isArray(data.uses) ? data.uses : [],
+      seasons: Array.isArray(data.seasons) ? data.seasons : [],
+      notes: data.notes || null,
+      priceAmount: typeof data.priceAmount === 'number' ? data.priceAmount : null,
+      priceCur: data.priceCur || 'CNY',
+      priceUnit: data.priceUnit || null,
+      priceNote: data.priceNote || null,
+      image: data.image || null,
+    },
+  });
   res.status(201).json(mat);
 }));
 
@@ -527,25 +524,9 @@ router.patch('/materials/:id', asyncHandler(async (req, res) => {
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
-    'image', 'colorImages',
+    'image',
   ]);
-  // 若提交了 colorImages,清洗(null/无 url 项)
-  if (data.colorImages !== undefined) {
-    data.colorImages = Array.isArray(data.colorImages)
-      ? data.colorImages.filter((c) => c && typeof c === 'object' && c.url)
-      : [];
-  }
-  // 若线上 Prisma schema 尚未同步(缺 colorImages 列),退化成不传该字段重试
-  let mat;
-  try {
-    mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data });
-  } catch (eUpdate) {
-    const msg = String(eUpdate?.message || "");
-    if (msg.includes("column") && (msg.includes("colorImages") || msg.includes("Unknown field"))) {
-      const { colorImages: _omit, ...withoutCi } = data;
-      mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data: withoutCi });
-    } else throw eUpdate;
-  }
+  const mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data });
   res.json(mat);
 }));
 
