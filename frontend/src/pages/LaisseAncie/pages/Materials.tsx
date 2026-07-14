@@ -89,17 +89,17 @@ export default function MaterialsPage() {
       (m.supplier || "").toLowerCase().includes(needle));
   }, [q, rows]);
 
-  const handleSave = useCallback(async (values: Partial<MaterialRow> & { colorImages: Card[] }) => {
+  const handleSave = useCallback(async (values: Partial<MaterialRow> & { colorImages: Card[] }, pendingFiles?: (File | null)[]) => {
     if (!teamId) return;
     const api = teamApi(teamId);
     const { colorImages, ...data } = values;
+    const files = pendingFiles || [];
     const payload: any = { ...data };
     for (const k of Object.keys(payload)) { if (payload[k] === "") payload[k] = null; }
     let id = payload.id as string | undefined;
     // 1) 创建/更新主记录(colorImages 先只带 hex + name; 保留旧 url 避免被覆盖)
     let ciListRaw: any[] = [];
     if (id) {
-      // 先拿到现有 colorImages 保留旧 url
       const existingColorImages = (() => {
         try { return rows.find((r) => r.id === id)?.colorImages ?? []; } catch { return []; }
       })();
@@ -107,19 +107,37 @@ export default function MaterialsPage() {
         const old: any = Array.isArray(existingColorImages) ? existingColorImages[i] : null;
         return { hex: c.hex, name: c.name, url: old?.url || c.url || "" };
       });
-      await api.updateMaterial(id, { ...payload, colorImages: ciListRaw });
+      await api.updateMaterial(id, { ...payload, colorImages: ciListRaw }).catch(async (e) => {
+        // 线上 schema 未同步时(colorImages 列不存在)退化为不带 colorImages 重试
+        const msg = String(e?.message || "");
+        if (msg.includes("column") || msg.includes("colorImages") || msg.includes("Unknown field")) {
+          const { colorImages: _omit, ...withoutCi } = payload;
+          return await api.updateMaterial(id, withoutCi);
+        }
+        throw e;
+      });
     } else {
       ciListRaw = colorImages.map((c) => ({ hex: c.hex, name: c.name, url: "" }));
-      const created = await api.createMaterial({ ...payload, category: "面料", colorImages: ciListRaw });
-      id = created.id;
+      try {
+        const created = await api.createMaterial({ ...payload, category: "面料", colorImages: ciListRaw });
+        id = created.id;
+      } catch (e: any) {
+        // 同上,线上 schema 未同步时退化为不带 colorImages
+        const msg = String(e?.message || "");
+        if (msg.includes("column") || msg.includes("colorImages") || msg.includes("Unknown field")) {
+          const { colorImages: _omit, ...withoutCi } = payload;
+          const created = await api.createMaterial({ ...payload: withoutCi, category: "面料" });
+          id = created.id;
+        } else throw e;
+      }
     }
     // 2) 逐卡上传新图(后端不覆盖 hex/name,只更新 url)
     if (id) {
       for (let i = 0; i < colorImages.length; i++) {
-        const c = colorImages[i];
-        if (c.imageFile) {
+        const file = files[i];
+        if (file) {
           const fd = new FormData();
-          fd.append("file", c.imageFile);
+          fd.append("file", file);
           fd.append("idx", String(i));
           await api.uploadMaterialColorImage(id, fd).catch(() => {});
         }
@@ -131,7 +149,7 @@ export default function MaterialsPage() {
         const cur: any = ciListRaw[i] || {};
         finalCi.push({ hex: c.hex, name: c.name, url: cur.url || c.url || "" });
       }
-      await api.updateMaterial(id, { colorImages: finalCi });
+      await api.updateMaterial(id, { colorImages: finalCi }).catch(() => {});
     }
     setEditor(null);
     await refresh(teamId);
@@ -246,7 +264,7 @@ function MaterialModal({ editor, onClose, onSwitchEdit, onSave }: {
   editor: null | { mode: "view" | "edit" | "create"; mat?: MaterialRow };
   onClose: () => void;
   onSwitchEdit: () => void;
-  onSave: (values: Partial<MaterialRow> & { colorImages: Card[] }) => Promise<void>;
+  onSave: (values: Partial<MaterialRow> & { colorImages: Card[] }, pendingFiles?: (File | null)[]) => Promise<void>;
 }) {
   if (!editor) return null;
   const { mode, mat } = editor;
@@ -332,7 +350,7 @@ function MaterialView({ mat, onEdit }: { mat: MaterialRow; onEdit: () => void })
 function MaterialForm({ initial, onCancel, onSave }: {
   initial: MaterialRow | null;
   onCancel: () => void;
-  onSave: (values: Partial<MaterialRow> & { colorImages: Card[] }) => Promise<void>;
+  onSave: (values: Partial<MaterialRow> & { colorImages: Card[] }, pendingFiles?: (File | null)[]) => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
   const [cards, setCards] = useState<Card[]>(() => toCards(initial ?? { colors: ["#cccccc"] } as any));
@@ -376,15 +394,15 @@ function MaterialForm({ initial, onCancel, onSave }: {
         uses: uses.split("\n").map((s) => s.trim()).filter(Boolean),
         care: care.split("\n").map((s) => s.trim()).filter(Boolean),
         seasons: seasons.split("\n").map((s) => s.trim()).filter(Boolean),
-        colorImages: await Promise.all(cards.map(async (c) => {
-          let file = c.imageFile || null;
-          if (file) try { file = await compressForUpload(file); } catch {}
-          const out: any = { hex: c.hex, name: c.name, url: c.url };
-          if (file) out.imageFile = file;
-          return out;
-        })),
+        // colorImages 仅含可 JSON 序列化的字段;File 对象单独走 uploadMaterialColorImage
+        colorImages: cards.map((c) => ({ hex: c.hex, name: c.name, url: c.url || "" })),
       };
-      await onSave(payload);
+      // 单独传 File 数组,避免 JSON 序列化失败
+      const pendingFiles = await Promise.all(cards.map(async (c) => {
+        if (!c.imageFile) return null;
+        try { return await compressForUpload(c.imageFile); } catch { return null; }
+      }));
+      await onSave(payload, pendingFiles);
     } finally {
       setSaving(false);
     }
