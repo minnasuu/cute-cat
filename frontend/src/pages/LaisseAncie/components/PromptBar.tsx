@@ -1,6 +1,7 @@
 // @ts-nocheck
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Textarea, Button } from "./ui";
+import { useComposerPrompt } from "../contexts/composer-prompt";
 
 interface Props {
   placeholder?: string;
@@ -18,6 +19,15 @@ export function PromptBar({
 }: Props) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const { draftPrompt, clearDraftPrompt } = useComposerPrompt();
+
+  // 「制作相似」草稿:填入一次后立刻清空,避免切回 tab 时重复注入
+  useEffect(() => {
+    if (draftPrompt && draftPrompt.trim()) {
+      setValue(draftPrompt);
+      clearDraftPrompt();
+    }
+  }, [draftPrompt, clearDraftPrompt]);
 
   async function go() {
     const v = value.trim();

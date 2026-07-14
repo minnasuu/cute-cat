@@ -1,7 +1,9 @@
 // @ts-nocheck
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compressForUpload } from "../lib/images";
+import { buildSimilarPrompt } from "../lib/similar-prompt";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
+import { useComposerPrompt } from "../contexts/composer-prompt";
 import { teamApi, apiClient } from "../lib/api";
 
 const TAKE = 24;
@@ -254,7 +256,17 @@ export default function InspinationsPage() {
 }
 
 function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationItem; onDelete: (id: string) => void; onEdit: (asset: InspirationItem) => void; onRetry: (id: string) => void; }) {
+  const { navigateTab } = useCurrentTeam();
+  const { setDraftPrompt } = useComposerPrompt();
   const hasAnalysis = asset.category || asset.visualStyle || asset.designApproach || (asset.inspiration?.length ?? 0) > 0;
+
+  const handleMakeSimilar = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const prompt = buildSimilarPrompt(asset);
+    if (!prompt) return;
+    setDraftPrompt(prompt);
+    navigateTab("single");
+  };
   // 分类标签:优先 category; pending 显示 analysing; failed 显示失败+重试
   const categoryLabel = asset.analysisStatus === 'failed'
     ? `分析失败(${asset.analysisError || 'unknown'})`
@@ -283,6 +295,14 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
           <button onClick={(e) => { e.stopPropagation(); if (confirm("删除这张灵感图?")) onDelete(asset.id); }}
             className="w-7 h-7 rounded-full bg-white/90 hover:bg-red-50 text-red-500 text-xs flex items-center justify-center shadow-sm" title="删除">✕</button>
         </div>
+        {/* 制作相似(hover 显示,主操作按钮) */}
+        <button
+          onClick={handleMakeSimilar}
+          className="absolute inset-x-3 bottom-16 z-20 opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-full bg-primary-500 hover:bg-primary-600 text-white text-[12px] font-medium shadow-lg flex items-center justify-center gap-1.5"
+          title="把这张灵感的品类·风格·思路整理后填入单品设计工作台"
+        >
+          ✨ 制作相似
+        </button>
         {/* 卡片底部(category + uses) */}
         <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/30 to-transparent text-white">
           <div className="flex items-center justify-between gap-2">
