@@ -28,6 +28,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const sharp = require('sharp');
 
 /**
  * 解析上传根目录 —— 运行时探测,兼容两种部署目录结构:
@@ -175,16 +176,56 @@ function createS3SavePath(folder, filename) {
   return key;
 }
 
+// ─── 图片压缩 ────────────────────────────────────────────────
+// 压缩参数:偏小体积,适合服装/灵感/产品展示场景(视觉可接受,体积缩减 80%+)
+const COMPRESS_MAX_EDGE = 1600;     // 长边上限,等比缩放,不放大小图
+const COMPRESS_JPEG_QUALITY = 70;   // JPEG quality(mozjpeg 编码)
+const COMPRESS_WEBP_QUALITY = 70;   // WebP quality
+
+/**
+ * 用 sharp 压缩图片 buffer。
+ * 跳过 GIF(动画)/SVG(vector);压缩失败或体积未减小时退回原始 buffer。
+ * 自动校正 EXIF 方向(手机竖拍 → 正确朝向)。
+ */
+async function compressImageBuffer(buffer, mimeType) {
+  if (!mimeType || !mimeType.startsWith('image/')) return buffer;
+  if (mimeType === 'image/gif' || mimeType === 'image/svg+xml') return buffer;
+  try {
+    let pipeline = sharp(buffer).rotate().resize({
+      width: COMPRESS_MAX_EDGE,
+      height: COMPRESS_MAX_EDGE,
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+    if (mimeType === 'image/png') {
+      pipeline = pipeline.png({ compressionLevel: 9, quality: 80 });
+    } else if (mimeType === 'image/webp') {
+      pipeline = pipeline.webp({ quality: COMPRESS_WEBP_QUALITY });
+    } else {
+      // jpeg / 其他 → mozjpeg,体积更小
+      pipeline = pipeline.jpeg({ quality: COMPRESS_JPEG_QUALITY, mozjpeg: true });
+    }
+    const out = await pipeline.toBuffer();
+    if (out.length < buffer.length) return out;
+    return buffer;
+  } catch (err) {
+    console.warn(`[storage] compress failed (${mimeType}, ${buffer.length}B): ${err.message}`);
+    return buffer;
+  }
+}
+
 // ─── public API ──────────────────────────────────────────────
 async function saveUpload(absTmpPath, savePath, contentType) {
-  const buf = fs.readFileSync(absTmpPath);
+  let buf = fs.readFileSync(absTmpPath);
+  buf = await compressImageBuffer(buf, contentType);
   if (mode === 's3') {
     await s3PutObject({ key: savePath, body: buf, contentType });
     fs.unlinkSync(absTmpPath); // 上传后清 tmp
-    return;
+  } else {
+    localSave(buf, savePath);
+    fs.unlinkSync(absTmpPath);
   }
-  localSave(buf, savePath);
-  fs.unlinkSync(absTmpPath);
+  return buf.length; // 返回压缩后大小,供调用方写 DB
 }
 function getPublicUrl(savePath) {
   return mode === 's3' ? s3PublicUrl(savePath) : localPublicUrl(savePath);
@@ -201,6 +242,7 @@ module.exports = {
   saveUpload,
   getPublicUrl,
   createSavePath,
+  compressImageBuffer,
   // 旧代码迁移期间保留的直接读写(废弃中,新接入统一走 saveUpload)
   _internal: { localSave, localPublicUrl },
 };

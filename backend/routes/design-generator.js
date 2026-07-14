@@ -48,7 +48,7 @@ const mcUpload = multer({
   { name: 'style', maxCount: 1 },
 ]);
 
-/** 把 multer 暂存文件落到最终位置(本地或 S3),返回公网/相对 URL */
+/** 把 multer 暂存文件落到最终位置(本地或 S3),返回公网/相对 URL(saveUpload 内部会压缩) */
 async function persistTempFile(tmpPath, filename, mime) {
   const savePath = storage.createSavePath(`design/material-combo`, filename);
   await storage.saveUpload(tmpPath, savePath, mime);

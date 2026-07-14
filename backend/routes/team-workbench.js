@@ -280,8 +280,9 @@ router.post('/inspirations', (req, res) => {
     }
     try {
       // 把 multer 暂存文件落到最终位置(本地或 S3,由 storage 模块按 env 决定)
+      // saveUpload 内部会压缩图片并返回压缩后大小
       const savePath = createSavePath(`inspirations/${req.team.id}`, req.file.filename);
-      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const finalSize = await saveUpload(req.file.path, savePath, req.file.mimetype);
       const url = getPublicUrl(savePath);
       const asset = await prisma.lAInspirationAsset.create({
         data: {
@@ -289,7 +290,7 @@ router.post('/inspirations', (req, res) => {
           url,
           thumbUrl: url,
           mime: req.file.mimetype,
-          bytes: req.file.size,
+          bytes: finalSize,
           category: req.body.category || null,
           silhouette: req.body.silhouette || null,
           colors: tryParseJson(req.body.colors, []),
@@ -425,12 +426,12 @@ router.patch('/inspirations/:id/image', (req, res) => {
     try {
       // 新图保存到同一位置(同 teamId 子目录),文件名用新文件的唯一名
       const savePath = createSavePath(`inspirations/${req.team.id}`, req.file.filename);
-      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const finalSize = await saveUpload(req.file.path, savePath, req.file.mimetype);
       const url = getPublicUrl(savePath);
       // 只更新图的 url/bytes/mime;保留 category/visualStyle/designApproach/inspiration/analysisStatus 等分析字段
       const updated = await prisma.lAInspirationAsset.update({
         where: { id: owned.id },
-        data: { url, thumbUrl: url, mime: req.file.mimetype, bytes: req.file.size },
+        data: { url, thumbUrl: url, mime: req.file.mimetype, bytes: finalSize },
       });
       res.json(updated);
     } catch (e) {
@@ -550,7 +551,7 @@ router.post('/materials/:id/image', (req, res) => {
         where: { id: owned.id },
         data: { image: url },
       });
-      res.json({ id: updated.id, url });
+      res.json({ id: updated.id, url, bytes: updated.bytes });
     } catch (e) {
       console.error('[team-workbench] upload material image failed:', e);
       res.status(500).json({ error: `上传失败: ${e.message}` });

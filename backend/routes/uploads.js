@@ -51,9 +51,9 @@ router.post('/image', upload.single('image'), async (req, res) => {
     const folder = runId ? `workflow/${String(req.userId || 'anonymous')}/${runId}` : `workflow/${String(req.userId || 'anonymous')}`;
 
     const savePath = createSavePath(folder, f.filename);
-    await saveUpload(f.path, savePath, f.mimetype);
+    const finalSize = await saveUpload(f.path, savePath, f.mimetype);
     const url = getPublicUrl(savePath);
-    res.json({ url });
+    res.json({ url, bytes: finalSize });
   } catch (err) {
     console.error('[uploads] image error:', err);
     res.status(500).json({ error: '图片上传失败' });

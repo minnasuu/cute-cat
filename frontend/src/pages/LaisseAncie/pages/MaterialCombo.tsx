@@ -16,6 +16,7 @@ import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { teamApi } from "../lib/api";
 import { useDesignStore } from "../store/design";
 import type { KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
+import { compressForUpload } from "../lib/images";
 
 interface Props {
   knowledge?: KnowledgeDeps;
@@ -59,8 +60,9 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       const fd = new FormData();
       fd.append("name", name.trim());
       fd.append("description", description.trim());
-      fd.append("fabric", fabricFile!);
-      fd.append("style", styleFile!);
+      // 面料图 + 款式参考图上传前前端先压缩(减少传输体积),服务端会再做一次 sharp 压缩兜底
+      fd.append("fabric", await compressForUpload(fabricFile!));
+      fd.append("style", await compressForUpload(styleFile!));
       // 品牌信息以 JSON 字符串注入,后端直接用于 prompt
       if (knowledge?.brand) fd.append("brand", JSON.stringify(knowledge.brand));
 

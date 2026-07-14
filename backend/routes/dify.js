@@ -654,6 +654,8 @@ const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const storage = require('../lib/storage');
+const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
 
 /** 图片 base64 字符数上限（约 10MB 文件 → ~13.3M 字符） */
 const MAX_STYLE_REF_IMAGE_BASE64_CHARS = 14_000_000;
@@ -700,12 +702,15 @@ const VIBE_SNAP_MOCK_EXTRACT = {
     '高对比主色与浅底卡片分层，无衬线强标题排版，圆角与轻阴影定义层级；描述为通用视觉方向，不限定行业。',
 };
 
-// multer 配置：存储到 uploads/vibe-snap/
+// multer 配置：存储到 uploads/vibe-snap/(落盘后由 saveUpload 统一压缩 → 走 storage 层)
 const vibeSnapStorage = multer.diskStorage({
-  destination: path.join(__dirname, '..', 'uploads', 'vibe-snap'),
+  destination: (_req, file, cb) => {
+    fs.mkdirSync(storage.TMP_DIR, { recursive: true });
+    cb(null, storage.TMP_DIR);
+  },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${crypto.randomUUID()}-${Date.now()}${ext}`);
+    cb(null, `vs-${crypto.randomUUID()}-${Date.now()}${ext}`);
   },
 });
 const vibeSnapUpload = multer({
@@ -717,16 +722,24 @@ const vibeSnapUpload = multer({
   },
 });
 
-// POST /api/dify/vibe-snap-upload — 上传图片文件
+// POST /api/dify/vibe-snap-upload — 上传图片文件（先落 tmp，再经 saveUpload 压缩后落到最终位置）
 router.post('/vibe-snap-upload', optionalAuth, (req, res) => {
-  vibeSnapUpload.single('file')(req, res, (err) => {
+  vibeSnapUpload.single('file')(req, res, async (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, error: '图片文件过大（最大 10MB）' });
       return res.status(400).json({ success: false, error: err.message || '上传失败' });
     }
     if (!req.file) return res.status(400).json({ success: false, error: '请选择图片文件' });
-    const url = `/uploads/vibe-snap/${req.file.filename}`;
-    res.json({ success: true, data: { url, filename: req.file.filename } });
+    try {
+      // saveUpload 内部会 sharp 压缩(1600px / JPEG q70),返回压缩后大小
+      const savePath = createSavePath('vibe-snap', req.file.filename);
+      const finalSize = await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      res.json({ success: true, data: { url, filename: req.file.filename, bytes: finalSize } });
+    } catch (e) {
+      console.error('[vibe-snap-upload] save failed:', e);
+      res.status(500).json({ success: false, error: e.message || '上传失败' });
+    }
   });
 });
 
