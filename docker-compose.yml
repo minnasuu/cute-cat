@@ -53,10 +53,13 @@ services:
       ARK_BASE_URL: ${ARK_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
       ARK_TEXT_MODEL: ${ARK_TEXT_MODEL:-doubao-seed-2-1-pro-260628}
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-ark}
-      # MaiziTech 生图(gpt-image-2, /v1/images/generations, 仅正方形 1024x1024)
+      # MaiziTech v2 生图(gpt-image-2, /v2/images/generations, b64_json)
+      # 文档: https://www.maizitech.xyz/docs/images-v2
       MAIZI_API_KEY: ${MAIZI_API_KEY:-}
-      MAIZI_BASE_URL: ${MAIZI_BASE_URL:-https://www.maizitech.xyz/v1}
+      MAIZI_BASE_URL: ${MAIZI_BASE_URL:-https://www.maizitech.xyz/v2}
       MAIZI_IMAGE_MODEL: ${MAIZI_IMAGE_MODEL:-gpt-image-2}
+      MAIZI_RESOLUTION: ${MAIZI_RESOLUTION:-1K}
+      MAIZI_QUALITY: ${MAIZI_QUALITY:-medium}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
       BETA_CODES: ${BETA_CODES:-CAT2026}
       SMTP_HOST: ${SMTP_HOST:-}

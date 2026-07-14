@@ -2,7 +2,9 @@
  * gen-image —— 文生图公共 helper,单 provider。
  *
  * provider:
- *   'maizi' —— MaiziTech (maizitech.xyz),OpenAI 兼容格式,gpt-image-2
+ *   'maizi' —— MaiziTech v2 (maizitech.xyz),gpt-image-2
+ *   文档: https://www.maizitech.xyz/docs/images-v2
+ *   协议: /v2/images/generations,b64_json 响应(非 OpenAI URL 格式)
  *
  * 文本/视觉解析模型仍走火山方舟(workflow-executor / analyze-inspiration),与生图模块无关。
  *
@@ -10,7 +12,8 @@
  *   成功 { url, prompt, model }
  *   失败 { error }(具体错误信息,便于前端/日志定位)
  *
- * 返回临时 URL → 下载落盘,供设计工作流/旧流水线共用。
+ * v2 响应直接返回 b64 图片数据 → 解码落盘,供设计工作流/旧流水线共用。
+ * 兼容回退:若响应仍为 url 形式,走原有下载流程。
  */
 
 'use strict';
@@ -21,20 +24,40 @@ const crypto = require('crypto');
 const storage = require('./storage');
 
 /* ─── provider 配置 ─────────────────────────────────────────── */
-// 当前仅支持 maizi(MaiziTech,gpt-image-2) —— 唯一生图模型。
+// 当前仅支持 maizi(MaiziTech v2,gpt-image-2) —— 唯一生图模型。
+// 文档: https://www.maizitech.xyz/docs/images-v2
 // 新增模型只加一项即可。
 const PROVIDERS = {
   maizi: {
     apiKey: () => process.env.MAIZI_API_KEY,
     missingKeyError: 'MAIZI_API_KEY not set',
-    baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v1',
+    // v2 端点(注意:是 /v2 不是 /v1)
+    baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v2',
     defaultModel: () => process.env.MAIZI_IMAGE_MODEL || 'gpt-image-2',
-    // gpt-image-2 仅支持正方形 —— 所有设计工作流比例统一走 1024x1024
-    sizeMap: { '1:1': '1024x1024', '3:4': '1024x1024', '4:3': '1024x1024', '9:16': '1024x1024', '16:9': '1024x1024' },
+    // gpt-image-2 支持 3 种标准尺寸;这里把设计工作流比例就近映射到可用水晶球
+    //   1:1 → 1024x1024   3:4/9:16(竖) → 832x1216   4:3/16:9(横) → 1216x832
+    sizeMap: { '1:1': '1024x1024', '3:4': '832x1216', '4:3': '1216x832', '9:16': '832x1216', '16:9': '1216x832' },
     fallbackSize: '1024x1024',
+    // 1K ≈ 1000px 级别,与上面尺寸匹配;可选 standard/low
+
+    defaultResolution: () => process.env.MAIZI_RESOLUTION || '1K',
+    // quality: standard/low/high/medium
+    defaultQuality: () => process.env.MAIZI_QUALITY || 'medium',
     // referenceImageUrl 被忽略(gpt-image-2 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
-    buildBody: (model, prompt, size, _referenceImageUrl) => ({ model, prompt, size, n: 1 }),
-    extractUrl: (data) => data?.data?.[0]?.url,
+    buildBody: (model, prompt, size, _referenceImageUrl, cfg) => ({
+      model, prompt, size, n: 1,
+      resolution: cfg.defaultResolution(),
+      quality: cfg.defaultQuality(),
+      response_format: 'b64_json',
+    }),
+    // v2 响应为 b64_json:解出图片 Buffer(不再走 URL 下载)
+    extractImage: (data) => {
+      const b64 = data?.data?.[0]?.b64_json || data?.data?.[0]?.url || null;
+      if (!b64) return null;
+      // 兼容 url 形式(某些配置下仍可能返回 url)
+      if (/^https?:\/\//.test(b64)) return { url: b64 };
+      return { buffer: Buffer.from(b64, 'base64') };
+    },
     label: 'MaiziTech',
   },
 };
@@ -48,15 +71,19 @@ const PROVIDERS = {
  * 例:
  *   'maizi-image-edit': {
  *     apiKey: () => process.env.MAIZI_API_KEY,
- *     baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v1',
+ *     baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v2',
  *     defaultModel: () => process.env.MAIZI_IMAGE_EDIT_MODEL || 'gpt-image-edit-...',
  *     imageRef: true,
  *     sizeMap: { '1:1': '1024x1024', ... },
  *     fallbackSize: '1024x1024',
- *     buildBody: (model, prompt, size, referenceImageUrl) => ({
- *       model, prompt, image: referenceImageUrl, size, ...     // 具体视图像编辑文档
+ *     defaultResolution: () => '1K',
+ *     defaultQuality: () => 'medium',
+ *     buildBody: (model, prompt, size, referenceImageUrl, cfg) => ({
+ *       model, prompt, image: referenceImageUrl, size,
+ *       resolution: cfg.defaultResolution(), quality: cfg.defaultQuality(),
+ *       response_format: 'b64_json',
  *     }),
- *     extractUrl: (data) => data?.data?.[0]?.url,
+ *     extractImage: (data) => { const b64 = data?.data?.[0]?.b64_json; return b64 ? { buffer: Buffer.from(b64, 'base64') } : null; },
  *     label: 'Maizi-ImageEdit',
  *   },
  */
@@ -122,6 +149,7 @@ async function generateImage(prompt, opts) {
   const MAX_RETRIES = 1;
   let lastError = null;
   let _imageUrl = null;
+  let _imageBuffer = null;
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
     // 每次尝试新建 controller/计时器
     const controller = new AbortController();
@@ -134,7 +162,7 @@ async function generateImage(prompt, opts) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, referenceImageUrl)),
+        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, referenceImageUrl, cfg)),
         signal: controller.signal,
       });
 
@@ -151,18 +179,20 @@ async function generateImage(prompt, opts) {
       }
 
       const data = await res.json();
-      let imageUrl = cfg.extractUrl(data) || null;
-      if (!imageUrl) {
-        console.error(`[gen-image] ${cfg.label} returned no image URL (attempt ${attempt}):`, JSON.stringify(data).slice(0, 200));
+      const extracted = cfg.extractImage(data);
+      if (!extracted) {
+        console.error(`[gen-image] ${cfg.label} returned no image (attempt ${attempt}):`, JSON.stringify(data).slice(0, 200));
         if (attempt < MAX_RETRIES + 1) {
-          lastError = '返回无图片 URL';
+          lastError = '返回无图片数据';
           await new Promise((r) => setTimeout(r, 2000 * attempt));
           continue;
         }
-        return { error: `${cfg.label} 返回无图片 URL: ${JSON.stringify(data).slice(0, 120)}` };
+        return { error: `${cfg.label} 返回无图片数据: ${JSON.stringify(data).slice(0, 120)}` };
       }
       // 成功 — 跳出循环进入下载阶段
-      _imageUrl = imageUrl;
+      // b64 模式:直接拿到 buffer; url 模式:记录 url 后续下载
+      _imageUrl = extracted.url || null;
+      _imageBuffer = extracted.buffer || null;
       break;
     } catch (e) {
       const isTimeout = e?.name === 'AbortError';
@@ -180,19 +210,32 @@ async function generateImage(prompt, opts) {
     }
   }
 
-  let imageUrl = _imageUrl;
-  if (!imageUrl) {
+  // 优先使用 b64 直接解码的 buffer;否则走 url 下载
+  let buf = _imageBuffer || null;
+  if (!buf) {
+    const imageUrl = _imageUrl;
+    if (!imageUrl) {
+      return { error: lastError || `${cfg.label} 生成失败(已重试 ${MAX_RETRIES} 次)` };
+    }
+    // 返回的 URL 是临时的,立即下载并持久化到 storage(本地或 S3)
+    try {
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) {
+        console.error(`[gen-image] download image failed: HTTP ${imgRes.status}`);
+        return { error: `下载图片失败(HTTP ${imgRes.status})` };
+      }
+      buf = Buffer.from(await imgRes.arrayBuffer());
+    } catch (e) {
+      console.error('[gen-image] download image error:', e?.message || String(e));
+      return { error: `下载图片失败: ${e?.message || e}` };
+    }
+  }
+
+  if (!buf) {
     return { error: lastError || `${cfg.label} 生成失败(已重试 ${MAX_RETRIES} 次)` };
   }
 
-  // 返回的 URL 是临时的,立即下载并持久化到 storage(本地或 S3)
   try {
-    const imgRes = await fetch(imageUrl);
-    if (!imgRes.ok) {
-      console.error(`[gen-image] download image failed: HTTP ${imgRes.status}`);
-      return { error: `下载图片失败(HTTP ${imgRes.status})` };
-    }
-    const buf = Buffer.from(await imgRes.arrayBuffer());
 
     // tmp 落盘(由 saveUpload 再路由到最终位置,统一本地/S3 两条路径)
     const cleanSafe = String(safeName || 'image').replace(/[^a-zA-Z0-9一-龥_-]+/g, '-').slice(0, 60) || 'image';
