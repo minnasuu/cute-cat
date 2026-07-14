@@ -48,13 +48,15 @@ services:
       QWEN_MODEL: ${QWEN_MODEL:-qwen3.5-plus}
       QWEN_VISION_MODEL: ${QWEN_VISION_MODEL:-qwen3.6-plus}
       # 豆包 2 模型(同一 ARK_API_KEY / ARK_BASE_URL):
-      #   生图: doubao-seedream-5-0-pro-260628 (/images/generations)
       #   文本/视觉解析: doubao-seed-2-1-pro-260628 (/chat/completions, /responses)
       ARK_API_KEY: ${ARK_API_KEY:-}
       ARK_BASE_URL: ${ARK_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
       ARK_TEXT_MODEL: ${ARK_TEXT_MODEL:-doubao-seed-2-1-pro-260628}
-      ARK_IMAGE_MODEL: ${ARK_IMAGE_MODEL:-doubao-seedream-5-0-pro-260628}
       DEFAULT_AI_MODEL: ${DEFAULT_AI_MODEL:-ark}
+      # MaiziTech 生图(gpt-image-2, /v1/images/generations, 仅正方形 1024x1024)
+      MAIZI_API_KEY: ${MAIZI_API_KEY:-}
+      MAIZI_BASE_URL: ${MAIZI_BASE_URL:-https://www.maizitech.xyz/v1}
+      MAIZI_IMAGE_MODEL: ${MAIZI_IMAGE_MODEL:-gpt-image-2}
       JWT_SECRET: ${JWT_SECRET:-cute-cat-secret-key-change-in-production}
       BETA_CODES: ${BETA_CODES:-CAT2026}
       SMTP_HOST: ${SMTP_HOST:-}

@@ -27,7 +27,7 @@ import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage
 import { Markdown } from "../lib/markdown";
 import { parseDesignIntent, hasLetteringElement, categorizeCategory, type DesignIntent } from "../lib/design-intent";
 import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
-import { parseDesignProposal } from "../lib/design-proposal";
+import { parseDesignProposal, extractHexColors } from "../lib/design-proposal";
 import { useEditingProduct } from "../contexts/editing-product";
 import { SwatchStrip } from "../pages/Materials";
 
@@ -341,10 +341,16 @@ export default function ComposerPage({
   const [illustHtml, setIllustHtml] = useState<string | null>(null);     // 当前画布渲染的自包含 HTML
   const [illustBusy, setIllustBusy] = useState(false);                    // 插画生成进行中(不阻塞 chat)
   const [illustMsgId, setIllustMsgId] = useState<string | null>(null);   // 当前展示插画的消息 id(渲染画布入口)
+  const [expressMode, setExpressMode] = useState(false);                // 单品极速模式(跳过线稿 + 选材料,直接出图)
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs, busy]);
+
+  // 极速模式仅单品可用:切到其他模式时自动关闭
+  useEffect(() => {
+    if (mode !== "single" && expressMode) setExpressMode(false);
+  }, [mode]);
 
   // 开场自动发一条 assistant 消息(按 mode 给不同引导)
   useEffect(() => {
@@ -439,6 +445,7 @@ export default function ComposerPage({
     setRecommendation(null);
     setIllustHtml(null);
     setIllustOutputMode("image");
+    setExpressMode(false);
     setDraft(null);
     setCurrentProductId(null);
     savedProductRef.current = null;
@@ -698,10 +705,48 @@ export default function ComposerPage({
     setIllustBusy(false);
   }
 
+  /** 单品极速模式:跳过线稿和选材料,直接调用 /design/generate 出图(三视图/平铺图) */
+  async function expressGenerate() {
+    if (generating) return;
+    setGenerating(true);
+    setStage("generating");
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "⏳ 正在快速生成设计图…", startedAt: Date.now() }]);
+    const t0 = Date.now();
+    try {
+      const res = await fetch(teamApi(teamId ?? "").chatUrl.replace("/chat", "/design/generate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode, plan: planText }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`服务暂不可用 (HTTP ${res.status})${errText.slice(0, 80) ? `: ${errText.slice(0, 80)}` : ''}`);
+      }
+      const data = await res.json();
+      setImages(data.images || []);
+      setStage("presenting");
+      const elapsed = Date.now() - t0;
+      setMsgs((xs) => [...xs, {
+        id: crypto.randomUUID(), role: "assistant",
+        text: `✨ 设计图已生成(${formatDuration(elapsed)})! 看看这套作品,有需要调整的地方随时告诉我。`,
+        timingMs: elapsed,
+      }]);
+    } catch (e: any) {
+      const elapsed = Date.now() - t0;
+      setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `生成失败(${formatDuration(elapsed)}): ${e.message}`, timingMs: elapsed }]);
+      setStage("proposal");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   /** 用户确认企划 → 进入生成:
    *  - 插画(illustration):按 illustOutputMode 分叉(图片/HTML),走原有路径;
    *  - 单品 / 系列(single/collection):走「线稿生成」(线稿 → 选材料 → 最终成图)。 */
   async function startGeneration() {
+    // 单品极速模式:跳线稿 & 选材料,直达效果图
+    if (expressMode && mode === "single") { await expressGenerate(); return; }
     if (mode === "illustration") {
       if (illustOutputMode === "html") { await generateHtml(); return; }
       // 插画 + 图片模式 → 走 /design/generate(1:1 印花图案)
@@ -953,8 +998,10 @@ export default function ComposerPage({
   const showLineart = mode !== "illustration" && (stage === "presenting-lineart" || stage === "generating-lineart") && images.some((im) => im.slot === "lineart");
   // 最终图展示(线稿保留 + 最终图)
   const showFinalImages = mode !== "illustration" && stage === "presenting" && images.some((im) => im.slot === "final");
-  // 图片画廊:线稿 / 最终图 / 插画图片
-  const showImages = (showLineart || showFinalImages || (stage === "presenting" && mode === "illustration")
+  // 极速模式效果图展示(单品 slot=single,直接出图,跳过了线稿/选材料)
+  const showExpressImages = expressMode && mode === "single" && stage === "presenting" && images.some((im) => im.slot === "single");
+  // 图片画廊:线稿 / 极速模式效果图 / 最终图 / 插画图片
+  const showImages = (showLineart || showFinalImages || showExpressImages || (stage === "presenting" && mode === "illustration")
     || (stage === "generating" && images.length > 0))
     && !(mode === "illustration" && illustOutputMode === "html");
   // 插画 HTML 产物 → 画布
@@ -1035,11 +1082,25 @@ export default function ComposerPage({
               </div>
             )}
 
+            {/* 极速模式开关(仅 single 模式,企划确认后) */}
+            {canGenerate && mode === "single" && (
+              <div className="flex justify-center">
+                <label className="flex items-center gap-2 text-[12px] text-gray-600 cursor-pointer select-none py-1.5 px-3 rounded-lg bg-white border border-gray-200 hover:border-gray-300">
+                  <input type="checkbox" checked={expressMode}
+                    onChange={(e) => setExpressMode(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-500 focus:ring-primary-400 cursor-pointer" />
+                  极速模式(跳过线稿和选材料,直接出图)
+                </label>
+              </div>
+            )}
+
             {/* 生成按钮(企划确认后) */}
             {canGenerate && (
               <div className="flex justify-center">
                 <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
-                  {mode === "illustration" ? (illustOutputMode === "html" ? "确认方案,生成插画 HTML" : "确认方案,生成插画图") : "确认方案,生成设计线稿"}
+                  {expressMode ? "确认方案,快速生成设计图"
+                    : mode === "illustration" ? (illustOutputMode === "html" ? "确认方案,生成插画 HTML" : "确认方案,生成插画图")
+                    : "确认方案,生成设计线稿"}
                 </button>
               </div>
             )}
@@ -1085,7 +1146,7 @@ export default function ComposerPage({
             {showImages && images.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                 <div className="text-[11px] uppercase tracking-wider text-gray-500">
-                  {showLineart ? "设计线稿" : (showFinalImages && recommendation ? `最终设计图 · ${recommendation.name}` : "设计图")}
+                  {showLineart ? "设计线稿" : (showExpressImages ? "设计图(极速)" : (showFinalImages && recommendation ? `最终设计图 · ${recommendation.name}` : "设计图"))}
                 </div>
                 <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
                   {images.map((im) => (
@@ -1120,13 +1181,13 @@ export default function ComposerPage({
         {/* 桌面端侧栏:单品/系列/插画+图片=设计方案·材料选择 / 插画+HTML=画布预览 + 修图输入 */}
         {mode === "illustration" && illustOutputMode === "html"
           ? <IllustrationCanvas html={illustHtml} generating={illustBusy} stage={stage} illustHtml={illustHtml} onModify={regenerateHtml} onSaveToLookbook={saveToLookbook} />
-          : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} />
+          : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
         }
       </div>
       {/* 移动端抽屉(<md,跟主内容同级渲染) */}
       {isMobile && (mode === "illustration" && illustOutputMode === "html")
         ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} stage={stage} onSaveToLookbook={saveToLookbook} />
-        : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} />
+        : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
       }
     </>
   );
@@ -1183,26 +1244,28 @@ function IllustrationCanvas({ html, generating, stage, onModify, onSaveToLookboo
 }
 
 /** 桌面端「设计方案 / 材质推荐 / 设计图稿」侧栏(单品 / 系列 / 插画+图片 共用) */
-function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating }: {
+function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating, expressMode }: {
   planText: string; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void;
   recommendation: MaterialRecommendation | null;
   onRecommendationChange: (r: MaterialRecommendation) => void;
   onRefreshRecommendation: () => void;
   onGenerateFinal: () => void;
   generating: boolean;
+  expressMode: boolean;
 }) {
   const canSave = (stage === "presenting" || stage === "presenting-lineart" || stage === "material-recommend") && images.some((im) => im.url);
   const isRecForm = stage === "material-recommend" || stage === "generating-final";
   const hasLineart = images.some((im) => im.slot === "lineart" && im.url);
   const hasFinal = images.some((im) => im.slot === "final" && im.url);
+  const hasExpress = expressMode && images.some((im) => im.slot === "single" && im.url);
   return (
     <aside className="hidden md:flex flex-col border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0">
-      {/* ① 设计图稿(线稿+效果图缩略,始终可见) */}
-      {(hasLineart || hasFinal) && (
+      {/* ① 设计图稿(线稿+效果图缩略 / 极速模式产物,始终可见) */}
+      {(hasLineart || hasFinal || hasExpress) && (
         <div className="shrink-0 p-4 pb-2 border-b border-gray-200">
           <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计图稿</div>
           <div className="flex gap-2 overflow-x-auto">
-            {images.filter((im) => (im.slot === "lineart" || im.slot === "final") && im.url && !im.error).map((im) => (
+            {images.filter((im) => (im.slot === "lineart" || im.slot === "final" || (expressMode && im.slot === "single")) && im.url && !im.error).map((im) => (
               <div key={im.slot} className="shrink-0 w-20">
                 <div className="aspect-square rounded-lg border border-gray-200 overflow-hidden bg-white">
                   <img src={im.url} alt={im.label} className="w-full h-full object-cover" />
@@ -1235,6 +1298,21 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation
                 </div>
               </div>
             )}
+            {/* 极速模式:从方案文本提取配色展示 */}
+            {expressMode && !recommendation && planText && (() => {
+              const hexes = extractHexColors(planText);
+              if (!hexes.length) return null;
+              return (
+                <div className="mt-4 pt-3 border-t border-gray-200">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">方案配色</div>
+                  <div className="flex gap-1">
+                    {hexes.map((c, i) => (
+                      <span key={i} className="w-5 h-5 rounded border border-gray-200" style={{ background: c }} title={c} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </>
         }
       </div>
@@ -1366,18 +1444,20 @@ function RecForm({ recommendation, onChange, onRefresh, onConfirm, loading, disa
 }
 
 /** 移动端企划抽屉(<md 才渲染),挂在 Composer 外层由父组件组合。 */
-export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating }: {
+export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating, expressMode }: {
   planText: string; open: boolean; onClose: () => void; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void;
   recommendation: MaterialRecommendation | null;
   onRecommendationChange: (r: MaterialRecommendation) => void;
   onRefreshRecommendation: () => void;
   onGenerateFinal: () => void;
   generating: boolean;
+  expressMode: boolean;
 }) {
   const canSave = (stage === "presenting" || stage === "presenting-lineart" || stage === "material-recommend") && images.some((im) => im.url);
   const isRecForm = stage === "material-recommend" || stage === "generating-final";
   const hasLineart = images.some((im) => im.slot === "lineart" && im.url);
   const hasFinal = images.some((im) => im.slot === "final" && im.url);
+  const hasExpress = expressMode && images.some((im) => im.slot === "single" && im.url);
   return (
     <>
       {open && (
@@ -1396,9 +1476,9 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
         </div>
 
         {/* 图稿缩略 */}
-        {(hasLineart || hasFinal) && (
+        {(hasLineart || hasFinal || hasExpress) && (
           <div className="shrink-0 px-4 py-2 border-b border-gray-100 flex gap-2 overflow-x-auto">
-            {images.filter((im) => (im.slot === "lineart" || im.slot === "final") && im.url && !im.error).map((im) => (
+            {images.filter((im) => (im.slot === "lineart" || im.slot === "final" || (expressMode && im.slot === "single")) && im.url && !im.error).map((im) => (
               <div key={im.slot} className="shrink-0 w-14">
                 <div className="aspect-square rounded border border-gray-200 overflow-hidden bg-white">
                   <img src={im.url} alt={im.label} className="w-full h-full object-cover" />
@@ -1428,6 +1508,21 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
                   </div>
                 </div>
               )}
+              {/* 极速模式:从方案文本提取配色展示 */}
+              {expressMode && !recommendation && planText && (() => {
+                const hexes = extractHexColors(planText);
+                if (!hexes.length) return null;
+                return (
+                  <div className="mt-4 pt-3 border-t border-gray-200">
+                    <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">方案配色</div>
+                    <div className="flex gap-1">
+                      {hexes.map((c, i) => (
+                        <span key={i} className="w-5 h-5 rounded border border-gray-200" style={{ background: c }} title={c} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           }
         </div>
