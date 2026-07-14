@@ -121,12 +121,11 @@ export default function MaterialsPage() {
       try {
         const created = await api.createMaterial({ ...payload, category: "面料", colorImages: ciListRaw });
         id = created.id;
-      } catch (e: any) {
-        // 同上,线上 schema 未同步时退化为不带 colorImages
+      } catch (e) {
         const msg = String(e?.message || "");
         if (msg.includes("column") || msg.includes("colorImages") || msg.includes("Unknown field")) {
           const { colorImages: _omit, ...withoutCi } = payload;
-          const created = await api.createMaterial({ ...payload: withoutCi, category: "面料" });
+          const created = await api.createMaterial({ ...withoutCi, category: "面料" });
           id = created.id;
         } else throw e;
       }
