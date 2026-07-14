@@ -29,6 +29,7 @@ import { parseDesignIntent, hasLetteringElement, categorizeCategory, type Design
 import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-match";
 import { parseDesignProposal, extractHexColors } from "../lib/design-proposal";
 import { useEditingProduct } from "../contexts/editing-product";
+import { useComposerPrompt } from "../contexts/composer-prompt";
 import { SwatchStrip } from "../pages/Materials";
 
 type DesignStage =
@@ -302,6 +303,7 @@ export default function ComposerPage({
   const skillStore = useSkillStore();
   const { teamId, navigateTab } = useCurrentTeam();
   const { editingProduct, clearEditingProduct } = useEditingProduct();
+  const { resetNonce } = useComposerPrompt();
 
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [busy, setBusy] = useState(false);
@@ -434,10 +436,17 @@ export default function ComposerPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingProduct]);
 
-  /** 新会话:清空聊天窗口与 AI 上下文,回到开场白重新开始一个全新设计 */
-  function resetSession() {
-    const hasContent = msgs.length > 1 || planText || images.length > 0 || recommendation || illustHtml || stage !== "greeting";
-    if (hasContent && !confirm("开始新会话将清空当前聊天与方案,确定继续?")) return;
+  // 「制作相似」新会话信号:nonce 变化时强制清空工作台(无确认),等同于 +新会话
+  const resetNonceRef = useRef(resetNonce);
+  useEffect(() => {
+    if (resetNonceRef.current !== resetNonce) {
+      resetNonceRef.current = resetNonce;
+      forceResetSession();
+    }
+  }, [resetNonce]);
+
+  /** 强制新会话(无确认):清空聊天窗口与 AI 上下文,回到开场白重新开始一个全新设计 */
+  function forceResetSession() {
     setMsgs([{ id: crypto.randomUUID(), role: "assistant", text: getGreeting(mode) }]);
     setStage("greeting");
     setPlanText("");
@@ -452,6 +461,13 @@ export default function ComposerPage({
     setReferences([]);
     referencesRef.current = [];
     clearEditingProduct();
+  }
+
+  /** 新会话(+新会话按钮):带确认弹窗;「制作相似」等外部信号走 forceResetSession */
+  function resetSession() {
+    const hasContent = msgs.length > 1 || planText || images.length > 0 || recommendation || illustHtml || stage !== "greeting";
+    if (hasContent && !confirm("开始新会话将清空当前聊天与方案,确定继续?")) return;
+    forceResetSession();
   }
 
   /** 灵感池排序优先级:细品类精准命中 > 同 mode > 未分类 */

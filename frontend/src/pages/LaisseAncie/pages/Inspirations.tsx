@@ -257,13 +257,15 @@ export default function InspinationsPage() {
 
 function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationItem; onDelete: (id: string) => void; onEdit: (asset: InspirationItem) => void; onRetry: (id: string) => void; }) {
   const { navigateTab } = useCurrentTeam();
-  const { setDraftPrompt } = useComposerPrompt();
+  const { setDraftPrompt, requestReset } = useComposerPrompt();
   const hasAnalysis = asset.category || asset.visualStyle || asset.designApproach || (asset.inspiration?.length ?? 0) > 0;
 
   const handleMakeSimilar = (e: React.MouseEvent) => {
     e.stopPropagation();
     const prompt = buildSimilarPrompt(asset);
     if (!prompt) return;
+    // 先清空工作台(等同于 +新会话),再填入整理后的文案
+    requestReset();
     setDraftPrompt(prompt);
     navigateTab("single");
   };
