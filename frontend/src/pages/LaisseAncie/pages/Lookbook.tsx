@@ -76,7 +76,7 @@ export default function LookbookPage() {
   const { teamId, navigateTab } = useCurrentTeam();
   const store = useDesignStore();
   const [tab, setTab] = useState<TabKey>("all");
-  const [view, setView] = useState<ViewMode>("table");
+  const [view, setView] = useState<ViewMode>("card");
   const [statusFilter, setStatusFilter] = useState<ProductStatus | "all">("all");
   // 产品详情/编辑/新增三态弹窗:create | view.p | edit.p
   const [editor, setEditor] = useState<null | { mode: "create" } | { mode: "view" | "edit"; product: Product }>(null);
