@@ -7,6 +7,25 @@ import { apiClient as _apiClient } from '../../../utils/apiClient';
 
 export const apiClient = _apiClient;
 
+// ---------- 材料组合批次(Batch) ----------
+
+/** 材料组合 m×n 批次视图(后端 batchPublicView 形状) */
+export interface MaterialComboBatch {
+  batchId: string;
+  teamId: string;
+  status: 'running' | 'done' | 'error';
+  error?: string;
+  name: string;
+  fabrics: { url: string; name: string; texture?: string; silhouette?: string; hex?: string[] }[];
+  styles: { url: string; name: string; texture?: string; silhouette?: string; hex?: string[] }[];
+  items: { fi: number; si: number; status: 'pending' | 'done' | 'error'; url?: string; error?: string; prompt?: string }[];
+  total: number;
+  completed: number;
+  failed: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ---------- 通用团队作用域 ----------
 
 /**
@@ -56,6 +75,29 @@ export function teamApi(teamId: string) {
     // 材料参考图上传(multipart, field "file") —— 返回 { id, url }
     uploadMaterialImage: (id: string, formData: FormData) =>
       _apiClient.post(pre(`/materials/${id}/image`), formData),
+    // 面料色卡图上传(multipart, file + idx 可选) —— colorImages[idx].url, 返回 { id, idx, url }
+    uploadMaterialColorImage: (id: string, formData: FormData) =>
+      fetch(pre(`/materials/${id}/color-image`), { method: "POST", body: formData, credentials: "include" }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      }),
+    // 删除某色卡(idx) —— 返回 { ok, colorImages }
+    removeMaterialColorImage: (id: string, idx: number) =>
+      fetch(pre(`/materials/${id}/color-image`), {
+        method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ idx }),
+      }).then((r) => { if (!r.ok) throw new Error(`API ${r.status}`); return r.json(); }),
+    // 款式 CRUD + 参考图
+    listStyles: (category?: string) =>
+      _apiClient.get(pre(category && category !== "all" ? `/styles?category=${encodeURIComponent(category)}` : "/styles")),
+    createStyle: (body: Record<string, unknown>) => _apiClient.post(pre("/styles"), body),
+    updateStyle: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/styles/${id}`), body),
+    deleteStyle: (id: string) => _apiClient.delete(pre(`/styles/${id}`)),
+    uploadStyleImage: (id: string, formData: FormData) =>
+      fetch(pre(`/styles/${id}/image`), { method: "POST", body: formData, credentials: "include" }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      }),
 
     // skills
     listSkills: (category?: string) =>
@@ -90,6 +132,12 @@ export function teamApi(teamId: string) {
     createCollection: (body: Record<string, unknown>) => _apiClient.post(pre('/collections'), body),
     updateCollection: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/collections/${id}`), body),
     deleteCollection: (id: string) => _apiClient.delete(pre(`/collections/${id}`)),
+
+    // 材料组合批次(m×n 矩阵白底效果图)
+    // POST /design/material-combo → 202 batch,轮询 GET /design/material-combo/batch/:id,单格重试 POST ../regenerate
+    materialComboUrl: pre('/design/material-combo'),
+    materialComboBatchUrl: (batchId: string) => pre(`/design/material-combo/batch/${encodeURIComponent(batchId)}`),
+    materialComboRegenerateUrl: (batchId: string) => pre(`/design/material-combo/batch/${encodeURIComponent(batchId)}/regenerate`),
 
     // chat(SSE 流式主流程)
     chatUrl: pre('/chat'),

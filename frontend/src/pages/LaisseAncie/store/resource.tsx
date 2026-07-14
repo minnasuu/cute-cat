@@ -7,6 +7,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
 import { teamApi } from "../lib/api";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
+import type { StyleRow } from "../types/design";
 
 export interface InspirationItem {
   id: string;
@@ -66,9 +67,11 @@ export interface MaterialRow {
 interface ResourceValue {
   inspirations: InspirationItem[];
   materials: MaterialRow[];
+  styles: StyleRow[];
   loading: boolean;
   refreshInspirations: () => Promise<void>;
   refreshMaterials: () => Promise<void>;
+  refreshStyles: () => Promise<void>;
   refreshAll: () => Promise<void>;
 }
 
@@ -78,6 +81,7 @@ export function ResourceStoreProvider({ children }: { children: ReactNode }) {
   const { teamId } = useCurrentTeam();
   const [inspirations, setInspirations] = useState<InspirationItem[]>([]);
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
+  const [styles, setStyles] = useState<StyleRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refreshInspirations = useCallback(async (tid: string) => {
@@ -100,22 +104,38 @@ export function ResourceStoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshStyles = useCallback(async (tid: string) => {
+    try {
+      const rows = await teamApi(tid).listStyles();
+      setStyles(rows);
+    } catch (err) {
+      console.error("[resource] refresh styles failed", err);
+      setStyles([]);
+    }
+  }, []);
+
   const refreshAll = useCallback(async (tid: string) => {
     setLoading(true);
     try {
-      await Promise.all([refreshInspirations(tid), refreshMaterials(tid)]);
+      await Promise.all([refreshInspirations(tid), refreshMaterials(tid), refreshStyles(tid)]);
     } finally {
       setLoading(false);
     }
-  }, [refreshInspirations, refreshMaterials]);
+  }, [refreshInspirations, refreshMaterials, refreshStyles]);
 
   useEffect(() => {
     if (teamId) void refreshAll(teamId);
   }, [refreshAll, teamId]);
 
   const value = useMemo<ResourceValue>(
-    () => ({ inspirations, materials, loading, refreshInspirations: () => (teamId ? refreshInspirations(teamId) : Promise.resolve()), refreshMaterials: () => (teamId ? refreshMaterials(teamId) : Promise.resolve()), refreshAll: () => (teamId ? refreshAll(teamId) : Promise.resolve()) }),
-    [inspirations, materials, loading, teamId, refreshInspirations, refreshMaterials, refreshAll],
+    () => ({
+      inspirations, materials, styles, loading,
+      refreshInspirations: () => (teamId ? refreshInspirations(teamId) : Promise.resolve()),
+      refreshMaterials: () => (teamId ? refreshMaterials(teamId) : Promise.resolve()),
+      refreshStyles: () => (teamId ? refreshStyles(teamId) : Promise.resolve()),
+      refreshAll: () => (teamId ? refreshAll(teamId) : Promise.resolve()),
+    }),
+    [inspirations, materials, styles, loading, teamId, refreshInspirations, refreshMaterials, refreshStyles, refreshAll],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

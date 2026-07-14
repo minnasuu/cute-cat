@@ -12,6 +12,7 @@ import { skillHintsFor } from "../LaisseAncie/lib/skill-hints";
 import type { VisualAsset } from "../LaisseAncie/types/visual-asset";
 import type { InspirationItem } from "../LaisseAncie/store/resource";
 import type { SkillArticle } from "../LaisseAncie/types/skill";
+import type { StyleRow } from "../LaisseAncie/types/design";
 
 export interface BrandProfile {
   nameZh?: string;
@@ -33,8 +34,9 @@ export interface KnowledgeDeps {
   skills: SkillArticle[];
   assets: VisualAsset[];
   inspirations: InspirationItem[];
-  // materials / products 字段保留给资源 tab / Lookbook 自身消费,但设计阶段注入已不再引用
+  // materials / styles / products 保留给资源 tab / Lookbook / 材料组合自身消费,设计阶段注入已不再引用
   materials: any[];
+  styles: StyleRow[];
   products: any[];
   brand?: BrandProfile;
 }

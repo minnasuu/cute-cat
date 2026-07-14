@@ -35,6 +35,7 @@ import MaterialComboPage from '../LaisseAncie/pages/MaterialCombo';
 const InspirationsPage = lazy(() => import('../LaisseAncie/pages/Inspirations'));
 const LookbookPage = lazy(() => import('../LaisseAncie/pages/Lookbook'));
 const MaterialsPage = lazy(() => import('../LaisseAncie/pages/Materials'));
+const StylesPage = lazy(() => import('../LaisseAncie/pages/Styles'));
 const SkillsPage = lazy(() => import('../LaisseAncie/pages/Skills'));
 const AssetsPage = lazy(() => import('../LaisseAncie/pages/Assets'));
 
@@ -42,6 +43,7 @@ const DATA_COMPONENTS: Record<string, React.LazyExoticComponent<ComponentType<an
   inspirations: InspirationsPage,
   lookbook: LookbookPage,
   materials: MaterialsPage,
+  styles: StylesPage,
   skills: SkillsPage,
   assets: AssetsPage,
 };
@@ -110,6 +112,7 @@ export default function TeamWorkbench() {
                   assets: visualAssetStore.assets,
                   inspirations: resourceStore.inspirations,
                   materials: resourceStore.materials,
+                  styles: resourceStore.styles,
                   products: designStore.products,
                   brand,
                 }}
@@ -124,6 +127,7 @@ export default function TeamWorkbench() {
                   assets: visualAssetStore.assets,
                   inspirations: resourceStore.inspirations,
                   materials: resourceStore.materials,
+                  styles: resourceStore.styles,
                   products: designStore.products,
                   brand,
                 }}

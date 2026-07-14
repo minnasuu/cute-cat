@@ -54,6 +54,24 @@ export interface ProductImage {
   url: string;
 }
 
+/** 面料色卡条目(colorImages 一项);同一面料多个颜色各一张图 */
+export interface ColorImageEntry {
+  hex?: string;
+  url?: string;
+  name?: string;
+}
+
+/** 款式资源行(Resources → 款式子 tab 的条目) */
+export interface StyleRow {
+  id: string;
+  name: string;
+  category: string;
+  tags?: string[];
+  image?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** AI 推荐的材质+配色方案(线稿→推荐→成图流程写入 Lookbook) */
 export interface MaterialRecommendation {
   name: string;

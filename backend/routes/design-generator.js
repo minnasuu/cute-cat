@@ -22,8 +22,18 @@ const { generateImage } = require('../lib/gen-image');
 const { callArkStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const storage = require('../lib/storage');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+const { findOwned } = require('../lib/laisse-ancie-helpers');
 
 const router = express.Router();
+
+// ── material-combo 守卫常量 ───────────────────────────────────
+const MAX_FABRIC = 6;
+const MAX_STYLE = 6;
+const MAX_CELLS = MAX_FABRIC * MAX_STYLE;        // 36 张上限
+const MC_BATCH_CAP = Number.parseInt(process.env.MC_BATCH_CAP || '', 10) || 4; // 并发生成上限
+const MC_BATCH_TTL_MS = 15 * 60 * 1000;           // 批次在内存保留 15 分钟
 
 // ── material-combo 专用 multer ─────────────────────────────────
 const multerStorage = multer.diskStorage({
@@ -44,8 +54,8 @@ const mcUpload = multer({
     else cb(new Error('unsupported mime'));
   },
 }).fields([
-  { name: 'fabric', maxCount: 1 },
-  { name: 'style', maxCount: 1 },
+  { name: 'fabrics', maxCount: MAX_FABRIC },
+  { name: 'styles', maxCount: MAX_STYLE },
 ]);
 
 /** 把 multer 暂存文件落到最终位置(本地或 S3),返回公网/相对 URL(saveUpload 内部会压缩) */
@@ -53,6 +63,120 @@ async function persistTempFile(tmpPath, filename, mime) {
   const savePath = storage.createSavePath(`design/material-combo`, filename);
   await storage.saveUpload(tmpPath, savePath, mime);
   return storage.getPublicUrl(savePath);
+}
+
+/**
+ * 并发池:worker-pool 模式,任务按 index 有序完成。
+ * @param {Array<() => Promise<any>>} tasks
+ * @param {number} cap 并发上限
+ * @param {(index:number, result:any)=>void} [onProgress] 每个任务完成回调
+ */
+async function mapConcurrent(tasks, cap, onProgress) {
+  const results = new Array(tasks.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(cap, tasks.length) || 1 }, async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      try {
+        results[i] = { value: await tasks[i]() };
+      } catch (e) {
+        results[i] = { error: e?.message || String(e) };
+      }
+      onProgress?.(i, results[i]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+// ─── material-combo 批次 store (进程内,带 TTL 清理) ────────────
+/** @type {Map<string, {teamId:string,name:string,description:string,brand?:any,fabrics:Array,styles:Array,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
+const mcBatches = new Map();
+
+function batchPublicView(b) {
+  const completed = b.items.filter((it) => it.status === 'done').length;
+  const failed = b.items.filter((it) => it.status === 'error').length;
+  return {
+    batchId: b.batchId,
+    teamId: b.teamId,
+    status: b.status,
+    error: b.error,
+    name: b.name,
+    fabrics: b.fabrics.map((f) => ({ url: f.url, name: f.name, text: f.text })),
+    styles: b.styles.map((s) => ({ url: s.url, name: s.name, text: s.text })),
+    items: b.items.map((it) => ({ fi: it.fi, si: it.si, status: it.status, url: it.url, error: it.error, prompt: it.prompt })),
+    total: b.items.length,
+    completed,
+    failed,
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt,
+  };
+}
+
+/** 清理过期批次,每 30s 扫一次 */
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, b] of mcBatches) {
+    if (now - b.updatedAt > MC_BATCH_TTL_MS) mcBatches.delete(id);
+  }
+}, 30000).unref();
+
+/** 单批次生成调度:对每个 cell 构建 prompt 并调 generateImage */
+async function runBatch(batchId) {
+  const b = mcBatches.get(batchId);
+  if (!b) return;
+  try {
+    b.status = 'running';
+    b.updatedAt = Date.now();
+
+    const tasks = b.items.map((cell) => async () => {
+      const fabric = b.fabrics[cell.fi];
+      const style = b.styles[cell.si];
+      if (!fabric || !style) {
+        cell.status = 'error';
+        cell.error = '该格的面料或款式分析结果缺失';
+        return cell;
+      }
+      const prompt = buildMaterialComboPrompt({
+        name: b.name,
+        description: b.description,
+        brand: b.brand,
+        fabric,
+        style,
+      });
+      cell.prompt = prompt;
+      const img = await generateImage(prompt, {
+        teamId: b.teamId,
+        aspectRatio: '1:1',
+        safeName: `material-combo-f${cell.fi}-s${cell.si}`,
+      });
+      if (img?.url) {
+        cell.url = img.url;
+        cell.status = 'done';
+      } else {
+        cell.error = img?.error || '生成失败';
+        cell.status = 'error';
+      }
+      return cell;
+    });
+
+    await mapConcurrent(tasks, MC_BATCH_CAP);
+
+    b.updatedAt = Date.now();
+    // 全部完成(或失败) → 批次终态
+    b.status = b.items.every((it) => it.status === 'done') ? 'done'
+      : b.items.some((it) => it.status === 'done') ? 'done'
+      : b.status = 'error';
+  } catch (e) {
+    console.error(`[design-generator] runBatch ${batchId} error:`, e?.message || String(e));
+    b.status = 'error';
+    b.error = e?.message || '批次生成异常';
+    b.updatedAt = Date.now();
+    // 剩余 pending 格标 error,避免永远 pending
+    for (const it of b.items) {
+      if (it.status === 'pending') { it.status = 'error'; it.error = b.error; }
+    }
+  }
 }
 
 /**
@@ -429,87 +553,246 @@ router.post('/generate-final', async (req, res) => {
 });
 
 /**
- * POST /api/teams/:teamId/design/material-combo —— 材料组合:固定表单 → 白底效果图
+ * POST /api/teams/:teamId/design/material-combo —— 材料组合:m×n 矩阵 → m×n 张白底效果图
  *
  * multipart form-data:
  *   - name: string (产品名称)
  *   - description: string (其他描述)
- *   - fabric: file (面料图片)
- *   - style: file (款式参考图片)
+ *   - fabrics: file[] (1–6 张面料图片)
+ *   - styles: file[] (1–6 张款式参考图片)
  *   - brand: JSON string (可选,品牌信息;不传则从 DB 读)
  *
  * 流程:
- *   1. 暂存两张图到本地 + 上传至最终存储
- *   2. 用 Ark 视觉模型分别分析面料图(材质/色彩/质感)与款式参考图(廓形/结构/细节)
- *   3. 综合品牌信息 + 用户描述 + 视觉分析结果,构建英文 prompt
- *   4. 调 Maizi(gpt-image-2)生成 1:1 白底效果图
+ *   1. 守卫校验(名称 / 文件数 / ≤36 张组合)
+ *   2. 并行持久化所有文件 + 上传
+ *   3. Ark 并行分析所有面料(材质/色彩/质感)与款式(廓形/结构/细节)
+ *   4. 构建 m×n batch,每格 status='pending'
+ *   5. 202 立即返回 batchId + 分析结果(前端轮询 /batch/:id)
+ *   6. fire-and-forget runBatch:每格构建 prompt + Maizi 生图,并发上限 MC_BATCH_CAP
  *
- * 返回: { images: [{ slot, label, url, prompt, error? }], analysis?: { fabric, style } }
+ * 返回 202: { batchId, status:'running', fabrics, styles, items, total, completed, failed }
  */
 router.post('/material-combo', (req, res) => {
-  mcUpload(req, res, async (err) => {
-    if (err) {
-      console.error('[design-generator] material-combo upload error:', err.message);
-      return res.status(400).json({ error: `上传失败: ${err.message}` });
+  mcUpload(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      console.error('[design-generator] material-combo upload error:', uploadErr.message);
+      return res.status(400).json({ error: `上传失败: ${uploadErr.message}` });
     }
     const files = req.files || {};
-    const fabricFile = files.fabric?.[0];
-    const styleFile = files.style?.[0];
+    const fabricFiles = files.fabrics ?? [];
+    const styleFiles = files.styles ?? [];
     const { name = '', description = '' } = req.body || {};
 
-    if (!fabricFile || !styleFile) {
-      return res.status(400).json({ error: '需要上传面料图片和款式参考图片' });
+    // 解析每种槽位的元数据(前端始终上传):按位置决定上传 or 库行
+    let fabricsMeta = [];
+    let stylesMeta = [];
+    try { if (req.body?.fabricsMeta) fabricsMeta = JSON.parse(req.body.fabricsMeta); } catch {}
+    try { if (req.body?.stylesMeta) stylesMeta = JSON.parse(req.body.stylesMeta); } catch {}
+    if (!Array.isArray(fabricsMeta) || !fabricsMeta.length) {
+      return res.status(400).json({ error: 'fabricsMeta 缺失或为空' });
     }
-    if (!name.trim()) {
-      return res.status(400).json({ error: '请填写名称' });
+    if (!Array.isArray(stylesMeta) || !stylesMeta.length) {
+      return res.status(400).json({ error: 'stylesMeta 缺失或为空' });
+    }
+
+    // 守卫(基于元数据数组长度 —— 即「槽位数」,而非文件数)
+    if (!name.trim()) return res.status(400).json({ error: '请填写名称' });
+    if (fabricsMeta.length > MAX_FABRIC) return res.status(400).json({ error: `面料最多 ${MAX_FABRIC} 项` });
+    if (stylesMeta.length > MAX_STYLE) return res.status(400).json({ error: `款式最多 ${MAX_STYLE} 项` });
+    const totalCells = fabricsMeta.length * stylesMeta.length;
+    if (totalCells > MAX_CELLS) return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
+    // 文件数必须等于「上传」槽位数(后端只接 order 一致的上传文件)
+    const uploadFabricCount = fabricsMeta.filter((m) => m.kind === 'upload').length;
+    const uploadStyleCount = stylesMeta.filter((m) => m.kind === 'upload').length;
+    if (uploadFabricCount !== fabricFiles.length) {
+      return res.status(400).json({ error: `面料文件数不匹配,期望 ${uploadFabricCount},收到 ${fabricFiles.length}` });
+    }
+    if (uploadStyleCount !== styleFiles.length) {
+      return res.status(400).json({ error: `款式文件数不匹配,期望 ${uploadStyleCount},收到 ${styleFiles.length}` });
     }
 
     try {
-      // 1) 持久化两张图
-      const [fabricUrl, styleUrl] = await Promise.all([
-        persistTempFile(fabricFile.path, fabricFile.filename, fabricFile.mimetype),
-        persistTempFile(styleFile.path, styleFile.filename, styleFile.mimetype),
-      ]);
-
-      // 2) Ark 视觉分析:面料 + 款式
-      const [fabricAnalysis, styleAnalysis] = await Promise.all([
-        analyzeFabric(fabricFile, fabricUrl),
-        analyzeStyleRef(styleFile, styleUrl),
-      ]);
-
-      // 3) 构建综合 prompt
       const brand = await resolveBrand(req);
-      const prompt = buildMaterialComboPrompt({
+
+      // 按 fabricsMeta 顺序构建面料行,上传文件逐条消耗(kind==='upload' 才取下一个)
+      let fIdx = 0;
+      const fabrics = [];
+      for (const meta of fabricsMeta) {
+        if (meta.kind === 'upload') {
+          const f = fabricFiles[fIdx++];
+          const url = await persistTempFile(f.path, f.filename, f.mimetype);
+          let text = '';
+          let raw = '';
+          try {
+            const a = await analyzeFabric(f, url);
+            text = a?.text || '';
+            raw = a?.raw || '';
+          } catch (e) {
+            console.warn(`[design-material-combo] 面料分析失败: ${e?.message}`);
+            text = '';
+          }
+          fabrics.push({ name: meta.name || f.originalname || `面料${fabrics.length + 1}`, url, text, raw });
+        } else {
+          // library-fabric:从材料库取值,合成分析文本
+          const rec = await findOwned(prisma.lAMaterial, meta.matId, req.team.id);
+          if (!rec) {
+            console.warn(`[design-material-combo] 找不到面料 id=${meta.matId}`);
+            fabrics.push({ name: '(面料不存在)', url: meta.hex ? '' : '', text: '面料不存在或无权访问', raw: '' });
+            continue;
+          }
+          const cis = Array.isArray(rec.colorImages) ? rec.colorImages : [];
+          const ci = meta.colorIdx >= 0 ? cis[meta.colorIdx] : null;
+          const url = (ci && ci.url) || rec.image || '';
+          const colorName = ci?.name ? ` · ${ci.name}` : (meta.hex ? ` · ${meta.hex}` : '');
+          fabrics.push({
+            name: `${rec.name || '面料'}${colorName}`,
+            url,
+            text: fabricTextFromRecord(rec, meta.colorIdx),
+            raw: '',
+          });
+        }
+      }
+
+      // 按 stylesMeta 顺序构建款式行
+      let sIdx = 0;
+      const styles = [];
+      for (const meta of stylesMeta) {
+        if (meta.kind === 'upload') {
+          const f = styleFiles[sIdx++];
+          const url = await persistTempFile(f.path, f.filename, f.mimetype);
+          let text = '';
+          let raw = '';
+          try {
+            const a = await analyzeStyleRef(f, url);
+            text = a?.text || '';
+            raw = a?.raw || '';
+          } catch (e) {
+            console.warn(`[design-material-combo] 款式分析失败: ${e?.message}`);
+          }
+          styles.push({ name: meta.name || f.originalname || `款式${styles.length + 1}`, url, text, raw });
+        } else {
+          // library-style:从款式库取值,合成分析文本
+          const rec = await findOwned(prisma.lAStyle, meta.styleId, req.team.id);
+          if (!rec) {
+            console.warn(`[design-material-combo] 找不到款式 id=${meta.styleId}`);
+            styles.push({ name: '(款式不存在)', url: '', text: '款式不存在或无权访问', raw: '' });
+            continue;
+          }
+          styles.push({
+            name: rec.name || '款式',
+            url: rec.image || '',
+            text: styleTextFromRecord(rec),
+            raw: '',
+          });
+        }
+      }
+
+      // 3) 构建 batch(每格待生成)
+      const batchId = `mc-${crypto.randomUUID()}`;
+      const now = Date.now();
+      const items = [];
+      for (let fi = 0; fi < fabrics.length; fi++) {
+        for (let si = 0; si < styles.length; si++) {
+          items.push({ fi, si, status: 'pending' });
+        }
+      }
+      const batch = {
+        batchId,
+        teamId: req.team.id,
         name: name.trim(),
         description: description.trim(),
         brand,
-        fabric: fabricAnalysis,
-        style: styleAnalysis,
-      });
+        fabrics,
+        styles,
+        items,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      };
+      mcBatches.set(batchId, batch);
 
-      // 4) 生图
-      const img = await generateImage(prompt, {
-        teamId: req.team.id,
-        aspectRatio: '1:1',
-        safeName: 'material-combo',
-      });
-
-      if (img?.url) {
-        res.json({
-          images: [{ slot: 'material-combo', label: '白底效果图', url: img.url, prompt }],
-          analysis: { fabric: fabricAnalysis, style: styleAnalysis },
-        });
-      } else {
-        res.status(500).json({
-          images: [{ slot: 'material-combo', label: '白底效果图', error: img?.error || '生成失败', prompt }],
-          analysis: { fabric: fabricAnalysis, style: styleAnalysis },
-        });
-      }
+      // 4) 202 立即返回,fire-and-forget 后台生成
+      res.status(202).json(batchPublicView(batch));
+      runBatch(batchId);
     } catch (e) {
       console.error('[design-generator] material-combo error:', e?.message || String(e));
       res.status(500).json({ error: e?.message || '生成失败' });
     }
   });
+});
+
+/**
+ * GET /api/teams/:teamId/design/material-combo/batch/:batchId —— 轮询批次进度
+ * 实时返回每格状态(pending/done/error)、url、error、prompt。
+ * teamId 隔离校验:403,不存在:404。
+ */
+router.get('/material-combo/batch/:batchId', (req, res) => {
+  const batch = mcBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+  res.json(batchPublicView(batch));
+});
+
+/**
+ * POST /api/teams/:teamId/design/material-combo/batch/:batchId/regenerate
+ * 单格重试:对指定 (fi,si) 重新构建 prompt + Maizi 生图(自带超时+1次重试)。
+ * 前端 optimistic 置回 pending,后端完成后覆盖 items 格。
+ * 返回单格结果 { fi, si, status, url, error, prompt }。
+ */
+router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
+  const batch = mcBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+
+  const fi = Number.parseInt(req.body?.fi, 10);
+  const si = Number.parseInt(req.body?.si, 10);
+  if (!Number.isInteger(fi) || !Number.isInteger(si)) {
+    return res.status(400).json({ error: 'fi / si 必须为整数' });
+  }
+  const fabric = batch.fabrics[fi];
+  const style = batch.styles[si];
+  if (!fabric || !style) return res.status(400).json({ error: '无效的 fi / si' });
+
+  const cell = batch.items.find((it) => it.fi === fi && it.si === si);
+  if (!cell) return res.status(400).json({ error: '未找到对应的组合格' });
+
+  // optimistic:立即标 pending 返回,后台重跑
+  cell.status = 'pending';
+  cell.error = undefined;
+  cell.url = undefined;
+  batch.updatedAt = Date.now();
+
+  res.json({ fi, si, status: cell.status, url: cell.url, error: cell.error, prompt: cell.prompt });
+
+  // 后台生成
+  try {
+    const prompt = buildMaterialComboPrompt({
+      name: batch.name,
+      description: batch.description,
+      brand: batch.brand,
+      fabric,
+      style,
+    });
+    cell.prompt = prompt;
+    const img = await generateImage(prompt, {
+      teamId: batch.teamId,
+      aspectRatio: '1:1',
+      safeName: `material-combo-f${fi}-s${si}`,
+    });
+    if (img?.url) {
+      cell.url = img.url;
+      cell.status = 'done';
+    } else {
+      cell.error = img?.error || '生成失败';
+      cell.status = 'error';
+    }
+  } catch (e) {
+    console.error(`[design-generator] regenerate ${batchId} (${fi},${si}) error:`, e?.message || String(e));
+    cell.error = e?.message || '生成异常';
+    cell.status = 'error';
+  } finally {
+    batch.updatedAt = Date.now();
+  }
 });
 
 // ─── material-combo helper ─────────────────────────────────────
@@ -652,6 +935,37 @@ async function analyzeImageWithArk(tmpFile, publicUrl, system, contextPrompt, ta
   }
 }
 
+/**
+ * 把库内 lAMaterial 记录(的字段 + 指定色卡)合成一句「面料分析」自然语言。
+ * 用于 library-fabric 行,等价于 Ark 分析结果,供 buildMaterialComboPrompt 使用。
+ * @param {any} rec lAMaterial 行
+ * @param {number} idx colorImages 下标(回退 image / colors 时为 -1)
+ */
+function fabricTextFromRecord(rec, idx) {
+  const parts = [rec.name, rec.texture, rec.finish].filter(Boolean);
+  const colors = Array.isArray(rec.colors) ? rec.colors.slice(0, 3).join('/') : '';
+  const cis = Array.isArray(rec.colorImages) ? rec.colorImages : [];
+  const ci = idx >= 0 ? cis[idx] : null;
+  const col = ci?.hex || (Array.isArray(rec.colors) ? rec.colors[idx] : '');
+  let usesArr = rec.uses;
+  if (typeof usesArr === 'string') { try { usesArr = JSON.parse(usesArr); } catch { usesArr = []; } }
+  const arr = Array.isArray(usesArr) ? usesArr : [];
+  const best = arr.length ? `, 适合 ${arr[0]}` : '';
+  return `${parts.join(', ')}${colors ? `, 色彩 ${colors}` : ''}${col ? `, ${col}` : ''}${best}`;
+}
+
+/**
+ * 把库内 lAStyle 记录合成一句「款式分析」自然语言。
+ * 用于 library-款式行,等价于 Ark 分析结果。
+ * @param {any} rec lAStyle 行
+ */
+function styleTextFromRecord(rec) {
+  const cat = rec.category || '款式';
+  const bits = [`[${cat}]`, rec.name].filter(Boolean);
+  const tags = Array.isArray(rec.tags) ? rec.tags.slice(0, 3).join('/') : '';
+  return `${bits.join(' ')}${tags ? `(${tags})` : ''}`;
+}
+
 /** 把 Ark 分析 JSON 压缩成一句自然语言描述,便于拼到 prompt 中 */
 function formatAnalysis(tag, j) {
   if (tag === 'fabric') {
@@ -670,27 +984,53 @@ function formatAnalysis(tag, j) {
 /**
  * 综合所有输入构建单张白底效果图的英文 prompt。
  * 目标是 gpt-image-2 直出白底产品图:服装/包袋/配饰按品类描述。
+ *
+ * 叙事结构(对应中文语义「将款式参考的形,换成面料图的质,生成白底产品图」):
+ *   1. 品类 + 名称 + 输出格式锚点
+ *   2. 替换指令:保留款形的「廓形+结构」,把面料替换成面料图的「材质+色彩+图案」
+ *   3. 用户备注
+ *   4. 品牌注入(名称/调性/色板)
+ *   5. 白底产品图硬约束
  */
 function buildMaterialComboPrompt({ name, description, brand, fabric, style }) {
-  const bits = [
-    `Product photography of a single ${style?.category || 'fashion product'} called "${name}", on pure white background.`,
-  ];
-  if (fabric?.text) bits.push(`Fabric & material: ${fabric.text}.`);
-  if (style?.text) bits.push(`Silhouette & design: ${style.text}.`);
-  if (description.trim()) bits.push(`Design details: ${description.trim()}.`);
+  const category = style?.category || 'fashion product';
 
-  // 品牌注入
+  // 1. 锚点:品类 + 名称 + 纯白底产品图
+  const bits = [
+    `Product photography of a single ${category} called "${name}", on pure white background.`,
+  ];
+
+  // 2. 核心替换叙事 —— "把这个款式的形,用那种面料的质做出来"
+  const sText = style?.text || '';
+  const fText = fabric?.text || '';
+  if (sText && fText) {
+    // 两者都有:明确表达"形保留、质替换"的关系
+    bits.push(
+      `Take the silhouette, structure and design of the reference garment — ${sText.replace(/\.$/, '')} — and remake it in a completely different fabric: ${fText.replace(/\.$/, '')}.`,
+    );
+  } else if (fText) {
+    // 只有面料分析成功(款式分析失败回退)
+    bits.push(`Make it from this fabric: ${fText}.`);
+  } else if (sText) {
+    // 只有款式分析成功(面料分析失败回退)
+    bits.push(`Match this silhouette and design: ${sText}.`);
+  }
+
+  // 3. 用户备注 —— 对应「${备注信息}」
+  if (description.trim()) bits.push(`Design notes: ${description.trim()}.`);
+
+  // 4. 品牌注入(名称/调性/slogan/色板)
   if (brand) {
     const brandBits = [];
     if (brand.nameZh || brand.nameEn) brandBits.push(`for the brand "${brand.nameZh || brand.nameEn}"`);
     if (brand.voice) brandBits.push(`brand voice "${brand.voice}"`);
     if (brand.sloganEn) brandBits.push(`tagline "${brand.sloganEn}"`);
     if (brandBits.length) bits.push(`Brand context: ${brandBits.join(', ')}.`);
-    // 品牌色板
     const brandColors = Array.isArray(brand.colors) ? brand.colors.map((c) => c?.bg || c).filter(Boolean).slice(0, 5) : [];
     if (brandColors.length) bits.push(`Brand palette reference: ${brandColors.join(', ')}.`);
   }
 
+  // 5. 白底产品图硬约束 —— 对应「生成白底产品图」
   bits.push([
     'Clean studio lighting, sharp detail, e-commerce catalog style.',
     'NO model, NO mannequin, NO background clutter, pure white backdrop.',

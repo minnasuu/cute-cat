@@ -476,10 +476,14 @@ router.post('/materials', asyncHandler(async (req, res) => {
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
-    'image',
+    'image', 'colorImages',
   ]);
   if (!data.name || !data.category) return res.status(400).json({ error: 'name,category required' });
   if (!data.slug) data.slug = `${data.category}-${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
+  // 色卡列表:[{hex,url,name?}],清理掉空 url 项
+  const colorImages = Array.isArray(data.colorImages)
+    ? data.colorImages.filter((c) => c && typeof c === 'object' && c.url)
+    : [];
   const mat = await prisma.lAMaterial.create({
     data: {
       teamId: req.team.id,
@@ -510,6 +514,7 @@ router.post('/materials', asyncHandler(async (req, res) => {
       priceUnit: data.priceUnit || null,
       priceNote: data.priceNote || null,
       image: data.image || null,
+      colorImages,
     },
   });
   res.status(201).json(mat);
@@ -524,8 +529,14 @@ router.patch('/materials/:id', asyncHandler(async (req, res) => {
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
-    'image',
+    'image', 'colorImages',
   ]);
+  // 若提交了 colorImages,清洗(null/无 url 项)
+  if (data.colorImages !== undefined) {
+    data.colorImages = Array.isArray(data.colorImages)
+      ? data.colorImages.filter((c) => c && typeof c === 'object' && c.url)
+      : [];
+  }
   const mat = await prisma.lAMaterial.update({ where: { id: owned.id }, data });
   res.json(mat);
 }));
@@ -559,10 +570,121 @@ router.post('/materials/:id/image', (req, res) => {
   });
 });
 
+// POST /api/teams/:teamId/materials/:id/color-image —— 上传某色卡单图
+// multipart form-data: file(field="file"), body.idx(色卡 index, 可选, 默认 push 末尾)
+// 写入材料的 colorImages[idx].url
+router.post('/materials/:id/color-image', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('[team-workbench] material color-image multer error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    if (!req.file) return res.status(400).json({ error: 'no file' });
+    const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
+    if (!owned) return res.status(404).json({ error: 'not found' });
+    const idx = Number.parseInt(req.body?.idx, 10);
+    const safeIdx = Number.isInteger(idx) && idx >= 0 ? idx : undefined;
+    const savePath = createSavePath(`materials/${req.team.id}`, req.file.filename);
+    try {
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      const list = Array.isArray(owned.colorImages) ? [...owned.colorImages] : [];
+      const entry = list[safeIdx] ? { ...list[safeIdx] } : { hex: '', url: '' };
+      entry.url = url;
+      if (safeIdx === undefined) list.push(entry); else list[safeIdx] = entry;
+      // 补齐到 safeIdx 长度(null→空对象占位),避免稀疏
+      if (safeIdx !== undefined) while (list.length <= safeIdx) list.push({ hex: '', url: '' });
+      const updated = await prisma.lAMaterial.update({ where: { id: owned.id }, data: { colorImages: list } });
+      res.json({ id: updated.id, idx: safeIdx ?? list.length - 1, url });
+    } catch (e) {
+      console.error('[team-workbench] upload material color-image failed:', e);
+      res.status(500).json({ error: `上传失败: ${e.message}` });
+    }
+  });
+});
+
+// DELETE /api/teams/:teamId/materials/:id/color-image —— 移除某色卡
+// body.idx(色卡 index) → 删除该项
+router.delete('/materials/:id/color-image', asyncHandler(async (req, res) => {
+  const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const idx = Number.parseInt(req.body?.idx, 10);
+  if (!Number.isInteger(idx) || idx < 0) return res.status(400).json({ error: 'invalid idx' });
+  const list = Array.isArray(owned.colorImages) ? owned.colorImages.filter((_, i) => i !== idx) : [];
+  const updated = await prisma.lAMaterial.update({ where: { id: owned.id }, data: { colorImages: list } });
+  res.json({ ok: true, id: updated.id, colorImages: updated.colorImages });
+}));
+
 router.delete('/materials/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAMaterial.delete({ where: { id: owned.id } });
+  res.json({ ok: true });
+}));
+
+/* ─── styles (款式参考图) ─────────────────────────────────────── */
+
+router.get('/styles', asyncHandler(async (req, res) => {
+  const { category } = req.query;
+  const where = { teamId: req.team.id };
+  if (category && category !== 'all') where.category = String(category);
+  const rows = await prisma.lAStyle.findMany({ where, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
+  res.json(rows);
+}));
+
+router.post('/styles', asyncHandler(async (req, res) => {
+  const data = pickDefined(req.body ?? {}, ['slug', 'name', 'category', 'tags', 'image']);
+  if (!data.name || !data.category) return res.status(400).json({ error: 'name,category required' });
+  if (!data.slug) data.slug = `${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
+  const style = await prisma.lAStyle.create({
+    data: {
+      teamId: req.team.id,
+      slug: String(data.slug),
+      name: String(data.name),
+      category: String(data.category),
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      image: data.image || null,
+    },
+  });
+  res.status(201).json(style);
+}));
+
+router.patch('/styles/:id', asyncHandler(async (req, res) => {
+  const owned = await findOwned(prisma.lAStyle, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const data = pickDefined(req.body ?? {}, ['slug', 'name', 'category', 'tags', 'image']);
+  if (data.tags !== undefined) data.tags = Array.isArray(data.tags) ? data.tags : [];
+  const style = await prisma.lAStyle.update({ where: { id: owned.id }, data });
+  res.json(style);
+}));
+
+// POST /api/teams/:teamId/styles/:id/image —— 上传/替换款式参考图
+router.post('/styles/:id/image', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('[team-workbench] style image multer error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    if (!req.file) return res.status(400).json({ error: 'no file' });
+    const owned = await findOwned(prisma.lAStyle, req.params.id, req.team.id);
+    if (!owned) return res.status(404).json({ error: 'not found' });
+    try {
+      const savePath = createSavePath(`styles/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      const updated = await prisma.lAStyle.update({ where: { id: owned.id }, data: { image: url } });
+      res.json({ id: updated.id, url });
+    } catch (e) {
+      console.error('[team-workbench] upload style image failed:', e);
+      res.status(500).json({ error: `上传失败: ${e.message}` });
+    }
+  });
+});
+
+router.delete('/styles/:id', asyncHandler(async (req, res) => {
+  const owned = await findOwned(prisma.lAStyle, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  await prisma.lAStyle.delete({ where: { id: owned.id } });
   res.json({ ok: true });
 }));
 

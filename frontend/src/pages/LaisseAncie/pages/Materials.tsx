@@ -1,22 +1,36 @@
 // @ts-nocheck
+/**
+ * Materials(面料库)——同面料多个颜色,每个颜色一张图(色卡=图片)。
+ * 去掉类别筛选(全部视为面料),保留搜索与新增/编辑/只读 3 态弹窗。
+ *
+ * 保存流程:create → updateMaterial(写入 colorImages hex/name) →
+ * 逐卡上传新图(uploadMaterialColorImage,后端同时保留 hex/name)。
+ */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiClient } from "../lib/api";
 import { teamApi } from "../lib/api";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { Modal } from "../components/ui";
 import type { MaterialRow } from "../store/resource";
+import type { ColorImageEntry } from "../types/design";
+import { compressForUpload } from "../lib/images";
 
-const CATEGORIES = [
-  { key: "面料", label: "面料" },
-  { key: "毛线", label: "毛线" },
-  { key: "串珠", label: "串珠" },
-  { key: "工艺", label: "工艺" },
-  { key: "辅材", label: "辅材" },
-  { key: "品牌标志", label: "品牌标志" },
-  { key: "包装", label: "包装" },
-];
+type Card = { hex: string; name: string; url: string; imageFile?: File | null };
 
-// Fallback seed when backend hasn't any data yet — mirrors the original materials.ts subset
+function toCards(m: MaterialRow): Card[] {
+  const ci = Array.isArray(m.colorImages) ? (m.colorImages as any[]) : [];
+  if (ci.length) {
+    return ci
+      .filter((c) => c && typeof c === "object")
+      .map((c) => ({ hex: String(c.hex || ""), name: String(c.name || ""), url: String(c.url || ""), imageFile: null }));
+  }
+  // 回退:老数据 colors(hex[]) → 每色一卡(url 空)
+  const cols = Array.isArray(m.colors) ? m.colors : [];
+  if (cols.length) return cols.map((c) => ({ hex: String(c), name: "", url: "", imageFile: null }));
+  // 再回退:单图 → 单卡
+  if (m.image) return [{ hex: "", name: "", url: String(m.image), imageFile: null }];
+  return [{ hex: "#cccccc", name: "", url: "", imageFile: null }];
+}
+
 const SEED: MaterialRow[] = [
   {
     id: "fabric-silk-001", slug: "lashed-silk-satin", category: "面料", name: "水洗真丝贡丝锦",
@@ -25,9 +39,8 @@ const SEED: MaterialRow[] = [
     finish: "garment-washed stone", care: ["hand-wash ≤30 °C", "no bleach", "iron reverse-side"],
     uses: ["bias-cut slip dresses", "tailored camp-collar shirting"], seasons: ["SS", "Resort"],
     priceAmount: 86, priceCur: "CNY", priceUnit: "/ metre · 135 cm", priceNote: "MOQ 100 m · lead 30 days",
-    colors: ["#d8c9a3", "#a89274", "#9b6a3a", "#1f3a44"]
+    colors: ["#d8c9a3", "#a89274", "#9b6a3a", "#1f3a44"],
   },
-
   {
     id: "fabric-wool-001", slug: "double-face-merino", category: "面料", name: "双面美利奴法兰绒",
     code: "BC-DF-1403", supplier: "Biella Textile Co.", origin: "Biella · Italy",
@@ -35,64 +48,29 @@ const SEED: MaterialRow[] = [
     finish: "double-face, ready-to-cut selvedge",
     care: ["dry-clean recommended", "steam only"], uses: ["unlined blazers", "duster coats"], seasons: ["FW", "Pre-fall"],
     priceAmount: 112, priceCur: "EUR", priceUnit: "/ metre · 150 cm",
-    colors: ["#2c2a2d", "#8a8580", "#d3c4a9", "#c59289"]
+    colors: ["#2c2a2d", "#8a8580", "#d3c4a9", "#c59289"],
   },
-
   {
-    id: "trim-silk-lining-001", slug: "cupro-twill-lining", category: "工艺", name: "人丝斜纹里布",
-    code: "BP-SL-174", supplier: "Beppetex Premium", origin: "Como · Italy",
-    composition: "100% cupro · 74 g/m² twill weave", weight: "74 g/m²", texture: "slippery, low-friction",
-    care: ["dry-clean"], uses: ["blazer lining", "trouser waistbags"], seasons: ["all"],
-    priceAmount: 24, priceCur: "EUR", priceUnit: "/ metre · 148 cm",
-    colors: ["#caa97c", "#73332e", "#0e0e0e", "#ece4d2"]
-  },
-
-  {
-    id: "brand-label-001", slug: "woven-logo-label", category: "品牌标志", name: "机织领标",
-    code: "OWL-ER-PVC", supplier: "Orwell & Rose Wovens", origin: "Macclesfield · UK",
-    composition: "poly-silk twill · woven jacquard · 100% PVC-free", size: "28 × 45 mm",
-    care: ["sewn in · dry-clean"], uses: ["interior neck label"], seasons: ["all"],
-    priceAmount: 0.55, priceCur: "GBP", priceUnit: "/ piece · 28 × 45 mm",
-    colors: ["#ece1c5", "#0e0e10"]
-  },
-
-  {
-    id: "pkg-tissue-001", slug: "acid-etched-tissue", category: "包装", name: "酸蚀薄页纸",
-    code: "C-POST-17", supplier: "Como白鹭纸业", origin: "Como · Italy",
-    composition: "100% TCF woodpulp · 17 g/m² acid-etched", weight: "17 g/m²",
-    care: ["n/a"], uses: ["interior wrapping", "box void-fill"], seasons: ["all"],
-    priceAmount: 1.6, priceCur: "EUR", priceUnit: "/ metre · 50 cm",
-    colors: ["#e7dcc1", "#c4a571", "#0e0e0e"]
-  },
-
-  {
-    id: "yarn-alpaca-001", slug: "baby-alpaca-worsted", category: "毛线", name: "宝宝阿尔帕卡粗纺纱",
-    code: "PE-BA-4000", supplier: "Micuzu Suri & Alpaca", origin: "Arequipa · Peru",
-    composition: "100% baby alpaca · 25/2 Nm worsted-spun",
-    care: ["hand-wash ≤30 °C", "dry flat"], uses: ["cabled cardigans", "ribbed beanies"], seasons: ["FW", "Midwinter"],
-    priceAmount: 56, priceCur: "EUR", priceUnit: "/ 100 g ball · 400 m",
-    colors: ["#d8c39c", "#a08c74", "#473b31", "#1c2c4a", "#c2483f"]
+    id: "fabric-linen-001", slug: "linen-plain", category: "面料", name: "法国亚麻平纹",
+    code: "FR-LN-001", supplier: "Tissage de France", origin: "Normandie · France",
+    composition: "100% flax · 180 g/m² plain", weight: "180 g/m²", texture: "crisp slub",
+    uses: ["summer shirts", "trousers"], seasons: ["SS"],
+    priceAmount: 54, priceCur: "EUR", priceUnit: "/ metre · 150 cm",
   },
 ];
 
 export default function MaterialsPage() {
   const { teamId } = useCurrentTeam();
-  const [cat, setCat] = useState("面料");
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<MaterialRow[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // editor: null = 关闭; { mode: 'view'|'edit'|'create', mat? }
   const [editor, setEditor] = useState<null | { mode: "view" | "edit" | "create"; mat?: MaterialRow }>(null);
 
   const refresh = useCallback(async (tid: string) => {
     setLoading(true);
     try {
       const r = await teamApi(tid).listMaterials();
-      if (!r || r.length === 0) { setRows(SEED); }
-      else {
-        setRows(r);
-      }
+      setRows((!r || r.length === 0) ? SEED : r);
     } catch {
       setRows(SEED);
     } finally { setLoading(false); }
@@ -101,131 +79,147 @@ export default function MaterialsPage() {
   useEffect(() => { if (teamId) void refresh(teamId); }, [refresh, teamId]);
 
   const visible = useMemo(() => {
-    const base = rows.filter((m) => m.category === cat);
-    if (!q.trim()) return base;
+    if (!q.trim()) return rows;
     const needle = q.trim().toLowerCase();
-    return base.filter((m) =>
-      m.name.toLowerCase().includes(needle) || m.code.toLowerCase().includes(needle) ||
+    return rows.filter((m) =>
+      m.name.toLowerCase().includes(needle) || (m.code || "").toLowerCase().includes(needle) ||
       (m.composition || "").toLowerCase().includes(needle) ||
       (m.uses || []).some((u) => u.toLowerCase().includes(needle)) ||
       (m.colors || []).some((c) => c.toLowerCase().includes(needle)) ||
       (m.supplier || "").toLowerCase().includes(needle));
-  }, [cat, q, rows]);
+  }, [q, rows]);
 
-  // 编辑器保存：create / edit 共用。values 含可选 imageFile（新图优先于 image 字符串）
-  const handleSave = useCallback(async (values: Partial<MaterialRow> & { imageFile?: File | null }) => {
+  const handleSave = useCallback(async (values: Partial<MaterialRow> & { colorImages: Card[] }) => {
     if (!teamId) return;
     const api = teamApi(teamId);
-    const { imageFile, ...data } = values;
+    const { colorImages, ...data } = values;
     const payload: any = { ...data };
-    // 移除空字符串，避免把后端字段误写成 ""
-    for (const k of Object.keys(payload)) {
-      if (payload[k] === "") payload[k] = null;
-    }
+    for (const k of Object.keys(payload)) { if (payload[k] === "") payload[k] = null; }
     let id = payload.id as string | undefined;
+    // 1) 创建/更新主记录(colorImages 先只带 hex + name; 保留旧 url 避免被覆盖)
+    let ciListRaw: any[] = [];
     if (id) {
-      await api.updateMaterial(id, payload);
+      // 先拿到现有 colorImages 保留旧 url
+      const existingColorImages = (() => {
+        try { return rows.find((r) => r.id === id)?.colorImages ?? []; } catch { return []; }
+      })();
+      ciListRaw = colorImages.map((c, i) => {
+        const old: any = Array.isArray(existingColorImages) ? existingColorImages[i] : null;
+        return { hex: c.hex, name: c.name, url: old?.url || c.url || "" };
+      });
+      await api.updateMaterial(id, { ...payload, colorImages: ciListRaw });
     } else {
-      const created = await api.createMaterial(payload);
+      ciListRaw = colorImages.map((c) => ({ hex: c.hex, name: c.name, url: "" }));
+      const created = await api.createMaterial({ ...payload, category: "面料", colorImages: ciListRaw });
       id = created.id;
     }
-    // 上传新图（需要先有 id）
-    if (id && imageFile) {
-      const fd = new FormData();
-      fd.append("file", imageFile);
-      const { url } = await api.uploadMaterialImage(id, fd);
-      await api.updateMaterial(id, { image: url });
+    // 2) 逐卡上传新图(后端不覆盖 hex/name,只更新 url)
+    if (id) {
+      for (let i = 0; i < colorImages.length; i++) {
+        const c = colorImages[i];
+        if (c.imageFile) {
+          const fd = new FormData();
+          fd.append("file", c.imageFile);
+          fd.append("idx", String(i));
+          await api.uploadMaterialColorImage(id, fd).catch(() => {});
+        }
+      }
+      // 3) 上传后最终再同步一次 colorImages(hex/name 对齐卡片)
+      const finalCi: any[] = [];
+      for (let i = 0; i < colorImages.length; i++) {
+        const c = colorImages[i];
+        const cur: any = ciListRaw[i] || {};
+        finalCi.push({ hex: c.hex, name: c.name, url: cur.url || c.url || "" });
+      }
+      await api.updateMaterial(id, { colorImages: finalCi });
     }
     setEditor(null);
     await refresh(teamId);
-  }, [teamId, refresh]);
+  }, [teamId, refresh, rows]);
 
   if (loading) return <div className="p-10 text-gray-500">加载中…</div>;
 
   return (
-    <div className="grid grid-cols-[220px_1fr] h-[calc(100vh-64px)] min-h-0">
-      <aside className="border-r border-gray-200 bg-gray-50 px-4 py-5 flex flex-col overflow-auto">
-        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">Materials</div>
-        <div className="flex flex-col gap-1 flex-1">
-          {CATEGORIES.map((c) => {
-            const count = rows.filter((m) => m.category === c.key).length;
-            const active = cat === c.key;
-            return (
-              <button key={c.key} onClick={() => setCat(c.key)}
-                className={`text-left flex items-baseline justify-between rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-primary-50 text-gray-800 border border-primary-200" : "text-gray-600 hover:bg-gray-100"}`}>
-                <span className="text-[13px] font-medium">{c.label}</span>
-                <span className="text-[10px] opacity-60">{count}</span>
-              </button>
-            );
-          })}
+    <div className="h-[calc(100vh-64px)] min-h-0 overflow-auto bg-white">
+      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-[34px] font-semibold text-gray-800 tracking-tight">面料库</h1>
+          <p className="text-xs text-gray-500 mt-0.5">{visible.length} {visible.length === 1 ? "item" : "items"}</p>
         </div>
-      </aside>
+        <div className="flex items-center gap-3">
+          <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="按成分、用途、颜色、供应商搜索…"
+            className="w-80 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
+          <button onClick={() => setEditor({ mode: "create" })}
+            className="shrink-0 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-xl font-medium transition-colors">
+            + 新增面料
+          </button>
+        </div>
+      </header>
 
-      <main className="overflow-auto bg-white">
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-[34px] font-semibold text-gray-800 tracking-tight">{cat}</h1>
-            <p className="text-xs text-gray-500 mt-0.5">{visible.length} {visible.length === 1 ? "item" : "items"}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="按成分、用途、颜色搜索…"
-              className="w-72 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
-            <button onClick={() => setEditor({ mode: "create" })}
-              className="shrink-0 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-xl font-medium transition-colors">
-              + 新增材料
+      {visible.length === 0 ? (
+        <div className="py-16 text-center text-gray-500 text-sm">没有符合搜索的面料</div>
+      ) : (
+        <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
+          {visible.map((m) => (
+            <button key={m.id} onClick={() => setEditor({ mode: "view", mat: m })} className="text-left">
+              <MaterialCard mat={m} />
             </button>
-          </div>
-        </header>
+          ))}
+        </div>
+      )}
 
-        {visible.length === 0 ? (
-          <div className="py-16 text-center text-gray-500 text-sm">没有符合搜索的物料</div>
-        ) : (
-          <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
-            {visible.map((m) => (
-              <button key={m.id} onClick={() => setEditor({ mode: "view", mat: m })} className="text-left">
-                <MaterialCard mat={m} />
-              </button>
-            ))}
-          </div>
-        )}
-      </main>
-
-      <MaterialModal
-        editor={editor}
-        onClose={() => setEditor(null)}
-        onSwitchEdit={() => setEditor((e) => e ? { ...e, mode: "edit" } : e)}
-        onSave={handleSave}
-      />
+      <MaterialModal editor={editor} onClose={() => setEditor(null)} onSwitchEdit={() => setEditor((e) => e ? { ...e, mode: "edit" } : e)} onSave={handleSave} />
     </div>
   );
 }
 
+/** 卡面:色卡图横排铺开(每色一张小图),叠色点兜底(老数据) */
 function MaterialCard({ mat }: { mat: MaterialRow }) {
-  const colors = mat.colors ?? [];
+  const cards = toCards(mat);
+  const hexs: string[] = mat.colors ?? [];
   return (
     <figure className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer">
-      <div className="relative h-44 overflow-hidden">
-        {mat.image ? (
-          <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />
+      <div className="relative h-48 overflow-hidden">
+        {cards.some((c) => c.url) ? (
+          <div className="absolute inset-0 flex">
+            {cards.map((c, i) => (
+              <div key={i} className="flex-1 h-full relative overflow-hidden">
+                {c.url ? (
+                  <img src={c.url} alt={c.name || c.hex} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full" style={{ background: c.hex || "#eee" }} />
+                )}
+              </div>
+            ))}
+          </div>
+        ) : hexs.length > 0 ? (
+          <SwatchStrip colors={hexs} />
         ) : (
-          <SwatchStrip colors={colors} />
+          <div className="bg-gray-100 w-full h-full" />
         )}
         <figcaption className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/85 via-black/40 to-transparent">
           <div className="text-white text-sm font-medium leading-tight">{mat.name}</div>
-          <div className="text-white/70 text-[10px] font-mono mt-0.5">{mat.code} · {mat.category}</div>
+          <div className="text-white/70 text-[10px] font-mono mt-0.5">{mat.code} · {cardsCountLabel(cards)}</div>
         </figcaption>
       </div>
       <figcaption className="px-3 py-3 flex items-end justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[12px] text-gray-600 truncate">{(mat.composition || "").split(" · ")[0]}</div>
-          <div className="mt-2 flex items-end gap-1.5">
-            {colors[0] && <SwatchDot hex={colors[0]} />}
-            {colors.length > 1 && <span className="text-[10px] text-gray-500">+{colors.length - 1}色</span>}
+          <div className="mt-2 flex items-center gap-1.5 overflow-hidden">
+            {cards.slice(0, 5).map((c, i) => (
+              <span key={i} className="inline-block w-4 h-4 rounded-sm border border-gray-200/60 shrink-0" style={{ background: c.url ? `url(${c.url}) center/cover` : (c.hex || "#eee") }} aria-hidden />
+            ))}
+            {cards.length > 5 && <span className="text-[10px] text-gray-500">+{cards.length - 5}</span>}
           </div>
         </div>
       </figcaption>
     </figure>
   );
+}
+
+function cardsCountLabel(cards: Card[]): string {
+  const n = cards.length;
+  return n > 0 ? `共 ${n} 色` : "面料";
 }
 
 export function SwatchStrip({ colors }: { colors: string[] }) {
@@ -248,25 +242,19 @@ function SwatchDot({ hex }: { hex: string }) {
 
 const CURRENCY_SYMBOL: Record<string, string> = { CNY: "¥", EUR: "€", USD: "$", GBP: "£" };
 
-/** 三态弹窗：view(只读详情) / edit(编辑) / create(新增) */
 function MaterialModal({ editor, onClose, onSwitchEdit, onSave }: {
   editor: null | { mode: "view" | "edit" | "create"; mat?: MaterialRow };
   onClose: () => void;
   onSwitchEdit: () => void;
-  onSave: (values: Partial<MaterialRow> & { imageFile?: File | null }) => Promise<void>;
+  onSave: (values: Partial<MaterialRow> & { colorImages: Card[] }) => Promise<void>;
 }) {
   if (!editor) return null;
   const { mode, mat } = editor;
   const isEditing = mode === "edit" || mode === "create";
-  const title = mode === "create" ? "新增材料" : (mode === "edit" ? "编辑材料" : (mat?.name ?? "材料"));
-
+  const title = mode === "create" ? "新增面料" : (mode === "edit" ? "编辑面料" : (mat?.name ?? "面料"));
   return (
     <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
-      {!isEditing ? (
-        <MaterialView mat={mat!} onEdit={onSwitchEdit} />
-      ) : (
-        <MaterialForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />
-      )}
+      {!isEditing ? <MaterialView mat={mat!} onEdit={onSwitchEdit} /> : <MaterialForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />}
     </Modal>
   );
 }
@@ -274,65 +262,67 @@ function MaterialModal({ editor, onClose, onSwitchEdit, onSave }: {
 /** 只读详情 */
 function MaterialView({ mat, onEdit }: { mat: MaterialRow; onEdit: () => void }) {
   const price = mat.priceAmount != null ? { amount: mat.priceAmount, currency: mat.priceCur || "CNY", unit: mat.priceUnit || "", note: mat.priceNote } : null;
-  const colors: string[] = mat.colors ?? [];
+  const cards = toCards(mat);
+  const hexs: string[] = mat.colors ?? [];
+  const showCards = cards.length > 0;
   return (
-    <div className="grid grid-cols-[260px_1fr] gap-7 flex-1 min-h-0 h-[60vh]">
+    <div className="grid grid-cols-[280px_1fr] gap-7 flex-1 min-h-0 h-[60vh]">
       <aside className="rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 overflow-y-auto max-h-full">
-        {mat.image ? (
-          <div className="aspect-square overflow-hidden border-b border-gray-200">
-            <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />
-          </div>
-        ) : null}
-        <ul className="divide-y divide-gray-200">
-          {colors.map((c) => (
-            <li key={c} className="flex items-center gap-3 p-3">
-              <span className="w-14 h-14 rounded-lg border border-gray-200 shrink-0" style={{ background: c.includes(",") ? `linear-gradient(135deg, ${c})` : c }} aria-hidden />
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] text-gray-800 font-medium truncate">{c}</div>
-                <div className="text-[10px] font-mono text-gray-500 mt-0.5">{c}</div>
-              </div>
-            </li>
-          ))}
-          {!colors.length && <li className="p-4 text-[12px] text-gray-400">暂无配色</li>}
-        </ul>
+        {showCards ? (
+          <ul className="divide-y divide-gray-200">
+            {cards.map((c, i) => (
+              <li key={i} className="flex items-center gap-3 p-3">
+                {c.url ? (
+                  <img src={c.url} alt={c.name || c.hex} className="w-16 h-16 rounded-lg border border-gray-200 shrink-0 object-cover" />
+                ) : (
+                  <span className="w-16 h-16 rounded-lg border border-gray-200 shrink-0" style={{ background: c.hex || "#eee" }} aria-hidden />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] text-gray-800 font-medium truncate">{c.name || "(未命名颜色)"}</div>
+                  {c.hex && <div className="text-[12px] font-mono text-gray-500 mt-0.5">{c.hex}</div>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <>
+            {mat.image ? <div className="aspect-square overflow-hidden border-b border-gray-200"><img src={mat.image} alt={mat.name} className="w-full h-full object-cover" /></div> : null}
+            <ul className="divide-y divide-gray-200">
+              {hexs.map((c) => (
+                <li key={c} className="flex items-center gap-3 p-3">
+                  <span className="w-14 h-14 rounded-lg border border-gray-200 shrink-0" style={{ background: c.includes(",") ? `linear-gradient(135deg, ${c})` : c }} aria-hidden />
+                  <div className="text-[13px] text-gray-800 font-mono">{c}</div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </aside>
 
       <article className="overflow-auto max-h-full text-xs space-y-5 pr-1">
         <div className="flex items-center justify-between">
           {price ? (
-            <div className="flex items-baseline justify-between gap-4 flex-1">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-3xl text-primary-600 font-semibold leading-none">
-                  {CURRENCY_SYMBOL[price.currency] ?? price.currency}{price.amount % 1 === 0 ? price.amount : price.amount.toFixed(2)}
-                </span>
-                <span className="text-[11px] text-gray-500">{price.unit}</span>
-              </div>
-              {price.note && <div className="text-[10px] text-gray-500 text-right max-w-[55%]">{price.note}</div>}
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl text-primary-600 font-semibold leading-none">
+                {CURRENCY_SYMBOL[price.currency] ?? price.currency}{price.amount % 1 === 0 ? price.amount : price.amount.toFixed(2)}
+              </span>
+              <span className="text-[11px] text-gray-500">{price.unit}</span>
+              {price.note && <span className="text-[10px] text-gray-500 ml-2">{price.note}</span>}
             </div>
           ) : null}
-          <button onClick={onEdit} className="shrink-0 ml-4 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-            编辑
-          </button>
+          <button onClick={onEdit} className="shrink-0 ml-4 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">编辑</button>
         </div>
-        {(mat.notes || mat.originNote) && (
-          <div className="bg-gray-50 rounded-2xl p-4 text-gray-600 leading-relaxed whitespace-pre-line">{mat.notes ?? mat.originNote}</div>
-        )}
-        {mat.code && <Section label="代码"><span className="font-mono">{mat.code}</span></Section>}
-        {mat.composition && <Section label="成分"><span>{mat.composition}</span></Section>}
+        {mat.composition && <Section label="成分">{mat.composition}</Section>}
+        {mat.texture && <Section label="手感">{mat.texture}</Section>}
         {mat.weight && <Section label="克重"><span className="font-mono">{mat.weight}</span></Section>}
-        {mat.texture && <Section label="手感"><span>{mat.texture}</span></Section>}
-        {mat.finish && <Section label="工艺"><span>{mat.finish}</span></Section>}
+        {mat.finish && <Section label="工艺">{mat.finish}</Section>}
+        {mat.code && <Section label="代码"><span className="font-mono">{mat.code}</span></Section>}
         {mat.origin && <Section label="产地"><span className="font-mono">{mat.origin}</span></Section>}
         {mat.supplier && <Section label="供应商"><span className="font-mono">{mat.supplier}</span></Section>}
-        {mat.uses && mat.uses.length > 0 && (
-          <Section label="用途"><ul className="list-disc pl-4 space-y-0.5">{mat.uses.map((u) => <li key={u}>{u}</li>)}</ul></Section>
-        )}
-        {mat.seasons && mat.seasons.length > 0 && (
-          <Section label="季节"><div className="flex flex-wrap gap-1.5">{mat.seasons.map((s) => <span key={s} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{s}</span>)}</div></Section>
-        )}
-        {mat.care && mat.care.length > 0 && (
-          <Section label="洗护"><ul className="list-disc pl-4 space-y-0.5">{mat.care.map((c) => <li key={c}>{c}</li>)}</ul></Section>
-        )}
+        {mat.uses && mat.uses.length > 0 && <Section label="用途"><ul className="list-disc pl-4 space-y-0.5">{mat.uses.map((u) => <li key={u}>{u}</li>)}</ul></Section>}
+        {mat.seasons && mat.seasons.length > 0 && <Section label="季节"><div className="flex flex-wrap gap-1.5">{mat.seasons.map((s) => <span key={s} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{s}</span>)}</div></Section>}
+        {mat.care && mat.care.length > 0 && <Section label="洗护"><ul className="list-disc pl-4 space-y-0.5">{mat.care.map((c) => <li key={c}>{c}</li>)}</ul></Section>}
+        {(mat.notes || mat.originNote) && <Section label="备注"><div className="bg-gray-50 rounded-2xl p-4 text-gray-600 leading-relaxed whitespace-pre-line">{mat.notes ?? mat.originNote}</div></Section>}
       </article>
     </div>
   );
@@ -342,21 +332,18 @@ function MaterialView({ mat, onEdit }: { mat: MaterialRow; onEdit: () => void })
 function MaterialForm({ initial, onCancel, onSave }: {
   initial: MaterialRow | null;
   onCancel: () => void;
-  onSave: (values: Partial<MaterialRow> & { imageFile?: File | null }) => Promise<void>;
+  onSave: (values: Partial<MaterialRow> & { colorImages: Card[] }) => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
+  const [cards, setCards] = useState<Card[]>(() => toCards(initial ?? { colors: ["#cccccc"] } as any));
   const [name, setName] = useState(initial?.name ?? "");
   const [code, setCode] = useState(initial?.code ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "面料");
   const [supplier, setSupplier] = useState(initial?.supplier ?? "");
   const [origin, setOrigin] = useState(initial?.origin ?? "");
   const [composition, setComposition] = useState(initial?.composition ?? "");
   const [weight, setWeight] = useState(initial?.weight ?? "");
   const [texture, setTexture] = useState(initial?.texture ?? "");
   const [finish, setFinish] = useState(initial?.finish ?? "");
-  const [imageUrl, setImageUrl] = useState(initial?.image ?? "");
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [colors, setColors] = useState<string[]>(initial?.colors ?? ["#cccccc"]);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [priceAmount, setPriceAmount] = useState<string>(initial?.priceAmount != null ? String(initial.priceAmount) : "");
   const [priceCur, setPriceCur] = useState(initial?.priceCur ?? "CNY");
@@ -364,9 +351,6 @@ function MaterialForm({ initial, onCancel, onSave }: {
   const [uses, setUses] = useState<string>((initial?.uses ?? []).join("\n"));
   const [care, setCare] = useState<string>((initial?.care ?? []).join("\n"));
   const [seasons, setSeasons] = useState<string>((initial?.seasons ?? []).join("\n"));
-
-  const canAddColor = colors.length < 5;
-  const canRemoveColor = colors.length > 1;
 
   const submit = async () => {
     if (!name.trim()) return;
@@ -377,14 +361,14 @@ function MaterialForm({ initial, onCancel, onSave }: {
         slug: initial?.slug || undefined,
         name: name.trim(),
         code: code.trim() || null,
-        category,
+        category: "面料",
         supplier: supplier.trim() || null,
         origin: origin.trim() || null,
         composition: composition.trim() || null,
         weight: weight.trim() || null,
         texture: texture.trim() || null,
         finish: finish.trim() || null,
-        colors,
+        colors: cards.map((c) => c.hex).filter(Boolean),
         notes: notes.trim() || null,
         priceAmount: priceAmount ? Number(priceAmount) : null,
         priceCur,
@@ -392,84 +376,72 @@ function MaterialForm({ initial, onCancel, onSave }: {
         uses: uses.split("\n").map((s) => s.trim()).filter(Boolean),
         care: care.split("\n").map((s) => s.trim()).filter(Boolean),
         seasons: seasons.split("\n").map((s) => s.trim()).filter(Boolean),
+        colorImages: await Promise.all(cards.map(async (c) => {
+          let file = c.imageFile || null;
+          if (file) try { file = await compressForUpload(file); } catch {}
+          const out: any = { hex: c.hex, name: c.name, url: c.url };
+          if (file) out.imageFile = file;
+          return out;
+        })),
       };
-      // imageFile 优先；没换图则把现有 url 传回去保持同步
-      await onSave({ ...payload, image: imageUrl || null, imageFile });
+      await onSave(payload);
     } finally {
       setSaving(false);
     }
   };
+
+  const updateCard = (i: number, patch: Partial<Card>) =>
+    setCards((cs) => cs.map((c, j) => j === i ? { ...c, ...patch } : c));
+  const addCard = () => setCards((cs) => cs.length < 12 ? [...cs, { hex: "#cccccc", name: "", url: "", imageFile: null }] : cs);
+  const removeCard = (i: number) => setCards((cs) => cs.length > 1 ? cs.filter((_, j) => j !== i) : cs);
 
   const inputCls = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500";
   const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1";
 
   return (
     <div className="flex-1 min-h-0 h-[60vh] overflow-auto pr-1 text-xs space-y-5">
-      {/* 图片上传 */}
-      <div>
-        <div className={labelCls}>材料参考图</div>
-        <div className="flex items-center gap-3">
-          <div className="w-28 h-28 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden shrink-0">
-            {imageUrl ? (
-              <img src={imageUrl} alt="材料" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">暂无图片</div>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] text-primary-600 hover:underline cursor-pointer">
-              上传图片
-              <input type="file" accept="image/*" className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] || null;
-                  setImageFile(f);
-                  if (f) setImageUrl(URL.createObjectURL(f));
-                }} />
-            </label>
-            {imageUrl && (
-              <button onClick={() => { setImageUrl(""); setImageFile(null); }} className="text-[11px] text-gray-500 hover:underline">移除图片</button>
-            )}
-            <span className="text-[10px] text-gray-400">建议上传材料实拍或纹理图</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 1-5 配色器 */}
+      {/* 色卡列表(每色一张图) */}
       <div>
         <div className="flex items-baseline justify-between mb-1">
-          <div className={labelCls}>配色（{colors.length}/5）</div>
-          <button onClick={() => setColors((cs) => cs.length < 5 ? [...cs, "#cccccc"] : cs)}
-            disabled={!canAddColor}
-            className="text-[10px] text-primary-600 disabled:text-gray-300 hover:underline">+ 添加颜色</button>
+          <div className={labelCls}>色卡 ({cards.length}/12)</div>
+          <button onClick={addCard} disabled={cards.length >= 12} className="text-[10px] text-primary-600 disabled:text-gray-300 hover:underline">+ 添加色卡</button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {colors.map((c, i) => (
-            <div key={i} className="flex items-center gap-1 border border-gray-200 rounded-lg px-1.5 py-1 bg-white">
-              <input type="color" value={c} onChange={(e) => {
-                setColors((cs) => cs.map((x, j) => j === i ? e.target.value : x));
-              }} className="w-7 h-7 rounded cursor-pointer border-0 p-0" />
-              <input value={c} onChange={(e) => {
-                setColors((cs) => cs.map((x, j) => j === i ? e.target.value : x));
-              }} className="w-20 text-[11px] font-mono border-0 focus:outline-none" />
-              <button onClick={() => setColors((cs) => cs.length > 1 ? cs.filter((_, j) => j !== i) : cs)}
-                disabled={!canRemoveColor}
-                className="text-gray-400 hover:text-red-500 disabled:opacity-30 px-1">×</button>
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          {cards.map((c, i) => (
+            <div key={i} className="flex items-center gap-2 border border-gray-200 rounded-lg p-2 bg-white">
+              <div className="w-16 h-16 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden shrink-0">
+                {c.url && !c.imageFile ? (
+                  <img src={c.url} alt={c.name} className="w-full h-full object-cover" />
+                ) : c.imageFile ? (
+                  <img src={URL.createObjectURL(c.imageFile)} alt={c.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full" style={{ background: c.hex || "#eee" }} />
+                )}
+              </div>
+              <div className="flex-1 grid grid-cols-[80px_1fr] gap-2 items-center">
+                <div className="flex items-center gap-1">
+                  <input type="color" value={c.hex || "#cccccc"} onChange={(e) => updateCard(i, { hex: e.target.value })} className="w-7 h-7 rounded cursor-pointer border border-gray-300 p-0" />
+                  <input value={c.hex} onChange={(e) => updateCard(i, { hex: e.target.value })} className="w-16 text-[11px] font-mono border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-primary-500" />
+                </div>
+                <input value={c.name} onChange={(e) => updateCard(i, { name: e.target.value })} placeholder="颜色名(可选)" className={`${inputCls} col-span-1`} />
+              </div>
+              <label className="text-[11px] text-primary-600 hover:underline cursor-pointer shrink-0">
+                上传
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0] || null; updateCard(i, { imageFile: f });
+                }} />
+              </label>
+              <button onClick={() => removeCard(i)} disabled={cards.length <= 1} className="text-gray-400 hover:text-red-500 disabled:opacity-30 px-1">×</button>
             </div>
           ))}
         </div>
-        {colors.length === 5 && <div className="text-[10px] text-gray-400 mt-1">已达上限（最多 5 色）</div>}
+        <span className="text-[10px] text-gray-400">每个颜色一张实拍/纹理图，在材料组合中可选其中某色</span>
       </div>
 
       {/* 基础信息 */}
       <div className="grid grid-cols-2 gap-3">
         <div><div className={labelCls}>名称 *</div><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></div>
         <div><div className={labelCls}>代码</div><input value={code} onChange={(e) => setCode(e.target.value)} className={inputCls} /></div>
-        <div>
-          <div className={labelCls}>类别</div>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
-            {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-          </select>
-        </div>
         <div><div className={labelCls}>供应商</div><input value={supplier} onChange={(e) => setSupplier(e.target.value)} className={inputCls} /></div>
         <div><div className={labelCls}>产地</div><input value={origin} onChange={(e) => setOrigin(e.target.value)} className={inputCls} /></div>
         <div><div className={labelCls}>克重</div><input value={weight} onChange={(e) => setWeight(e.target.value)} className={inputCls} /></div>

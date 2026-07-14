@@ -297,8 +297,25 @@ model LAMaterial {
   priceNote   String?
   /** 材料参考图 URL(上传接口 /materials/:id/image 写入) */
   image       String?
+  /** 色卡列表:Array<{hex:string, url:string, name?:string}>;同一面料的多个颜色,每个颜色一张图 */
+  colorImages Json     @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  @@index([teamId])
+  @@index([category])
+}
+
+model LAStyle {
+  id        String   @id @default(uuid())
+  teamId    String
+  slug      String
+  name      String
+  category  String
+  tags      Json     @default("[]")
+  /** 款式参考图 URL(上传接口 /styles/:id/image 写入) */
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   @@index([teamId])
   @@index([category])
 }
