@@ -218,7 +218,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       fd.append("mode", mode);
       for (const r of fabricRows) if (r.kind === "upload") fd.append("fabrics", await compressForUpload(r.file));
       for (const r of styleRows) if (r.kind === "upload") fd.append("styles", await compressForUpload(r.file));
-      if (knowledge?.brand) fd.append("brand", JSON.stringify(knowledge.brand));
       const url = teamApi(teamId).materialComboUrl;
       const res = await fetch(url, { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) {
@@ -458,15 +457,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
               placeholder="补充设计想法、穿着场景、特殊工艺要求等(可选)"
               className={`${inputCls} resize-none`} />
           </div>
-
-          {/* 品牌信息提示 */}
-          {knowledge?.brand && (knowledge.brand.nameZh || knowledge.brand.nameEn) && (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-[11px] text-gray-600">
-              <span className="text-gray-500">品牌信息:</span> {knowledge.brand.nameZh}{knowledge.brand.nameEn ? ` (${knowledge.brand.nameEn})` : ""}
-              {knowledge.brand.voice ? ` · ${knowledge.brand.voice}` : ""}
-              <span className="text-gray-400 ml-1">(自动注入设计 prompt)</span>
-            </div>
-          )}
 
           {/* 张数预览 */}
           {fabricRows.length > 0 && styleRows.length > 0 && (

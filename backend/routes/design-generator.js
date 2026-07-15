@@ -112,7 +112,7 @@ async function mapConcurrent(tasks, cap, onProgress) {
 }
 
 // ─── material-combo 批次 store (进程内,带 TTL 清理) ────────────
-/** @type {Map<string, {teamId:string,name:string,description:string,brand?:any,fabrics:Array,styles:Array,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
+/** @type {Map<string, {teamId:string,name:string,description:string,fabrics:Array,styles:Array,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
 const mcBatches = new Map();
 
 function batchPublicView(b) {
@@ -153,11 +153,11 @@ async function runBatch(batchId) {
 
     const makePrompt = b.mode === 'color-mix'
       ? () => buildColorMixPrompt({
-        name: b.name, description: b.description, brand: b.brand,
+        name: b.name, description: b.description,
         fabrics: b.fabrics, style: b.styles[0],
       })
       : (cell) => buildMaterialComboPrompt({
-        name: b.name, description: b.description, brand: b.brand,
+        name: b.name, description: b.description,
         fabric: b.fabrics[cell.fi], style: b.styles[cell.si],
       });
 
@@ -629,7 +629,6 @@ router.post('/generate-final', async (req, res) => {
  *   - description: string (其他描述)
  *   - fabrics: file[] (1–6 张面料图片)
  *   - styles: file[] (1–6 张款式参考图片)
- *   - brand: JSON string (可选,品牌信息;不传则从 DB 读)
  *
  * 流程:
  *   1. 守卫校验(名称 / 文件数 / ≤36 张组合)
@@ -707,8 +706,6 @@ router.post('/material-combo', (req, res) => {
     }
 
     try {
-      const brand = await resolveBrand(req);
-
       // 按 fabricsMeta 顺序构建面料行,上传文件逐条消耗(kind==='upload' 才取下一个)
       let fIdx = 0;
       const fabrics = [];
@@ -785,7 +782,6 @@ router.post('/material-combo', (req, res) => {
         mode,
         name: name.trim(),
         description: description.trim(),
-        brand,
         fabrics,
         styles,
         items,
@@ -861,11 +857,11 @@ router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
     const mode = batch.mode === 'color-mix' ? 'color-mix' : 'cross';
     const prompt = mode === 'color-mix'
       ? buildColorMixPrompt({
-        name: batch.name, description: batch.description, brand: batch.brand,
+        name: batch.name, description: batch.description,
         fabrics: batch.fabrics, style: batch.styles[0],
       })
       : buildMaterialComboPrompt({
-        name: batch.name, description: batch.description, brand: batch.brand,
+        name: batch.name, description: batch.description,
         fabric, style,
       });
     cell.prompt = prompt;
@@ -907,25 +903,10 @@ router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
  * prompt 不再冗长描述款式/面料的视觉细节(让图自己说话),只保留:
  *   1. 替换指令(核心) + 名称
  *   2. 用户描述信息(可选)
- *   3. 品牌注入(名称/调性/色板)
- *   4. 白底产品图硬约束
+ *   3. 白底产品图硬约束
+ *
+ * 注:材料组合不再注入品牌配色/信息,仅发送极简 prompt。
  */
-/**
- * 品牌信息注入(共用)。
- * 修复历史 bug:brand.voice 为 string[],需先 join。
- * 返回是否写入 brandBits(是否至少一项)。
- */
-function appendBrandBits(bits, brand) {
-  if (!brand) return;
-  const brandBits = [];
-  if (brand.nameZh || brand.nameEn) brandBits.push(`for the brand "${brand.nameZh || brand.nameEn}"`);
-  const voice = Array.isArray(brand.voice) ? brand.voice.filter(Boolean).join(' / ') : brand.voice;
-  if (voice) brandBits.push(`brand voice "${voice}"`);
-  if (brand.sloganEn) brandBits.push(`tagline "${brand.sloganEn}"`);
-  if (brandBits.length) bits.push(`Brand context: ${brandBits.join(', ')}.`);
-  const brandColors = Array.isArray(brand.colors) ? brand.colors.map((c) => c?.bg || c).filter(Boolean).slice(0, 5) : [];
-  if (brandColors.length) bits.push(`Brand palette reference: ${brandColors.join(', ')}.`);
-}
 
 /** 白底产品图硬约束(共用) */
 function finalStyleBits() {
@@ -939,7 +920,7 @@ function finalStyleBits() {
 /**
  * 叉乘模式 prompt:单面料替换到单款式(原逻辑)。
  */
-function buildMaterialComboPrompt({ name, description, brand, fabric, style }) {
+function buildMaterialComboPrompt({ name, description, fabric, style }) {
   const category = style?.category || 'fashion product';
 
   // 1. 锚点:品类 + 名称 + 纯白底产品图
@@ -955,7 +936,6 @@ function buildMaterialComboPrompt({ name, description, brand, fabric, style }) {
     desc ? `将图1换成图2的面料花样,${desc}。` : `将图1换成图2的面料花样。`,
   );
 
-  appendBrandBits(bits, brand);
   bits.push(finalStyleBits());
 
   return bits.join('\n');
@@ -966,7 +946,7 @@ function buildMaterialComboPrompt({ name, description, brand, fabric, style }) {
  * 参考图由调用方以 referenceImages:[style.url, ...fabrics[].url] 传入(顺序=图序号),
  * prompt 表达「将图1用图2..图N的面料花样拼接/拼色制作」(+可选描述信息)。
  */
-function buildColorMixPrompt({ name, description, brand, fabrics, style }) {
+function buildColorMixPrompt({ name, description, fabrics, style }) {
   const category = style?.category || 'fashion product';
   const fabricsArr = Array.isArray(fabrics) ? fabrics : [];
   const fabricCount = fabricsArr.length;
@@ -988,36 +968,9 @@ function buildColorMixPrompt({ name, description, brand, fabrics, style }) {
     'Each fabric should appear as a clearly distinct color-blocked panel on the garment with a patchwork aesthetic; seams between different fabrics may be visible.',
   );
 
-  appendBrandBits(bits, brand);
   bits.push(finalStyleBits());
 
   return bits.join('\n');
-}
-
-/**
- * 解析品牌信息:优先从请求体 brand 字段,否则回退到数据库。
- * brand 字段解析失败时静默忽略以避免阻塞主流程。
- */
-async function resolveBrand(req) {
-  // 请求直传
-  if (req.body?.brand) {
-    if (typeof req.body.brand === 'string') {
-      try { return JSON.parse(req.body.brand); } catch { /* ignore */ }
-    } else if (typeof req.body.brand === 'object') {
-      return req.body.brand;
-    }
-  }
-  // 回退:从 DB 拉
-  try {
-    const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
-    const profile = await prisma.lABrandProfile.findUnique({ where: { teamId: req.team.id } });
-    const pairs = await prisma.lAColorPair.findMany({ where: { teamId: req.team.id }, orderBy: { createdAt: 'asc' } });
-    if (profile) return { ...profile, colors: pairs || [] };
-  } catch (e) {
-    console.warn('[design-generator] resolveBrand fallback failed:', e?.message);
-  }
-  return undefined;
 }
 
 module.exports = router;
