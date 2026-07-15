@@ -113,8 +113,13 @@ export default function InspinationsPage() {
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files); };
 
   // 粘贴图片自动识别:监听页面级 paste,把剪贴板里的图片直接送入上传+AI 分析流程
+  // 注意:工作台用 display:none 常驻挂载访问过的 tab,组件不会卸载,
+  // 所以必须判断当前激活 tab 是 inspirations 才处理,避免误触其他 tab(插画/款式...)下的粘贴。
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
+      // 仅灵感 tab 激活时处理粘贴(其他 tab 下不拦截,即便是常驻挂载)
+      const tab = new URLSearchParams(window.location.search).get("tab");
+      if (tab !== "inspirations") return;
       // 编辑 modal / 搜索框等输入态下不拦截,避免干扰正常文本粘贴
       const active = document.activeElement;
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || (active instanceof HTMLElement && active.isContentEditable)) return;

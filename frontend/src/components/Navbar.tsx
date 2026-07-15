@@ -17,6 +17,8 @@ interface NavLink {
   onClick?: (e: React.MouseEvent) => void;
   /** 紧贴该 nav 项右侧的附属控件(如团队切换),与该项视为一体 */
   accessory?: React.ReactNode;
+  /** 禁用态:渲染为灰色不可点击,悬浮提示「暂未开放」 */
+  disabled?: boolean;
 }
 
 interface NavbarProps {
@@ -192,8 +194,19 @@ const Navbar: React.FC<NavbarProps> = ({
       {navLinks.map(item => {
         const cls = `text-sm font-medium transition-colors ${activeNavId === item.id ? (item.activeClass || 'text-primary-500') : 'text-text-secondary hover:text-text-primary'}`;
         let linkEl: React.ReactNode;
-        // 有 onClick → 走自定义逻辑(原行为)
-        if (item.onClick) {
+        if (item.disabled) {
+          // 禁用态:灰色不可点击 + 提示暂未开放
+          linkEl = (
+            <span
+              className="text-sm font-medium text-text-tertiary cursor-not-allowed select-none"
+              title="暂未开放"
+            >
+              {item.label}
+              <span className="ml-1 text-[10px] text-text-tertiary">(暂未开放)</span>
+            </span>
+          );
+        } else if (item.onClick) {
+          // 有 onClick → 走自定义逻辑(原行为)
           linkEl = (
             <a href={item.href || `#${item.id}`} onClick={item.onClick} className={cls}>
               {item.label}

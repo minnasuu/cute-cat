@@ -41,8 +41,21 @@ const COLORS: Record<ToastType, { bg: string; border: string; text: string; icon
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const idRef = useRef(0)
+  // 去重缓冲:短时间内同源同文案只弹一次(避免 Promise.all 多个并发失败弹出重复消息)
+  const recentRef = useRef<Map<string, number>>(new Map())
 
   const addToast = useCallback((message: string, type: ToastType = 'error') => {
+    // 800ms 内相同文案 + 相同类型 → 合并去重
+    const key = `${type}:${message}`
+    const now = Date.now()
+    const last = recentRef.current.get(key) ?? 0
+    if (now - last < 800) return
+    recentRef.current.set(key, now)
+    // 定期清理过期 key(防内存膨胀)
+    if (recentRef.current.size > 50) {
+      const cutoff = now - 2000
+      for (const [k, v] of recentRef.current) { if (v < cutoff) recentRef.current.delete(k) }
+    }
     const id = ++idRef.current
     setToasts(prev => [...prev, { id, type, message }])
     setTimeout(() => {

@@ -105,8 +105,8 @@ if [ $MIGRATE_EXIT -ne 0 ]; then
   npx prisma migrate resolve --applied 20260715000003_brand_user_defined_empty 2>/dev/null || true
   npx prisma migrate resolve --applied 20260716000000_redemption_code 2>/dev/null || true
   npx prisma migrate resolve --applied 20260716000001_brand_status_config 2>/dev/null || true
-  npx prisma migrate resolve --applied 20260717000001_add_shared_columns 2>/dev/null || true
-  npx prisma migrate resolve --applied 20260717000002_create_illustration_asset 2>/dev/null || true
+  # 注意:20260717000001_add_shared_columns 和 20260717000002_create_illustration_asset 是新 migration,
+  # 不能 resolve --applied(那只会标记为已应用但不执行 SQL),必须由下方 migrate deploy 实际执行。
   # Try again
   npx prisma migrate deploy 2>&1
   MIGRATE_EXIT2=$?

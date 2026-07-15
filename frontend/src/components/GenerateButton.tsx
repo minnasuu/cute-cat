@@ -63,7 +63,7 @@ export function GenerateButton({
         type="button"
         onClick={onClick}
         disabled={isDisabled}
-        className={`relative overflow-hidden px-8 py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100 disabled:cursor-not-allowed ${
+        className={`relative overflow-hidden px-8 py-3 rounded-2xl text-white font-bold text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100 disabled:cursor-not-allowed ${
           insufficient ? "ring-2 ring-red-300 ring-offset-1" : ""
         }`}
         style={{

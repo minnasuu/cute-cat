@@ -100,8 +100,8 @@ export function teamApi(teamId: string) {
     deleteInspiration: (id: string) => _apiClient.delete(pre(`/inspirations/${id}`)),
 
     // materials
-    listMaterials: (category?: string) =>
-      _apiClient.get(pre(category && category !== 'all' ? `/materials?category=${encodeURIComponent(category)}` : '/materials')),
+    listMaterials: (category?: string, silent?: boolean) =>
+      _apiClient.get(pre(category && category !== 'all' ? `/materials?category=${encodeURIComponent(category)}` : '/materials'), { silent }),
     createMaterial: (body: Record<string, unknown>) => _apiClient.post(pre('/materials'), body),
     updateMaterial: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/materials/${id}`), body),
     deleteMaterial: (id: string) => _apiClient.delete(pre(`/materials/${id}`)),
@@ -121,8 +121,8 @@ export function teamApi(teamId: string) {
         body: JSON.stringify({ idx }),
       }).then((r) => { if (!r.ok) throw new Error(`API ${r.status}`); return r.json(); }),
     // 款式 CRUD + 参考图
-    listStyles: (category?: string) =>
-      _apiClient.get(pre(category && category !== "all" ? `/styles?category=${encodeURIComponent(category)}` : "/styles")),
+    listStyles: (category?: string, silent?: boolean) =>
+      _apiClient.get(pre(category && category !== "all" ? `/styles?category=${encodeURIComponent(category)}` : "/styles"), { silent }),
     createStyle: (body: Record<string, unknown>) => _apiClient.post(pre("/styles"), body),
     updateStyle: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/styles/${id}`), body),
     deleteStyle: (id: string) => _apiClient.delete(pre(`/styles/${id}`)),
@@ -137,7 +137,7 @@ export function teamApi(teamId: string) {
     setStyleShared: (id: string, shared: boolean) =>
       _apiClient.patch(pre(`/styles/${id}/share`), { shared }),
     // 插画 CRUD + 图片上传(可印/刺绣到衣服上)
-    listIllustrations: () => _apiClient.get(pre('/illustrations')),
+    listIllustrations: (silent?: boolean) => _apiClient.get(pre('/illustrations'), { silent }),
     createIllustration: (body: Record<string, unknown>) => _apiClient.post(pre('/illustrations'), body),
     updateIllustration: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/illustrations/${id}`), body),
     deleteIllustration: (id: string) => _apiClient.delete(pre(`/illustrations/${id}`)),

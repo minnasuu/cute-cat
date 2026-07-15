@@ -250,7 +250,7 @@ export default function TeamWorkbench() {
   return (
     <div className="min-h-screen bg-surface-secondary text-text-primary">
       <Navbar
-        // 一级 nav:工作台(+团队切换一体) / 社区
+        // 一级 nav:工作台 / 社区(暂未开放)
         navLinks={[
           {
             id: "dashboard",
@@ -258,7 +258,7 @@ export default function TeamWorkbench() {
             href: "/dashboard",
             accessory: renderTeamSelect(),
           },
-          { id: "community", label: "社区", href: "/community" },
+          { id: "community", label: "社区", href: "/community", disabled: true },
         ]}
         activeNavId="dashboard"
         afterLogo={

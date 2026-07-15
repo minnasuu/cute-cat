@@ -98,7 +98,7 @@ const App: React.FC = () => {
                   </GuestRoute>
                 }
               />
-              <Route path="/community" element={<CommunityPage />} />
+              <Route path="/community" element={<Navigate to="/dashboard" replace />} />
               <Route
                 path="/vibe-assets"
                 element={

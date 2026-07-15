@@ -102,8 +102,9 @@ export function ResourceStoreProvider({ children }: { children: ReactNode }) {
 
   const refreshMaterials = useCallback(async (tid: string) => {
     try {
-      const rows = await teamApi(tid).listMaterials();
-      setMaterials(rows);
+      // silent:true → apiClient 不弹全局 toast(自身 try/catch 已处理)
+      const rows = await teamApi(tid).listMaterials(undefined, true);
+      setMaterials(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error("[resource] refresh materials failed", err);
       setMaterials([]);
@@ -112,8 +113,8 @@ export function ResourceStoreProvider({ children }: { children: ReactNode }) {
 
   const refreshStyles = useCallback(async (tid: string) => {
     try {
-      const rows = await teamApi(tid).listStyles();
-      setStyles(rows);
+      const rows = await teamApi(tid).listStyles(undefined, true);
+      setStyles(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error("[resource] refresh styles failed", err);
       setStyles([]);
@@ -122,7 +123,7 @@ export function ResourceStoreProvider({ children }: { children: ReactNode }) {
 
   const refreshIllustrations = useCallback(async (tid: string) => {
     try {
-      const rows = await teamApi(tid).listIllustrations();
+      const rows = await teamApi(tid).listIllustrations(true);
       setIllustrations(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error("[resource] refresh illustrations failed", err);

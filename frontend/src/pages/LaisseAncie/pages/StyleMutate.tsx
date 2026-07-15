@@ -272,6 +272,12 @@ export const MUTATION_AXES: MutationAxis[] = [
   },
 ];
 
+/** 通用轴被品类专属轴覆盖的映射:通用 axisId → {品类 → 覆盖它的专属 axisId} */
+const UNIVERSAL_AXIS_COVERED_BY: Record<string, Record<string, string>> = {
+  length: { skirt: "skirt-length", dress: "skirt-length", outerwear: "outerwear-length" },
+  hem: { skirt: "skirt-shape", dress: "skirt-shape" },
+};
+
 type StyleRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string }
   | { kind: "library-style"; id: string; styleId: string; name: string; url: string };
@@ -321,24 +327,34 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
 
-  // 当前品类下可用的裂变轴(通用轴 + 该品类专属轴)
+  // 当前品类下可用的裂变轴:专属轴按品类匹配 + 通用轴在无专属替代时展示
   const visibleAxes = MUTATION_AXES.filter((axis) => {
-    if (!axis.categories || axis.categories.length === 0) return true; // 通用轴
-    return category && axis.categories.includes(category);
+    if (axis.categories && axis.categories.length > 0) {
+      return category && axis.categories.includes(category);
+    }
+    // 通用轴:选中的品类有专属替代轴时隐藏(如裙装时隐藏通用「衣长」,因已有「裙长」)
+    const covered = UNIVERSAL_AXIS_COVERED_BY[axis.id];
+    if (category && covered && covered[category]) return false;
+    return true;
   });
 
   const selectedMutations = [
-    // 标准轴勾选
-    ...MUTATION_AXES.flatMap((axis) =>
-      axis.options
+    // 标准轴勾选(被品类专属轴覆盖的通用轴 + 锁定面料后的面料材质轴 → 剔除)
+    ...MUTATION_AXES.flatMap((axis) => {
+      // 通用轴被当前品类的专属轴覆盖 → 剔除(避免与「裙长」等专属轴语义重复)
+      const covered = UNIVERSAL_AXIS_COVERED_BY[axis.id];
+      if (category && !axis.categories?.length && covered?.[category]) return [];
+      // 已锁定面料时,剔除「面料材质」轴的所有勾选(避免与锁定面料 prompt 矛盾)
+      if (axis.id === "fabric" && fabric != null) return [];
+      return axis.options
         .filter((o) => selected.has(mutKey(axis.id, o.id)))
         .map((o) => ({
           axisId: axis.id,
           optionId: o.id,
           label: `${axis.label}·${o.label}`,
           promptHint: o.promptHint,
-        })),
-    ),
+        }));
+    }),
     // 自定义裂变项(无 axisId/optionId,前端拼接 promptHint)
     ...customMutations.map((text) => ({
       axisId: "custom",
@@ -717,7 +733,21 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   key={c.id}
                   type="button"
                   disabled={batchRunning}
-                  onClick={() => setCategory(c.id)}
+                  onClick={() => {
+                    if (category === c.id) return;
+                    // 切换品类:清理会被新品类专属轴覆盖的通用轴勾选(如上衣→半身裙时,清除通用「衣长」勾选)
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      for (const [universalId, coverMap] of Object.entries(UNIVERSAL_AXIS_COVERED_BY)) {
+                        if (coverMap[c.id]) {
+                          const axis = MUTATION_AXES.find((a) => a.id === universalId);
+                          axis?.options.forEach((o) => next.delete(mutKey(universalId, o.id)));
+                        }
+                      }
+                      return next;
+                    });
+                    setCategory(c.id);
+                  }}
                   className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${
                     category === c.id
                       ? "bg-primary-50 border-primary-400 text-primary-700"
@@ -750,32 +780,41 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
               </div>
             )}
             <div className="space-y-4">
-              {visibleAxes.map((axis) => (
-                <div key={axis.id}>
-                  <div className="text-[11px] font-medium text-gray-700 mb-1.5">{axis.label}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {axis.options.map((opt) => {
-                      const key = mutKey(axis.id, opt.id);
-                      const on = selected.has(key);
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          disabled={batchRunning}
-                          onClick={() => toggleOption(axis.id, opt.id)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${
-                            on
-                              ? "bg-primary-50 border-primary-400 text-primary-700"
-                              : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
-                          } disabled:opacity-50`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
+              {visibleAxes.map((axis) => {
+                // 已锁定面料时,「面料材质」轴灰显禁选避免 prompt 矛盾
+                const disabledByFabric = axis.id === "fabric" && fabric != null;
+                return (
+                  <div key={axis.id} className={disabledByFabric ? "opacity-40 pointer-events-none" : ""}>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <span className="text-[11px] font-medium text-gray-700">{axis.label}</span>
+                      {disabledByFabric && (
+                        <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">已锁定</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {axis.options.map((opt) => {
+                        const key = mutKey(axis.id, opt.id);
+                        const on = selected.has(key);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            disabled={batchRunning || disabledByFabric}
+                            onClick={() => toggleOption(axis.id, opt.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${
+                              on
+                                ? "bg-primary-50 border-primary-400 text-primary-700"
+                                : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
+                            } disabled:opacity-50`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -890,7 +929,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                 className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
               />
             )}
-            <span className="text-[10px] text-gray-400">子款默认继承母款面料花色；锁定后面料保持不变。支持上传 / 库选 / 文字描述三种方式。</span>
+            <span className="text-[10px] text-gray-400">子款默认继承母款面料花色；锁定后面料保持不变,且「面料材质」裂变轴将禁用。支持上传 / 库选 / 文字描述三种方式。</span>
           </div>
 
           {/* 描述 */}
