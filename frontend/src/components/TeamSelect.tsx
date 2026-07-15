@@ -71,8 +71,8 @@ export function TeamSelect({
         <div
           role="menu"
           aria-label={ariaLabel}
-          className={`absolute z-50 mt-2 overflow-hidden rounded-[18px] border border-border bg-surface shadow-xl ${
-            variant === 'compact' ? 'right-0 top-full w-44' : 'left-0 top-full w-56'
+          className={`absolute z-50 mt-2 overflow-hidden rounded-[18px] border border-border bg-surface shadow-xl left-0 top-full ${
+            variant === 'compact' ? 'w-44' : 'w-56'
           }`}
         >
           <div className="p-1">

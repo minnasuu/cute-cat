@@ -314,11 +314,11 @@ async function generateImage(prompt, opts) {
     fs.mkdirSync(storage.TMP_DIR, { recursive: true });
     fs.writeFileSync(tmpPath, buf);
     const savePath = storage.createSavePath(`design/${String(teamId)}`, filename);
-    await storage.saveUpload(tmpPath, savePath, 'image/png');
+    // 同时保存原图(-orig 后缀) + 压缩图,前端展示压缩图,下载按钮取原图
+    const { url, originalUrl } = await storage.saveAIGeneratedImage(tmpPath, savePath, 'image/png');
 
-    const url = storage.getPublicUrl(savePath);
-    console.log(`[gen-image] done: ${source}, mode=${storage.mode}, saved=${filename}, url=${url}`);
-    return { url, prompt, model };
+    console.log(`[gen-image] done: ${source}, mode=${storage.mode}, saved=${filename}, url=${url}, original=${originalUrl}`);
+    return { url, originalUrl, prompt, model };
   } catch (e) {
     console.error('[gen-image] save image failed:', e?.message || String(e));
     return { error: `保存图片失败: ${e?.message || e}` };

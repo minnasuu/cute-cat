@@ -132,7 +132,9 @@ export default function ComposerBrief({
       {/* 顶部 header */}
       <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
         <div className="flex items-center justify-between">
-          <h1 className="text-[15px] font-medium text-gray-800">灵感扩散</h1>
+          <h1 className="text-[15px] font-medium text-gray-800 min-h-7">
+            灵感扩散
+          </h1>
           <button
             onClick={onNewSession}
             disabled={generating || refineBusy}

@@ -60,6 +60,8 @@ export interface ProductImage {
   slot: string;
   label: string;
   url: string;
+  /** AI 生成时的原图(URL),前端展示用压缩后的 url,下载时取 originalUrl */
+  originalUrl?: string | null;
 }
 
 /** 生成图(single image)的库来源:款式图 / 面料图(仅当来源为「库」时存在) */
@@ -84,6 +86,19 @@ export interface StyleRow {
   id: string;
   name: string;
   category: string;
+  tags?: string[];
+  image?: string | null;
+  /** 管理员设为共享 → 所有用户可见可用(跨 teamId) */
+  shared?: boolean;
+  sharedById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 插画资源行(可印/刺绣到衣服上) */
+export interface IllustrationRow {
+  id: string;
+  name: string;
   tags?: string[];
   image?: string | null;
   createdAt: string;

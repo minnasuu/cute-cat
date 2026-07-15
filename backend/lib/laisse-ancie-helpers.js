@@ -10,12 +10,10 @@
 /** 新建或 PATCH 品牌时,合并用户传入值与默认值。 */
 function defaultBrand(partial) {
   return {
-    nameZh: partial.nameZh || '来兮·安兮',
-    nameEn: partial.nameEn || 'Laisse Ancie',
+    name: partial.name || '来兮·安兮',
     cnFont: partial.cnFont || '站酷xiaowei体',
     enFont: partial.enFont || 'Poller One',
-    sloganZh: partial.sloganZh || '',
-    sloganEn: partial.sloganEn || '',
+    slogan: partial.slogan || '',
     voice: partial.voice || [],
     audienceAgeMin: partial.audienceAgeMin ?? 18,
     audienceAgeMax: partial.audienceAgeMax ?? 30,

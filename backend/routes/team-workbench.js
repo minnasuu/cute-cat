@@ -29,6 +29,7 @@ const designGeneratorRouter = require('./design-generator');
 const {
   defaultBrand, findOwned, pickDefined, tryParseJson, slugify,
 } = require('../lib/laisse-ancie-helpers');
+const { isAdminUserId } = require('../lib/admin');
 
 const router = express.Router();
 
@@ -113,7 +114,7 @@ router.route('/brand')
   }))
   .patch(asyncHandler(async (req, res) => {
     const data = pickDefined(req.body ?? {}, [
-      'logo', 'nameZh', 'nameEn', 'cnFont', 'enFont', 'sloganZh', 'sloganEn',
+      'logo', 'name', 'slogan', 'cnFont', 'enFont',
       'voice', 'audienceAgeMin', 'audienceAgeMax', 'priceMin', 'priceMax',
       'systemSnippet', 'statusConfig',
     ]);
@@ -521,8 +522,12 @@ router.delete('/inspirations/:id', asyncHandler(async (req, res) => {
 
 router.get('/materials', asyncHandler(async (req, res) => {
   const { category } = req.query;
-  const where = { teamId: req.team.id };
-  if (category && category !== 'all') where.category = String(category);
+  const teamId = req.team.id;
+  // 合并「本 team」+「管理员共享(shared=true)」,让所有用户可用
+  const where = { OR: [{ teamId }, { shared: true }] };
+  if (category && category !== 'all') {
+    where.OR = where.OR.map((c) => ({ ...c, category: String(category) }));
+  }
   const rows = await prisma.lAMaterial.findMany({ where, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
   res.json(rows);
 }));
@@ -669,6 +674,20 @@ router.delete('/materials/:id/color-image', asyncHandler(async (req, res) => {
   res.json({ ok: true, id: updated.id, colorImages: updated.colorImages });
 }));
 
+// PATCH /api/teams/:teamId/materials/:id/share —— 管理员开关 shared(跨团队共享)
+// body.shared = true|false;仅管理员可调用;共享项仅管理员可改可删
+router.patch('/materials/:id/share', asyncHandler(async (req, res) => {
+  if (!await isAdminUserId(req.userId)) return res.status(403).json({ error: '仅管理员可共享' });
+  const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const shared = !!req.body?.shared;
+  const updated = await prisma.lAMaterial.update({
+    where: { id: owned.id },
+    data: { shared, sharedById: shared ? req.userId : null },
+  });
+  res.json(updated);
+}));
+
 router.delete('/materials/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
@@ -680,8 +699,12 @@ router.delete('/materials/:id', asyncHandler(async (req, res) => {
 
 router.get('/styles', asyncHandler(async (req, res) => {
   const { category } = req.query;
-  const where = { teamId: req.team.id };
-  if (category && category !== 'all') where.category = String(category);
+  const teamId = req.team.id;
+  // 合并「本 team」+「管理员共享(shared=true)」,让所有用户可用
+  const where = { OR: [{ teamId }, { shared: true }] };
+  if (category && category !== 'all') {
+    where.OR = where.OR.map((c) => ({ ...c, category: String(category) }));
+  }
   const rows = await prisma.lAStyle.findMany({ where, orderBy: [{ category: 'asc' }, { name: 'asc' }] });
   res.json(rows);
 }));
@@ -732,10 +755,97 @@ router.post('/styles/:id/image', (req, res) => {
   });
 });
 
+// PATCH /api/teams/:teamId/styles/:id/share —— 管理员开关 shared(跨团队共享)
+// body.shared = true|false;仅管理员可调用;共享项仅管理员可改可删
+router.patch('/styles/:id/share', asyncHandler(async (req, res) => {
+  if (!await isAdminUserId(req.userId)) return res.status(403).json({ error: '仅管理员可共享' });
+  const owned = await findOwned(prisma.lAStyle, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const shared = !!req.body?.shared;
+  const updated = await prisma.lAStyle.update({
+    where: { id: owned.id },
+    data: { shared, sharedById: shared ? req.userId : null },
+  });
+  res.json(updated);
+}));
+
 router.delete('/styles/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAStyle, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
   await prisma.lAStyle.delete({ where: { id: owned.id } });
+  res.json({ ok: true });
+}));
+
+/* ─── illustrations(插画:用户上传,可印/刺绣到衣服上) ───────────── */
+
+router.get('/illustrations', asyncHandler(async (req, res) => {
+  const where = { teamId: req.team.id };
+  const rows = await prisma.lAIllustrationAsset.findMany({ where, orderBy: [{ createdAt: 'desc' }] });
+  res.json(rows);
+}));
+
+router.post('/illustrations', asyncHandler(async (req, res) => {
+  const data = pickDefined(req.body ?? {}, ['slug', 'name', 'tags', 'image']);
+  if (!data.name) return res.status(400).json({ error: 'name required' });
+  if (!data.slug) data.slug = `${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
+  let item;
+  try {
+    item = await prisma.lAIllustrationAsset.create({
+      data: {
+        teamId: req.team.id,
+        slug: String(data.slug),
+        name: String(data.name),
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        image: data.image || null,
+      },
+    });
+  } catch (eCreate) {
+    console.error('[team-workbench] createIllustration failed:', eCreate?.message || eCreate);
+    return res.status(500).json({ error: `[create] ${eCreate?.message || '创建失败'}` });
+  }
+  res.status(201).json(item);
+}));
+
+router.patch('/illustrations/:id', asyncHandler(async (req, res) => {
+  const owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const data = pickDefined(req.body ?? {}, ['slug', 'name', 'tags', 'image']);
+  if (data.tags !== undefined) data.tags = Array.isArray(data.tags) ? data.tags : [];
+  let item;
+  try {
+    item = await prisma.lAIllustrationAsset.update({ where: { id: owned.id }, data });
+  } catch (eUpdate) {
+    console.error('[team-workbench] updateIllustration failed:', eUpdate?.message || eUpdate);
+    return res.status(500).json({ error: `[update] ${eUpdate?.message || '更新失败'}` });
+  }
+  res.json(item);
+}));
+
+// POST /api/teams/:teamId/illustrations/:id/image —— 上传/替换插画图
+// multipart form-data, field "file";写入 image 字段
+router.post('/illustrations/:id/image', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) return multerError(res, err);
+    if (!req.file) return res.status(400).json({ error: 'no file' });
+    const owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+    if (!owned) return res.status(404).json({ error: 'not found' });
+    try {
+      const savePath = createSavePath(`illustrations/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      const updated = await prisma.lAIllustrationAsset.update({ where: { id: owned.id }, data: { image: url } });
+      res.json({ id: updated.id, url });
+    } catch (e) {
+      console.error('[team-workbench] upload illustration image failed:', e);
+      res.status(500).json({ error: `上传失败: ${e.message}` });
+    }
+  });
+});
+
+router.delete('/illustrations/:id', asyncHandler(async (req, res) => {
+  const owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  await prisma.lAIllustrationAsset.delete({ where: { id: owned.id } });
   res.json({ ok: true });
 }));
 

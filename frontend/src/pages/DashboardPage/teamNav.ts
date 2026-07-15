@@ -61,6 +61,7 @@ export const RESOURCE_SECTIONS: NavSection[] = [
       { id: "inspirations", label: "灵感", icon: "◐" },
       { id: "materials", label: "面料", icon: "◫" },
       { id: "styles", label: "款式", icon: "◑" },
+      { id: "illustrations", label: "插画", icon: "◈" },
       { id: "assets", label: "品牌信息", icon: "◻" },
       { id: "lookbook", label: "Lookbook", icon: "✦" },
     ],

@@ -245,12 +245,10 @@ model LABrandProfile {
   id              String   @id @default(uuid())
   teamId          String   @unique
   logo            String?
-  nameZh          String?
-  nameEn          String?
+  name            String?
   cnFont          String   @default("站酷xiaowei体")
   enFont          String   @default("Poller One")
-  sloganZh        String?
-  sloganEn        String?
+  slogan          String?
   voice           Json     @default("[]")
   audienceAgeMin  Int      @default(18)
   audienceAgeMax  Int      @default(30)
@@ -352,10 +350,15 @@ model LAMaterial {
   image       String?
   /** 色卡列表:Array<{hex:string, url:string, name?:string}>;同一面料的多个颜色,每个颜色一张图 */
   colorImages Json     @default("[]")
+  /** 管理员设为共享 → 所有用户可见可用(跨 teamId) */
+  shared      Boolean  @default(false)
+  /** 哪个管理员共享的(可审计) */
+  sharedById  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   @@index([teamId])
   @@index([category])
+  @@index([shared])
 }
 
 model LAStyle {
@@ -366,11 +369,29 @@ model LAStyle {
   category  String
   tags      Json     @default("[]")
   /** 款式参考图 URL(上传接口 /styles/:id/image 写入) */
+  image      String?
+  /** 管理员设为共享 → 所有用户可见可用(跨 teamId) */
+  shared     Boolean  @default(false)
+  /** 哪个管理员共享的(可审计) */
+  sharedById String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([teamId])
+  @@index([category])
+  @@index([shared])
+}
+
+model LAIllustrationAsset {
+  id        String   @id @default(uuid())
+  teamId    String
+  slug      String
+  name      String
+  tags      Json     @default("[]")
+  /** 插画图片 URL(上传接口 /illustrations/:id/image 写入) */
   image     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([teamId])
-  @@index([category])
 }
 
 model LASkillArticle {

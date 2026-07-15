@@ -14,78 +14,271 @@ import { useDesignStore } from "../store/design";
 import type { KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { compressForUpload } from "../lib/images";
 import { Modal } from "../components/ui";
+import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateButton";
+import { useAuth } from "../../../contexts/AuthContext";
 
 const MAX_MUTATIONS = 12;
 const POLL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 120;
 
+/** 服装品类:决定该品类下可用的裂变轴 */
+export const GARMENT_CATEGORIES = [
+  { id: "top", label: "上衣" },
+  { id: "bottom", label: "下装" },
+  { id: "skirt", label: "半身裙" },
+  { id: "dress", label: "连衣裙" },
+  { id: "outerwear", label: "外套" },
+  { id: "other", label: "其他" },
+] as const;
+
+export type GarmentCategoryId = (typeof GARMENT_CATEGORIES)[number]["id"];
+
+/** 单个裂变选项 */
+export interface MutationOption {
+  id: string;
+  label: string;
+  promptHint: string;
+}
+
+/** 单条裂变轴 */
+export interface MutationAxis {
+  id: string;
+  label: string;
+  /** 该轴适用的品类(空数组 = 通用,所有品类都显示) */
+  categories?: GarmentCategoryId[];
+  options: MutationOption[];
+}
+
 /** 裂变轴定义(与后端 promptHint 对齐) */
-export const MUTATION_AXES = [
+export const MUTATION_AXES: MutationAxis[] = [
+  // ── 通用轴(所有品类) ──
   {
     id: "silhouette",
-    label: "廓形",
+    label: "版型",
     options: [
-      { id: "a-line", label: "A 字廓形", promptHint: "change only the silhouette to a clear A-line / flared shape" },
-      { id: "h-line", label: "H 直筒", promptHint: "change only the silhouette to a straight H-line / column shape" },
-      { id: "x-line", label: "X 收腰", promptHint: "change only the silhouette to an X-line with a defined waist" },
-      { id: "oversized", label: "宽松廓形", promptHint: "change only the silhouette to a relaxed oversized fit" },
-      { id: "fitted", label: "修身贴身", promptHint: "change only the silhouette to a slim fitted bodycon cut" },
-    ],
-  },
-  {
-    id: "neckline",
-    label: "领型",
-    options: [
-      { id: "round", label: "圆领", promptHint: "change only the neckline to a clean round crew neck" },
-      { id: "v-neck", label: "V 领", promptHint: "change only the neckline to a V-neck" },
-      { id: "square", label: "方领", promptHint: "change only the neckline to a square neckline" },
-      { id: "boat", label: "船领", promptHint: "change only the neckline to a wide boat neck" },
-      { id: "stand", label: "立领", promptHint: "change only the neckline to a stand / mandarin collar" },
-      { id: "off-shoulder", label: "一字肩", promptHint: "change only the neckline to an off-shoulder / bardot neckline" },
+      { id: "boxy", label: "Boxy 方正版", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a structured boxy fit with straight side seams." },
+      { id: "relaxed", label: "Relaxed 宽松", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a relaxed loose fit with comfortable ease." },
+      { id: "oversized", label: "Oversized  oversize", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to an oversized fit with generous volume." },
+      { id: "slim", label: "Slim 修身", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a slim fitted shape that follows the body." },
+      { id: "cocoon", label: "Cocoon 茧型", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a soft cocoon shape with rounded volume." },
+      { id: "trapeze", label: "Trapeze A-Line", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a trapeze A-line shape." },
+      { id: "fit-flare", label: "Fit & Flare", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Create a fitted upper body with a softly flared lower body." },
     ],
   },
   {
     id: "sleeve",
-    label: "袖长",
+    label: "袖型",
     options: [
-      { id: "sleeveless", label: "无袖", promptHint: "change only the sleeves to sleeveless / tank" },
-      { id: "short", label: "短袖", promptHint: "change only the sleeves to short sleeves" },
-      { id: "three-quarter", label: "七分袖", promptHint: "change only the sleeves to three-quarter length" },
-      { id: "long", label: "长袖", promptHint: "change only the sleeves to long sleeves" },
-      { id: "puff", label: "泡泡袖", promptHint: "change only the sleeves to short puff sleeves" },
+      { id: "sleeveless", label: "无袖", promptHint: "Modify ONLY the sleeves. Remove sleeves to make it sleeveless." },
+      { id: "cap", label: "盖袖", promptHint: "Modify ONLY the sleeves. Change them to cap sleeves." },
+      { id: "short", label: "短袖", promptHint: "Modify ONLY the sleeves. Change them to short sleeves." },
+      { id: "elbow", label: "中袖", promptHint: "Modify ONLY the sleeves. Change them to elbow-length sleeves." },
+      { id: "long", label: "长袖", promptHint: "Modify ONLY the sleeves. Change them to long sleeves." },
+      { id: "balloon", label: "灯笼袖", promptHint: "Modify ONLY the sleeves. Change them to balloon sleeves with soft volume." },
+      { id: "bishop", label: "主教袖", promptHint: "Modify ONLY the sleeves. Change them to bishop sleeves gathered at the cuff." },
+      { id: "puff", label: "泡泡袖", promptHint: "Modify ONLY the sleeves. Change them to short puff sleeves." },
+      { id: "dolman", label: "蝙蝠袖", promptHint: "Modify ONLY the sleeves. Change them to dolman sleeves." },
+      { id: "kimono", label: "和服袖", promptHint: "Modify ONLY the sleeves. Change them to kimono sleeves." },
     ],
   },
   {
     id: "length",
-    label: "长短",
+    label: "衣长",
     options: [
-      { id: "crop", label: "短款露腰", promptHint: "change only the garment length to a cropped / shortened hem" },
-      { id: "regular", label: "常规长度", promptHint: "change only the garment length to a regular standard hem" },
-      { id: "midi", label: "中长", promptHint: "change only the garment length to midi length" },
-      { id: "maxi", label: "及踝长款", promptHint: "change only the garment length to a floor-skimming maxi length" },
+      { id: "cropped", label: "短款", promptHint: "Modify ONLY the garment length. Shorten it to a cropped length." },
+      { id: "regular", label: "常规", promptHint: "Modify ONLY the garment length. Keep a regular length." },
+      { id: "longline", label: "长款", promptHint: "Modify ONLY the garment length. Extend it to a longline length." },
+      { id: "tunic", label: "Tunic", promptHint: "Modify ONLY the garment length. Extend it to a tunic length." },
+    ],
+  },
+  {
+    id: "hem",
+    label: "下摆",
+    options: [
+      { id: "straight", label: "平摆", promptHint: "Modify ONLY the hem. Change it to a straight hem." },
+      { id: "round", label: "圆摆", promptHint: "Modify ONLY the hem. Change it to a curved shirt-tail hem." },
+      { id: "high-low", label: "前短后长", promptHint: "Modify ONLY the hem. Change it to a high-low hem." },
+      { id: "slit", label: "开叉", promptHint: "Modify ONLY the hem. Add side slits." },
+      { id: "drawstring", label: "抽绳", promptHint: "Modify ONLY the hem. Add an adjustable drawstring hem." },
+      { id: "asymmetric", label: "不对称", promptHint: "Modify ONLY the hem. Change it to an asymmetric uneven hem." },
     ],
   },
   {
     id: "detail",
-    label: "细节",
+    label: "设计细节",
     options: [
-      { id: "pockets", label: "加口袋", promptHint: "keep the base design but add visible functional patch pockets" },
-      { id: "side-slits", label: "侧开叉", promptHint: "keep the base design but add side slits at the hem" },
-      { id: "pleats", label: "褶裥", promptHint: "keep the base design but add soft knife pleats" },
-      { id: "buttons", label: "前门扣", promptHint: "keep the base design but add a centered front button placket" },
-      { id: "ruffles", label: "荷叶边", promptHint: "keep the base design but add delicate ruffle trim details" },
-      { id: "belt", label: "腰带", promptHint: "keep the base design but add a matching self-fabric belt at the waist" },
+      { id: "ruffle", label: "荷叶边", promptHint: "Keep the original design. Add delicate ruffle trims." },
+      { id: "frill", label: "木耳边", promptHint: "Keep the original design. Add soft lettuce-edge frills." },
+      { id: "pin-tuck", label: "细褶", promptHint: "Keep the original design. Add fine pintuck detailing." },
+      { id: "gather", label: "抽褶", promptHint: "Keep the original design. Add soft gathered detailing." },
+      { id: "smock", label: "司马克", promptHint: "Keep the original design. Add smocking details for texture." },
+      { id: "patch-pocket", label: "贴袋", promptHint: "Keep the original design. Add functional patch pockets." },
+      { id: "flap-pocket", label: "翻盖口袋", promptHint: "Keep the original design. Add flap pockets." },
+      { id: "zipper", label: "金属拉链", promptHint: "Keep the original design. Add an exposed metal zipper." },
+      { id: "button-placket", label: "门襟", promptHint: "Keep the original design. Add a front button placket." },
+      { id: "contrast-stitch", label: "撞色明线", promptHint: "Keep the original design. Add contrast topstitching for a sporty feel." },
+      { id: "belt", label: "腰带", promptHint: "Keep the original design. Add a matching waist belt." },
     ],
   },
-] as const;
+  {
+    id: "fabric",
+    label: "面料材质",
+    options: [
+      { id: "cotton", label: "纯棉", promptHint: "Change ONLY the fabric to premium cotton jersey." },
+      { id: "linen", label: "亚麻", promptHint: "Change ONLY the fabric to washed linen." },
+      { id: "silk", label: "真丝", promptHint: "Change ONLY the fabric to luxurious silk with natural sheen." },
+      { id: "jersey", label: "针织", promptHint: "Change ONLY the fabric to soft knit jersey." },
+      { id: "denim", label: "牛仔", promptHint: "Change ONLY the fabric to lightweight denim." },
+      { id: "twill", label: "斜纹", promptHint: "Change ONLY the fabric to cotton twill." },
+      { id: "corduroy", label: "灯芯绒", promptHint: "Change ONLY the fabric to fine wale corduroy." },
+      { id: "wool", label: "羊毛", promptHint: "Change ONLY the fabric to soft wool blend." },
+      { id: "suede", label: "麂皮", promptHint: "Change ONLY the fabric to soft faux suede." },
+    ],
+  },
+  {
+    id: "pattern",
+    label: "图案",
+    options: [
+      { id: "solid", label: "纯色", promptHint: "Change ONLY the pattern to a solid clean look, no print." },
+      { id: "stripe", label: "条纹", promptHint: "Change ONLY the pattern to classic vertical stripes." },
+      { id: "floral", label: "碎花", promptHint: "Change ONLY the pattern to a delicate floral print." },
+      { id: "plaid", label: "格纹", promptHint: "Change ONLY the pattern to a classic plaid check." },
+      { id: "color-block", label: "拼色", promptHint: "Change ONLY the pattern to bold color-blocking panels." },
+      { id: "camo", label: "迷彩", promptHint: "Change ONLY the pattern to a subtle camouflage print." },
+    ],
+  },
+
+  // ── 上衣专属 ──
+  {
+    id: "neckline",
+    label: "领型",
+    categories: ["top", "dress", "outerwear"],
+    options: [
+      { id: "crew", label: "圆领", promptHint: "Modify ONLY the neckline. Change it to a classic crew neck." },
+      { id: "vneck", label: "V领", promptHint: "Modify ONLY the neckline. Change it to a V-neck." },
+      { id: "boat", label: "船领", promptHint: "Modify ONLY the neckline. Change it to a wide boat neckline." },
+      { id: "square", label: "方领", promptHint: "Modify ONLY the neckline. Change it to a square neckline." },
+      { id: "henley", label: "亨利领", promptHint: "Modify ONLY the neckline. Change it to a henley neckline with a short button placket." },
+      { id: "polo", label: "POLO领", promptHint: "Modify ONLY the neckline. Change it to a polo collar." },
+      { id: "shirt-collar", label: "衬衫领", promptHint: "Modify ONLY the neckline. Change it to a classic shirt collar." },
+      { id: "peter-pan", label: "娃娃领", promptHint: "Modify ONLY the neckline. Change it to a rounded Peter Pan collar." },
+      { id: "stand", label: "立领", promptHint: "Modify ONLY the neckline. Change it to a stand collar." },
+      { id: "mock", label: "半高领", promptHint: "Modify ONLY the neckline. Change it to a mock neck." },
+      { id: "turtleneck", label: "高领", promptHint: "Modify ONLY the neckline. Change it to a full turtleneck." },
+      { id: "off-shoulder", label: "一字肩", promptHint: "Modify ONLY the neckline. Change it to an off-shoulder neckline exposing the shoulders." },
+    ],
+  },
+  {
+    id: "shoulder",
+    label: "肩型",
+    categories: ["top", "dress", "outerwear"],
+    options: [
+      { id: "regular", label: "正肩", promptHint: "Modify ONLY the shoulder construction. Change it to a regular set shoulder." },
+      { id: "drop", label: "落肩", promptHint: "Modify ONLY the shoulder construction. Change it to drop shoulders." },
+      { id: "raglan", label: "插肩", promptHint: "Modify ONLY the shoulder construction. Change it to raglan sleeves." },
+      { id: "extended", label: "宽肩", promptHint: "Modify ONLY the shoulder construction. Extend the shoulder width." },
+      { id: "padded", label: "垫肩", promptHint: "Modify ONLY the shoulder construction. Add subtle padded shoulders for structure." },
+    ],
+  },
+  {
+    id: "closure",
+    label: "闭合方式",
+    categories: ["top", "dress", "outerwear"],
+    options: [
+      { id: "pullover", label: "套头", promptHint: "Modify ONLY the closure. Change it to a pullover style with no opening." },
+      { id: "button-front", label: "前开扣", promptHint: "Modify ONLY the closure. Add a full front button placket." },
+      { id: "zip-front", label: "前拉链", promptHint: "Modify ONLY the closure. Add a front zipper closure." },
+      { id: "open-cardigan", label: "开衫", promptHint: "Modify ONLY the closure. Change it to an open front cardigan with no closure." },
+      { id: "tie-waist", label: "系带", promptHint: "Modify ONLY the closure. Add a tie waist closure." },
+    ],
+  },
+
+  // ── 下装专属 ──
+  {
+    id: "waistline",
+    label: "腰型",
+    categories: ["bottom", "skirt"],
+    options: [
+      { id: "high", label: "高腰", promptHint: "Modify ONLY the waistline. Raise it to a high-waisted cut above the natural waist." },
+      { id: "mid", label: "中腰", promptHint: "Modify ONLY the waistline. Keep it at the natural mid waist." },
+      { id: "low", label: "低腰", promptHint: "Modify ONLY the waistline. Lower it to sit on the hips." },
+      { id: "elastic", label: "松紧腰", promptHint: "Modify ONLY the waistline. Add a comfortable elastic waistband." },
+      { id: "paperbag", label: "抽绳纸袋腰", promptHint: "Modify ONLY the waistline. Add a gathered paperbag waist with tie." },
+    ],
+  },
+  {
+    id: "leg",
+    label: "裤腿版型",
+    categories: ["bottom"],
+    options: [
+      { id: "straight", label: "直筒", promptHint: "Modify ONLY the leg shape. Change it to a straight leg cut." },
+      { id: "skinny", label: "紧身", promptHint: "Modify ONLY the leg shape. Change it to a skinny fitted leg." },
+      { id: "wide", label: "阔腿", promptHint: "Modify ONLY the leg shape. Change it to a wide leg silhouette." },
+      { id: "bootcut", label: "喇叭裤", promptHint: "Modify ONLY the leg shape. Create a bootcut that flares below the knee." },
+      { id: "cargo", label: "工装裤", promptHint: "Modify ONLY the leg shape. Change it to relaxed cargo pants." },
+      { id: "culottes", label: "阔短裤", promptHint: "Modify ONLY the leg shape. Make them wide-leg culotte length." },
+    ],
+  },
+
+  // ── 裙装专属 ──
+  {
+    id: "skirt-length",
+    label: "裙长",
+    categories: ["skirt", "dress"],
+    options: [
+      { id: "mini", label: "超短裙", promptHint: "Modify ONLY the skirt length. Shorten it to a mini length." },
+      { id: "above-knee", label: "膝上", promptHint: "Modify ONLY the skirt length. End it above the knee." },
+      { id: "knee", label: "及膝", promptHint: "Modify ONLY the skirt length. Keep it at knee length." },
+      { id: "midi", label: "中长裙", promptHint: "Modify ONLY the skirt length. Make it midi length, below the knee." },
+      { id: "maxi", label: "及踝长裙", promptHint: "Modify ONLY the skirt length. Extend it to a floor-grazing maxi." },
+    ],
+  },
+  {
+    id: "skirt-shape",
+    label: "裙型",
+    categories: ["skirt", "dress"],
+    options: [
+      { id: "a-line", label: "A字裙", promptHint: "Modify ONLY the skirt shape. Create a classic A-line skirt from waist to hem." },
+      { id: "pencil", label: "铅笔裙", promptHint: "Modify ONLY the skirt shape. Create a slim pencil skirt shape." },
+      { id: "circle", label: "大摆裙", promptHint: "Modify ONLY the skirt shape. Make a full circle skirt with lots of volume." },
+      { id: "pleated", label: "百褶裙", promptHint: "Modify ONLY the skirt shape. Add structured pleats throughout the skirt." },
+      { id: "wrap", label: "裹身裙", promptHint: "Modify ONLY the skirt shape. Create a wrap-style skirt with diagonal overlap." },
+    ],
+  },
+
+  // ── 外套专属 ──
+  {
+    id: "collar-type",
+    label: "领型(外套)",
+    categories: ["outerwear"],
+    options: [
+      { id: "notched-lapel", label: "平驳领", promptHint: "Modify ONLY the collar. Change it to a classic notched lapel." },
+      { id: "peak-lapel", label: "戗驳领", promptHint: "Modify ONLY the collar. Change it to a sharp peaked lapel." },
+      { id: "shawl", label: "青果领", promptHint: "Modify ONLY the collar. Change it to a smooth shawl collar." },
+      { id: "hood", label: "连帽", promptHint: "Modify ONLY the collar. Replace collar with an attached hood." },
+      { id: "mandarin", label: "立领(中山)", promptHint: "Modify ONLY the collar. Add a short mandarin collar." },
+    ],
+  },
+  {
+    id: "outerwear-length",
+    label: "衣长(外套)",
+    categories: ["outerwear"],
+    options: [
+      { id: "cropped", label: "短外套", promptHint: "Modify ONLY the garment length. Shorten it to a cropped jacket length." },
+      { id: "hip", label: "常规及臀", promptHint: "Modify ONLY the garment length. Hip length, covering the hip." },
+      { id: "mid-thigh", label: "中长款", promptHint: "Modify ONLY the garment length. Extend to mid-thigh length." },
+      { id: "knee-length", label: "及膝长款", promptHint: "Modify ONLY the garment length. Extend it to knee-length coat." },
+    ],
+  },
+];
 
 type StyleRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string }
   | { kind: "library-style"; id: string; styleId: string; name: string; url: string };
-
 type FabricRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string }
   | { kind: "library-fabric"; id: string; matId: string; colorIdx: number; name: string; url: string; hex?: string }
+  | { kind: "text"; id: string; description: string }
   | null;
 
 type MutationKey = string; // `${axisId}::${optionId}`
@@ -102,36 +295,62 @@ function mutKey(axisId: string, optionId: string): MutationKey {
 
 export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoading }: Props) {
   const { teamId, navigateTab } = useCurrentTeam();
+  const { user } = useAuth();
   const store = useDesignStore();
 
   const [mother, setMother] = useState<StyleRow | null>(null);
   const [fabric, setFabric] = useState<FabricRow>(null);
+  const [fabricTextInput, setFabricTextInput] = useState("");
   const [selected, setSelected] = useState<Set<MutationKey>>(new Set());
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [picker, setPicker] = useState<null | "style" | "fabric">(null);
 
+  const [category, setCategory] = useState<GarmentCategoryId | "">("");
   const [batch, setBatch] = useState<StyleMutateBatch | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 用户自定义裂变项(自由输入),不入库,仅本次提交用 */
+  const [customMutations, setCustomMutations] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState("");
+  /** 前端移除的结果格(轮询不会重新加回) */
+  const [removedMis, setRemovedMis] = useState<Set<number>>(() => new Set());
 
   const styleRef = useRef<HTMLInputElement>(null);
   const fabricRef = useRef<HTMLInputElement>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
 
-  const selectedMutations = MUTATION_AXES.flatMap((axis) =>
-    axis.options
-      .filter((o) => selected.has(mutKey(axis.id, o.id)))
-      .map((o) => ({
-        axisId: axis.id,
-        optionId: o.id,
-        label: `${axis.label}·${o.label}`,
-        promptHint: o.promptHint,
-      })),
-  );
+  // 当前品类下可用的裂变轴(通用轴 + 该品类专属轴)
+  const visibleAxes = MUTATION_AXES.filter((axis) => {
+    if (!axis.categories || axis.categories.length === 0) return true; // 通用轴
+    return category && axis.categories.includes(category);
+  });
+
+  const selectedMutations = [
+    // 标准轴勾选
+    ...MUTATION_AXES.flatMap((axis) =>
+      axis.options
+        .filter((o) => selected.has(mutKey(axis.id, o.id)))
+        .map((o) => ({
+          axisId: axis.id,
+          optionId: o.id,
+          label: `${axis.label}·${o.label}`,
+          promptHint: o.promptHint,
+        })),
+    ),
+    // 自定义裂变项(无 axisId/optionId,前端拼接 promptHint)
+    ...customMutations.map((text) => ({
+      axisId: "custom",
+      optionId: `custom_${text}`,
+      label: `自定义·${text}`,
+      promptHint: `Modify the garment to incorporate: ${text}. Keep the overall DNA and other design elements of the original mother style.`,
+    })),
+  ];
 
   const batchRunning = !!batch && batch.status === "running";
+  const visibleItems = batch ? batch.items.filter((it) => !removedMis.has(it.mi)) : [];
+  const visibleCompleted = visibleItems.filter((it) => it.status === "done" && it.url).length;
   const canSubmit =
     !!name.trim() &&
     !!mother &&
@@ -178,6 +397,28 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  // 添加自定义裂变项(回车 / 逗号触发)
+  function addCustomMutation(text: string) {
+    const t = text.trim();
+    if (!t) return;
+    if (selectedMutations.length + customMutations.length >= MAX_MUTATIONS) {
+      setError(`最多勾选 ${MAX_MUTATIONS} 个裂变项`);
+      return;
+    }
+    if (customMutations.includes(t)) return;
+    setCustomMutations((prev) => [...prev, t]);
+    setCustomInput("");
+    setError(null);
+  }
+  function handleCustomKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addCustomMutation(customInput);
+    } else if (e.key === "Backspace" && !customInput && customMutations.length) {
+      setCustomMutations((prev) => prev.slice(0, -1));
+    }
+  }
+
   function toggleOption(axisId: string, optionId: string) {
     if (batchRunning) return;
     const key = mutKey(axisId, optionId);
@@ -221,6 +462,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
       preview: URL.createObjectURL(compressed),
       name: raw.name || "面料",
     });
+    setFabricTextInput("");
     if (fabricRef.current) fabricRef.current.value = "";
   }
 
@@ -229,6 +471,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     setSubmitting(true);
     setError(null);
     setBatch(null);
+    setRemovedMis(new Set());
     stopPolling();
     try {
       const styleMeta =
@@ -239,7 +482,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
         ? null
         : fabric.kind === "upload"
           ? { kind: "upload", name: fabric.name }
-          : { kind: "library-fabric", matId: fabric.matId, colorIdx: fabric.colorIdx, hex: fabric.hex };
+          : fabric.kind === "text"
+            ? { kind: "text", description: fabric.description, name: fabric.description }
+            : { kind: "library-fabric", matId: fabric.matId, colorIdx: fabric.colorIdx, hex: fabric.hex };
 
       const fd = new FormData();
       fd.append("name", name.trim());
@@ -268,6 +513,12 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
 
   async function retryCell(mi: number) {
     if (!batch || !teamId) return;
+    setRemovedMis((prev) => {
+      if (!prev.has(mi)) return prev;
+      const next = new Set(prev);
+      next.delete(mi);
+      return next;
+    });
     setBatch((b) => {
       if (!b) return b;
       return {
@@ -302,9 +553,17 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     }
   }
 
+  function removeResult(mi: number) {
+    setRemovedMis((prev) => {
+      const next = new Set(prev);
+      next.add(mi);
+      return next;
+    });
+  }
+
   async function saveToLookbook() {
     if (!batch) return;
-    const doneItems = batch.items.filter((it) => it.status === "done" && it.url);
+    const doneItems = visibleItems.filter((it) => it.status === "done" && it.url);
     if (!doneItems.length) {
       setError("暂无成功生成的图片");
       return;
@@ -351,7 +610,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const inputCls =
     "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500 bg-white";
   const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1 block";
-  const hasSuccess = !!batch && batch.completed > 0;
+  const hasSuccess = visibleCompleted > 0;
   const motherPreview =
     mother?.kind === "upload" ? mother.preview : mother?.kind === "library-style" ? mother.url : "";
   const fabricPreview =
@@ -363,9 +622,10 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
-      {/* 左:表单 */}
-      <div className="overflow-y-auto bg-white">
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3">
+      {/* 左:表单(上中下布局) */}
+      <div className="flex flex-col bg-white min-h-0">
+        {/* 顶部:固定 header */}
+        <header className="shrink-0 bg-white border-b border-gray-200 px-5 py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-[15px] font-medium text-gray-800">款式裂变</h1>
           </div>
@@ -374,7 +634,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
           </span>
         </header>
 
-        <div className="p-5 space-y-5 max-w-2xl">
+        {/* 中间:可滚动内容 */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="p-5 space-y-5 max-w-2xl">
           {/* 名称 */}
           <div>
             <label className={labelCls}>
@@ -446,16 +708,49 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
             />
           </div>
 
-          {/* 裂变轴 */}
+          {/* 服装品类筛选 */}
+          <div>
+            <label className={labelCls}>服装品类</label>
+            <div className="flex flex-wrap gap-1.5">
+              {GARMENT_CATEGORIES.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={batchRunning}
+                  onClick={() => setCategory(c.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${
+                    category === c.id
+                      ? "bg-primary-50 border-primary-400 text-primary-700"
+                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
+                  } disabled:opacity-50`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 裂变轴(按品类过滤) */}
           <div>
             <label className={labelCls}>
               裂变轴{" "}
               <span className="text-gray-400 normal-case tracking-normal">
                 (已选 {selectedMutations.length}/{MAX_MUTATIONS})
+                {category && <span className="ml-1 text-primary-500">· {GARMENT_CATEGORIES.find((c) => c.id === category)?.label}</span>}
               </span>
             </label>
+            {!category && (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
+                请先选择服装品类,系统将展示对应的裂变维度选项
+              </div>
+            )}
+            {category && visibleAxes.length === 0 && (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
+                该品类暂无预置裂变轴,请使用下方自定义款式输入
+              </div>
+            )}
             <div className="space-y-4">
-              {MUTATION_AXES.map((axis) => (
+              {visibleAxes.map((axis) => (
                 <div key={axis.id}>
                   <div className="text-[11px] font-medium text-gray-700 mb-1.5">{axis.label}</div>
                   <div className="flex flex-wrap gap-1.5">
@@ -482,6 +777,40 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* 自定义裂变款式(Tag Input) */}
+          <div>
+            <label className={labelCls}>
+              自定义款式 <span className="text-gray-400 normal-case tracking-normal">(输入后回车添加,无需入库)</span>
+            </label>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 min-h-[32px] focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-100">
+              {customMutations.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
+                >
+                  {t}
+                  {!batchRunning && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomMutations((prev) => prev.filter((x) => x !== t))}
+                      className="text-primary-400 hover:text-red-500 leading-none"
+                    >×</button>
+                  )}
+                </span>
+              ))}
+              <input
+                value={customInput}
+                onChange={(e) => { setCustomInput(e.target.value); setError(null); }}
+                onKeyDown={handleCustomKeyDown}
+                onBlur={() => { if (customInput.trim()) addCustomMutation(customInput); }}
+                placeholder={customMutations.length ? "继续输入…" : "如: 泡泡袖、露背、开衩裙摆…"}
+                disabled={batchRunning}
+                className="flex-1 min-w-[100px] outline-none text-[12px] bg-transparent placeholder:text-gray-400 py-0.5"
+              />
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">单次有效,不会保存到库。将作为额外裂变维度生成子款白底图。</p>
           </div>
 
           {/* 可选锁定面料 */}
@@ -533,6 +862,16 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   </button>
                 </>
               )}
+              {/* 文本描述面料 */}
+              {fabric?.kind === "text" && !batchRunning && (
+                <div className="w-full rounded-lg border border-primary-200 bg-primary-50/30 p-2 flex items-start gap-2 mt-2">
+                  <span className="text-primary-500 shrink-0 mt-0.5">✎</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-medium text-primary-700 truncate">{fabric.description}</div>
+                  </div>
+                  <button onClick={() => setFabric(null)} className="text-primary-400 hover:text-red-500 shrink-0" title="清除">×</button>
+                </div>
+              )}
             </div>
             <input
               ref={fabricRef}
@@ -541,7 +880,17 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
               className="hidden"
               onChange={(e) => addFabricUpload(e.target.files)}
             />
-            <span className="text-[10px] text-gray-400">子款默认继承母款面料花色；锁定后面料保持不变</span>
+            {(!fabric || fabric.kind !== "text") && !batchRunning && (
+              <textarea
+                value={fabricTextInput}
+                onChange={(e) => setFabricTextInput(e.target.value)}
+                onBlur={() => { if (fabricTextInput.trim()) setFabric({ kind: "text", id: crypto.randomUUID(), description: fabricTextInput.trim() }); }}
+                placeholder="或描述面料文字,如:纯白色纯棉面料、真丝双绉、藏青色斜纹棉…"
+                rows={2}
+                className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
+              />
+            )}
+            <span className="text-[10px] text-gray-400">子款默认继承母款面料花色；锁定后面料保持不变。支持上传 / 库选 / 文字描述三种方式。</span>
           </div>
 
           {/* 描述 */}
@@ -573,26 +922,27 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
               ⚠ {error}
             </div>
           )}
+          </div>{/* 结束滚动区 */}
+          </div>{/* 结束滚动容器 */}
 
-          <div className="flex items-center gap-3">
-            <button
+          {/* 底部:固定生成按钮 */}
+          <div className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
+            <GenerateButton
+              loading={submitting || batchRunning}
+              estimatedCoins={selectedMutations.length * AI_COST_PER_IMAGE}
+              userCoins={user?.coins}
               onClick={submit}
-              disabled={!canSubmit}
-              className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white font-medium text-sm shadow-lg transition-colors"
-            >
-              {submitting ? "上传中…" : batchRunning ? "生成中…" : "生成裂变款"}
-            </button>
+            />
             {batchRunning && batch && (
-              <span className="text-[11px] text-gray-500">
+              <div className="text-[11px] text-gray-500 mt-2 text-center">
                 {batch.completed + batch.failed}/{batch.total}
                 {batch.failed > 0 && (
                   <span className="text-amber-600 ml-1">({batch.failed} 张失败)</span>
                 )}
-              </span>
+              </div>
             )}
           </div>
         </div>
-      </div>
 
       {/* 右:结果网格 */}
       <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
@@ -619,14 +969,14 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
           <>
             <div className="flex items-center justify-between">
               <div className="text-[10px] uppercase tracking-wider text-gray-500">
-                裂变结果 · {batch.items.length} 张
+                裂变结果 · {visibleItems.length} 张
               </div>
               {hasSuccess && (
                 <button
                   onClick={saveToLookbook}
                   className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
                 >
-                  保存到 Lookbook ({batch.completed}/{batch.total})
+                  保存到 Lookbook ({visibleCompleted}/{visibleItems.length})
                 </button>
               )}
             </div>
@@ -646,46 +996,61 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
               <span className="truncate">{batch.mother?.name || "(无)"}</span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {batch.items.map((cell) => (
-                <div
-                  key={`m-${cell.mi}`}
-                  className="rounded-xl border border-gray-200 bg-white overflow-hidden"
-                >
-                  <div className="aspect-square relative bg-white">
-                    {cell.status === "pending" && (
-                      <div className="w-full h-full flex items-center justify-center flex-col gap-1">
-                        <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
-                        <span className="text-[9px] text-gray-400">生成中…</span>
-                      </div>
-                    )}
-                    {cell.status === "done" && (
-                      <img src={cell.url} alt={cell.label} className="w-full h-full object-contain" />
-                    )}
-                    {cell.status === "error" && (
-                      <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-2 text-center">
-                        <span className="text-[10px] text-red-500">{cell.error || "生成失败"}</span>
-                        <button
-                          onClick={() => retryCell(cell.mi)}
-                          className="text-[10px] text-primary-600 underline hover:text-primary-700"
-                        >
-                          重试
-                        </button>
-                      </div>
-                    )}
+            {visibleItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-8 py-10">
+                结果已清空，可重新勾选裂变轴生成
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {visibleItems.map((cell) => (
+                  <div
+                    key={`m-${cell.mi}`}
+                    className="rounded-xl border border-gray-200 bg-white overflow-hidden relative group"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => removeResult(cell.mi)}
+                      aria-label={`删除 ${cell.label}`}
+                      title="删除此结果"
+                      className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-black/50 text-white text-[12px] leading-none flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-black/70"
+                    >
+                      ×
+                    </button>
+                    <div className="aspect-square relative bg-white">
+                      {cell.status === "pending" && (
+                        <div className="w-full h-full flex items-center justify-center flex-col gap-1">
+                          <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+                          <span className="text-[9px] text-gray-400">生成中…</span>
+                        </div>
+                      )}
+                      {cell.status === "done" && (
+                        <img src={cell.url} alt={cell.label} className="w-full h-full object-contain" />
+                      )}
+                      {cell.status === "error" && (
+                        <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-2 text-center">
+                          <span className="text-[10px] text-red-500">{cell.error || "生成失败"}</span>
+                          <button
+                            onClick={() => retryCell(cell.mi)}
+                            className="text-[10px] text-primary-600 underline hover:text-primary-700"
+                          >
+                            重试
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-2 py-1.5 text-[10px] text-gray-600 border-t border-gray-100 truncate" title={cell.label}>
+                      {cell.label}
+                    </div>
                   </div>
-                  <div className="px-2 py-1.5 text-[10px] text-gray-600 border-t border-gray-100 truncate" title={cell.label}>
-                    {cell.label}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
-            {batch.items.find((it) => it.prompt) && (
+            {visibleItems.find((it) => it.prompt) && (
               <details className="text-[11px] text-gray-500">
                 <summary className="cursor-pointer hover:text-gray-700">查看生成 prompt</summary>
                 <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">
-                  {batch.items
+                  {visibleItems
                     .filter((it) => it.prompt)
                     .slice(0, 2)
                     .map((it) => `# ${it.label}\n${it.prompt}`)
@@ -758,6 +1123,7 @@ function StyleLibraryPicker({
     url: string;
     hex?: string;
     colorName?: string;
+    shared?: boolean;
   }[] = [];
   for (const m of materials) {
     if (!m) continue;
@@ -775,6 +1141,7 @@ function StyleLibraryPicker({
           url: c.url || "",
           hex: c.hex,
           colorName: c.name || undefined,
+          shared: !!m.shared,
         });
       });
     } else if (m.image) {
@@ -784,6 +1151,7 @@ function StyleLibraryPicker({
         matName,
         colorIdx: -1,
         url: m.image || "",
+        shared: !!m.shared,
       });
     }
   }
@@ -835,7 +1203,10 @@ function StyleLibraryPicker({
                   }
                   className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden"
                 >
-                  <div className="aspect-square w-full">
+                  <div className="aspect-square w-full relative">
+                    {c.shared && (
+                      <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">系统</span>
+                    )}
                     {c.url ? (
                       <img src={c.url} alt={fullName} className="w-full h-full object-cover" />
                     ) : (
@@ -865,7 +1236,10 @@ function StyleLibraryPicker({
               onClick={() => onStyle({ styleId: s.id, url: s.image || "", name: s.name || "未命名款式" })}
               className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden"
             >
-              <div className="aspect-square w-full">
+              <div className="aspect-square w-full relative">
+                {s.shared && (
+                  <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">系统</span>
+                )}
                 {s.image ? (
                   <img src={s.image} alt={s.name} className="w-full h-full object-cover" />
                 ) : (

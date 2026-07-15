@@ -21,6 +21,11 @@ import { useDesignStore } from "../store/design";
 import type { KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { compressForUpload } from "../lib/images";
 import { Modal } from "../components/ui";
+import {
+  GenerateButton,
+  AI_COST_PER_IMAGE,
+} from "../../../components/GenerateButton";
+import { useAuth } from "../../../contexts/AuthContext";
 
 // ─── 上限约束(与后端同步) ─────────────────────────────────────
 const MAX_FABRIC = 6;   // 面料上限
@@ -34,8 +39,25 @@ type Mode = "cross" | "color-mix";
 
 // ─── 槽位 discriminated union ─────────────────────────────────
 type FabricRow =
-  | { kind: "upload"; id: string; file: File; preview: string; name: string; analysisText?: string }
-  | { kind: "library-fabric"; id: string; matId: string; colorIdx: number; name: string; url: string; hex?: string; analysisText?: string };
+  | {
+      kind: "upload";
+      id: string;
+      file: File;
+      preview: string;
+      name: string;
+      analysisText?: string;
+    }
+  | {
+      kind: "library-fabric";
+      id: string;
+      matId: string;
+      colorIdx: number;
+      name: string;
+      url: string;
+      hex?: string;
+      analysisText?: string;
+    }
+  | { kind: "text"; id: string; description: string; analysisText?: string };
 
 type StyleRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string; analysisText?: string }
@@ -55,29 +77,65 @@ interface FlatFabricCard {
   colorIdx: number;
   url: string;
   hex?: string;
-  colorName?: string;  // 卡片独立名(来自 colorImages[].name)
+  colorName?: string; // 卡片独立名(来自 colorImages[].name)
+  shared?: boolean; // 管理员共享 → 显示「系统」标签
 }
+
+type IllustrationRow =
+  | {
+      kind: "upload";
+      id: string;
+      file: File;
+      preview: string;
+      name: string;
+      analysisText?: string;
+    }
+  | {
+      kind: "library-illustration";
+      id: string;
+      illustrationId: string;
+      name: string;
+      url: string;
+      analysisText?: string;
+    };
 
 interface FabricPick { kind: "fabric"; matId: string; colorIdx: number; url: string; name: string; hex?: string }
 interface StylePick { kind: "style"; styleId: string; url: string; name: string }
-type Pick = FabricPick | StylePick;
+interface IllustrationPick {
+  kind: "illustration";
+  illustrationId: string;
+  url: string;
+  name: string;
+}
+type Pick = FabricPick | StylePick | IllustrationPick;
 
 export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLoading }: Props) {
   const { teamId, navigateTab } = useCurrentTeam();
+  const { user } = useAuth();
   const store = useDesignStore();
 
   // ── 上传/库槽位 ──
   const [fabricRows, setFabricRows] = useState<FabricRow[]>([]);
+  const [fabricText, setFabricText] = useState("");
   const [styleRows, setStyleRows] = useState<StyleRow[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [picker, setPicker] = useState<null | "fabric" | "style">(null);
+  const [picker, setPicker] = useState<
+    null | "fabric" | "style" | "illustration"
+  >(null);
+  const [illustrationRows, setIllustrationRows] = useState<IllustrationRow[]>(
+    [],
+  );
   const [mode, setMode] = useState<Mode>("cross");
 
   // 切换生成模式(叉乘 / 拼色):清空槽位与批次,保留名称/描述
   function switchMode(next: Mode) {
     if (next === mode) return;
-    setFabricRows([]); setStyleRows([]); setBatch(null); setError(null);
+    setFabricRows([]);
+    setStyleRows([]);
+    setIllustrationRows([]);
+    setBatch(null);
+    setError(null);
     setMode(next);
     if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
   }
@@ -89,6 +147,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
   const fabricRef = useRef<HTMLInputElement>(null);
   const styleRef = useRef<HTMLInputElement>(null);
+  const illustrationRef = useRef<HTMLInputElement>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
 
@@ -99,6 +158,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const cellCount = mode === "color-mix" ? (fabricRows.length > 0 && styleRows.length === 1 ? 1 : 0) : fabricRows.length * styleRows.length;
   const fabricsLimit = mode === "color-mix" ? MAX_FABRIC_MIXED : MAX_FABRIC;
   const stylesLimit = mode === "color-mix" ? 1 : MAX_STYLE;
+  const illustrationsLimit = 1;
   const canSubmit = !!name.trim()
     && fabricRows.length > 0
     && (mode === "color-mix" ? styleRows.length === 1 : styleRows.length > 0)
@@ -143,19 +203,41 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const uid = useCallback(() => `r-${Date.now().toString()}-${Math.random().toString(36).slice(2, 7)}`, []);
 
   // ── 追加上传文件 ──
-  function addUploads(which: "fabric" | "style", list: FileList | null) {
+  function addUploads(
+    which: "fabric" | "style" | "illustration",
+    list: FileList | null,
+  ) {
     if (!list || !list.length) return;
     const incoming = Array.from(list);
-    const setter = which === "fabric" ? setFabricRows : setStyleRows;
-    const limit = which === "fabric" ? fabricsLimit : stylesLimit;
-    const label = which === "fabric" ? "面料" : "款式";
+    const setter =
+      which === "illustration"
+        ? setIllustrationRows
+        : which === "fabric"
+          ? setFabricRows
+          : setStyleRows;
+    const limit =
+      which === "illustration"
+        ? illustrationsLimit
+        : which === "fabric"
+          ? fabricsLimit
+          : stylesLimit;
+    const label =
+      which === "illustration" ? "插画" : which === "fabric" ? "面料" : "款式";
     setter((prev) => {
       const room = limit - prev.length;
-      if (room <= 0) { setError(`${label}已达上限 ${limit} 项`); return prev; }
+      if (room <= 0) {
+        setError(`${label}已达上限 ${limit} 项`);
+        return prev;
+      }
       const accepted = incoming.slice(0, room);
-      if (incoming.length > room) setError(`${label}最多容纳 ${limit} 项,已取前 ${room} 个`);
+      if (incoming.length > room)
+        setError(`${label}最多容纳 ${limit} 项,已取前 ${room} 个`);
       const newRows = accepted.map((file) => ({
-        kind: "upload", id: uid(), file, preview: URL.createObjectURL(file), name: file.name,
+        kind: "upload",
+        id: uid(),
+        file,
+        preview: URL.createObjectURL(file),
+        name: file.name,
       }));
       return [...prev, ...newRows];
     });
@@ -184,8 +266,40 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     }]);
   }
 
-  function removeRow(which: "fabric" | "style", id: string) {
-    const setter = which === "fabric" ? setFabricRows : setStyleRows;
+  function addLibraryIllustration(pick: IllustrationPick) {
+    if (illustrationRows.length >= illustrationsLimit) {
+      setError(`插画已达上限 ${illustrationsLimit} 项`);
+      return;
+    }
+    if (
+      illustrationRows.some(
+        (r) =>
+          r.kind === "library-illustration" &&
+          r.illustrationId === pick.illustrationId,
+      )
+    ) {
+      setError("该插画已添加");
+      return;
+    }
+    setIllustrationRows((prev) => [
+      ...prev,
+      {
+        kind: "library-illustration",
+        id: uid(),
+        illustrationId: pick.illustrationId,
+        name: pick.name,
+        url: pick.url,
+      },
+    ]);
+  }
+
+  function removeRow(which: "fabric" | "style" | "illustration", id: string) {
+    const setter =
+      which === "fabric"
+        ? setFabricRows
+        : which === "style"
+          ? setStyleRows
+          : setIllustrationRows;
     setter((prev) => {
       const item = prev.find((r) => r.id === id);
       if (item?.kind === "upload") URL.revokeObjectURL(item.preview);
@@ -202,35 +316,80 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     stopPolling();
     try {
       // fabricsMeta / stylesMeta 按槽位顺序对齐,上传文件仅含 upload 行(顺序一致)
+      // text 类型面料:传文字描述,无文件消耗
       const fabricsMeta = fabricRows.map((r) => {
         if (r.kind === "upload") return { kind: "upload", name: r.name };
-        return { kind: "library-fabric", matId: r.matId, colorIdx: r.colorIdx, hex: r.hex };
+        if (r.kind === "text")
+          return {
+            kind: "text",
+            description: r.description,
+            name: r.description,
+          };
+        return {
+          kind: "library-fabric",
+          matId: r.matId,
+          colorIdx: r.colorIdx,
+          hex: r.hex,
+        };
       });
       const stylesMeta = styleRows.map((r) => {
         if (r.kind === "upload") return { kind: "upload", name: r.name };
         return { kind: "library-style", styleId: r.styleId };
+      });
+      const illustrationsMeta = illustrationRows.map((r) => {
+        if (r.kind === "upload") return { kind: "upload", name: r.name };
+        return {
+          kind: "library-illustration",
+          illustrationId: r.illustrationId,
+        };
       });
       const fd = new FormData();
       fd.append("name", name.trim());
       fd.append("description", description.trim());
       fd.append("fabricsMeta", JSON.stringify(fabricsMeta));
       fd.append("stylesMeta", JSON.stringify(stylesMeta));
+      fd.append("illustrationsMeta", JSON.stringify(illustrationsMeta));
       fd.append("mode", mode);
-      for (const r of fabricRows) if (r.kind === "upload") fd.append("fabrics", await compressForUpload(r.file));
-      for (const r of styleRows) if (r.kind === "upload") fd.append("styles", await compressForUpload(r.file));
+      for (const r of fabricRows)
+        if (r.kind === "upload")
+          fd.append("fabrics", await compressForUpload(r.file));
+      for (const r of styleRows)
+        if (r.kind === "upload")
+          fd.append("styles", await compressForUpload(r.file));
+      for (const r of illustrationRows)
+        if (r.kind === "upload")
+          fd.append("illustrations", await compressForUpload(r.file));
       const url = teamApi(teamId).materialComboUrl;
-      const res = await fetch(url, { method: "POST", body: fd, credentials: "include" });
+      const res = await fetch(url, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
       if (!res.ok) {
         const t = await res.text().catch(() => "");
-        throw new Error(`请求失败 (HTTP ${res.status})${t ? `: ${t.slice(0, 120)}` : ""}`);
+        throw new Error(
+          `请求失败 (HTTP ${res.status})${t ? `: ${t.slice(0, 120)}` : ""}`,
+        );
       }
       const data: MaterialComboBatch = await res.json();
       setBatch(data);
       if (data.fabrics?.length) {
-        setFabricRows((prev) => prev.map((r, i) => data.fabrics[i]?.text != null ? { ...r, analysisText: data.fabrics[i].text } : r));
+        setFabricRows((prev) =>
+          prev.map((r, i) =>
+            data.fabrics[i]?.text != null
+              ? { ...r, analysisText: data.fabrics[i].text }
+              : r,
+          ),
+        );
       }
       if (data.styles?.length) {
-        setStyleRows((prev) => prev.map((r, i) => data.styles[i]?.text != null ? { ...r, analysisText: data.styles[i].text } : r));
+        setStyleRows((prev) =>
+          prev.map((r, i) =>
+            data.styles[i]?.text != null
+              ? { ...r, analysisText: data.styles[i].text }
+              : r,
+          ),
+        );
       }
       if (data.status === "running" && data.batchId) startPolling(data.batchId);
     } catch (e: any) {
@@ -279,9 +438,16 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     const sourceImages = doneItems.map((it) => {
       const fRow = fabricRows[it.fi];
       const sRow = styleRows[it.si];
-      const src: { style?: { url: string; name: string }; fabric?: { url: string; name: string } } = {};
+      const src: {
+        style?: { url: string; name: string };
+        fabric?: { url: string; name: string };
+        illustration?: { url: string; name: string };
+      } = {};
       if (fRow && fRow.kind === "library-fabric") src.fabric = { url: fRow.url, name: fRow.name };
       if (sRow && sRow.kind === "library-style") src.style = { url: sRow.url, name: sRow.name };
+      const iRow = illustrationRows[0];
+      if (iRow && iRow.kind === "library-illustration")
+        src.illustration = { url: iRow.url, name: iRow.name };
       return Object.keys(src).length ? src : undefined;
     });
     const product: any = {
@@ -338,9 +504,10 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
-      {/* 左:表单 */}
-      <div className="overflow-y-auto bg-white">
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3">
+      {/* 左:表单(上中下布局) */}
+      <div className="flex flex-col bg-white min-h-0">
+        {/* 顶部:固定 header */}
+        <header className="shrink-0 bg-white border-b border-gray-200 px-5 py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-[15px] font-medium text-gray-800">材料组合</h1>
             <div className="h-7 flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
@@ -365,266 +532,422 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           </span>
         </header>
 
-        <div className="p-5 space-y-5 max-w-2xl">
-          {/* 名称 */}
-          <div>
-            <label className={labelCls}>
-              名称 <span className="text-red-500">*</span>
-            </label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="如:春日雏菊连衣裙"
-              className={inputCls}
-            />
-          </div>
+        {/* 中间:可滚动内容 */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="p-5 space-y-5 max-w-2xl">
+            {/* 名称 */}
+            <div>
+              <label className={labelCls}>
+                名称 <span className="text-red-500">*</span>
+              </label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="如:春日雏菊连衣裙"
+                className={inputCls}
+              />
+            </div>
 
-          {/* 面料槽位(上传 + 库)*/}
-          <div>
-            <label className={labelCls}>
-              面料{" "}
-              <span className="text-gray-400 normal-case tracking-normal">
-                ({fabricRows.length}/{fabricsLimit})
-              </span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {fabricRows.map((row) => (
-                <div
-                  key={row.id}
-                  className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
-                >
-                  {row.kind === "upload" ? (
-                    <img
-                      src={row.preview}
-                      alt={row.name}
-                      className="w-24 h-20 object-cover"
-                    />
-                  ) : row.url ? (
-                    <img
-                      src={row.url}
-                      alt={row.name}
-                      className="w-24 h-20 object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="w-24 h-20"
-                      style={{ backgroundColor: row.hex || "#e5e7eb" }}
-                    />
-                  )}
-                  {row.kind !== "upload" && (
-                    <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
-                      库
-                    </span>
-                  )}
-                  {row.kind === "library-fabric" &&
-                    row.hex &&
-                    !/^#/.test(row.name) && (
-                      <span className="absolute bottom-6 right-0.5 text-[8px] bg-white/80 text-gray-600 px-0.5">
-                        {row.hex}
+            {/* 面料槽位(上传 + 库)*/}
+            <div>
+              <label className={labelCls}>
+                面料{" "}
+                <span className="text-gray-400 normal-case tracking-normal">
+                  ({fabricRows.length}/{fabricsLimit})
+                </span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {fabricRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
+                  >
+                    {row.kind === "text" ? (
+                      <div className="w-24 h-24 flex flex-col items-center justify-center bg-primary-50/50 border border-primary-100 rounded-lg p-1.5 text-center">
+                        <span className="text-primary-500 text-base">✎</span>
+                        <span className="text-[9px] text-primary-700 mt-1 line-clamp-3 leading-tight break-all">
+                          {row.description}
+                        </span>
+                      </div>
+                    ) : row.kind === "upload" ? (
+                      <img
+                        src={row.preview}
+                        alt={row.name}
+                        className="w-24 h-20 object-cover"
+                      />
+                    ) : row.url ? (
+                      <img
+                        src={row.url}
+                        alt={row.name}
+                        className="w-24 h-20 object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="w-24 h-20"
+                        style={{ backgroundColor: row.hex || "#e5e7eb" }}
+                      />
+                    )}
+                    {row.kind === "library-fabric" && (
+                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
+                        库
                       </span>
                     )}
-                  {!batchRunningOrAnalyzing && (
-                    <button
-                      onClick={() => removeRow("fabric", row.id)}
-                      className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      ×
-                    </button>
-                  )}
-                  <div
-                    className="px-1 py-0.5 text-[8px] text-gray-400 truncate"
-                    title={row.name}
-                  >
-                    {row.name}
+                    {row.kind === "text" && (
+                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
+                        文
+                      </span>
+                    )}
+                    {row.kind === "library-fabric" &&
+                      row.hex &&
+                      !/^#/.test(row.name) && (
+                        <span className="absolute bottom-6 right-0.5 text-[8px] bg-white/80 text-gray-600 px-0.5">
+                          {row.hex}
+                        </span>
+                      )}
+                    {!batchRunningOrAnalyzing && (
+                      <button
+                        onClick={() => removeRow("fabric", row.id)}
+                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    )}
+                    {row.kind !== "text" && (
+                      <div
+                        className="px-1 py-0.5 text-[8px] text-gray-400 truncate"
+                        title={row.name}
+                      >
+                        {row.name}
+                      </div>
+                    )}
                   </div>
+                ))}
+                {fabricRows.length < fabricsLimit &&
+                  !batchRunningOrAnalyzing && (
+                    <>
+                      <button
+                        onClick={() => fabricRef.current?.click()}
+                        className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-lg text-gray-400">+</span>
+                        <span className="text-[10px] text-gray-400">
+                          添加面料
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setPicker("fabric")}
+                        className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-base text-primary-500">▦</span>
+                        <span className="text-[10px] text-primary-600 mt-0.5">
+                          从库选择
+                        </span>
+                      </button>
+                    </>
+                  )}
+              </div>
+              <input
+                ref={fabricRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => addUploads("fabric", e.target.files)}
+              />
+              {/* 文字描述面料(作为额外面料槽位) */}
+              {fabricText && !batchRunningOrAnalyzing && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {fabricText.split(/[,，]/).map((t, i) => {
+                    const desc = t.trim();
+                    if (!desc) return null;
+                    return (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
+                      >
+                        <span className="text-primary-400">✎</span>
+                        {desc}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFabricText((prev) =>
+                              prev
+                                .split(/[,，]/)
+                                .filter((x, idx) => idx !== i)
+                                .join(","),
+                            )
+                          }
+                          className="text-primary-400 hover:text-red-500 leading-none ml-1"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
-              ))}
-              {fabricRows.length < fabricsLimit && !batchRunningOrAnalyzing && (
-                <>
-                  <button
-                    onClick={() => fabricRef.current?.click()}
-                    className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                  >
-                    <span className="text-lg text-gray-400">+</span>
-                    <span className="text-[10px] text-gray-400">添加面料</span>
-                  </button>
-                  <button
-                    onClick={() => setPicker("fabric")}
-                    className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                  >
-                    <span className="text-base text-primary-500">▦</span>
-                    <span className="text-[10px] text-primary-600 mt-0.5">
-                      从库选择
-                    </span>
-                  </button>
-                </>
               )}
-            </div>
-            <input
-              ref={fabricRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => addUploads("fabric", e.target.files)}
-            />
-            <span className="text-[10px] text-gray-400">
-              {mode === "cross"
-                ? "面料上限 6 项"
-                : `拼色模式:按款式自由上传(建议≤${MAX_FABRIC_MIXED})`}
-            </span>
-          </div>
-
-          {/* 款式槽位(上传 + 库)*/}
-          <div>
-            <label className={labelCls}>
-              款式参考{" "}
-              <span className="text-gray-400 normal-case tracking-normal">
-                ({styleRows.length}/{stylesLimit})
+              {(!fabricText || !batchRunningOrAnalyzing) && (
+                <textarea
+                  value={fabricText}
+                  onChange={(e) => setFabricText(e.target.value)}
+                  onBlur={() => {
+                    // 解析逗号分隔的多条文本,自动补充为 text 面料行(最多补到上限)
+                    const descs = fabricText
+                      .split(/[,，]/)
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    if (descs.length > 0 && fabricRows.length < fabricsLimit) {
+                      const room = fabricsLimit - fabricRows.length;
+                      const newRows: FabricRow[] = descs
+                        .slice(0, room)
+                        .map((d) => ({
+                          kind: "text" as const,
+                          id: crypto.randomUUID(),
+                          description: d,
+                        }));
+                      setFabricRows((prev) => [...prev, ...newRows]);
+                      setFabricText("");
+                    }
+                  }}
+                  placeholder="或文字描述面料,添加进槽位(逗号分隔多条,如:纯白色纯棉,天丝混纺,碎花雪纺)"
+                  rows={2}
+                  className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
+                  disabled={batchRunningOrAnalyzing}
+                />
+              )}
+              <span className="text-[10px] text-gray-400">
+                {mode === "cross"
+                  ? "面料上限 6 项,支持上传 / 库选 / 文字描述三种方式"
+                  : `拼色模式:按款式自由上传(建议≤${MAX_FABRIC_MIXED})`}
               </span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {styleRows.map((row) => (
-                <div
-                  key={row.id}
-                  className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
-                >
-                  {row.kind === "upload" ? (
-                    <img
-                      src={row.preview}
-                      alt={row.name}
-                      className="w-24 h-20 object-cover"
-                    />
-                  ) : row.url ? (
-                    <img
-                      src={row.url}
-                      alt={row.name}
-                      className="w-24 h-20 object-cover"
-                    />
-                  ) : (
-                    <div className="w-24 h-20 border border-dashed border-gray-300 rounded flex items-center justify-center text-[10px] text-gray-300">
-                      无图
+            </div>
+
+            {/* 款式槽位(上传 + 库)*/}
+            <div>
+              <label className={labelCls}>
+                款式参考{" "}
+                <span className="text-gray-400 normal-case tracking-normal">
+                  ({styleRows.length}/{stylesLimit})
+                </span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {styleRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
+                  >
+                    {row.kind === "upload" ? (
+                      <img
+                        src={row.preview}
+                        alt={row.name}
+                        className="w-24 h-20 object-cover"
+                      />
+                    ) : row.url ? (
+                      <img
+                        src={row.url}
+                        alt={row.name}
+                        className="w-24 h-20 object-cover"
+                      />
+                    ) : (
+                      <div className="w-24 h-20 border border-dashed border-gray-300 rounded flex items-center justify-center text-[10px] text-gray-300">
+                        无图
+                      </div>
+                    )}
+                    {row.kind !== "upload" && (
+                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
+                        库
+                      </span>
+                    )}
+                    {!batchRunningOrAnalyzing && (
+                      <button
+                        onClick={() => removeRow("style", row.id)}
+                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    )}
+                    <div
+                      className="px-1 py-0.5 text-[8px] text-gray-400 truncate"
+                      title={row.name}
+                    >
+                      {row.name}
                     </div>
-                  )}
-                  {row.kind !== "upload" && (
-                    <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
-                      库
-                    </span>
-                  )}
-                  {!batchRunningOrAnalyzing && (
+                  </div>
+                ))}
+                {styleRows.length < stylesLimit && !batchRunningOrAnalyzing && (
+                  <>
                     <button
-                      onClick={() => removeRow("style", row.id)}
-                      className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => styleRef.current?.click()}
+                      className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                    >
+                      <span className="text-lg text-gray-400">+</span>
+                      <span className="text-[10px] text-gray-400">
+                        添加款式
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setPicker("style")}
+                      className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                    >
+                      <span className="text-base text-primary-500">▦</span>
+                      <span className="text-[10px] text-primary-600 mt-0.5">
+                        从库选择
+                      </span>
+                    </button>
+                  </>
+                )}
+              </div>
+              <input
+                ref={styleRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => addUploads("style", e.target.files)}
+              />
+            </div>
+
+            {/* 插画槽位(上传 + 库):可印/刺绣到衣服上 */}
+            <div>
+              <label className={labelCls}>
+                插画(印花/刺绣){" "}
+                <span className="text-gray-400 normal-case tracking-normal">
+                  ({illustrationRows.length}/{illustrationsLimit})
+                </span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {illustrationRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
+                  >
+                    {row.kind === "upload" ? (
+                      <img
+                        src={row.preview}
+                        alt={row.name}
+                        className="w-full h-24 object-cover"
+                      />
+                    ) : (
+                      <img
+                        src={row.url}
+                        alt={row.name}
+                        className="w-full h-24 object-cover"
+                      />
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 p-1 bg-gradient-to-t from-black/70 to-transparent">
+                      <div className="text-[10px] text-white truncate">
+                        {row.name}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeRow("illustration", row.id)}
+                      className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[11px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="移除插画"
                     >
                       ×
                     </button>
-                  )}
-                  <div
-                    className="px-1 py-0.5 text-[8px] text-gray-400 truncate"
-                    title={row.name}
-                  >
-                    {row.name}
                   </div>
-                </div>
-              ))}
-              {styleRows.length < stylesLimit && !batchRunningOrAnalyzing && (
-                <>
-                  <button
-                    onClick={() => styleRef.current?.click()}
-                    className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                  >
-                    <span className="text-lg text-gray-400">+</span>
-                    <span className="text-[10px] text-gray-400">添加款式</span>
-                  </button>
-                  <button
-                    onClick={() => setPicker("style")}
-                    className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                  >
-                    <span className="text-base text-primary-500">▦</span>
-                    <span className="text-[10px] text-primary-600 mt-0.5">
-                      从库选择
-                    </span>
-                  </button>
-                </>
-              )}
-            </div>
-            <input
-              ref={styleRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => addUploads("style", e.target.files)}
-            />
-          </div>
-
-          {/* 其他描述 */}
-          <div>
-            <label className={labelCls}>其他描述</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="补充设计想法、穿着场景、特殊工艺要求等(可选)"
-              className={`${inputCls} resize-none`}
-            />
-          </div>
-
-          {/* 张数预览 */}
-          {fabricRows.length > 0 && styleRows.length > 0 && (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-              {mode === "cross" ? (
-                <>
-                  将生成{" "}
-                  <span className="font-medium text-primary-600">
-                    {fabricRows.length} × {styleRows.length} = {cellCount}
-                  </span>{" "}
-                  张白底效果图
-                  {cellCount > MAX_CELLS && (
-                    <span className="text-red-500 ml-2">
-                      超过上限 {MAX_CELLS},请减少图片
-                    </span>
+                ))}
+                {illustrationRows.length < illustrationsLimit &&
+                  !batchRunningOrAnalyzing && (
+                    <>
+                      <button
+                        onClick={() => illustrationRef.current?.click()}
+                        className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-lg text-gray-400">+</span>
+                        <span className="text-[10px] text-gray-400">
+                          添加插画
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setPicker("illustration")}
+                        className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-base text-primary-500">▦</span>
+                        <span className="text-[10px] text-primary-600 mt-0.5">
+                          从库选择
+                        </span>
+                      </button>
+                    </>
                   )}
-                </>
-              ) : (
-                <>
-                  将生成 <span className="font-medium text-primary-600">1</span>{" "}
-                  张拼色白底效果图（共 {fabricRows.length} 块面料拼接）
-                </>
-              )}
+              </div>
+              <input
+                ref={illustrationRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => addUploads("illustration", e.target.files)}
+              />
             </div>
-          )}
 
-          {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-600">
-              ⚠ {error}
+            {/* 其他描述 */}
+            <div>
+              <label className={labelCls}>其他描述</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                placeholder="补充设计想法、穿着场景、特殊工艺要求等(可选)"
+                className={`${inputCls} resize-none`}
+              />
             </div>
-          )}
 
-          {/* 提交 */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={submit}
-              disabled={!canSubmit}
-              className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white font-medium text-sm shadow-lg transition-colors"
-            >
-              {submitting
-                ? "上传中…"
-                : batchRunningOrAnalyzing
-                  ? "生成中…"
-                  : "生成白底效果图"}
-            </button>
-            {batchRunningOrAnalyzing && batch && (
-              <span className="text-[11px] text-gray-500">
-                {batch.completed + batch.failed}/{batch.total}
-                {batch.failed > 0 && (
-                  <span className="text-amber-600 ml-1">
-                    ({batch.failed} 张失败)
-                  </span>
+            {/* 张数预览 */}
+            {fabricRows.length > 0 && styleRows.length > 0 && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
+                {mode === "cross" ? (
+                  <>
+                    将生成{" "}
+                    <span className="font-medium text-primary-600">
+                      {fabricRows.length} × {styleRows.length} = {cellCount}
+                    </span>{" "}
+                    张白底效果图
+                    {cellCount > MAX_CELLS && (
+                      <span className="text-red-500 ml-2">
+                        超过上限 {MAX_CELLS},请减少图片
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    将生成{" "}
+                    <span className="font-medium text-primary-600">1</span>{" "}
+                    张拼色白底效果图（共 {fabricRows.length} 块面料拼接）
+                  </>
                 )}
-              </span>
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-600">
+                ⚠ {error}
+              </div>
             )}
           </div>
+          {/* 结束滚动区 */}
+        </div>
+        {/* 结束滚动容器 */}
+
+        {/* 底部:固定提交按钮 */}
+        <div className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
+          <GenerateButton
+            loading={submitting || batchRunningOrAnalyzing}
+            estimatedCoins={cellCount * AI_COST_PER_IMAGE}
+            userCoins={user?.coins}
+            onClick={submit}
+          />
+          {batchRunningOrAnalyzing && batch && (
+            <div className="text-[11px] text-gray-500 mt-2 text-center">
+              {batch.completed + batch.failed}/{batch.total}
+              {batch.failed > 0 && (
+                <span className="text-amber-600 ml-1">
+                  ({batch.failed} 张失败)
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -843,6 +1166,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         onClose={() => setPicker(null)}
         onFabric={addLibraryFabric}
         onStyle={(p) => addLibraryStyle(p)}
+        onIllustration={addLibraryIllustration}
       />
     </div>
   );
@@ -923,21 +1247,37 @@ function ColorMixResult({ batch, retryCell, hasSuccess, onSave }: { batch: Mater
 
 // ─── 库选择弹窗 ────────────────────────────────────────────────
 interface PickerProps {
-  mode: null | "fabric" | "style";
+  mode: null | "fabric" | "style" | "illustration";
   knowledge?: KnowledgeDeps;
   onClose: () => void;
   onFabric: (p: FabricPick) => void;
-  onStyle: (p: { kind: "style"; styleId: string; url: string; name: string }) => void;
+  onStyle: (p: {
+    kind: "style";
+    styleId: string;
+    url: string;
+    name: string;
+  }) => void;
+  onIllustration: (p: IllustrationPick) => void;
 }
 
-function LibraryPickerModal({ mode, knowledge, onClose, onFabric, onStyle }: PickerProps) {
+function LibraryPickerModal({
+  mode,
+  knowledge,
+  onClose,
+  onFabric,
+  onStyle,
+  onIllustration,
+}: PickerProps) {
   const [q, setQ] = useState("");
 
   // 重置搜索词在每次打开时
-  useEffect(() => { if (mode) setQ(""); }, [mode]);
+  useEffect(() => {
+    if (mode) setQ("");
+  }, [mode]);
 
   if (!mode) return null;
   const isFabric = mode === "fabric";
+  const isIllustration = mode === "illustration";
 
   // 面料:展平为单个颜色卡片(colorImages 优先,回退 image / colors)
   const materials = (knowledge?.materials || []) as any[];
@@ -951,26 +1291,52 @@ function LibraryPickerModal({ mode, knowledge, onClose, onFabric, onStyle }: Pic
       cis.forEach((c, i) => {
         if (!c) return;
         cards.push({
-          matId: m.id, matCategory: matCat, matName, colorIdx: i,
-          url: c.url || "", hex: c.hex, colorName: c.name || undefined,
+          matId: m.id,
+          matCategory: matCat,
+          matName,
+          colorIdx: i,
+          url: c.url || "",
+          hex: c.hex,
+          colorName: c.name || undefined,
+          shared: !!m.shared,
         });
       });
     } else if (m.image) {
       // 回退:面料参考图一张
-      cards.push({ matId: m.id, matCategory: matCat, matName, colorIdx: -1, url: m.image || "", hex: undefined, colorName: undefined });
+      cards.push({
+        matId: m.id,
+        matCategory: matCat,
+        matName,
+        colorIdx: -1,
+        url: m.image || "",
+        hex: undefined,
+        colorName: undefined,
+        shared: !!m.shared,
+      });
     } else {
       // 回退:colors 色值(仅 hex)
       const cols: any[] = Array.isArray(m.colors) ? m.colors : [];
       if (cols.length) {
         // 一张卡片代表整块面料(取首个 hex 上色)
-        cards.push({ matId: m.id, matCategory: matCat, matName, colorIdx: -1, url: "", hex: typeof cols[0] === "string" ? cols[0] : undefined, colorName: undefined });
+        cards.push({
+          matId: m.id,
+          matCategory: matCat,
+          matName,
+          colorIdx: -1,
+          url: "",
+          hex: typeof cols[0] === "string" ? cols[0] : undefined,
+          colorName: undefined,
+          shared: !!m.shared,
+        });
       }
     }
   }
   const cardFilter = cards.filter((c) => {
     if (!q.trim()) return true;
     const k = q.trim().toLowerCase();
-    return [c.matName, c.matCategory, c.colorName || "", c.hex || ""].some((f) => f.toLowerCase().includes(k));
+    return [c.matName, c.matCategory, c.colorName || "", c.hex || ""].some(
+      (f) => f.toLowerCase().includes(k),
+    );
   });
 
   // 款式
@@ -978,63 +1344,189 @@ function LibraryPickerModal({ mode, knowledge, onClose, onFabric, onStyle }: Pic
   const styleFilter = styles.filter((s: any) => {
     if (!q.trim()) return true;
     const k = q.trim().toLowerCase();
-    return [s?.name || "", s?.category || ""].some((f) => String(f).toLowerCase().includes(k));
+    return [s?.name || "", s?.category || ""].some((f) =>
+      String(f).toLowerCase().includes(k),
+    );
+  });
+
+  // 插画
+  const illustrations = (knowledge?.illustrations || []) as any[];
+  const illustrationFilter = illustrations.filter((i: any) => {
+    if (!q.trim()) return true;
+    const k = q.trim().toLowerCase();
+    return [i?.name || "", (i?.tags || []).join(" ")].some((f) =>
+      String(f).toLowerCase().includes(k),
+    );
   });
 
   function handlePick(pick: Pick) {
     if (pick.kind === "fabric") onFabric(pick);
+    else if (pick.kind === "illustration") onIllustration(pick);
     else onStyle(pick);
     onClose();
   }
 
-  const title = isFabric ? "选择面料色卡" : "选择款式";
+  const title = isFabric
+    ? "选择面料色卡"
+    : isIllustration
+      ? "选择插画"
+      : "选择款式";
 
   return (
     <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
       <div className="mb-4">
-        <input value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder={isFabric ? "搜索面料名 / 颜色 / 品类..." : "搜索款式名 / 品类..."}
-          className="w-full text-[12px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-primary-500" autoFocus />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={
+            isFabric
+              ? "搜索面料名 / 颜色 / 品类..."
+              : isIllustration
+                ? "搜索插画名 / 标签..."
+                : "搜索款式名 / 品类..."
+          }
+          className="w-full text-[12px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-primary-500"
+          autoFocus
+        />
       </div>
 
-      {!isFabric && styleFilter.length === 0 && (
-        <div className="text-center text-[12px] text-gray-400 py-16">款式库里暂无款式,请先在「款式」页添加。</div>
+      {!isFabric && !isIllustration && styleFilter.length === 0 && (
+        <div className="text-center text-[12px] text-gray-400 py-16">
+          款式库里暂无款式,请先在「款式」页添加。
+        </div>
       )}
       {isFabric && cardFilter.length === 0 && (
         <div className="text-center text-[12px] text-gray-400 py-16">
-          {materials.length === 0 ? "面料库里暂无材料,请先在「材料」页添加。" : "没有匹配的面料色卡。"}
+          {materials.length === 0
+            ? "面料库里暂无材料,请先在「材料」页添加。"
+            : "没有匹配的面料色卡。"}
+        </div>
+      )}
+      {isIllustration && illustrationFilter.length === 0 && (
+        <div className="text-center text-[12px] text-gray-400 py-16">
+          {illustrations.length === 0
+            ? "插画库里暂无插画,请先在「插画」页添加。"
+            : "没有匹配的插画。"}
         </div>
       )}
 
-      {isFabric ? (
+      {isIllustration ? (
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 max-h-[60vh] overflow-y-auto pr-1">
+          {illustrationFilter.map((i: any) => (
+            <button
+              key={i.id}
+              onClick={() =>
+                handlePick({
+                  kind: "illustration",
+                  illustrationId: i.id,
+                  url: i.image || "",
+                  name: i.name || "未命名插画",
+                })
+              }
+              className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden"
+            >
+              <div className="aspect-square w-full relative">
+                {i.image ? (
+                  <img
+                    src={i.image}
+                    alt={i.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-300">
+                    无图
+                  </div>
+                )}
+              </div>
+              <div className="px-1.5 py-1">
+                <div
+                  className="text-[9px] text-gray-700 truncate"
+                  title={i.name}
+                >
+                  {i.name}
+                </div>
+                {i.tags && i.tags.length > 0 && (
+                  <span className="inline-block mt-0.5 text-[8px] bg-gray-100 text-gray-500 px-1 rounded truncate max-w-full">
+                    {i.tags[0]}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : isFabric ? (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-[60vh] overflow-y-auto pr-1">
           {cardFilter.map((c) => {
             const displayName = c.colorName || c.hex || c.matName;
-            const fullName = c.colorName ? `${c.matName} · ${c.colorName}` : displayName;
+            const fullName = c.colorName
+              ? `${c.matName} · ${c.colorName}`
+              : displayName;
             const hasImage = !!c.url;
             return (
-              <button key={`${c.matId}-${c.colorIdx}`} onClick={() => handlePick({
-                kind: "fabric", matId: c.matId, colorIdx: c.colorIdx, url: c.url,
-                name: fullName, hex: c.hex,
-              })}
-                className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden">
-                <div className="aspect-square w-full">
+              <button
+                key={`${c.matId}-${c.colorIdx}`}
+                onClick={() =>
+                  handlePick({
+                    kind: "fabric",
+                    matId: c.matId,
+                    colorIdx: c.colorIdx,
+                    url: c.url,
+                    name: fullName,
+                    hex: c.hex,
+                  })
+                }
+                className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden"
+              >
+                <div className="aspect-square w-full relative">
+                  {c.shared && (
+                    <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">
+                      系统
+                    </span>
+                  )}
                   {hasImage ? (
-                    <img src={c.url} alt={fullName} className="w-full h-full object-cover" />
+                    <img
+                      src={c.url}
+                      alt={fullName}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400"
-                      style={{ backgroundColor: c.hex && /^#/.test(c.hex) ? c.hex : "#f3f4f6" }}>
+                    <div
+                      className="w-full h-full flex items-center justify-center text-[10px] text-gray-400"
+                      style={{
+                        backgroundColor:
+                          c.hex && /^#/.test(c.hex) ? c.hex : "#f3f4f6",
+                      }}
+                    >
                       {c.hex || "无图"}
                     </div>
                   )}
                 </div>
                 <div className="px-1.5 py-1">
-                  <div className="text-[9px] text-gray-700 truncate" title={fullName}>{fullName}</div>
+                  <div
+                    className="text-[9px] text-gray-700 truncate"
+                    title={fullName}
+                  >
+                    {fullName}
+                  </div>
                   <div className="flex items-center gap-1 mt-0.5">
-                    {c.hex && <span className="inline-flex items-center gap-0.5 text-[8px] text-gray-400">
-                      <span className="inline-block w-2 h-2 rounded-full border border-gray-300" style={{ backgroundColor: /^#/.test(c.hex) ? c.hex : "#e5e7eb" }} />{c.hex}
-                    </span>}
-                    {c.matCategory && <span className="text-[8px] text-gray-400 truncate">{c.matCategory}</span>}
+                    {c.hex && (
+                      <span className="inline-flex items-center gap-0.5 text-[8px] text-gray-400">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full border border-gray-300"
+                          style={{
+                            backgroundColor: /^#/.test(c.hex)
+                              ? c.hex
+                              : "#e5e7eb",
+                          }}
+                        />
+                        {c.hex}
+                      </span>
+                    )}
+                    {c.matCategory && (
+                      <span className="text-[8px] text-gray-400 truncate">
+                        {c.matCategory}
+                      </span>
+                    )}
                   </div>
                 </div>
               </button>
@@ -1044,18 +1536,48 @@ function LibraryPickerModal({ mode, knowledge, onClose, onFabric, onStyle }: Pic
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 max-h-[60vh] overflow-y-auto pr-1">
           {styleFilter.map((s: any) => (
-            <button key={s.id} onClick={() => handlePick({ kind: "style", styleId: s.id, url: s.image || "", name: s.name || "未命名款式" })}
-              className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden">
-              <div className="aspect-square w-full">
+            <button
+              key={s.id}
+              onClick={() =>
+                handlePick({
+                  kind: "style",
+                  styleId: s.id,
+                  url: s.image || "",
+                  name: s.name || "未命名款式",
+                })
+              }
+              className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden"
+            >
+              <div className="aspect-square w-full relative">
+                {s.shared && (
+                  <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">
+                    系统
+                  </span>
+                )}
                 {s.image ? (
-                  <img src={s.image} alt={s.name} className="w-full h-full object-cover" />
+                  <img
+                    src={s.image}
+                    alt={s.name}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-300">无图</div>
+                  <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-300">
+                    无图
+                  </div>
                 )}
               </div>
               <div className="px-1.5 py-1">
-                <div className="text-[9px] text-gray-700 truncate" title={s.name}>{s.name}</div>
-                {s.category && <span className="inline-block mt-0.5 text-[8px] bg-gray-100 text-gray-500 px-1 rounded">{s.category}</span>}
+                <div
+                  className="text-[9px] text-gray-700 truncate"
+                  title={s.name}
+                >
+                  {s.name}
+                </div>
+                {s.category && (
+                  <span className="inline-block mt-0.5 text-[8px] bg-gray-100 text-gray-500 px-1 rounded">
+                    {s.category}
+                  </span>
+                )}
               </div>
             </button>
           ))}
@@ -1063,7 +1585,12 @@ function LibraryPickerModal({ mode, knowledge, onClose, onFabric, onStyle }: Pic
       )}
 
       <div className="mt-4 flex justify-end">
-        <button onClick={onClose} className="text-[12px] text-gray-500 hover:text-gray-700 px-3 py-1.5">取消</button>
+        <button
+          onClick={onClose}
+          className="text-[12px] text-gray-500 hover:text-gray-700 px-3 py-1.5"
+        >
+          取消
+        </button>
       </div>
     </Modal>
   );

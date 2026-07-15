@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getKnownAccounts, removeAccount, type KnownAccount } from '../../utils/accounts';
+import MeowCoin from '../../components/MeowCoin';
 
 interface User {
   id: string;
@@ -135,8 +136,8 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
               <span className="text-xs font-medium text-text-secondary">
                 余额
               </span>
-              <span className="text-sm font-black text-text-primary">
-                🐾 {user.coins}
+              <span className="text-sm font-black text-text-primary inline-flex items-center gap-1">
+                <MeowCoin size={16} /> {user.coins}
               </span>
             </div>
             <div className="flex items-center justify-between">

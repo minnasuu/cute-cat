@@ -39,6 +39,7 @@ const InspirationsPage = lazy(() => import('../LaisseAncie/pages/Inspirations'))
 const LookbookPage = lazy(() => import('../LaisseAncie/pages/Lookbook'));
 const MaterialsPage = lazy(() => import('../LaisseAncie/pages/Materials'));
 const StylesPage = lazy(() => import('../LaisseAncie/pages/Styles'));
+const IllustrationsPage = lazy(() => import('../LaisseAncie/pages/Illustrations'));
 const SkillsPage = lazy(() => import('../LaisseAncie/pages/Skills'));
 const AssetsPage = lazy(() => import('../LaisseAncie/pages/Assets'));
 
@@ -47,6 +48,7 @@ const DATA_COMPONENTS: Record<string, React.LazyExoticComponent<ComponentType<an
   lookbook: LookbookPage,
   materials: MaterialsPage,
   styles: StylesPage,
+  illustrations: IllustrationsPage,
   skills: SkillsPage,
   assets: AssetsPage,
 };
@@ -66,6 +68,14 @@ export default function TeamWorkbench() {
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(
     () => new Set(DESIGN_TABS.map((t) => t.id)),
   );
+
+  // URL 直链(如 ?tab=styles)时,activeTab 可能是数据 tab,但 visitedTabs 初始只有 design tab → 右侧空白。
+  // 同步 activeTab → visitedTabs,确保直链命中的 tab 能立即渲染。
+  useEffect(() => {
+    if (activeTab && !visitedTabs.has(activeTab)) {
+      setVisitedTabs((prev) => new Set(prev).add(activeTab));
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps — 只在 activeTab 变化时同步一次
 
   // 预加载资源 + 知识底座数据,传给 Composer 用于自动注入 system prompt
   const skillStore = useSkillStore();
@@ -119,6 +129,7 @@ export default function TeamWorkbench() {
                   inspirations: resourceStore.inspirations,
                   materials: resourceStore.materials,
                   styles: resourceStore.styles,
+                  illustrations: resourceStore.illustrations,
                   products: designStore.products,
                   brand,
                 }}
@@ -133,6 +144,7 @@ export default function TeamWorkbench() {
                   inspirations: resourceStore.inspirations,
                   materials: resourceStore.materials,
                   styles: resourceStore.styles,
+                  illustrations: resourceStore.illustrations,
                   products: designStore.products,
                   brand,
                 }}
@@ -148,6 +160,7 @@ export default function TeamWorkbench() {
                   inspirations: resourceStore.inspirations,
                   materials: resourceStore.materials,
                   styles: resourceStore.styles,
+                  illustrations: resourceStore.illustrations,
                   products: designStore.products,
                   brand,
                 }}
@@ -199,19 +212,9 @@ export default function TeamWorkbench() {
   function renderSidebar() {
     return (
       <>
-        {/* 团队切换:从 header 移入侧栏顶部 */}
-        <div className="px-2 mb-3">
-          <div className="mb-1.5 text-[10px] uppercase tracking-wider text-gray-500">团队</div>
-          <TeamSelect
-            value={resolvedTeamId}
-            options={teams.map((t) => ({ id: t.id, label: t.name }))}
-            onChange={(id) => setTeamId(id)}
-            ariaLabel="选择团队"
-            variant="compact"
-          />
+        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">
+          工作台
         </div>
-
-        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">工作台</div>
         <nav className="flex flex-col gap-0.5">
           {/* 三个一级设计 tab:平级,模式分离 */}
           {DESIGN_TABS.map((t) => (
@@ -232,25 +235,58 @@ export default function TeamWorkbench() {
     );
   }
 
+  function renderTeamSelect() {
+    return (
+      <TeamSelect
+        value={resolvedTeamId}
+        options={teams.map((t) => ({ id: t.id, label: t.name }))}
+        onChange={(id) => setTeamId(id)}
+        ariaLabel="选择工作台"
+        variant="compact"
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-surface-secondary text-text-primary">
       <Navbar
-        // 一级 nav:工作台 / 社区(当前在工作台)
+        // 一级 nav:工作台(+团队切换一体) / 社区
         navLinks={[
-          { id: "dashboard", label: "工作台", href: "/dashboard" },
+          {
+            id: "dashboard",
+            label: "工作台",
+            href: "/dashboard",
+            accessory: renderTeamSelect(),
+          },
           { id: "community", label: "社区", href: "/community" },
         ]}
         activeNavId="dashboard"
         afterLogo={
           isMobile ? (
-            <button
-              onClick={() => setDrawerOpen(true)}
-              aria-label="打开导航"
-              title="导航"
-              className="md:hidden w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 active:bg-gray-100"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                onClick={() => setDrawerOpen(true)}
+                aria-label="打开导航"
+                title="导航"
+                className="md:hidden w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 active:bg-gray-100 shrink-0"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              </button>
+              {/* 移动端 nav 隐藏,团队切换挂在 logo 侧保持可用 */}
+              <div className="md:hidden min-w-0">{renderTeamSelect()}</div>
+            </div>
           ) : undefined
         }
       />
@@ -262,9 +298,7 @@ export default function TeamWorkbench() {
         </aside>
 
         {/* 主内容区 */}
-        <main className="flex-1 min-w-0 overflow-y-auto">
-          {renderActive()}
-        </main>
+        <main className="flex-1 min-w-0 overflow-y-auto">{renderActive()}</main>
       </div>
 
       {/* 移动端抽屉式侧边栏(<md 才渲染) */}
@@ -279,7 +313,7 @@ export default function TeamWorkbench() {
           )}
           {/* 抽屉 */}
           <aside
-            className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-gray-200 shadow-xl px-3 py-4 flex flex-col overflow-y-auto transition-transform duration-200 ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
+            className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-gray-200 shadow-xl px-3 py-4 flex flex-col overflow-y-auto transition-transform duration-200 ${drawerOpen ? "translate-x-0" : "-translate-x-full"}`}
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-gray-700">导航</span>
@@ -288,7 +322,18 @@ export default function TeamWorkbench() {
                 aria-label="关闭导航"
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
               </button>
             </div>
             {renderSidebar()}

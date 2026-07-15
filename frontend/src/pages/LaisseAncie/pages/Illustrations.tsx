@@ -1,40 +1,32 @@
 // @ts-nocheck
+/**
+ * Illustrations(插画库)——用户上传插画图片,可印/刺绣到衣服上。
+ * 仿 Styles.tsx 结构,但:1) 无分类侧栏(纯画廊网格 + 搜索); 2) 无「设为共享」开关。
+ *
+ * 保存流程:create → (可选)uploadIllustrationImage → updateIllustration(image) → refresh。
+ */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { teamApi } from "../lib/api";
 import { compressForUpload } from "../lib/images";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
-import { useAuth } from "../../../contexts/AuthContext";
 import { useResourceStore } from "../store/resource";
 import { Modal } from "../components/ui";
-import type { StyleRow } from "../types/design";
+import type { IllustrationRow } from "../types/design";
 
-const STYLE_CATEGORIES = [
-  { key: "上装", label: "上装" },
-  { key: "下装", label: "下装" },
-  { key: "连衣裙", label: "连衣裙" },
-  { key: "外套", label: "外套" },
-  { key: "连体", label: "连体" },
-  { key: "配饰", label: "配饰" },
-  { key: "包袋", label: "包袋" },
-  { key: "鞋履", label: "鞋履" },
-  { key: "其他", label: "其他" },
-];
-
-export default function StylesPage() {
+export default function IllustrationsPage() {
   const { teamId } = useCurrentTeam();
-  const { refreshStyles } = useResourceStore();
-  const [cat, setCat] = useState("上装");
+  const { refreshIllustrations } = useResourceStore();
   const [q, setQ] = useState("");
-  const [rows, setRows] = useState<StyleRow[]>([]);
+  const [rows, setRows] = useState<IllustrationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   // editor: null = 关闭; { mode: 'view'|'edit'|'create', mat? }
-  const [editor, setEditor] = useState<null | { mode: "view" | "edit" | "create"; mat?: StyleRow }>(null);
+  const [editor, setEditor] = useState<null | { mode: "view" | "edit" | "create"; mat?: IllustrationRow }>(null);
 
   const refresh = useCallback(async (tid: string) => {
     setLoading(true);
     try {
-      const r = await teamApi(tid).listStyles();
+      const r = await teamApi(tid).listIllustrations();
       setRows(Array.isArray(r) ? r : []);
     } catch {
       setRows([]);
@@ -46,16 +38,15 @@ export default function StylesPage() {
   useEffect(() => { if (teamId) void refresh(teamId); }, [refresh, teamId]);
 
   const visible = useMemo(() => {
-    const base = rows.filter((m) => m.category === cat);
-    if (!q.trim()) return base;
+    if (!q.trim()) return rows;
     const needle = q.trim().toLowerCase();
-    return base.filter((m) =>
+    return rows.filter((m) =>
       m.name.toLowerCase().includes(needle) ||
       (m.tags || []).some((t) => t.toLowerCase().includes(needle)));
-  }, [cat, q, rows]);
+  }, [q, rows]);
 
   // 保存：create / edit 共用。values 含可选 imageFile（新图优先于 image 字符串）
-  const handleSave = useCallback(async (values: Partial<StyleRow> & { imageFile?: File | null }) => {
+  const handleSave = useCallback(async (values: Partial<IllustrationRow> & { imageFile?: File | null }) => {
     if (!teamId) return;
     const api = teamApi(teamId);
     const { imageFile, ...data } = values;
@@ -65,9 +56,9 @@ export default function StylesPage() {
     }
     let id = payload.id as string | undefined;
     if (id) {
-      await api.updateStyle(id, payload);
+      await api.updateIllustration(id, payload);
     } else {
-      const created = await api.createStyle(payload);
+      const created = await api.createIllustration(payload);
       id = created.id;
     }
     // 上传新图（需要先有 id）
@@ -75,73 +66,55 @@ export default function StylesPage() {
       const compressed = await compressForUpload(imageFile);
       const fd = new FormData();
       fd.append("file", compressed);
-      const { url } = await api.uploadStyleImage(id, fd);
-      if (url) await api.updateStyle(id, { image: url });
+      const { url } = await api.uploadIllustrationImage(id, fd);
+      if (url) await api.updateIllustration(id, { image: url });
     }
-    // 成功后关闭弹窗并刷新（刷新不阻塞、不抛错）
     setEditor(null);
-    await Promise.allSettled([refresh(teamId), refreshStyles()]);
-  }, [teamId, refresh, refreshStyles]);
+    await Promise.allSettled([refresh(teamId), refreshIllustrations()]);
+  }, [teamId, refresh, refreshIllustrations]);
 
-  const handleDelete = useCallback(async (mat: StyleRow) => {
+  const handleDelete = useCallback(async (mat: IllustrationRow) => {
     if (!teamId) return;
-    if (!window.confirm(`确认删除款式「${mat.name}」？`)) return;
-    await teamApi(teamId).deleteStyle(mat.id);
+    if (!window.confirm(`确认删除插画「${mat.name}」？`)) return;
+    await teamApi(teamId).deleteIllustration(mat.id);
     await refresh(teamId);
-    await refreshStyles();
-  }, [teamId, refresh, refreshStyles]);
+    await refreshIllustrations();
+  }, [teamId, refresh, refreshIllustrations]);
 
   if (loading) return <div className="p-10 text-gray-500">加载中…</div>;
 
   return (
-    <div className="grid grid-cols-[220px_1fr] h-[calc(100vh-64px)] min-h-0">
-      <aside className="border-r border-gray-200 bg-gray-50 px-4 py-5 flex flex-col overflow-auto">
-        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">款式分类</div>
-        <div className="flex flex-col gap-1 flex-1">
-          {STYLE_CATEGORIES.map((c) => {
-            const count = rows.filter((m) => m.category === c.key).length;
-            const active = cat === c.key;
-            return (
-              <button key={c.key} onClick={() => setCat(c.key)}
-                className={`text-left flex items-baseline justify-between rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-primary-50 text-gray-800 border border-primary-200" : "text-gray-600 hover:bg-gray-100"}`}>
-                <span className="text-[13px] font-medium">{c.label}</span>
-                <span className="text-[10px] opacity-60">{count}</span>
-              </button>
-            );
-          })}
+    <div className="h-[calc(100vh-64px)] min-h-0 overflow-auto bg-white">
+      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-[32px] font-semibold text-text-primary tracking-tight">插画</h1>
+          <p className="text-sm text-text-tertiary mt-1">共 {visible.length} 张 · 用于服装印花/刺绣</p>
         </div>
-      </aside>
+        <div className="flex items-center gap-3">
+          <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="按名称、标签搜索…"
+            className="w-72 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
+          <button onClick={() => setEditor({ mode: "create" })}
+            className="shrink-0 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-xl font-medium transition-colors">
+            + 新增插画
+          </button>
+        </div>
+      </header>
 
-      <main className="overflow-auto bg-white">
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-[32px] font-semibold text-text-primary tracking-tight">款式</h1>
-            <p className="text-sm text-text-tertiary mt-1">{cat} · 共 {visible.length} 款</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="按名称、标签搜索…"
-              className="w-72 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
-            <button onClick={() => setEditor({ mode: "create" })}
-              className="shrink-0 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-xl font-medium transition-colors">
-              + 新增款式
+      {visible.length === 0 ? (
+        <div className="py-16 text-center text-gray-500 text-sm">
+          {rows.length === 0 ? "还没有插画,点击右上角「+ 新增插画」开始上传" : "没有符合搜索的插画"}
+        </div>
+      ) : (
+        <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
+          {visible.map((m) => (
+            <button key={m.id} onClick={() => setEditor({ mode: "view", mat: m })} className="text-left">
+              <IllustrationCard mat={m} />
             </button>
-          </div>
-        </header>
+          ))}
+        </div>
+      )}
 
-        {visible.length === 0 ? (
-          <div className="py-16 text-center text-gray-500 text-sm">没有符合搜索的款式</div>
-        ) : (
-          <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
-            {visible.map((m) => (
-              <button key={m.id} onClick={() => setEditor({ mode: "view", mat: m })} className="text-left">
-                <StyleCard mat={m} />
-              </button>
-            ))}
-          </div>
-        )}
-      </main>
-
-      <StyleModal
+      <IllustrationModal
         editor={editor}
         onClose={() => setEditor(null)}
         onSwitchEdit={() => setEditor((e) => e ? { ...e, mode: "edit" } : e)}
@@ -152,13 +125,10 @@ export default function StylesPage() {
   );
 }
 
-function StyleCard({ mat }: { mat: StyleRow }) {
+function IllustrationCard({ mat }: { mat: IllustrationRow }) {
   return (
     <figure className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer">
       <div className="relative aspect-square overflow-hidden bg-gray-50">
-        {mat.shared && (
-          <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">系统</span>
-        )}
         {mat.image ? (
           <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />
         ) : (
@@ -178,72 +148,48 @@ function StyleCard({ mat }: { mat: StyleRow }) {
             </div>
           )}
         </div>
-        <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 font-medium">{mat.category}</span>
       </figcaption>
     </figure>
   );
 }
 
 /** 三态弹窗：view(只读详情) / edit(编辑) / create(新增) */
-function StyleModal({ editor, onClose, onSwitchEdit, onSave, onDelete }: {
-  editor: null | { mode: "view" | "edit" | "create"; mat?: StyleRow };
+function IllustrationModal({ editor, onClose, onSwitchEdit, onSave, onDelete }: {
+  editor: null | { mode: "view" | "edit" | "create"; mat?: IllustrationRow };
   onClose: () => void;
   onSwitchEdit: () => void;
-  onSave: (values: Partial<StyleRow> & { imageFile?: File | null }) => Promise<void>;
-  onDelete: (mat: StyleRow) => Promise<void>;
+  onSave: (values: Partial<IllustrationRow> & { imageFile?: File | null }) => Promise<void>;
+  onDelete: (mat: IllustrationRow) => Promise<void>;
 }) {
   if (!editor) return null;
   const { mode, mat } = editor;
   const isEditing = mode === "edit" || mode === "create";
-  const title = mode === "create" ? "新增款式" : (mode === "edit" ? "编辑款式" : (mat?.name ?? "款式"));
+  const title = mode === "create" ? "新增插画" : (mode === "edit" ? "编辑插画" : (mat?.name ?? "插画"));
 
   return (
     <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
       {!isEditing ? (
-        <StyleView mat={mat!} onEdit={onSwitchEdit} onDelete={onDelete} />
+        <IllustrationView mat={mat!} onEdit={onSwitchEdit} onDelete={onDelete} />
       ) : (
-        <StyleForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />
+        <IllustrationForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />
       )}
     </Modal>
   );
 }
 
 /** 只读详情 */
-function StyleView({ mat, onEdit, onDelete }: { mat: StyleRow; onEdit: () => void; onDelete: (mat: StyleRow) => Promise<void> }) {
-  const { teamId } = useCurrentTeam();
-  const { isAdmin } = useAuth();
-  const [shared, setShared] = useState(!!mat?.shared);
-  const [sharing, setSharing] = useState(false);
-  useEffect(() => { setShared(!!mat?.shared); }, [mat]);
+function IllustrationView({ mat, onEdit, onDelete }: { mat: IllustrationRow; onEdit: () => void; onDelete: (mat: IllustrationRow) => Promise<void> }) {
   const [deleting, setDeleting] = useState(false);
   const onDel = async () => {
     setDeleting(true);
     try { await onDelete(mat); } finally { setDeleting(false); }
-  };
-  const toggleShare = async () => {
-    if (!teamId || sharing) return;
-    const next = !shared;
-    setSharing(true);
-    setShared(next);
-    try {
-      await teamApi(teamId).setStyleShared(mat.id, next);
-    } catch (e: any) {
-      setShared(!next);
-      alert(e?.message || "操作失败");
-    } finally {
-      setSharing(false);
-    }
   };
   return (
     <div className="grid grid-cols-[260px_1fr] gap-7 flex-1 min-h-0 h-[60vh]">
       <aside className="rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 overflow-y-auto max-h-full h-fit">
         {mat.image ? (
           <div className="aspect-square overflow-hidden border-b border-gray-200">
-            <img
-              src={mat.image}
-              alt={mat.name}
-              className="w-full h-full object-cover"
-            />
+            <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />
           </div>
         ) : (
           <div className="aspect-square flex items-center justify-center bg-gray-50">
@@ -254,19 +200,7 @@ function StyleView({ mat, onEdit, onDelete }: { mat: StyleRow; onEdit: () => voi
 
       <article className="overflow-auto max-h-full text-xs space-y-5 pr-1">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] px-2.5 py-1 rounded-full bg-primary-50 text-primary-600 font-medium">
-            {mat.category}
-          </span>
           <div className="flex items-center gap-2">
-            {isAdmin && (
-              <button
-                onClick={toggleShare}
-                disabled={sharing}
-                className={`text-[12px] px-3 py-1.5 rounded-lg font-medium transition-colors ${shared ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
-              >
-                {sharing ? "保存中…" : (shared ? "取消共享" : "设为共享")}
-              </button>
-            )}
             <button
               onClick={onEdit}
               className="shrink-0 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
@@ -287,12 +221,7 @@ function StyleView({ mat, onEdit, onDelete }: { mat: StyleRow; onEdit: () => voi
           <Section label="标签">
             <div className="flex flex-wrap gap-1.5">
               {mat.tags.map((t) => (
-                <span
-                  key={t}
-                  className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700"
-                >
-                  {t}
-                </span>
+                <span key={t} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{t}</span>
               ))}
             </div>
           </Section>
@@ -303,15 +232,14 @@ function StyleView({ mat, onEdit, onDelete }: { mat: StyleRow; onEdit: () => voi
 }
 
 /** 编辑 / 新增 表单 */
-function StyleForm({ initial, onCancel, onSave }: {
-  initial: StyleRow | null;
+function IllustrationForm({ initial, onCancel, onSave }: {
+  initial: IllustrationRow | null;
   onCancel: () => void;
-  onSave: (values: Partial<StyleRow> & { imageFile?: File | null }) => Promise<void>;
+  onSave: (values: Partial<IllustrationRow> & { imageFile?: File | null }) => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState(initial?.name ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "上装");
   const [tags, setTags] = useState<string>((initial?.tags ?? []).join(", "));
   const [imageUrl, setImageUrl] = useState(initial?.image ?? "");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -324,13 +252,11 @@ function StyleForm({ initial, onCancel, onSave }: {
       const payload: any = {
         ...(initial?.id ? { id: initial.id } : {}),
         name: name.trim(),
-        category,
         tags: tags.split(",").map((s) => s.trim()).filter(Boolean),
       };
-      // imageFile 优先；没换图则把现有 url 传回去保持同步
       await onSave({ ...payload, image: imageUrl || null, imageFile });
     } catch (err: any) {
-      console.error("[style] save failed", err);
+      console.error("[illustration] save failed", err);
       setError(err?.message || "保存失败，请重试");
       setSaving(false);
     }
@@ -345,11 +271,11 @@ function StyleForm({ initial, onCancel, onSave }: {
 
       {/* 图片上传 */}
       <div>
-        <div className={labelCls}>款式参考图</div>
+        <div className={labelCls}>插画图片</div>
         <div className="flex items-center gap-3">
           <div className="w-28 h-28 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden shrink-0">
             {imageUrl ? (
-              <img src={imageUrl} alt="款式" className="w-full h-full object-cover" />
+              <img src={imageUrl} alt="插画" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[10px] text-gray-400 gap-1">
                 <div className="rounded-lg border-2 border-dashed border-gray-200 w-10 h-10" />
@@ -370,7 +296,7 @@ function StyleForm({ initial, onCancel, onSave }: {
             {imageUrl && (
               <button onClick={() => { setImageUrl(""); setImageFile(null); }} className="text-[11px] text-gray-500 hover:underline">移除图片</button>
             )}
-            <span className="text-[10px] text-gray-400">建议上传款式效果图或实物图</span>
+            <span className="text-[10px] text-gray-400">建议上传高清插画/图案,可直接用于服装印花或刺绣</span>
           </div>
         </div>
       </div>
@@ -379,14 +305,8 @@ function StyleForm({ initial, onCancel, onSave }: {
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2"><div className={labelCls}>名称 *</div><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></div>
         <div className="col-span-2">
-          <div className={labelCls}>类别</div>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
-            {STYLE_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-          </select>
-        </div>
-        <div className="col-span-2">
           <div className={labelCls}>标签（逗号分隔）</div>
-          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="圆领, 通勤, 短袖" className={inputCls} />
+          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="花卉, 复古, 几何" className={inputCls} />
         </div>
       </div>
 

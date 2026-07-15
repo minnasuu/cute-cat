@@ -28,6 +28,42 @@ async function requireAdmin(req, res, next) {
 
 router.use(requireAdmin);
 
+// ======================== Admin: 用户列表 ========================
+router.get('/users', async (_req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        nickname: true,
+        role: true,
+        coins: true,
+        inviteCode: true,
+        inviteCount: true,
+        createdAt: true,
+        _count: { select: { coinTransactions: true } },
+      },
+    });
+    res.json({
+      users: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        nickname: u.nickname,
+        role: u.role,
+        coins: u.coins,
+        inviteCode: u.inviteCode,
+        inviteCount: u.inviteCount,
+        txCount: u._count.coinTransactions,
+        createdAt: u.createdAt,
+      })),
+    });
+  } catch (err) {
+    console.error('[admin] list users error:', err);
+    res.status(500).json({ error: '获取用户列表失败' });
+  }
+});
+
 // ======================== Admin: 兑换码批量生成 ========================
 router.post('/redeem-codes/generate', async (req, res) => {
   try {

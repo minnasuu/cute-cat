@@ -79,6 +79,7 @@ const mcUpload = multer({
 }).fields([
   { name: 'fabrics', maxCount: MAX_FABRIC },
   { name: 'styles', maxCount: MAX_STYLE },
+  { name: 'illustrations', maxCount: 1 },
 ]);
 
 /** 把 multer 暂存文件落到最终位置(本地或 S3),返回公网/相对 URL(saveUpload 内部会压缩) */
@@ -127,6 +128,7 @@ function batchPublicView(b) {
     name: b.name,
     fabrics: b.fabrics.map((f) => ({ url: f.url, name: f.name, text: f.text })),
     styles: b.styles.map((s) => ({ url: s.url, name: s.name, text: s.text })),
+    illustrations: (b.illustrations || []).map((i) => ({ url: i.url, name: i.name, text: i.text })),
     items: b.items.map((it) => ({ fi: it.fi, si: it.si, status: it.status, url: it.url, error: it.error, prompt: it.prompt })),
     total: b.items.length,
     completed,
@@ -152,20 +154,21 @@ async function runBatch(batchId) {
     b.status = 'running';
     b.updatedAt = Date.now();
 
+    const illustration = (b.illustrations || [])[0];
     const makePrompt = b.mode === 'color-mix'
       ? () => buildColorMixPrompt({
         name: b.name, description: b.description,
-        fabrics: b.fabrics, style: b.styles[0],
+        fabrics: b.fabrics, style: b.styles[0], illustration,
       })
       : (cell) => buildMaterialComboPrompt({
         name: b.name, description: b.description,
-        fabric: b.fabrics[cell.fi], style: b.styles[cell.si],
+        fabric: b.fabrics[cell.fi], style: b.styles[cell.si], illustration,
       });
 
-    // 参考图顺序=图序号:叉乘 [款式, 面料];拼色 [款式, 面料1, 面料2, ...]。空 url 会被 gen-image 过滤。
+    // 参考图顺序=图序号:叉乘 [款式, 面料, 插画];拼色 [款式, 面料1, 面料2, ..., 插画]。插画可选,空 url 会被 gen-image 过滤。
     const makeRefImages = b.mode === 'color-mix'
-      ? () => [b.styles[0]?.url, ...b.fabrics.map((f) => f?.url)]
-      : (cell) => [b.styles[cell.si]?.url, b.fabrics[cell.fi]?.url];
+      ? () => [b.styles[0]?.url, ...b.fabrics.map((f) => f?.url), illustration?.url].filter(Boolean)
+      : (cell) => [b.styles[cell.si]?.url, b.fabrics[cell.fi]?.url, illustration?.url].filter(Boolean);
 
     const tasks = b.items.map((cell) => async () => {
       // 输入校验
@@ -398,7 +401,7 @@ router.post('/lineart', async (req, res) => {
         referenceImageUrl,
         ...imgOptsBase,
       });
-      if (r?.url) return { slot: slot.slot, label: slot.label, url: r.url, prompt: enrichedPrompt };
+      if (r?.url) return { slot: slot.slot, label: slot.label, url: r.url, originalUrl: r.originalUrl ?? null, prompt: enrichedPrompt };
       return { slot: slot.slot, label: slot.label, error: r?.error || '生成失败', prompt: enrichedPrompt };
     } catch (e) {
       console.error(`[design-generator] lineart slot ${slot.slot} error:`, e?.message || String(e));
@@ -436,8 +439,8 @@ router.post('/generate', async (req, res) => {
         safeName: slot.slot,
         ...imgOptsBase,
       });
-      // gen-image 成功返回 {url},失败返回 {error}(已含 provider 真实原因)
-      if (r?.url) return { slot: slot.slot, label: slot.label, url: r.url, prompt: r.prompt };
+      // gen-image 成功返回 {url, originalUrl},失败返回 {error}(已含 provider 真实原因)
+      if (r?.url) return { slot: slot.slot, label: slot.label, url: r.url, originalUrl: r.originalUrl ?? null, prompt: r.prompt };
       return { slot: slot.slot, label: slot.label, error: r?.error || '生成失败', prompt: slot.prompt };
     } catch (e) {
       console.error(`[design-generator] slot ${slot.slot} error:`, e?.message || String(e));
@@ -498,7 +501,7 @@ router.post('/regenerate', async (req, res) => {
     provider,
   });
   if (r?.url) {
-    res.json({ slot, label, url: r.url, prompt: r.prompt });
+    res.json({ slot, label, url: r.url, originalUrl: r.originalUrl ?? null, prompt: r.prompt });
   } else {
     res.status(500).json({ slot, label, error: r?.error || '生成失败', prompt: finalPrompt });
   }
@@ -650,13 +653,16 @@ router.post('/material-combo', (req, res) => {
     const files = req.files || {};
     const fabricFiles = files.fabrics ?? [];
     const styleFiles = files.styles ?? [];
+    const illustrationFiles = files.illustrations ?? [];
     const { name = '', description = '' } = req.body || {};
 
     // 解析每种槽位的元数据(前端始终上传):按位置决定上传 or 库行
     let fabricsMeta = [];
     let stylesMeta = [];
+    let illustrationsMeta = [];
     try { if (req.body?.fabricsMeta) fabricsMeta = JSON.parse(req.body.fabricsMeta); } catch { }
     try { if (req.body?.stylesMeta) stylesMeta = JSON.parse(req.body.stylesMeta); } catch { }
+    try { if (req.body?.illustrationsMeta) illustrationsMeta = JSON.parse(req.body.illustrationsMeta); } catch { }
     if (!Array.isArray(fabricsMeta) || !fabricsMeta.length) {
       return res.status(400).json({ error: 'fabricsMeta 缺失或为空' });
     }
@@ -669,14 +675,18 @@ router.post('/material-combo', (req, res) => {
 
     // 守卫(基于元数据数组长度 —— 即「槽位数」,而非文件数)
     if (!name.trim()) return res.status(400).json({ error: '请填写名称' });
-    // 文件数必须等于「上传」槽位数(后端只接 order 一致的上传文件)
+    // 文件数必须等于「上传」槽位数(kind==='upload' 才消耗文件,kind==='text' / 'library-*' 不消耗)
     const uploadFabricCount = fabricsMeta.filter((m) => m.kind === 'upload').length;
     const uploadStyleCount = stylesMeta.filter((m) => m.kind === 'upload').length;
+    const uploadIllustrationCount = illustrationsMeta.filter((m) => m.kind === 'upload').length;
     if (uploadFabricCount !== fabricFiles.length) {
       return res.status(400).json({ error: `面料文件数不匹配,期望 ${uploadFabricCount},收到 ${fabricFiles.length}` });
     }
     if (uploadStyleCount !== styleFiles.length) {
       return res.status(400).json({ error: `款式文件数不匹配,期望 ${uploadStyleCount},收到 ${styleFiles.length}` });
+    }
+    if (uploadIllustrationCount !== illustrationFiles.length) {
+      return res.status(400).json({ error: `插画文件数不匹配,期望 ${uploadIllustrationCount},收到 ${illustrationFiles.length}` });
     }
 
     if (mode === 'color-mix') {
@@ -716,6 +726,9 @@ router.post('/material-combo', (req, res) => {
           const url = await persistTempFile(f.path, f.filename, f.mimetype);
           // 面料视觉细节直接以参考图(面料图)传给生图模型,此处不再 Ark 分析转文字。
           fabrics.push({ name: meta.name || f.originalname || `面料${fabrics.length + 1}`, url, text: '', raw: '' });
+        } else if (meta.kind === 'text') {
+          // 文本描述面料:无图,用文字作为面料依据
+          fabrics.push({ name: meta.name || meta.description || '自定义面料', url: '', text: meta.description || '', raw: '' });
         } else {
           // library-fabric:从材料库取值(色卡图优先,回退 image)
           const rec = await findOwned(prisma.lAMaterial, meta.matId, req.team.id);
@@ -763,6 +776,31 @@ router.post('/material-combo', (req, res) => {
         }
       }
 
+      // 按 illustrationsMeta 顺序构建插画行(可印/刺绣到衣服上的图案)
+      let iIdx = 0;
+      const illustrations = [];
+      for (const meta of illustrationsMeta) {
+        if (meta.kind === 'upload') {
+          const f = illustrationFiles[iIdx++];
+          const url = await persistTempFile(f.path, f.filename, f.mimetype);
+          illustrations.push({ name: meta.name || f.originalname || `插画${illustrations.length + 1}`, url, text: '', raw: '' });
+        } else {
+          // library-illustration:从插画库取值(参考图即插画 image)
+          const rec = await findOwned(prisma.lAIllustrationAsset, meta.illustrationId, req.team.id);
+          if (!rec) {
+            console.warn(`[design-material-combo] 找不到插画 id=${meta.illustrationId}`);
+            illustrations.push({ name: '(插画不存在)', url: '', text: '', raw: '' });
+            continue;
+          }
+          illustrations.push({
+            name: rec.name || '插画',
+            url: rec.image || '',
+            text: '',
+            raw: '',
+          });
+        }
+      }
+
       // 3) 构建 batch
       //    叉乘(cross):m×n 格;拼色(color-mix):1 格(全部面料 × 单个款式)
       const batchId = `mc-${crypto.randomUUID()}`;
@@ -785,6 +823,7 @@ router.post('/material-combo', (req, res) => {
         description: description.trim(),
         fabrics,
         styles,
+        illustrations,
         items,
         status: 'running',
         createdAt: now,
@@ -840,6 +879,7 @@ router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
   }
   const fabric = batch.fabrics[fi];
   const style = batch.styles[si];
+  const illustration = (batch.illustrations || [])[0];
   if (!fabric || !style) return res.status(400).json({ error: '无效的 fi / si' });
 
   const cell = batch.items.find((it) => it.fi === fi && it.si === si);
@@ -849,6 +889,7 @@ router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
   cell.status = 'pending';
   cell.error = undefined;
   cell.url = undefined;
+  cell.originalUrl = undefined;
   batch.updatedAt = Date.now();
 
   res.json({ fi, si, status: cell.status, url: cell.url, error: cell.error, prompt: cell.prompt });
@@ -859,28 +900,31 @@ router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
     const prompt = mode === 'color-mix'
       ? buildColorMixPrompt({
         name: batch.name, description: batch.description,
-        fabrics: batch.fabrics, style: batch.styles[0],
+        fabrics: batch.fabrics, style: batch.styles[0], illustration,
       })
       : buildMaterialComboPrompt({
         name: batch.name, description: batch.description,
-        fabric, style,
+        fabric, style, illustration,
       });
     cell.prompt = prompt;
     const safeName = mode === 'color-mix'
       ? `material-combo-mix-${fi}-${si}`
       : `material-combo-f${fi}-s${si}`;
-    const referenceImages = mode === 'color-mix'
-      ? [batch.styles[0]?.url, ...batch.fabrics.map((f) => f?.url)]
-      : [style?.url, fabric?.url];
+    // referenceImages 顺序:[款式, 面料, 插画](插画可选,有则作为「印花/刺绣图案」交给模型)
+    const referenceImages = (mode === 'color-mix'
+      ? [batch.styles[0]?.url, ...batch.fabrics.map((f) => f?.url), illustration?.url]
+      : [style?.url, fabric?.url, illustration?.url]
+    ).filter(Boolean);
     const img = await generateImage(prompt, {
       teamId: batch.teamId,
       aspectRatio: '1:1',
       safeName,
       provider: MATERIAL_COMBO_PROVIDER,
-      referenceImages: (referenceImages || []).filter(Boolean),
+      referenceImages,
     });
     if (img?.url) {
       cell.url = img.url;
+      cell.originalUrl = img.originalUrl ?? null;
       cell.status = 'done';
     } else {
       cell.error = img?.error || '生成失败';
@@ -921,7 +965,7 @@ function finalStyleBits() {
 /**
  * 叉乘模式 prompt:单面料替换到单款式(原逻辑)。
  */
-function buildMaterialComboPrompt({ name, description, fabric, style }) {
+function buildMaterialComboPrompt({ name, description, fabric, style, illustration }) {
   const category = style?.category || 'fashion product';
 
   // 1. 锚点:品类 + 名称 + 纯白底产品图
@@ -929,13 +973,21 @@ function buildMaterialComboPrompt({ name, description, fabric, style }) {
     `Product photography of a single ${category} called "${name}", on pure white background.`,
   ];
 
-  // 2. 核心替换指令 —— 参考图由调用方以 referenceImages:[style.url, fabric.url] 传入,
-  //    图1=款式 图2=面料。款式/面料的视觉细节交给参考图,prompt 只表达「把图1换成图2的面料花样」。
-  //    模板:将图1换成图2的面料花样,${描述信息}(如字母logo变成LaisseAncie)。
+  // 2. 核心替换指令 —— 参考图由调用方以 referenceImages:[style.url, fabric.url, illustration.url] 传入,
+  //    图1=款式 图2=面料 图3=插画(可选)。款式/面料/插画的视觉细节交给参考图,prompt 只表达组合意图。
+  //    面料为文本描述时(fabric.text 有值但 url 空),用文字代替图2参考。
   const desc = description.trim();
+  const fabricDesc = fabric?.text
+    ? `面料(文字描述): ${fabric.text}。${desc}`
+    : desc;
   bits.push(
-    desc ? `将图1换成图2的面料花样,${desc}。` : `将图1换成图2的面料花样。`,
+    fabricDesc ? `将图1换成图2的面料花样,${fabricDesc}。` : `将图1换成图2的面料花样。`,
   );
+
+  // 3. 插画(可选):把图3的插画图案以印花/刺绣工艺应用在服装上
+  if (illustration?.url) {
+    bits.push('将图3的插画图案以印花或刺绣工艺应用在服装上,作为服装的标志性图案元素。');
+  }
 
   bits.push(finalStyleBits());
 
@@ -947,7 +999,7 @@ function buildMaterialComboPrompt({ name, description, fabric, style }) {
  * 参考图由调用方以 referenceImages:[style.url, ...fabrics[].url] 传入(顺序=图序号),
  * prompt 表达「将图1用图2..图N的面料花样拼接/拼色制作」(+可选描述信息)。
  */
-function buildColorMixPrompt({ name, description, fabrics, style }) {
+function buildColorMixPrompt({ name, description, fabrics, style, illustration }) {
   const category = style?.category || 'fashion product';
   const fabricsArr = Array.isArray(fabrics) ? fabrics : [];
   const fabricCount = fabricsArr.length;
@@ -956,8 +1008,8 @@ function buildColorMixPrompt({ name, description, fabrics, style }) {
     `Product photography of a single ${category} called "${name}", on pure white background.`,
   ];
 
-  // 多块面料拼色叙事 —— 参考图由调用方以 referenceImages:[style.url, ...fabrics[].url] 传入,
-  //   图1=款式 图2..图N=面料(按顺序)。面料视觉细节交给参考图,prompt 表达「把图1用图2..图N的花样拼色」。
+  // 多块面料拼色叙事 —— 参考图由调用方以 referenceImages:[style.url, ...fabrics[].url, illustration.url] 传入,
+  //   图1=款式 图2..图N=面料(按顺序) 图最后=插画(可选)。视觉细节交给参考图,prompt 表达组合意图。
   //   模板:将图1换成图2的面料花样,${描述信息} —— 拼色时扩展为「将图1用图2至图N的面料花样拼接/拼色制作」。
   const fabricRange = fabricCount > 1 ? `图2至图${fabricCount + 1}` : '图2';
   const desc = description.trim();
@@ -968,6 +1020,11 @@ function buildColorMixPrompt({ name, description, fabrics, style }) {
   bits.push(
     'Each fabric should appear as a clearly distinct color-blocked panel on the garment with a patchwork aesthetic; seams between different fabrics may be visible.',
   );
+
+  // 插画(可选):把插画图案以印花/刺绣工艺应用在服装上
+  if (illustration?.url) {
+    bits.push('将插画图案以印花或刺绣工艺应用在服装上,作为服装的标志性图案元素。');
+  }
 
   bits.push(finalStyleBits());
 
@@ -1052,7 +1109,7 @@ async function persistStyleMutateTemp(tmpPath, filename, mime) {
  * 款式裂变 prompt:图1=母款,可选图2=面料。
  * 指令:保留母款 DNA,仅按 promptHint 改一个维度。
  */
-function buildStyleMutatePrompt({ name, description, mutation, hasFabric }) {
+function buildStyleMutatePrompt({ name, description, mutation, hasFabric, fabricText }) {
   const bits = [
     `Product photography of a single fashion garment called "${name}", on pure white background.`,
     'Image 1 is the mother style. Keep the same product category, overall design DNA, fabric print language, and construction language unless the mutation below explicitly changes it.',
@@ -1061,6 +1118,9 @@ function buildStyleMutatePrompt({ name, description, mutation, hasFabric }) {
   ];
   if (hasFabric) {
     bits.push('Image 2 is the locked fabric swatch — keep fabric color/print consistent with Image 2.');
+  } else if (fabricText) {
+    // 文本描述面料:没有图,把文字描述作为面料依据
+    bits.push(`Locked fabric (text description, no image reference): ${fabricText}. Match the fabric qualities, color, and texture described.`);
   }
   const desc = (description || '').trim();
   if (desc) bits.push(`Additional brief: ${desc}`);
@@ -1090,6 +1150,7 @@ async function runStyleMutateBatch(batchId) {
         description: b.description,
         mutation,
         hasFabric: !!b.fabric?.url,
+        fabricText: b.fabric?.text || '',
       });
       cell.prompt = prompt;
       const referenceImages = [b.mother.url, b.fabric?.url].filter(Boolean);
@@ -1204,6 +1265,9 @@ router.post('/style-mutate', (req, res) => {
           const f = fabricFiles[0];
           const url = await persistStyleMutateTemp(f.path, f.filename, f.mimetype);
           fabric = { name: fabricMeta.name || f.originalname || '面料', url };
+        } else if (fabricMeta.kind === 'text') {
+          // 文本描述面料:直接用文字作为参考,无图
+          fabric = { name: fabricMeta.name || fabricMeta.description || '自定义面料', url: '', text: fabricMeta.description || '' };
         } else {
           const rec = await findOwned(prisma.lAMaterial, fabricMeta.matId, req.team.id);
           if (!rec) return res.status(404).json({ error: '面料不存在' });
@@ -1296,6 +1360,7 @@ router.post('/style-mutate/batch/:batchId/regenerate', async (req, res) => {
       description: batch.description,
       mutation,
       hasFabric: !!batch.fabric?.url,
+      fabricText: batch.fabric?.text || '',
     });
     cell.prompt = prompt;
     const referenceImages = [batch.mother?.url, batch.fabric?.url].filter(Boolean);
@@ -1308,6 +1373,7 @@ router.post('/style-mutate/batch/:batchId/regenerate', async (req, res) => {
     });
     if (img?.url) {
       cell.url = img.url;
+      cell.originalUrl = img.originalUrl ?? null;
       cell.status = 'done';
     } else {
       cell.error = img?.error || '生成失败';

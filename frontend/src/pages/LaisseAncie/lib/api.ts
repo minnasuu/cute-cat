@@ -131,6 +131,21 @@ export function teamApi(teamId: string) {
         if (!r.ok) throw new Error(`API ${r.status}`);
         return r.json();
       }),
+    // 管理员共享开关(跨团队共享,仅 admin 可调)
+    setMaterialShared: (id: string, shared: boolean) =>
+      _apiClient.patch(pre(`/materials/${id}/share`), { shared }),
+    setStyleShared: (id: string, shared: boolean) =>
+      _apiClient.patch(pre(`/styles/${id}/share`), { shared }),
+    // 插画 CRUD + 图片上传(可印/刺绣到衣服上)
+    listIllustrations: () => _apiClient.get(pre('/illustrations')),
+    createIllustration: (body: Record<string, unknown>) => _apiClient.post(pre('/illustrations'), body),
+    updateIllustration: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/illustrations/${id}`), body),
+    deleteIllustration: (id: string) => _apiClient.delete(pre(`/illustrations/${id}`)),
+    uploadIllustrationImage: (id: string, formData: FormData) =>
+      fetch(pre(`/illustrations/${id}/image`), { method: 'POST', body: formData, credentials: 'include' }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      }),
 
     // skills
     listSkills: (category?: string) =>

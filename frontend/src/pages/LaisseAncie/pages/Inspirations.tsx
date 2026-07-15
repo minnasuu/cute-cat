@@ -38,6 +38,9 @@ export default function InspinationsPage() {
   const [catalog, setCatalog] = useState<{ categories: string[]; visualStyles: string[] }>({ categories: [], visualStyles: [] });
   const [uploads, setUploads] = useState<{ id: string; file: string; status: "compressing" | "uploading" | "error" }[]>([]);
   const [editing, setEditing] = useState<InspirationItem | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   const cursorRef = useRef<string | null>(null);
   useEffect(() => { cursorRef.current = cursor; }, [cursor]);
@@ -195,9 +198,72 @@ export default function InspinationsPage() {
       await teamApi(teamId).deleteInspiration(id);
       setItems((prev) => prev.filter((it) => it.id !== id));
       setTotal((t) => Math.max(0, t - 1));
+      setSelectedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     } catch (e) {
       console.error("delete failed", e);
       alert("删除失败");
+    }
+  }
+
+  function toggleSelectMode() {
+    setSelectMode((m) => {
+      if (m) setSelectedIds(new Set());
+      return !m;
+    });
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(items.map((it) => it.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function handleBatchDelete() {
+    if (!teamId || selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (!confirm(`确认删除选中的 ${count} 张灵感图？不可恢复。`)) return;
+    setBatchDeleting(true);
+    const ids = Array.from(selectedIds);
+    const failed: string[] = [];
+    try {
+      // 并行删除,单条失败不阻断其余
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            await teamApi(teamId).deleteInspiration(id);
+          } catch {
+            failed.push(id);
+          }
+        }),
+      );
+      const okIds = new Set(ids.filter((id) => !failed.includes(id)));
+      setItems((prev) => prev.filter((it) => !okIds.has(it.id)));
+      setTotal((t) => Math.max(0, t - okIds.size));
+      setSelectedIds(new Set(failed));
+      if (failed.length === 0) {
+        showToast(`已删除 ${okIds.size} 张灵感`, "success");
+        setSelectMode(false);
+      } else {
+        showToast(`删除完成:成功 ${okIds.size} · 失败 ${failed.length}`, "warning");
+      }
+    } finally {
+      setBatchDeleting(false);
     }
   }
 
@@ -209,14 +275,29 @@ export default function InspinationsPage() {
 
   return (
     <div className="p-6 lg:p-8 max-w-[1400px] mx-auto">
-      <header className="flex items-start justify-between mb-6">
+      <header className="flex items-start justify-between mb-6 gap-3">
         <div>
           <h1 className="text-[32px] font-semibold text-text-primary tracking-tight">灵感</h1>
           <p className="text-sm text-text-tertiary mt-1">
             {total > 0 ? `工作室共有 ${total} 张灵感图` : "拖入或粘贴一张图片，开启你的工作室"}
           </p>
         </div>
-        <UploadButton onFiles={handleFiles} />
+        <div className="flex items-center gap-2 shrink-0">
+          {items.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleSelectMode}
+              className={`rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+                selectMode
+                  ? "border-primary-500 bg-primary-50 text-primary-700"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-400"
+              }`}
+            >
+              {selectMode ? "取消选择" : "批量管理"}
+            </button>
+          )}
+          <UploadButton onFiles={handleFiles} />
+        </div>
       </header>
 
       {/* 编辑 modal */}
@@ -237,6 +318,38 @@ export default function InspinationsPage() {
         <Pills options={catalog.visualStyles} value={filter.visualStyle} onPick={(v) => setFilter((f) => ({ ...f, visualStyle: f.visualStyle === v ? undefined : v }))} /> */}
       </div>
 
+      {selectMode && items.length > 0 && (
+        <div className="sticky top-16 z-20 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white/95 backdrop-blur px-4 py-2.5 shadow-sm">
+          <span className="text-sm text-gray-700">
+            已选 <span className="font-semibold text-primary-600">{selectedIds.size}</span> 张
+          </span>
+          <button
+            type="button"
+            onClick={selectAllVisible}
+            className="text-sm text-gray-600 hover:text-primary-600"
+          >
+            全选当前页
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={selectedIds.size === 0}
+            className="text-sm text-gray-600 hover:text-primary-600 disabled:opacity-40"
+          >
+            清空
+          </button>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={handleBatchDelete}
+            disabled={selectedIds.size === 0 || batchDeleting}
+            className="rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-40 text-white px-4 py-1.5 text-sm font-medium transition-colors"
+          >
+            {batchDeleting ? "删除中…" : `删除所选${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
+          </button>
+        </div>
+      )}
+
       {uploads.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
           {uploads.map((u) => (
@@ -252,7 +365,18 @@ export default function InspinationsPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {items.map((it) => <AssetCard key={it.id} asset={it} onDelete={handleDelete} onEdit={(a) => setEditing(a)} onRetry={handleRetry} />)}
+            {items.map((it) => (
+              <AssetCard
+                key={it.id}
+                asset={it}
+                selectMode={selectMode}
+                selected={selectedIds.has(it.id)}
+                onToggleSelect={() => toggleSelect(it.id)}
+                onDelete={handleDelete}
+                onEdit={(a) => setEditing(a)}
+                onRetry={handleRetry}
+              />
+            ))}
           </div>
           {cursor && (
             <div className="flex justify-center mt-8">
@@ -267,7 +391,23 @@ export default function InspinationsPage() {
   );
 }
 
-function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationItem; onDelete: (id: string) => void; onEdit: (asset: InspirationItem) => void; onRetry: (id: string) => void; }) {
+function AssetCard({
+  asset,
+  selectMode,
+  selected,
+  onToggleSelect,
+  onDelete,
+  onEdit,
+  onRetry,
+}: {
+  asset: InspirationItem;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onDelete: (id: string) => void;
+  onEdit: (asset: InspirationItem) => void;
+  onRetry: (id: string) => void;
+}) {
   const { navigateTab } = useCurrentTeam();
   const { setDraftPrompt, requestReset } = useComposerPrompt();
   const hasAnalysis = asset.category || asset.visualStyle || asset.designApproach || (asset.inspiration?.length ?? 0) > 0;
@@ -289,34 +429,69 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
   const shortStyle = asset.visualStyle
     ? (asset.visualStyle.length > 28 ? asset.visualStyle.slice(0, 28) + "…" : asset.visualStyle)
     : null;
+
+  function handleCardClick() {
+    if (selectMode) onToggleSelect();
+    else onEdit(asset);
+  }
+
   return (
-    <figure onClick={() => onEdit(asset)} className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer group">
+    <figure
+      onClick={handleCardClick}
+      className={`rounded-2xl border bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer group relative ${
+        selected ? "border-primary-500 ring-2 ring-primary-200" : "border-gray-200"
+      }`}
+    >
       <div className="relative aspect-[1/1] bg-gray-100 overflow-hidden">
         <img src={asset.thumbUrl || asset.url} alt={asset.visualStyle ?? asset.category ?? "inspiration"} loading="lazy"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.05]" />
-        {/* pending 时左上角转圈提示 */}
-        {asset.analysisStatus === 'pending' && (
-          <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 border-white/70 border-t-primary-500 animate-spin" title="分析中…" />
+        {/* 批量选择勾选框 */}
+        {selectMode && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+            aria-label={selected ? "取消选中" : "选中"}
+            className={`absolute top-2 left-2 z-20 w-6 h-6 rounded-md border-2 flex items-center justify-center shadow-sm transition-colors ${
+              selected
+                ? "bg-primary-500 border-primary-500 text-white"
+                : "bg-white/90 border-gray-300 text-transparent hover:border-primary-400"
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+              <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         )}
-        {/* 操作按钮(hover 显示) */}
-        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-          {asset.analysisStatus === 'failed' && (
-            <button onClick={(e) => { e.stopPropagation(); onRetry(asset.id); }}
-              className="w-7 h-7 rounded-full bg-amber-500/90 hover:bg-amber-500 text-white text-xs flex items-center justify-center shadow-sm" title="重试分析">⟳</button>
-          )}
-          <button onClick={(e) => { e.stopPropagation(); onEdit(asset); }}
-            className="w-7 h-7 rounded-full bg-white/90 hover:bg-white text-gray-700 text-xs flex items-center justify-center shadow-sm" title="编辑">✎</button>
-          <button onClick={(e) => { e.stopPropagation(); if (confirm("删除这张灵感图？")) onDelete(asset.id); }}
-            className="w-7 h-7 rounded-full bg-white/90 hover:bg-red-50 text-red-500 text-xs flex items-center justify-center shadow-sm" title="删除">✕</button>
-        </div>
-        {/* 制作相似(hover 显示,主操作按钮) */}
-        <button
-          onClick={handleMakeSimilar}
-          className="absolute inset-x-3 bottom-16 z-20 opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-full bg-primary-500 hover:bg-primary-600 text-white text-[12px] font-medium shadow-lg flex items-center justify-center gap-1.5"
-          title="把这张灵感的品类·风格·思路整理后填入单品设计工作台"
-        >
-          ✨ 制作相似
-        </button>
+        {/* pending 时左上角转圈提示(选择模式时避让勾选框) */}
+        {asset.analysisStatus === 'pending' && (
+          <div
+            className={`absolute z-10 w-5 h-5 rounded-full border-2 border-white/70 border-t-primary-500 animate-spin ${selectMode ? "top-2 left-10" : "top-2 left-2"}`}
+            title="分析中…"
+          />
+        )}
+        {/* 操作按钮(hover 显示;批量模式隐藏避免误触) */}
+        {!selectMode && (
+          <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            {asset.analysisStatus === 'failed' && (
+              <button onClick={(e) => { e.stopPropagation(); onRetry(asset.id); }}
+                className="w-7 h-7 rounded-full bg-amber-500/90 hover:bg-amber-500 text-white text-xs flex items-center justify-center shadow-sm" title="重试分析">⟳</button>
+            )}
+            <button onClick={(e) => { e.stopPropagation(); onEdit(asset); }}
+              className="w-7 h-7 rounded-full bg-white/90 hover:bg-white text-gray-700 text-xs flex items-center justify-center shadow-sm" title="编辑">✎</button>
+            <button onClick={(e) => { e.stopPropagation(); if (confirm("删除这张灵感图？")) onDelete(asset.id); }}
+              className="w-7 h-7 rounded-full bg-white/90 hover:bg-red-50 text-red-500 text-xs flex items-center justify-center shadow-sm" title="删除">✕</button>
+          </div>
+        )}
+        {/* 制作相似(hover 显示,主操作按钮;批量模式隐藏) */}
+        {!selectMode && (
+          <button
+            onClick={handleMakeSimilar}
+            className="absolute inset-x-3 bottom-16 z-20 opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-full bg-primary-500 hover:bg-primary-600 text-white text-[12px] font-medium shadow-lg flex items-center justify-center gap-1.5"
+            title="把这张灵感的品类·风格·思路整理后填入单品设计工作台"
+          >
+            ✨ 制作相似
+          </button>
+        )}
         {/* 卡片底部(category + uses) */}
         <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/30 to-transparent text-white">
           <div className="flex items-center justify-between gap-2">
@@ -326,8 +501,8 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
           {shortStyle && <div className="text-[10px] opacity-80 mt-1 truncate" title={asset.visualStyle!}>{shortStyle}</div>}
           <figcaption className="text-[10px] opacity-60 mt-1 font-mono">{new Date(asset.createdAt).toLocaleDateString()}</figcaption>
         </div>
-        {/* Hover 展开:4 维分析详情 */}
-        {hasAnalysis && (
+        {/* Hover 展开:4 维分析详情(批量模式不挡勾选) */}
+        {hasAnalysis && !selectMode && (
           <div className="absolute inset-0 bg-black/75 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-3 text-white flex flex-col gap-2 overflow-y-auto" style={{ pointerEvents: "none" }}>
             {asset.visualStyle && (
               <div className="text-[11px] leading-relaxed"><span className="text-[10px] uppercase tracking-wider opacity-50">风格 · </span>{asset.visualStyle}</div>

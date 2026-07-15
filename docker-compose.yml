@@ -72,6 +72,8 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       # 逗号分隔；需与浏览器访问前端的 Origin 一致（含端口），否则带 Cookie 的跨域请求会被 CORS 拒绝
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4000,http://localhost:5173}
+      # 管理员邮箱白名单(逗号分隔),注册/登录后拥有全部权限(工作流后台/官方通知等)
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # 豆包大 system prompt 场景首 token 延迟高,聊天硬超时上限(默认 180s);首 token 诊断日志定位后可回调
       LAISSE_ANCIE_CHAT_TIMEOUT_MS: ${LAISSE_ANCIE_CHAT_TIMEOUT_MS:-300000}
       # SeedDream 大尺寸生图首 token + 生成常超 120s,统一 3 分钟(180s)

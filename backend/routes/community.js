@@ -83,7 +83,9 @@ router.get('/posts', optionalAuth, async (req, res) => {
     res.json({ items: items.map(publicPost), total, take, skip });
   } catch (err) {
     console.error('[community] feed error:', err);
-    res.status(500).json({ error: '获取社区内容失败' });
+    // 给前端展示具体原因(表不存在/字段错误等),方便排查;不影响用户时翻译成中文兜底
+    const detail = err?.message || '未知错误';
+    res.status(500).json({ error: '获取社区内容失败', detail });
   }
 });
 

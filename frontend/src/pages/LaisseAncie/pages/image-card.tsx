@@ -18,6 +18,8 @@ export interface GeneratedImage {
   slot: string;
   label: string;
   url?: string;
+  /** AI 生成时的原图,下载时优先取此 URL(压缩图仍用 url 展示) */
+  originalUrl?: string | null;
   prompt?: string;
   error?: string;
 }

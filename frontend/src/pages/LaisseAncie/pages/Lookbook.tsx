@@ -57,8 +57,8 @@ function pickCover(product: Product): string | null {
   return legacyMain[0]?.url ?? null;
 }
 
-/** 卡片视图的单张卡片:效果图作封面 + 标题文字 + 点击打开详情弹窗 */
-function CardItem({ product, cover, onClick }: { product: Product; cover: string | null; onClick: () => void }) {
+/** 卡片视图的单张卡片:效果图作封面 + 标题文字 + 点击打开详情弹窗 + 下载原图 */
+function CardItem({ product, cover, onClick, onDownload }: { product: Product; cover: string | null; onClick: () => void; onDownload?: () => void }) {
   return (
     <div onClick={onClick} className="group cursor-pointer rounded-2xl border border-gray-200 bg-white overflow-hidden hover:shadow-lg hover:border-primary-300 transition-all">
       <div className="relative aspect-[1/1] bg-gray-100 overflow-hidden">
@@ -71,12 +71,20 @@ function CardItem({ product, cover, onClick }: { product: Product; cover: string
           <div className="text-[13px] font-medium text-gray-900 truncate">{product.title || "（未命名）"}</div>
           {product.category && <div className="text-[11px] text-gray-500 truncate mt-0.5">{product.category}</div>}
         </div>
-        {/* 卡片右下角红色价格 */}
-        {typeof product.targetPriceNum === "number" && (
-          <div className="absolute bottom-2 right-3 text-[13px] font-bold text-red-500">
-            ¥{product.targetPriceNum}
-          </div>
-        )}
+        {/* 卡片底部右侧:红色价格 + 下载原图 */}
+        <div className="flex items-center justify-end gap-2 px-3 pb-2">
+          {typeof product.targetPriceNum === "number" && (
+            <span className="text-[13px] font-bold text-red-500">¥{product.targetPriceNum}</span>
+          )}
+          {onDownload && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDownload(); }}
+              className="text-[11px] text-primary-600 hover:text-primary-700 hover:underline"
+              title="下载 AI 生成的原图"
+            >下载原图</button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -92,7 +100,6 @@ export default function LookbookPage() {
   const [editor, setEditor] = useState<null | { mode: "create" } | { mode: "view" | "edit"; product: Product }>(null);
   const { confirming, setConfirming, pending, doDelete } = useRowDelete();
   const { setEditingProduct } = useEditingProduct();
-  const { user } = useAuth();
   const { statuses: statusConfig, save: saveStatusConfig } = useStatusConfig();
   const [configOpen, setConfigOpen] = useState(false);
 
@@ -121,6 +128,22 @@ export default function LookbookPage() {
     e.stopPropagation();
     setEditingProduct(p);
     navigateTab("single");
+  }
+
+  /** 取产品可用的第一张 AI 原图 URL(无则退回压缩主图) */
+  function getOriginalUrl(p: Product): string | null {
+    const orig = (p.images ?? []).find((im) => im.originalUrl);
+    if (orig?.originalUrl) return orig.originalUrl;
+    // 回退:取任意一张图(URL 本身,压缩图也算兜底)
+    return p.images?.find((im) => im.url)?.url ?? p.imageUrl ?? null;
+  }
+
+  /** 下载原图:先取原图 URL,否则取压缩图;新窗口打开 */
+  function handleDownload(p: Product, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    const url = getOriginalUrl(p);
+    if (!url) { showToast("该产品暂无可下载的图片", "warning"); return; }
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -177,7 +200,8 @@ export default function LookbookPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {items.map((p) => (
             <CardItem key={p.id} product={p} cover={pickCover(p)}
-              onClick={() => setEditor({ mode: "view", product: p })} onDelete={() => setConfirming(p.id)} />
+              onClick={() => setEditor({ mode: "view", product: p })} onDelete={() => setConfirming(p.id)}
+              onDownload={() => handleDownload(p)} />
           ))}
         </div>
       ) : (
@@ -224,6 +248,11 @@ export default function LookbookPage() {
                         className="text-[11px] px-2 py-1 rounded-md text-primary-600 hover:bg-primary-50 transition-colors font-medium"
                         title="跳转单品设计工作台继续编辑"
                       >编辑</button>
+                      <button
+                        onClick={(e) => handleDownload(p, e)}
+                        className="text-[11px] px-2 py-1 rounded-md text-gray-500 hover:bg-gray-100 transition-colors"
+                        title="下载 AI 生成的原图"
+                      >下载原图</button>
                       {confirming === p.id ? (
                         <div className="flex items-center gap-1">
                           <button

@@ -6,6 +6,7 @@ import { showToast } from '../../components/Toast';
 import Navbar from '../../components/Navbar';
 import { AppIcon } from '../../components/icons/AppIcon';
 import { useIsMobile } from '../../hooks/use-media-query';
+import MeowCoin from '../../components/MeowCoin';
 
 interface Tx {
   id: string;
@@ -79,7 +80,7 @@ const AccountPage: React.FC = () => {
   // 兑换码
   const [redeemCode, setRedeemCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
-  const [redeemMsg, setRedeemMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [redeemMsg, setRedeemMsg] = useState<{ type: 'success' | 'error'; text: string; coins?: number } | null>(null);
 
   useEffect(() => {
     if (user) setNickname(user.nickname);
@@ -124,8 +125,8 @@ const AccountPage: React.FC = () => {
     try {
       const res = await apiClient.post<{ coins: number; name: string }>('/api/account/redeem', { code: redeemCode.trim() });
       await refreshUser();
-      setRedeemMsg({ type: 'success', text: `兑换成功!获得 ${res.name} ${res.coins} 🐾` });
-      showToast(`兑换成功!获得 ${res.coins} 🐾`, 'success');
+      setRedeemMsg({ type: 'success', text: `兑换成功!获得 ${res.name} ${res.coins}`, coins: res.coins });
+      showToast(`兑换成功!获得 ${res.coins} 喵币`, 'success');
       setRedeemCode('');
     } catch (err: any) {
       const msg = err?.message || '兑换失败';
@@ -170,7 +171,7 @@ const AccountPage: React.FC = () => {
           <span className="px-2 py-0.5 bg-primary-50 border border-primary-200 text-primary-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
             {ROLE_LABELS[user.role] || user.role}
           </span>
-          <span className="text-xs font-bold text-text-primary">🐾 {user.coins}</span>
+          <span className="text-xs font-bold text-text-primary inline-flex items-center gap-1"><MeowCoin size={14} /> {user.coins}</span>
         </div>
       </div>
 
@@ -233,7 +234,7 @@ const AccountPage: React.FC = () => {
           {/* 余额 */}
           <div className="rounded-[20px] border border-border bg-surface p-4 flex items-center justify-between">
             <span className="text-sm text-text-secondary">当前余额</span>
-            <span className="text-xl font-black text-text-primary">🐾 {user.coins}</span>
+            <span className="text-xl font-black text-text-primary inline-flex items-center gap-1.5"><MeowCoin size={22} /> {user.coins}</span>
           </div>
 
           {/* 三档介绍 */}
@@ -243,7 +244,7 @@ const AccountPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {(Object.entries(tiers) as [RedeemTierId, RedeemTier][]).map(([id, t]) => (
                   <div key={id} className="rounded-[20px] border border-border bg-surface p-5 flex flex-col items-center text-center">
-                    <div className="text-2xl font-black text-primary-600 mb-1">🐾 {t.coins}</div>
+                    <div className="text-2xl font-black text-primary-600 mb-1 inline-flex items-center gap-1.5"><MeowCoin size={22} /> {t.coins}</div>
                     <div className="text-sm font-bold text-text-primary mb-1">{t.name}</div>
                     <div className="text-xs text-text-tertiary">≈ {Math.round(t.coins / 9)} 次生图</div>
                     <div className="text-xs text-text-tertiary mt-1">¥{t.yuan}</div>
@@ -275,8 +276,8 @@ const AccountPage: React.FC = () => {
               </button>
             </div>
             {redeemMsg && (
-              <p className={`text-sm ${redeemMsg.type === 'success' ? 'text-primary-600' : 'text-red-500'}`}>
-                {redeemMsg.text}
+              <p className={`text-sm inline-flex items-center gap-1 ${redeemMsg.type === 'success' ? 'text-primary-600' : 'text-red-500'}`}>
+                {redeemMsg.text}{redeemMsg.coins != null && <><MeowCoin size={14} /></>}
               </p>
             )}
           </div>
@@ -300,8 +301,8 @@ const AccountPage: React.FC = () => {
                     <div className="text-[11px] text-text-tertiary">{new Date(tx.createdAt).toLocaleString('zh-CN')}</div>
                   </div>
                   <div className="text-right shrink-0 ml-4">
-                    <div className={`text-sm font-black ${tx.amount > 0 ? 'text-primary-600' : 'text-text-primary'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount} 🐾
+                    <div className={`text-sm font-black inline-flex items-center gap-1 ${tx.amount > 0 ? 'text-primary-600' : 'text-text-primary'}`}>
+                      {tx.amount > 0 ? '+' : ''}{tx.amount} <MeowCoin size={14} />
                     </div>
                     <div className="text-[11px] text-text-tertiary">余额 {tx.balanceAfter}</div>
                   </div>
@@ -316,7 +317,7 @@ const AccountPage: React.FC = () => {
       {activeTab === 'invite' && invite && (
         <div className="rounded-[20px] border border-border bg-surface p-6 space-y-5">
           <h2 className="text-base font-black text-text-primary">邀请好友</h2>
-          <p className="text-sm text-text-secondary">每邀请一位好友注册,你和好友各得 <span className="font-bold text-primary-600">{invite.reward} 🐾</span>(上限 {invite.max} 人)。</p>
+          <p className="text-sm text-text-secondary">每邀请一位好友注册,你和好友各得 <span className="font-bold text-primary-600 inline-flex items-center gap-1">{invite.reward} <MeowCoin size={14} /></span>(上限 {invite.max} 人)。</p>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">邀请链接</label>
             <div className="flex gap-2">
@@ -330,7 +331,7 @@ const AccountPage: React.FC = () => {
               <div className="text-xs text-text-tertiary">已邀请</div>
             </div>
             <div>
-              <div className="text-2xl font-black text-primary-600">{invite.earned} 🐾</div>
+              <div className="text-2xl font-black text-primary-600 inline-flex items-center gap-1.5">{invite.earned} <MeowCoin size={22} /></div>
               <div className="text-xs text-text-tertiary">累计奖励</div>
             </div>
           </div>

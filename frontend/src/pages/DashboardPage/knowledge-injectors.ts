@@ -12,14 +12,12 @@ import { skillHintsFor } from "../LaisseAncie/lib/skill-hints";
 import type { VisualAsset } from "../LaisseAncie/types/visual-asset";
 import type { InspirationItem } from "../LaisseAncie/store/resource";
 import type { SkillArticle } from "../LaisseAncie/types/skill";
-import type { StyleRow } from "../LaisseAncie/types/design";
+import type { StyleRow, IllustrationRow } from "../LaisseAncie/types/design";
 
 export interface BrandProfile {
   logo?: string | null;
-  nameZh?: string;
-  nameEn?: string;
-  sloganZh?: string;
-  sloganEn?: string;
+  name?: string;
+  slogan?: string;
   voice?: string[];
   audienceAgeMin?: number;
   audienceAgeMax?: number;
@@ -38,6 +36,7 @@ export interface KnowledgeDeps {
   // materials / styles / products 保留给资源 tab / Lookbook / 材料组合自身消费,设计阶段注入已不再引用
   materials: any[];
   styles: StyleRow[];
+  illustrations?: IllustrationRow[];
   products: any[];
   brand?: BrandProfile;
 }
@@ -88,9 +87,9 @@ const brandInjector: Injector = (_prompt, deps) => {
   const voice = b.voice?.length ? b.voice.join(" / ") : "优雅 · 松弛 · 乐趣";
   const lines: string[] = [
     "## Brand(baseline — every design must echo this)",
-    `Brand: ${b.nameZh || "来兮·安兮"} / ${b.nameEn || "Laisse Ancie"}`,
+    `Brand: ${b.name || "来兮·安兮"}`,
     `Voice: ${voice}`,
-    `Slogan: ${b.sloganZh || "既来之，则安之"} — ${b.sloganEn || "Come, be at ease."}`,
+    `Slogan: ${b.slogan || "既来之，则安之"}`,
   ];
   if (b.audienceAgeMin != null && b.audienceAgeMax != null) lines.push(`Audience: ${b.audienceAgeMin}-${b.audienceAgeMax} 岁 · 独立自我的年轻女性`);
   if (b.priceMin != null && b.priceMax != null) lines.push(`Price band: ¥${b.priceMin} — ¥${b.priceMax}`);

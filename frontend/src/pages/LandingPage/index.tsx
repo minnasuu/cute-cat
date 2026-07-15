@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import CatLogo from '../../components/CatLogo';
 import Navbar from '../../components/Navbar';
 import { AppIcon } from '../../components/icons';
+import MeowCoin from '../../components/MeowCoin';
 
 const NAV_ITEMS = [
   { id: 'workspaces', label: '工作台', activeClass: 'text-primary-500' },
@@ -16,11 +17,16 @@ const WORKSPACES = [
   { icon: '📿', name: '串珠工作台', desc: '即将开放', active: false },
 ];
 
+const InlineCoin = () => <MeowCoin size={14} className="inline-block" />;
+
 const PRICING = [
-  { emoji: '🐾', title: '按次计费,透明无套路', desc: '充值喵币(7 元 = 1000 🐾),生图 9 🐾/张、文本 1 🐾/次,无隐藏费用。' },
-  { emoji: '🎁', title: '新用户送 100 🐾', desc: '注册即赠体验金,先试后买,满意再充值。' },
-  { emoji: '🤝', title: '邀请好友各得 100 🐾', desc: '分享邀请链接,邀请好友注册双方各得奖励,上限 10 人。' },
+  { emoji: '🐾', title: <>按次计费,透明无套路</>, desc: <>充值喵币(7 元 = 1000 <InlineCoin />),生图 9 <InlineCoin />/张、文本 1 <InlineCoin />/次,无隐藏费用。</> },
+  { emoji: '🎁', title: <>新用户送 100 <InlineCoin /></>, desc: <>注册即赠体验金,先试后买,满意再充值。</> },
+  { emoji: '🤝', title: <>邀请好友各得 100 <InlineCoin /></>, desc: <>分享邀请链接,邀请好友注册双方各得奖励,上限 10 人。</> },
 ];
+
+const CoinOrEmoji: React.FC<{ emoji: string; size?: number }> = ({ emoji, size = 32 }) =>
+  emoji === '🐾' ? <MeowCoin size={size} /> : <span>{emoji}</span>;
 
 const LandingPage: React.FC = () => {
   const [scrollY, setScrollY] = useState(0);
@@ -100,12 +106,12 @@ const LandingPage: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
               { label: '创作工作台', val: '3 个(即将)' },
-              { label: '喵币计费', val: '7元=1000🐾' },
-              { label: '生图单价', val: '9 🐾/张' },
-              { label: '新人礼包', val: '100 🐾' },
+              { label: '喵币计费', val: '7元=1000', coin: true },
+              { label: '生图单价', val: '9 /张', coin: true },
+              { label: '新人礼包', val: '100 ', coin: true },
             ].map((s, i) => (
               <div key={i} className="text-center">
-                <div className="text-2xl font-black text-text-primary">{s.val}</div>
+                <div className="text-2xl font-black text-text-primary inline-flex items-center gap-1">{s.val}{(s as { coin?: boolean }).coin && <MeowCoin size={20} />}</div>
                 <div className="text-xs font-bold text-text-tertiary uppercase tracking-widest mt-1">{s.label}</div>
               </div>
             ))}
@@ -144,13 +150,13 @@ const LandingPage: React.FC = () => {
             <p className="text-sm font-bold text-secondary-500 uppercase tracking-widest mb-4">计费</p>
             <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6">透明按次,先试后买</h2>
             <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-              无月费、无捆绑,按实际用量喵币计费。新用户送 100 🐾 先体验。
+              无月费、无捆绑,按实际用量喵币计费。新用户送 100 <InlineCoin /> 先体验。
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {PRICING.map((p, i) => (
               <div key={i} className="rounded-[24px] border border-border bg-surface p-6">
-                <div className="text-3xl mb-3">{p.emoji}</div>
+                <div className="text-3xl mb-3"><CoinOrEmoji emoji={p.emoji} /></div>
                 <h3 className="text-lg font-black text-text-primary mb-2">{p.title}</h3>
                 <p className="text-sm text-text-secondary">{p.desc}</p>
               </div>
@@ -179,7 +185,7 @@ const LandingPage: React.FC = () => {
         <div className="max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6">开始你的创作</h2>
           <p className="text-lg text-text-secondary max-w-xl mx-auto mb-10">
-            注册即送 100 🐾,免费体验 AI 设计工作台的完整能力。
+            注册即送 100 <InlineCoin />,免费体验 AI 设计工作台的完整能力。
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link to="/register" className="w-full sm:w-auto px-10 py-4 text-lg font-bold bg-primary-500 text-text-inverse rounded-2xl hover:bg-primary-600 transition-all">免费注册</Link>

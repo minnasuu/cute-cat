@@ -23,7 +23,7 @@ const LaisseAncieApp = lazy(() =>
     return { default: Comp };
   }),
 );
-const AdminWorkflowsPage = lazy(() => import('./pages/AdminWorkflowsPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
 const AccountPage = lazy(() => import('./pages/AccountPage'));
 
 const LoadingScreen = () => (
@@ -109,13 +109,15 @@ const App: React.FC = () => {
               />
               <Route path="/vibe-style-lib" element={<Navigate to="/vibe-assets" replace />} />
               <Route
-                path="/admin/workflows"
+                path="/admin"
                 element={
                   <AdminRoute>
-                    <AdminWorkflowsPage />
+                    <AdminPage />
                   </AdminRoute>
                 }
               />
+              {/* 旧管理路径 → 新管理员后台 */}
+              <Route path="/admin/workflows" element={<Navigate to="/admin" replace />} />
 
               {/* Laisse Ancie — 已合并到通用团队工作台,重定向到 /dashboard */}
               <Route

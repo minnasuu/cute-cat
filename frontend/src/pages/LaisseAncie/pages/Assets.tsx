@@ -12,10 +12,8 @@ import { compressForUpload } from "../lib/images";
 
 interface BrandForm {
   logo: string;
-  nameZh: string;
-  nameEn: string;
-  sloganZh: string;
-  sloganEn: string;
+  name: string;
+  slogan: string;
   voice: string;          // 风格描述(逗号分隔编辑态)
   audienceAgeMin: string;
   audienceAgeMax: string;
@@ -30,10 +28,8 @@ const emptyColor = (): ColorRow => ({ bg: "#ffffff", fg: "#1a1a1a", usage: "" })
 function toForm(p: any): BrandForm {
   return {
     logo: p?.logo || "",
-    nameZh: p?.nameZh || "",
-    nameEn: p?.nameEn || "",
-    sloganZh: p?.sloganZh || "",
-    sloganEn: p?.sloganEn || "",
+    name: p?.name || "",
+    slogan: p?.slogan || "",
     voice: Array.isArray(p?.voice) ? p?.voice.join("，") : (p?.voice || ""),
     audienceAgeMin: p?.audienceAgeMin != null ? String(p.audienceAgeMin) : "",
     audienceAgeMax: p?.audienceAgeMax != null ? String(p.audienceAgeMax) : "",
@@ -105,10 +101,8 @@ function BrandInfoAssets() {
     try {
       const payload: any = {
         logo: form.logo || null,
-        nameZh: form.nameZh.trim() || null,
-        nameEn: form.nameEn.trim() || null,
-        sloganZh: form.sloganZh.trim() || null,
-        sloganEn: form.sloganEn.trim() || null,
+        name: form.name.trim() || null,
+        slogan: form.slogan.trim() || null,
         voice: form.voice.split(/[，,\n]/).map((s) => s.trim()).filter(Boolean),
         audienceAgeMin: form.audienceAgeMin ? Number(form.audienceAgeMin) : null,
         audienceAgeMax: form.audienceAgeMax ? Number(form.audienceAgeMax) : null,
@@ -159,11 +153,9 @@ function BrandInfoAssets() {
               <input ref={logoRef} type="file" accept="image/*" className="hidden"
                 onChange={(e) => { onLogo(e.target.files?.[0] || null); e.target.value = ""; }} />
             </div>
-            <div className="flex-1 grid grid-cols-2 gap-3">
-              <div><div className={labelCls}>品牌中文名 *</div><input value={form.nameZh} onChange={(e) => set("nameZh", e.target.value)} placeholder="如:山海织物" className={inputCls} /></div>
-              <div><div className={labelCls}>品牌英文名</div><input value={form.nameEn} onChange={(e) => set("nameEn", e.target.value)} placeholder="如:Montsea" className={inputCls} /></div>
-              <div><div className={labelCls}>中文 slogan</div><input value={form.sloganZh} onChange={(e) => set("sloganZh", e.target.value)} placeholder="如:自然·自洽" className={inputCls} /></div>
-              <div><div className={labelCls}>英文 slogan</div><input value={form.sloganEn} onChange={(e) => set("sloganEn", e.target.value)} placeholder="如:Be in tune." className={inputCls} /></div>
+            <div className="flex-1 grid grid-cols-1 gap-3">
+              <div><div className={labelCls}>名称 *</div><input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="如:山海织物 / Montsea" className={inputCls} /></div>
+              <div><div className={labelCls}>Slogan</div><input value={form.slogan} onChange={(e) => set("slogan", e.target.value)} placeholder="如:自然·自洽 / Be in tune." className={inputCls} /></div>
             </div>
           </div>
         </div>

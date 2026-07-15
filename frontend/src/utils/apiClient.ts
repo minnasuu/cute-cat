@@ -103,7 +103,7 @@ class ApiClient {
         try { payload = await response.json(); } catch { /* ignore */ }
         const detail = payload?.error || '喵币不足，请充值后再试';
         if (!silent) {
-          const coins = payload?.coins != null ? ` (余额 🐾 ${payload.coins})` : '';
+          const coins = payload?.coins != null ? ` (余额喵币 ${payload.coins})` : '';
           showToast(`${detail}${coins}`, 'warning');
         }
         const err = new Error(detail) as Error & { code?: string; coins?: number };

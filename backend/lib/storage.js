@@ -227,6 +227,36 @@ async function saveUpload(absTmpPath, savePath, contentType) {
   }
   return buf.length; // 返回压缩后大小,供调用方写 DB
 }
+
+/**
+ * 保存 AI 生成图片的「原图 + 压缩图」两份。
+ * 原图路径 = 在同目录下加 -orig 后缀(保留 .png 扩展名)。
+ * 返回 { url, originalUrl } —— url 为压缩图(供前端展示),originalUrl 为原图(供下载)。
+ */
+async function saveAIGeneratedImage(absTmpPath, savePath, contentType) {
+  const raw = fs.readFileSync(absTmpPath);
+
+  // 1. 原图:直接落盘,不压缩
+  // savePath 形如 "design/<team>/<filename>.png" → 原图 "design/<team>/<filename>-orig.png"
+  const dotIdx = savePath.lastIndexOf('.');
+  const origSavePath = dotIdx === -1 ? `${savePath}-orig` : `${savePath.slice(0, dotIdx)}-orig${savePath.slice(dotIdx)}`;
+  if (mode === 's3') {
+    await s3PutObject({ key: origSavePath, body: raw, contentType });
+  } else {
+    localSave(raw, origSavePath);
+  }
+
+  // 2. 压缩图:走现有压缩逻辑
+  const compressed = await compressImageBuffer(raw, contentType);
+  if (mode === 's3') {
+    await s3PutObject({ key: savePath, body: compressed, contentType });
+  } else {
+    localSave(compressed, savePath);
+  }
+
+  fs.unlinkSync(absTmpPath);
+  return { url: getPublicUrl(savePath), originalUrl: getPublicUrl(origSavePath) };
+}
 function getPublicUrl(savePath) {
   return mode === 's3' ? s3PublicUrl(savePath) : localPublicUrl(savePath);
 }
@@ -240,6 +270,7 @@ module.exports = {
   TMP_DIR,
   resolveUploadRoot,
   saveUpload,
+  saveAIGeneratedImage,
   getPublicUrl,
   createSavePath,
   compressImageBuffer,
