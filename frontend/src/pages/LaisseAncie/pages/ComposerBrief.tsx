@@ -202,7 +202,7 @@ export default function ComposerBrief({
         </div>
 
         {/* ④ 品牌色 / 调性(自动注入) */}
-        {knowledge?.brand?.colors?.length && (
+        {knowledge?.brand?.colors?.length>0 && (
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-[11px] text-gray-600">
             <div className="flex items-center justify-between mb-1">
               <span className="text-gray-500">品牌色 · 调性</span>
