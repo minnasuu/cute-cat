@@ -70,6 +70,10 @@ const Navbar: React.FC<NavbarProps> = ({
     await logout();
     navigate('/login');
   };
+  const handlePersonalCenter = () => {
+    setMenuOpen(false);
+    navigate("/account");
+  };
 
   const headerClass = isFixed
     ? `fixed top-0 w-full z-50 transition-all duration-500 flex justify-between px-6 items-center ${scrolled ? 'py-3 bg-surface/80 backdrop-blur-xl' : 'py-5 bg-transparent'}`
@@ -85,9 +89,13 @@ const Navbar: React.FC<NavbarProps> = ({
     <div className="flex items-center gap-2">
       <ThemeToggle />
       <div className="relative" ref={menuRef}>
-        <button onClick={() => setMenuOpen((o) => !o)}
-          className="flex items-center gap-2 rounded-full pr-0.5 pl-3 py-0.5 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
-          <span className="text-sm font-medium text-text-secondary max-w-[120px] truncate">{user.nickname || user.email}</span>
+        <button
+          onClick={() => setMenuOpen((o) => !o)}
+          className="flex items-center gap-2 rounded-full pr-0.5 pl-3 py-0.5 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        >
+          <span className="text-sm font-medium text-text-secondary max-w-[120px] truncate">
+            {user.nickname || user.email}
+          </span>
           <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-bold flex items-center justify-center shrink-0">
             {initial}
           </div>
@@ -95,13 +103,31 @@ const Navbar: React.FC<NavbarProps> = ({
         {menuOpen && (
           <div className="absolute right-0 mt-2 w-44 rounded-xl border border-border bg-surface shadow-lg overflow-hidden text-sm z-50">
             <div className="px-3 py-2 border-b border-border">
-              <div className="font-medium text-text-primary truncate">{user.nickname || user.email}</div>
-              {user.nickname && <div className="text-[11px] text-text-secondary truncate">{user.email}</div>}
+              <div className="font-medium text-text-primary truncate">
+                {user.nickname || user.email}
+              </div>
+              {user.nickname && (
+                <div className="text-[11px] text-text-secondary truncate">
+                  {user.email}
+                </div>
+              )}
             </div>
-            <button onClick={handleSwitchAccount} className="w-full text-left px-3 py-2 text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+            <button
+              onClick={handleSwitchAccount}
+              className="w-full text-left px-3 py-2 text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
               切换账号
             </button>
-            <button onClick={handleLogout} className="w-full text-left px-3 py-2 text-red-500 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+            <button
+              onClick={handlePersonalCenter}
+              className="w-full text-left px-3 py-2 text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
+              个人中心
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-full text-left px-3 py-2 text-red-500 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
               退出登录
             </button>
           </div>
@@ -111,8 +137,18 @@ const Navbar: React.FC<NavbarProps> = ({
   ) : (
     <div className="flex items-center gap-2">
       <ThemeToggle />
-      <Link to="/login" className="text-sm font-semibold text-text-secondary hover:text-text-primary transition-colors">登录</Link>
-      <Link to="/register" className="px-5 py-2.5 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all">申请内测</Link>
+      <Link
+        to="/login"
+        className="text-sm font-semibold text-text-secondary hover:text-text-primary transition-colors"
+      >
+        登录
+      </Link>
+      <Link
+        to="/register"
+        className="px-5 py-2.5 text-sm font-bold bg-text-primary text-text-inverse rounded-full hover:scale-105 active:scale-95 transition-all"
+      >
+        申请内测
+      </Link>
     </div>
   );
 
