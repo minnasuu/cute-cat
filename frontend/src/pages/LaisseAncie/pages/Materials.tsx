@@ -67,6 +67,7 @@ export default function MaterialsPage() {
   const [rows, setRows] = useState<MaterialRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState<null | { mode: "view" | "edit" | "create"; mat?: MaterialRow }>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const refresh = useCallback(async (tid: string) => {
     setLoading(true);
@@ -127,6 +128,22 @@ export default function MaterialsPage() {
     await refresh(teamId);
   }, [teamId, refresh]);
 
+  // 删除整组面料(二次确认),支持从列表卡片或只读弹窗触发
+  const handleDelete = useCallback(async (mat: MaterialRow) => {
+    if (!teamId || !mat.id) return;
+    if (!window.confirm(`确认删除面料「${mat.name || "未命名"}」?色卡图片将一并删除,不可恢复。`)) return;
+    setDeleting(mat.id);
+    try {
+      await teamApi(teamId).deleteMaterial(mat.id);
+      if (editor?.mat?.id === mat.id) setEditor(null);
+      await refresh(teamId);
+    } catch (e: any) {
+      alert(`删除失败: ${e?.message || "请重试"}`);
+    } finally {
+      setDeleting(null);
+    }
+  }, [teamId, refresh, editor]);
+
   if (loading) return <div className="p-10 text-gray-500">加载中…</div>;
 
   return (
@@ -151,25 +168,32 @@ export default function MaterialsPage() {
       ) : (
         <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
           {visible.map((m) => (
-            <button key={m.id} onClick={() => setEditor({ mode: "view", mat: m })} className="text-left">
-              <MaterialCard mat={m} />
-            </button>
+            <div key={m.id} className="relative">
+              <button onClick={() => setEditor({ mode: "view", mat: m })} className="text-left block w-full">
+                <MaterialCard mat={m} onDelete={handleDelete} deleting={deleting} />
+              </button>
+            </div>
           ))}
         </div>
       )}
 
-      <MaterialModal editor={editor} onClose={() => setEditor(null)} onSwitchEdit={() => setEditor((e) => e ? { ...e, mode: "edit" } : e)} onSave={handleSave} />
+      <MaterialModal editor={editor} onClose={() => setEditor(null)} onSwitchEdit={() => setEditor((e) => e ? { ...e, mode: "edit" } : e)} onSave={handleSave} onDelete={handleDelete} deleting={deleting} />
     </div>
   );
 }
 
 /** 卡面:色卡图横排铺开(每色一张小图),叠色点兜底(老数据) */
-function MaterialCard({ mat }: { mat: MaterialRow }) {
+function MaterialCard({ mat, onDelete, deleting }: { mat: MaterialRow; onDelete?: (m: MaterialRow) => void; deleting?: string | null }) {
   const cards = toCards(mat);
   const hexs: string[] = mat.colors ?? [];
+  const isDeleting = deleting === mat.id;
   return (
-    <figure className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer">
+    <figure className={`rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer ${isDeleting ? "opacity-40 pointer-events-none" : ""}`}>
       <div className="relative h-48 overflow-hidden">
+        {onDelete && (
+          <button onClick={(e) => { e.stopPropagation(); onDelete(mat); }} title="删除面料"
+            className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-black/50 text-white text-[12px] leading-none hover:bg-red-500 transition-colors">×</button>
+        )}
         {cards.some((c) => c.url) ? (
           <div className="absolute inset-0 flex">
             {cards.map((c, i) => (
@@ -232,11 +256,13 @@ function SwatchDot({ hex }: { hex: string }) {
 
 const CURRENCY_SYMBOL: Record<string, string> = { CNY: "¥", EUR: "€", USD: "$", GBP: "£" };
 
-function MaterialModal({ editor, onClose, onSwitchEdit, onSave }: {
+function MaterialModal({ editor, onClose, onSwitchEdit, onSave, onDelete, deleting }: {
   editor: null | { mode: "view" | "edit" | "create"; mat?: MaterialRow };
   onClose: () => void;
   onSwitchEdit: () => void;
   onSave: (values: Partial<MaterialRow> & { colorImages: Card[] }, pendingFiles?: (File | null)[]) => Promise<void>;
+  onDelete?: (m: MaterialRow) => void;
+  deleting?: string | null;
 }) {
   if (!editor) return null;
   const { mode, mat } = editor;
@@ -244,13 +270,13 @@ function MaterialModal({ editor, onClose, onSwitchEdit, onSave }: {
   const title = mode === "create" ? "新增面料" : (mode === "edit" ? "编辑面料" : (mat?.name ?? "面料"));
   return (
     <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
-      {!isEditing ? <MaterialView mat={mat!} onEdit={onSwitchEdit} /> : <MaterialForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />}
+      {!isEditing ? <MaterialView mat={mat!} onEdit={onSwitchEdit} onDelete={onDelete} deleting={deleting} /> : <MaterialForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />}
     </Modal>
   );
 }
 
 /** 只读详情 */
-function MaterialView({ mat, onEdit }: { mat: MaterialRow; onEdit: () => void }) {
+function MaterialView({ mat, onEdit, onDelete, deleting }: { mat: MaterialRow; onEdit: () => void; onDelete?: (m: MaterialRow) => void; deleting?: string | null }) {
   const price = mat.priceAmount != null ? { amount: mat.priceAmount, currency: mat.priceCur || "CNY", unit: mat.priceUnit || "", note: mat.priceNote } : null;
   const cards = toCards(mat);
   const hexs: string[] = mat.colors ?? [];
@@ -303,7 +329,15 @@ function MaterialView({ mat, onEdit }: { mat: MaterialRow; onEdit: () => void })
               {price.note && <span className="text-[10px] text-gray-500 ml-2">{price.note}</span>}
             </div>
           ) : null}
-          <button onClick={onEdit} className="shrink-0 ml-4 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">编辑</button>
+          <div className="shrink-0 ml-4 flex items-center gap-2">
+            {onDelete && (
+              <button onClick={() => onDelete(mat)} disabled={deleting === mat.id}
+                className="text-[12px] text-red-500 hover:text-red-600 disabled:opacity-40 font-medium transition-colors">
+                {deleting === mat.id ? "删除中…" : "删除"}
+              </button>
+            )}
+            <button onClick={onEdit} className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">编辑</button>
+          </div>
         </div>
         {mat.composition && <Section label="成分">{mat.composition}</Section>}
         {mat.weight && <Section label="克重"><span className="font-mono">{mat.weight}</span></Section>}
