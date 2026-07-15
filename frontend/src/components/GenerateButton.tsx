@@ -71,7 +71,7 @@ export function GenerateButton({
             ? insufficient
               ? "#b0b7c3" // 余额不足:偏冷的浅灰,带红色 ring 警示
               : "#9ca3af" // 其他禁用态:普通灰
-            : "linear-gradient(135deg, #22c55e 0%, #3b82f6 50%, #06b6d4 100%)",
+            : "linear-gradient(135deg, #3ed475 35%, #2ce2e8 100%)",
         }}
       >
         {/* 光泽高光条(仅非 loading 且非禁用) */}
@@ -80,21 +80,54 @@ export function GenerateButton({
         )}
         {loading ? (
           <span className="flex items-center gap-2">
-            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-              <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
+            <svg
+              className="w-4 h-4 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="3"
+                className="opacity-25"
+              />
+              <path
+                d="M4 12a8 8 0 018-8"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                className="opacity-75"
+              />
             </svg>
             生成中…
           </span>
         ) : insufficient ? (
           <span className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <svg
+              className="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path
+                d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
             余额不足,需充值
           </span>
         ) : (
           <span className="flex items-center gap-1.5">
             {label}
-            {costText && <span className="text-white/85 text-[11px] font-medium">{costText}</span>}
+            {costText && (
+              <span className="text-white/85 text-[11px] font-medium">
+                {costText}
+              </span>
+            )}
           </span>
         )}
       </button>
@@ -102,8 +135,11 @@ export function GenerateButton({
       {/* 余额不足具体差额提示 */}
       {insufficient && (
         <span className="text-[11px] text-red-500 inline-flex items-center gap-1">
-          还需 {(estimatedCoins ?? 0) - (userCoins ?? 0)} <MeowCoin size={12} />,请
-          <a href="/account" className="underline hover:text-red-600">充值</a>
+          还需 {(estimatedCoins ?? 0) - (userCoins ?? 0)} <MeowCoin size={12} />
+          ,请
+          <a href="/account" className="underline hover:text-red-600">
+            充值
+          </a>
         </span>
       )}
     </div>
