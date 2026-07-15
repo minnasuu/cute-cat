@@ -160,10 +160,10 @@ function BrandInfoAssets() {
                 onChange={(e) => { onLogo(e.target.files?.[0] || null); e.target.value = ""; }} />
             </div>
             <div className="flex-1 grid grid-cols-2 gap-3">
-              <div><div className={labelCls}>品牌中文名 *</div><input value={form.nameZh} onChange={(e) => set("nameZh", e.target.value)} placeholder="如:来兮·安兮" className={inputCls} /></div>
-              <div><div className={labelCls}>品牌英文名</div><input value={form.nameEn} onChange={(e) => set("nameEn", e.target.value)} placeholder="如:Laisse Ancie" className={inputCls} /></div>
-              <div><div className={labelCls}>中文 slogan</div><input value={form.sloganZh} onChange={(e) => set("sloganZh", e.target.value)} placeholder="如:既来之，则安之" className={inputCls} /></div>
-              <div><div className={labelCls}>英文 slogan</div><input value={form.sloganEn} onChange={(e) => set("sloganEn", e.target.value)} placeholder="如:Come, be at ease." className={inputCls} /></div>
+              <div><div className={labelCls}>品牌中文名 *</div><input value={form.nameZh} onChange={(e) => set("nameZh", e.target.value)} placeholder="如:山海织物" className={inputCls} /></div>
+              <div><div className={labelCls}>品牌英文名</div><input value={form.nameEn} onChange={(e) => set("nameEn", e.target.value)} placeholder="如:Montsea" className={inputCls} /></div>
+              <div><div className={labelCls}>中文 slogan</div><input value={form.sloganZh} onChange={(e) => set("sloganZh", e.target.value)} placeholder="如:自然·自洽" className={inputCls} /></div>
+              <div><div className={labelCls}>英文 slogan</div><input value={form.sloganEn} onChange={(e) => set("sloganEn", e.target.value)} placeholder="如:Be in tune." className={inputCls} /></div>
             </div>
           </div>
         </div>
@@ -200,7 +200,7 @@ function BrandInfoAssets() {
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 space-y-3">
           <div>
             <div className={labelCls}>品牌调性(逗号分隔)</div>
-            <input value={form.voice} onChange={(e) => set("voice", e.target.value)} placeholder="如:优雅,松弛,乐趣" className={inputCls} />
+            <input value={form.voice} onChange={(e) => set("voice", e.target.value)} placeholder="如:自然,克制,温暖" className={inputCls} />
             {form.voice && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {form.voice.split(/[，,\n]/).map((v) => v.trim()).filter(Boolean).map((v) => (
@@ -226,13 +226,6 @@ function BrandInfoAssets() {
             className={`${inputCls} resize-none`} />
         </div>
       </section>
-
-      <div className="flex justify-end pt-2">
-        <button onClick={save} disabled={saving}
-          className="text-[12px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-5 py-2 rounded-lg font-medium transition-colors">
-          {saving ? "保存中…" : "保存品牌信息"}
-        </button>
-      </div>
     </div>
   );
 }
