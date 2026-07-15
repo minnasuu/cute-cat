@@ -14,6 +14,8 @@ import type { MaterialRow } from "../store/resource";
 import type { ColorImageEntry } from "../types/design";
 import { compressForUpload } from "../lib/images";
 
+const MAX_CARDS = 24;
+
 type Card = { hex: string; name: string; url: string; outOfStock?: boolean; imageFile?: File | null };
 
 function toCards(m: MaterialRow): Card[] {
@@ -386,14 +388,14 @@ function MaterialForm({ initial, onCancel, onSave }: {
 
   const updateCard = (i: number, patch: Partial<Card>) =>
     setCards((cs) => cs.map((c, j) => j === i ? { ...c, ...patch } : c));
-  const addCard = () => setCards((cs) => cs.length < 12 ? [...cs, { hex: "#cccccc", name: "", url: "", outOfStock: false, imageFile: null }] : cs);
+  const addCard = () => setCards((cs) => cs.length < MAX_CARDS ? [...cs, { hex: "#cccccc", name: "", url: "", outOfStock: false, imageFile: null }] : cs);
   const removeCard = (i: number) => setCards((cs) => cs.length > 1 ? cs.filter((_, j) => j !== i) : cs);
-  // 批量上传:每张图自动新增一张色卡(上限 12 张),以文件对象暂存供预览,保存时逐张上传
+  // 批量上传:每张图自动新增一张色卡(上限 MAX_CARDS 张),以文件对象暂存供预览,保存时逐张上传
   const addBulkCards = (list: FileList | null) => {
     if (!list || !list.length) return;
     const incoming = Array.from(list);
     setCards((cs) => {
-      const room = 12 - cs.length;
+      const room = MAX_CARDS - cs.length;
       if (room <= 0) return cs;
       const accepted = incoming.slice(0, room);
       const newCards: Card[] = accepted.map((imageFile) => ({
@@ -411,14 +413,14 @@ function MaterialForm({ initial, onCancel, onSave }: {
       {/* 色卡列表(每色一张图) */}
       <div>
         <div className="flex items-baseline justify-between mb-1">
-          <div className={labelCls}>色卡 ({cards.length}/12)</div>
+          <div className={labelCls}>色卡 ({cards.length}/{MAX_CARDS})</div>
           <div className="flex items-center gap-3">
             <label className="text-[10px] text-primary-600 hover:underline cursor-pointer">
               批量上传
               <input type="file" accept="image/*" multiple className="hidden"
                 onChange={(e) => { addBulkCards(e.target.files); e.target.value = ""; }} />
             </label>
-            <button onClick={addCard} disabled={cards.length >= 12} className="text-[10px] text-primary-600 disabled:text-gray-300 hover:underline">+ 添加色卡</button>
+            <button onClick={addCard} disabled={cards.length >= MAX_CARDS} className="text-[10px] text-primary-600 disabled:text-gray-300 hover:underline">+ 添加色卡</button>
           </div>
         </div>
         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
