@@ -82,7 +82,7 @@ const RegisterPage: React.FC = () => {
         betaRequired ? betaCode.trim() : undefined,
         inviteCode.trim() || undefined,
       );
-      showToast('注册成功，欢迎加入！已获赠 100 🪙 体验喵币', 'success');
+      showToast('注册成功，欢迎加入！已获赠 100 🐾 体验喵币', 'success');
       navigate('/dashboard');
     } catch {
       // apiClient already shows toast with specific error message
@@ -130,7 +130,7 @@ const RegisterPage: React.FC = () => {
                 placeholder="输入好友的邀请码，注册后双方均可获得喵币"
                 className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none font-mono tracking-widest text-center uppercase"
               />
-              <p className="text-xs text-text-tertiary mt-1.5">使用邀请码注册，你和邀请人各得 100 🪙。</p>
+              <p className="text-xs text-text-tertiary mt-1.5">使用邀请码注册，你和邀请人各得 100 🐾。</p>
             </div>
 
             <div>

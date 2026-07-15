@@ -99,7 +99,7 @@ const AccountPage: React.FC = () => {
       if (res.coins != null) {
         // 刷新完整用户信息(role 可能从 user 变为 member)
         await refreshUser();
-        showToast(`充值成功!获得 ${pkg.coins} 🪙`, 'success');
+        showToast(`充值成功!获得 ${pkg.coins} 🐾`, 'success');
       }
     } catch { /* toast */ }
   };
@@ -144,7 +144,7 @@ const AccountPage: React.FC = () => {
               <span className="px-2 py-0.5 bg-primary-50 border border-primary-200 text-primary-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
                 {ROLE_LABELS[user.role] || user.role}
               </span>
-              <span className="text-sm font-bold text-text-primary">🪙 {user.coins}</span>
+              <span className="text-sm font-bold text-text-primary">🐾 {user.coins}</span>
             </div>
           </div>
         </div>
@@ -201,12 +201,12 @@ const AccountPage: React.FC = () => {
           <div className="space-y-4">
             <div className="rounded-[20px] border border-border bg-surface p-4 flex items-center justify-between">
               <span className="text-sm text-text-secondary">当前余额</span>
-              <span className="text-xl font-black text-text-primary">🪙 {user.coins}</span>
+              <span className="text-xl font-black text-text-primary">🐾 {user.coins}</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {packages.map((pkg) => (
                 <div key={pkg.id} className="rounded-[20px] border border-border bg-surface p-6 flex flex-col items-center text-center hover:border-primary-300 transition-colors">
-                  <div className="text-3xl font-black text-primary-600 mb-1">🪙 {pkg.coins}</div>
+                  <div className="text-3xl font-black text-primary-600 mb-1">🐾 {pkg.coins}</div>
                   <div className="text-sm font-bold text-text-primary mb-1">{pkg.name}</div>
                   <div className="text-xs text-text-tertiary mb-4">≈ {Math.round(pkg.coins / 9)} 次生图</div>
                   <div className="text-lg font-black text-text-primary mb-3">¥{pkg.yuan}</div>
@@ -241,7 +241,7 @@ const AccountPage: React.FC = () => {
                     </div>
                     <div className="text-right shrink-0 ml-4">
                       <div className={`text-sm font-black ${tx.amount > 0 ? 'text-primary-600' : 'text-text-primary'}`}>
-                        {tx.amount > 0 ? '+' : ''}{tx.amount} 🪙
+                        {tx.amount > 0 ? '+' : ''}{tx.amount} 🐾
                       </div>
                       <div className="text-[11px] text-text-tertiary">余额 {tx.balanceAfter}</div>
                     </div>
@@ -256,7 +256,7 @@ const AccountPage: React.FC = () => {
         {activeTab === 'invite' && invite && (
           <div className="rounded-[20px] border border-border bg-surface p-6 space-y-5">
             <h2 className="text-sm font-bold text-text-primary">邀请好友</h2>
-            <p className="text-sm text-text-secondary">每邀请一位好友注册,你和好友各得 <span className="font-bold text-primary-600">{invite.reward} 🪙</span>(上限 {invite.max} 人)。</p>
+            <p className="text-sm text-text-secondary">每邀请一位好友注册,你和好友各得 <span className="font-bold text-primary-600">{invite.reward} 🐾</span>(上限 {invite.max} 人)。</p>
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-1">邀请链接</label>
               <div className="flex gap-2">
@@ -270,7 +270,7 @@ const AccountPage: React.FC = () => {
                 <div className="text-xs text-text-tertiary">已邀请</div>
               </div>
               <div>
-                <div className="text-2xl font-black text-primary-600">{invite.earned} 🪙</div>
+                <div className="text-2xl font-black text-primary-600">{invite.earned} 🐾</div>
                 <div className="text-xs text-text-tertiary">累计奖励</div>
               </div>
             </div>

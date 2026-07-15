@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import type { ReactNode } from 'react';
 import { apiClient } from '../utils/apiClient';
 import { setOnAiUsageUpdate, setGetCurrentUserEmail } from '../utils/backendClient';
+import { recordAccount } from '../utils/accounts';
 
 export interface User {
   id: string;
@@ -75,11 +76,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = useCallback(async (email: string, password: string) => {
     const data = await apiClient.post<{ user: User }>('/api/auth/login', { email, password });
     setUser(data.user);
+    // 记录到「最近登录账号」
+    recordAccount({ email: data.user.email, nickname: data.user.nickname, role: data.user.role });
   }, []);
 
   const register = useCallback(async (email: string, password: string, nickname: string, code: string, betaCode?: string, inviteCode?: string) => {
     const data = await apiClient.post<{ user: User }>('/api/auth/register', { email, password, nickname, code, betaCode, inviteCode });
     setUser(data.user);
+    recordAccount({ email: data.user.email, nickname: data.user.nickname, role: data.user.role });
   }, []);
 
   const logout = useCallback(async () => {

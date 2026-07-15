@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { getKnownAccounts, removeAccount, type KnownAccount } from '../../utils/accounts';
 
 interface User {
   id: string;
@@ -32,6 +33,7 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
   totalAiCalls,
   onLogout,
 }) => {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -44,13 +46,35 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
   }, []);
 
   const roleLabel = ROLE_LABELS[user.role] || user.role;
+  const knownAccounts = getKnownAccounts().filter((a) => a.email !== user.email);
+
+  // 切换账号 = 登出当前 → 跳登录页并预填目标邮箱
+  const handleSwitch = async (email: string) => {
+    setOpen(false);
+    await onLogout();
+    navigate(`/login?email=${encodeURIComponent(email)}`);
+  };
+
+  const handleLogout = async () => {
+    setOpen(false);
+    await onLogout();
+    navigate('/login');
+  };
+
+  const handleRemoveAccount = (e: React.MouseEvent, email: string) => {
+    e.stopPropagation();
+    removeAccount(email);
+    // 强制重渲染
+    setOpen(false);
+    setOpen(true);
+  };
 
   return (
     <div ref={ref} className="relative">
       {/* Trigger */}
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full ${open ? 'bg-surface-secondary':'hover:bg-surface-secondary'} transition-colors`}
+        className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full ${open ? 'bg-surface-secondary' : 'hover:bg-surface-secondary'} transition-colors`}
       >
         <div className="w-8 h-8 rounded-full bg-primary-100 border border-primary-200 flex items-center justify-center text-sm font-black text-primary-600 select-none">
           {user.nickname.charAt(0).toUpperCase()}
@@ -89,7 +113,7 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
 
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-secondary">余额</span>
-              <span className="text-sm font-black text-text-primary">🪙 {user.coins}</span>
+              <span className="text-sm font-black text-text-primary">🐾 {user.coins}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-secondary">历史执行次数</span>
@@ -108,6 +132,35 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
             </Link>
           </div>
 
+          {/* 最近登录账号 */}
+          {knownAccounts.length > 0 && (
+            <div className="px-3 py-2 border-t border-border">
+              <p className="px-2 pt-1 pb-1.5 text-[10px] font-bold text-text-tertiary uppercase tracking-widest">切换账号</p>
+              {knownAccounts.map((acc) => (
+                <div
+                  key={acc.email}
+                  onClick={() => handleSwitch(acc.email)}
+                  className="group flex items-center gap-2 px-2 py-2 rounded-xl cursor-pointer hover:bg-surface-secondary transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-full bg-secondary-100 border border-secondary-200 flex items-center justify-center text-xs font-black text-secondary-600 shrink-0">
+                    {acc.nickname.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-text-primary truncate">{acc.nickname}</div>
+                    <div className="text-[11px] text-text-tertiary truncate">{acc.email}</div>
+                  </div>
+                  <button
+                    onClick={(e) => handleRemoveAccount(e, acc.email)}
+                    className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-danger-500 transition-all shrink-0 text-xs"
+                    title="移除"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Actions */}
           <div className="px-3 py-2 border-t border-border">
             <Link
@@ -118,7 +171,7 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
               个人中心
             </Link>
             <button
-              onClick={onLogout}
+              onClick={handleLogout}
               className="w-full px-3 py-2.5 text-sm font-medium text-text-tertiary hover:text-danger-500 hover:bg-danger-50 rounded-xl transition-colors text-left cursor-pointer"
             >
               退出登录
