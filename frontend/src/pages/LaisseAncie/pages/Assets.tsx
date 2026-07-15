@@ -45,7 +45,7 @@ function toForm(p: any): BrandForm {
 
 export default function AssetsPage() {
   return (
-    <div className="max-w-6xl mx-auto px-6 lg:px-10 py-10">
+    <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8">
       <BrandInfoAssets />
     </div>
   );
@@ -135,7 +135,7 @@ function BrandInfoAssets() {
     <div className="space-y-6">
       {/* 标题 + 保存 */}
       <div className="flex items-center justify-between">
-        <h2 className="text-[15px] font-medium text-gray-800">品牌信息</h2>
+        <h2 className="text-[32px] font-semibold text-text-primary tracking-tight">品牌信息</h2>
         <button onClick={save} disabled={saving}
           className="text-[12px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">
           {saving ? "保存中…" : "保存品牌信息"}

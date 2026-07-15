@@ -34,7 +34,7 @@ const upload = multer({
       cb(null, name);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 1 * 1024 * 1024 }, // 1MB
   fileFilter(_req, file, cb) {
     if (!file.mimetype || !file.mimetype.startsWith('image/')) {
       return cb(new Error('Only image uploads are allowed'));
@@ -43,21 +43,29 @@ const upload = multer({
   },
 });
 
-router.post('/image', upload.single('image'), async (req, res) => {
-  try {
-    const f = req.file;
-    if (!f) return res.status(400).json({ error: '缺少图片文件 image' });
-    const runId = typeof req.body?.runId === 'string' && req.body.runId.trim() ? req.body.runId.trim() : null;
-    const folder = runId ? `workflow/${String(req.userId || 'anonymous')}/${runId}` : `workflow/${String(req.userId || 'anonymous')}`;
+router.post('/image', (req, res) => {
+  upload.single('image')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: '图片过大,请上传不超过 1MB 的图片' });
+      }
+      return res.status(400).json({ error: err.message === 'Only image uploads are allowed' ? '仅支持上传图片' : `上传失败: ${err.message}` });
+    }
+    try {
+      const f = req.file;
+      if (!f) return res.status(400).json({ error: '缺少图片文件 image' });
+      const runId = typeof req.body?.runId === 'string' && req.body.runId.trim() ? req.body.runId.trim() : null;
+      const folder = runId ? `workflow/${String(req.userId || 'anonymous')}/${runId}` : `workflow/${String(req.userId || 'anonymous')}`;
 
-    const savePath = createSavePath(folder, f.filename);
-    const finalSize = await saveUpload(f.path, savePath, f.mimetype);
-    const url = getPublicUrl(savePath);
-    res.json({ url, bytes: finalSize });
-  } catch (err) {
-    console.error('[uploads] image error:', err);
-    res.status(500).json({ error: '图片上传失败' });
-  }
+      const savePath = createSavePath(folder, f.filename);
+      const finalSize = await saveUpload(f.path, savePath, f.mimetype);
+      const url = getPublicUrl(savePath);
+      res.json({ url, bytes: finalSize });
+    } catch (innerErr) {
+      console.error('[uploads] image error:', innerErr);
+      res.status(500).json({ error: '图片上传失败' });
+    }
+  });
 });
 
 module.exports = router;

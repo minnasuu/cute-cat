@@ -46,6 +46,12 @@ const Navbar: React.FC<NavbarProps> = ({
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
+  const ROLE_LABELS: Record<string, string> = {
+    admin: '管理员',
+    member: '会员',
+    user: '用户',
+  };
+
   const isFixed = variant === 'fixed';
 
   // 用户菜单:开关 + 点击外部关闭
@@ -96,9 +102,32 @@ const Navbar: React.FC<NavbarProps> = ({
           <span className="text-sm font-medium text-text-secondary max-w-[120px] truncate">
             {user.nickname || user.email}
           </span>
-          <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-bold flex items-center justify-center shrink-0">
-            {initial}
+          <div className="relative">
+            <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-bold flex items-center justify-center shrink-0">
+              {initial}
+            </div>
+            {/* 用户等级标签:头像右下角小圆点,会员金色/管理员红色/普通用户隐藏 */}
+            {user.role && user.role !== 'user' && (
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-surface ${
+                  user.role === 'admin' ? 'bg-danger-500' : 'bg-amber-400'
+                }`}
+                title={ROLE_LABELS[user.role] || user.role}
+              />
+            )}
           </div>
+          {/* 桌面端在头像旁显示等级文字 */}
+          {user.role && user.role !== 'user' && (
+            <span
+              className={`hidden lg:inline text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                user.role === 'admin'
+                  ? 'bg-danger-50 text-danger-600 border border-danger-100'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+              }`}
+            >
+              {ROLE_LABELS[user.role] || user.role}
+            </span>
+          )}
         </button>
         {menuOpen && (
           <div className="absolute right-0 mt-2 w-44 rounded-xl border border-border bg-surface shadow-lg overflow-hidden text-sm z-50">
@@ -168,16 +197,31 @@ const Navbar: React.FC<NavbarProps> = ({
 
   const navSection = navLinks && navLinks.length > 0 ? (
     <nav className="hidden md:flex items-center gap-8">
-      {navLinks.map(item => (
-        <a
-          key={item.id}
-          href={item.href || `#${item.id}`}
-          onClick={item.onClick}
-          className={`text-sm font-medium transition-colors ${activeNavId === item.id ? (item.activeClass || 'text-primary-500') : 'text-text-secondary hover:text-text-primary'}`}
-        >
-          {item.label}
-        </a>
-      ))}
+      {navLinks.map(item => {
+        const cls = `text-sm font-medium transition-colors ${activeNavId === item.id ? (item.activeClass || 'text-primary-500') : 'text-text-secondary hover:text-text-primary'}`;
+        // 有 onClick → 走自定义逻辑(原行为)
+        if (item.onClick) {
+          return (
+            <a key={item.id} href={item.href || `#${item.id}`} onClick={item.onClick} className={cls}>
+              {item.label}
+            </a>
+          );
+        }
+        // 内部路由用 Link,避免整页刷新
+        if (item.href && item.href.startsWith('/')) {
+          return (
+            <Link key={item.id} to={item.href} className={cls}>
+              {item.label}
+            </Link>
+          );
+        }
+        // 锚点/hash 走 a
+        return (
+          <a key={item.id} href={item.href || `#${item.id}`} className={cls}>
+            {item.label}
+          </a>
+        );
+      })}
     </nav>
   ) : null;
 

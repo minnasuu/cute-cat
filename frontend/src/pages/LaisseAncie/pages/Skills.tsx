@@ -50,8 +50,14 @@ export default function SkillsPage() {
               count={countByCat.get(c) ?? 0} />
           ))}
         </nav>
-        <div className="mt-4 px-2 text-[10px] text-gray-500 leading-relaxed border-t border-gray-200 pt-3">
-          所有 Design / Lookbook 生成的 AI 审核时都会默认从知识条目里匹配出 1～3 条 knowledge 作为上下文。
+        <div className="mt-4 px-2 text-[10px] leading-relaxed border-t border-gray-200 pt-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-primary-600 font-medium">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            官方维护
+          </div>
+          <div className="text-gray-500">
+            由平台统一沉淀服装设计知识底座,工作台 AI 生成时会自动匹配相关条目作为上下文参考。
+          </div>
         </div>
       </aside>
 
@@ -61,7 +67,7 @@ export default function SkillsPage() {
             <h1 className="text-[34px] font-semibold tracking-tight">知识库</h1>
             <p className="text-sm text-gray-500 mt-0.5">
               {filtered.length} 条知识
-              {cat !== "all" ? ` · ${SKILL_PHASE_META[cat as SkillPhaseId].hint}` : " · 用 + 沉淀的闭环"}
+              {cat !== "all" ? ` · ${SKILL_PHASE_META[cat as SkillPhaseId].hint}` : " · 官方维护的知识底座,供工作台 AI 参考"}
             </p>
           </div>
           <div className="flex gap-3">

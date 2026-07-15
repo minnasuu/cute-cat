@@ -11,6 +11,7 @@
  * POST /api/teams/:teamId/design/generate-final —— 材料驱动的最终成图
  * POST /api/teams/:teamId/design/recommend-materials —— AI 材料推荐(库内+库外)
  * POST /api/teams/:teamId/design/material-combo —— 材料组合:面料图+款式参考+品牌 → 白底效果图
+ * POST /api/teams/:teamId/design/style-mutate —— 款式裂变:母款+裂变轴 → N 张子款白底图
  */
 
 const express = require('express');
@@ -972,5 +973,355 @@ function buildColorMixPrompt({ name, description, fabrics, style }) {
 
   return bits.join('\n');
 }
+
+// ── style-mutate 守卫常量 ─────────────────────────────────────
+const MAX_MUTATIONS = 12;
+const SM_BATCH_CAP = Number.parseInt(process.env.SM_BATCH_CAP || '', 10) || MC_BATCH_CAP;
+const SM_BATCH_TTL_MS = MC_BATCH_TTL_MS;
+const STYLE_MUTATE_PROVIDER = process.env.STYLE_MUTATE_PROVIDER || MATERIAL_COMBO_PROVIDER;
+
+const smMulterStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    fs.mkdirSync(storage.TMP_DIR, { recursive: true });
+    cb(null, storage.TMP_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    cb(null, `sm-${Date.now().toString(36)}${crypto.randomUUID().slice(0, 6)}${ext}`);
+  },
+});
+const smUpload = multer({
+  storage: smMulterStorage,
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpe?g|png|webp|avif|gif)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('unsupported mime'));
+  },
+}).fields([
+  { name: 'style', maxCount: 1 },
+  { name: 'fabric', maxCount: 1 },
+]);
+
+/** @type {Map<string, any>} */
+const smBatches = new Map();
+
+function smBatchPublicView(b) {
+  const completed = b.items.filter((it) => it.status === 'done').length;
+  const failed = b.items.filter((it) => it.status === 'error').length;
+  return {
+    batchId: b.batchId,
+    teamId: b.teamId,
+    status: b.status,
+    error: b.error,
+    name: b.name,
+    mother: b.mother ? { url: b.mother.url, name: b.mother.name } : null,
+    fabric: b.fabric ? { url: b.fabric.url, name: b.fabric.name } : null,
+    mutations: b.mutations,
+    items: b.items.map((it) => ({
+      mi: it.mi,
+      label: it.label,
+      axisId: it.axisId,
+      optionId: it.optionId,
+      status: it.status,
+      url: it.url,
+      error: it.error,
+      prompt: it.prompt,
+    })),
+    total: b.items.length,
+    completed,
+    failed,
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt,
+  };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, b] of smBatches) {
+    if (now - b.updatedAt > SM_BATCH_TTL_MS) smBatches.delete(id);
+  }
+}, 30000).unref();
+
+async function persistStyleMutateTemp(tmpPath, filename, mime) {
+  const savePath = storage.createSavePath('design/style-mutate', filename);
+  await storage.saveUpload(tmpPath, savePath, mime);
+  return storage.getPublicUrl(savePath);
+}
+
+/**
+ * 款式裂变 prompt:图1=母款,可选图2=面料。
+ * 指令:保留母款 DNA,仅按 promptHint 改一个维度。
+ */
+function buildStyleMutatePrompt({ name, description, mutation, hasFabric }) {
+  const bits = [
+    `Product photography of a single fashion garment called "${name}", on pure white background.`,
+    'Image 1 is the mother style. Keep the same product category, overall design DNA, fabric print language, and construction language unless the mutation below explicitly changes it.',
+    `Mutation (change ONLY this dimension): ${mutation.promptHint || mutation.label}.`,
+    `Variant label: ${mutation.label}.`,
+  ];
+  if (hasFabric) {
+    bits.push('Image 2 is the locked fabric swatch — keep fabric color/print consistent with Image 2.');
+  }
+  const desc = (description || '').trim();
+  if (desc) bits.push(`Additional brief: ${desc}`);
+  bits.push(
+    'Do NOT invent a totally new design. The result should clearly read as a sibling SKU of the mother style.',
+  );
+  bits.push(finalStyleBits());
+  return bits.join('\n');
+}
+
+async function runStyleMutateBatch(batchId) {
+  const b = smBatches.get(batchId);
+  if (!b) return;
+  try {
+    b.status = 'running';
+    b.updatedAt = Date.now();
+
+    const tasks = b.items.map((cell) => async () => {
+      const mutation = b.mutations[cell.mi];
+      if (!mutation || !b.mother?.url) {
+        cell.status = 'error';
+        cell.error = '母款或裂变项缺失';
+        return cell;
+      }
+      const prompt = buildStyleMutatePrompt({
+        name: b.name,
+        description: b.description,
+        mutation,
+        hasFabric: !!b.fabric?.url,
+      });
+      cell.prompt = prompt;
+      const referenceImages = [b.mother.url, b.fabric?.url].filter(Boolean);
+      const img = await generateImage(prompt, {
+        teamId: b.teamId,
+        aspectRatio: '1:1',
+        safeName: `style-mutate-${cell.mi}`,
+        provider: STYLE_MUTATE_PROVIDER,
+        referenceImages,
+      });
+      if (img?.url) {
+        cell.url = img.url;
+        cell.status = 'done';
+      } else {
+        cell.error = img?.error || '生成失败';
+        cell.status = 'error';
+      }
+      return cell;
+    });
+
+    await mapConcurrent(tasks, SM_BATCH_CAP, () => {
+      b.updatedAt = Date.now();
+    });
+    b.status = 'done';
+    b.updatedAt = Date.now();
+  } catch (e) {
+    console.error(`[design-generator] style-mutate batch ${batchId} error:`, e?.message || String(e));
+    b.status = 'error';
+    b.error = e?.message || '批次异常';
+    b.updatedAt = Date.now();
+  }
+}
+
+/**
+ * POST /api/teams/:teamId/design/style-mutate
+ * multipart: name, description, styleMeta, fabricMeta?, mutations(JSON), style?(file), fabric?(file)
+ */
+router.post('/style-mutate', (req, res) => {
+  smUpload(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      console.error('[design-generator] style-mutate upload error:', uploadErr.message);
+      return res.status(400).json({ error: `上传失败: ${uploadErr.message}` });
+    }
+    const files = req.files || {};
+    const styleFiles = files.style ?? [];
+    const fabricFiles = files.fabric ?? [];
+    const { name = '', description = '' } = req.body || {};
+
+    let styleMeta = null;
+    let fabricMeta = null;
+    let mutations = [];
+    try { if (req.body?.styleMeta) styleMeta = JSON.parse(req.body.styleMeta); } catch { /* */ }
+    try { if (req.body?.fabricMeta) fabricMeta = JSON.parse(req.body.fabricMeta); } catch { /* */ }
+    try { if (req.body?.mutations) mutations = JSON.parse(req.body.mutations); } catch { /* */ }
+
+    if (!name.trim()) return res.status(400).json({ error: '请填写名称' });
+    if (!styleMeta || typeof styleMeta !== 'object') {
+      return res.status(400).json({ error: 'styleMeta 缺失' });
+    }
+    if (!Array.isArray(mutations) || !mutations.length) {
+      return res.status(400).json({ error: '请至少勾选一个裂变项' });
+    }
+    if (mutations.length > MAX_MUTATIONS) {
+      return res.status(400).json({ error: `裂变项最多 ${MAX_MUTATIONS} 个` });
+    }
+    for (const m of mutations) {
+      if (!m?.axisId || !m?.optionId || !m?.label || !m?.promptHint) {
+        return res.status(400).json({ error: 'mutations 项缺少 axisId/optionId/label/promptHint' });
+      }
+    }
+
+    const needStyleUpload = styleMeta.kind === 'upload';
+    const needFabricUpload = fabricMeta && fabricMeta.kind === 'upload';
+    if (needStyleUpload && styleFiles.length !== 1) {
+      return res.status(400).json({ error: '母款上传文件缺失' });
+    }
+    if (!needStyleUpload && styleFiles.length) {
+      return res.status(400).json({ error: '库母款不应附带上传文件' });
+    }
+    if (needFabricUpload && fabricFiles.length !== 1) {
+      return res.status(400).json({ error: '面料上传文件缺失' });
+    }
+    if (!needFabricUpload && fabricFiles.length) {
+      return res.status(400).json({ error: '库面料不应附带上传文件' });
+    }
+
+    try {
+      await chargeImages(req, mutations.length, 'style_mutate_per_image', `style-mutate:${mutations.length}`);
+    } catch (err) {
+      if (err.code === 'INSUFFICIENT_COINS') {
+        return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+      }
+      throw err;
+    }
+
+    try {
+      let mother;
+      if (styleMeta.kind === 'upload') {
+        const f = styleFiles[0];
+        const url = await persistStyleMutateTemp(f.path, f.filename, f.mimetype);
+        mother = { name: styleMeta.name || f.originalname || '母款', url };
+      } else {
+        const rec = await findOwned(prisma.lAStyle, styleMeta.styleId, req.team.id);
+        if (!rec) return res.status(404).json({ error: '母款款式不存在' });
+        mother = { name: rec.name || '母款', url: rec.image || '' };
+        if (!mother.url) return res.status(400).json({ error: '母款缺少参考图' });
+      }
+
+      let fabric = null;
+      if (fabricMeta) {
+        if (fabricMeta.kind === 'upload') {
+          const f = fabricFiles[0];
+          const url = await persistStyleMutateTemp(f.path, f.filename, f.mimetype);
+          fabric = { name: fabricMeta.name || f.originalname || '面料', url };
+        } else {
+          const rec = await findOwned(prisma.lAMaterial, fabricMeta.matId, req.team.id);
+          if (!rec) return res.status(404).json({ error: '面料不存在' });
+          const cis = Array.isArray(rec.colorImages) ? rec.colorImages : [];
+          const ci = fabricMeta.colorIdx >= 0 ? cis[fabricMeta.colorIdx] : null;
+          const url = (ci && ci.url) || rec.image || '';
+          const colorName = ci?.name ? ` · ${ci.name}` : (fabricMeta.hex ? ` · ${fabricMeta.hex}` : '');
+          fabric = { name: `${rec.name || '面料'}${colorName}`, url };
+        }
+      }
+
+      const batchId = `sm-${crypto.randomUUID()}`;
+      const now = Date.now();
+      const items = mutations.map((m, mi) => ({
+        mi,
+        label: m.label,
+        axisId: m.axisId,
+        optionId: m.optionId,
+        status: 'pending',
+      }));
+      const batch = {
+        batchId,
+        teamId: req.team.id,
+        name: name.trim(),
+        description: description.trim(),
+        mother,
+        fabric,
+        mutations,
+        items,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      };
+      smBatches.set(batchId, batch);
+      res.status(202).json(smBatchPublicView(batch));
+      runStyleMutateBatch(batchId);
+    } catch (e) {
+      console.error('[design-generator] style-mutate error:', e?.message || String(e));
+      res.status(500).json({ error: e?.message || '生成失败' });
+    }
+  });
+});
+
+router.get('/style-mutate/batch/:batchId', (req, res) => {
+  const batch = smBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+  res.json(smBatchPublicView(batch));
+});
+
+router.post('/style-mutate/batch/:batchId/regenerate', async (req, res) => {
+  const batch = smBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+
+  const mi = Number.parseInt(req.body?.mi, 10);
+  if (!Number.isInteger(mi)) return res.status(400).json({ error: 'mi 必须为整数' });
+
+  try {
+    await chargeImages(req, 1, 'image_regenerate', `style-mutate:regenerate:${mi}`);
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') {
+      return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    }
+    throw err;
+  }
+
+  const cell = batch.items.find((it) => it.mi === mi);
+  const mutation = batch.mutations[mi];
+  if (!cell || !mutation) return res.status(400).json({ error: '无效的 mi' });
+
+  cell.status = 'pending';
+  cell.error = undefined;
+  cell.url = undefined;
+  batch.status = 'running';
+  batch.updatedAt = Date.now();
+
+  res.json({
+    mi,
+    label: cell.label,
+    status: cell.status,
+    url: cell.url,
+    error: cell.error,
+    prompt: cell.prompt,
+  });
+
+  try {
+    const prompt = buildStyleMutatePrompt({
+      name: batch.name,
+      description: batch.description,
+      mutation,
+      hasFabric: !!batch.fabric?.url,
+    });
+    cell.prompt = prompt;
+    const referenceImages = [batch.mother?.url, batch.fabric?.url].filter(Boolean);
+    const img = await generateImage(prompt, {
+      teamId: batch.teamId,
+      aspectRatio: '1:1',
+      safeName: `style-mutate-${mi}`,
+      provider: STYLE_MUTATE_PROVIDER,
+      referenceImages,
+    });
+    if (img?.url) {
+      cell.url = img.url;
+      cell.status = 'done';
+    } else {
+      cell.error = img?.error || '生成失败';
+      cell.status = 'error';
+    }
+  } catch (e) {
+    console.error(`[design-generator] style-mutate regenerate ${batch.batchId} (${mi}) error:`, e?.message || String(e));
+    cell.error = e?.message || '生成异常';
+    cell.status = 'error';
+  } finally {
+    const stillPending = batch.items.some((it) => it.status === 'pending');
+    batch.status = stillPending ? 'running' : 'done';
+    batch.updatedAt = Date.now();
+  }
+});
 
 module.exports = router;

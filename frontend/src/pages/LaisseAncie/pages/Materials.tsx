@@ -123,8 +123,8 @@ export default function MaterialsPage() {
     <div className="h-[calc(100vh-64px)] min-h-0 overflow-auto bg-white">
       <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-[34px] font-semibold text-gray-800 tracking-tight">面料库</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{visible.length} {visible.length === 1 ? "item" : "items"}</p>
+          <h1 className="text-[32px] font-semibold text-text-primary tracking-tight">面料库</h1>
+          <p className="text-sm text-text-tertiary mt-1">共 {visible.length} 条</p>
         </div>
         <div className="flex items-center gap-3">
           <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="按成分、用途、颜色、供应商搜索…"

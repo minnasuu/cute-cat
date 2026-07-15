@@ -26,6 +26,33 @@ export interface MaterialComboBatch {
   updatedAt: number;
 }
 
+/** 款式裂变批次视图 */
+export interface StyleMutateBatch {
+  batchId: string;
+  teamId: string;
+  status: 'running' | 'done' | 'error';
+  error?: string;
+  name: string;
+  mother: { url: string; name: string };
+  fabric?: { url: string; name: string } | null;
+  mutations: { axisId: string; optionId: string; label: string; promptHint: string }[];
+  items: {
+    mi: number;
+    label: string;
+    axisId: string;
+    optionId: string;
+    status: 'pending' | 'done' | 'error';
+    url?: string;
+    error?: string;
+    prompt?: string;
+  }[];
+  total: number;
+  completed: number;
+  failed: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ---------- 通用团队作用域 ----------
 
 /**
@@ -144,6 +171,11 @@ export function teamApi(teamId: string) {
     materialComboUrl: pre('/design/material-combo'),
     materialComboBatchUrl: (batchId: string) => pre(`/design/material-combo/batch/${encodeURIComponent(batchId)}`),
     materialComboRegenerateUrl: (batchId: string) => pre(`/design/material-combo/batch/${encodeURIComponent(batchId)}/regenerate`),
+
+    // 款式裂变批次(母款 × 裂变轴选项 → N 张子款白底图)
+    styleMutateUrl: pre('/design/style-mutate'),
+    styleMutateBatchUrl: (batchId: string) => pre(`/design/style-mutate/batch/${encodeURIComponent(batchId)}`),
+    styleMutateRegenerateUrl: (batchId: string) => pre(`/design/style-mutate/batch/${encodeURIComponent(batchId)}/regenerate`),
 
     // chat(SSE 流式主流程)
     chatUrl: pre('/chat'),

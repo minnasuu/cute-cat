@@ -31,6 +31,9 @@ import ComposerPage from '../LaisseAncie/pages/Composer';
 /** 材料组合 —— 固定表单(名称+面料图+款式参考+描述)→ 白底效果图。 */
 import MaterialComboPage from '../LaisseAncie/pages/MaterialCombo';
 
+/** 款式裂变 —— 母款 + 裂变轴 → N 张子款白底图。 */
+import StyleMutatePage from '../LaisseAncie/pages/StyleMutate';
+
 /** 数据 tab 懒加载(避免首屏过大)。 */
 const InspirationsPage = lazy(() => import('../LaisseAncie/pages/Inspirations'));
 const LookbookPage = lazy(() => import('../LaisseAncie/pages/Lookbook'));
@@ -92,6 +95,9 @@ export default function TeamWorkbench() {
     );
   }
 
+  // 上方已守卫 !teamId;收窄后给 TeamSelect 等要求 string 的组件用
+  const resolvedTeamId: string = teamId;
+
   /**
    * 渲染主内容区。
    * 3 个 design tab 各自挂在独立的 ComposerPage 实例上(用 mode 做 key 隔离 chat 状态),
@@ -100,11 +106,25 @@ export default function TeamWorkbench() {
   function renderActive() {
     return (
       <>
-        {/* 3 个一级设计 tab —— 灵感扩散/插画 走 Composer;材料组合 走 MaterialCombo */}
+        {/* 一级设计 tab —— 灵感扩散走 Composer;材料组合 / 款式裂变走独立表单页 */}
         {DESIGN_TABS.map((t) => visitedTabs.has(t.id) && (
           <div key={t.id} className={activeTab === t.id ? '' : 'hidden'}>
             {t.id === "material-combo" ? (
               <MaterialComboPage
+                brandLoading={brandLoading}
+                knowledgeLoading={knowledgeLoading}
+                knowledge={{
+                  skills: skillStore.articles,
+                  assets: visualAssetStore.assets,
+                  inspirations: resourceStore.inspirations,
+                  materials: resourceStore.materials,
+                  styles: resourceStore.styles,
+                  products: designStore.products,
+                  brand,
+                }}
+              />
+            ) : t.id === "style-mutate" ? (
+              <StyleMutatePage
                 brandLoading={brandLoading}
                 knowledgeLoading={knowledgeLoading}
                 knowledge={{
@@ -179,6 +199,18 @@ export default function TeamWorkbench() {
   function renderSidebar() {
     return (
       <>
+        {/* 团队切换:从 header 移入侧栏顶部 */}
+        <div className="px-2 mb-3">
+          <div className="mb-1.5 text-[10px] uppercase tracking-wider text-gray-500">团队</div>
+          <TeamSelect
+            value={resolvedTeamId}
+            options={teams.map((t) => ({ id: t.id, label: t.name }))}
+            onChange={(id) => setTeamId(id)}
+            ariaLabel="选择团队"
+            variant="compact"
+          />
+        </div>
+
         <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">工作台</div>
         <nav className="flex flex-col gap-0.5">
           {/* 三个一级设计 tab:平级,模式分离 */}
@@ -203,30 +235,23 @@ export default function TeamWorkbench() {
   return (
     <div className="min-h-screen bg-surface-secondary text-text-primary">
       <Navbar
+        // 一级 nav:工作台 / 社区(当前在工作台)
+        navLinks={[
+          { id: "dashboard", label: "工作台", href: "/dashboard" },
+          { id: "community", label: "社区", href: "/community" },
+        ]}
+        activeNavId="dashboard"
         afterLogo={
-          <div className="flex items-center gap-3">
-            {/* 移动端:汉堡按钮展开侧边栏导航 */}
-            {isMobile && (
-              <button
-                onClick={() => setDrawerOpen(true)}
-                aria-label="打开导航"
-                title="导航"
-                className="md:hidden w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 active:bg-gray-100"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-              </button>
-            )}
-            <TeamSelect
-              value={teamId}
-              options={teams.map((t) => ({ id: t.id, label: t.name }))}
-              onChange={(id) => {
-                // 切换团队后回到当前 design tab(保持用户所在模式)
-                setTeamId(id);
-              }}
-              ariaLabel="选择团队"
-              variant="compact"
-            />
-          </div>
+          isMobile ? (
+            <button
+              onClick={() => setDrawerOpen(true)}
+              aria-label="打开导航"
+              title="导航"
+              className="md:hidden w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 active:bg-gray-100"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+          ) : undefined
         }
       />
 

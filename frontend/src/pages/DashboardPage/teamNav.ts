@@ -12,7 +12,7 @@
  */
 
 /** 设计模式 */
-export type DesignMode = "single" | "illustration" | "material-combo";
+export type DesignMode = "single" | "illustration" | "material-combo" | "style-mutate";
 
 export interface NavSubTab {
   id: string;
@@ -32,12 +32,14 @@ export interface NavSection {
  * 一级设计 tab(平级)。点击后右侧进入对应模式的创作:
  *   - 灵感扩散(single): chat → 灵感 → 方案 → 线稿 → 选材料 → 成图
  *   - 材料组合(material-combo): 固定表单(名称+面料图+款式参考图+描述) → 白底效果图
+ *   - 款式裂变(style-mutate): 钉死母款 → 沿廓形/领型/袖长等轴裂变子款网格
  *
  * 插画(illustration)模式暂时隐藏(仍可通过代码访问,不影响既有管线)。
  */
 export const DESIGN_TABS: { id: DesignMode; label: string; icon: string }[] = [
   { id: "single", label: "灵感扩散", icon: "◧" },
   { id: "material-combo", label: "材料组合", icon: "◫" },
+  { id: "style-mutate", label: "款式裂变", icon: "◈" },
 ];
 
 /** 检测一个 tab id 是否为一级设计 tab */
@@ -57,7 +59,7 @@ export const RESOURCE_SECTIONS: NavSection[] = [
     defaultExpanded: true,
     tabs: [
       { id: "inspirations", label: "灵感", icon: "◐" },
-      { id: "materials", label: "材料", icon: "◫" },
+      { id: "materials", label: "面料", icon: "◫" },
       { id: "styles", label: "款式", icon: "◑" },
       { id: "assets", label: "品牌信息", icon: "◻" },
       { id: "lookbook", label: "Lookbook", icon: "✦" },

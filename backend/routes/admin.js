@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const { authMiddleware } = require('../middleware/auth');
 const { WORKBENCH_MARKER, repairWorkbenchWorkflowsForTeam } = require('../lib/workbench-seed');
 const { isAdminEmail } = require('../lib/admin');
+const coins = require('../lib/coins');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -26,6 +27,22 @@ async function requireAdmin(req, res, next) {
 }
 
 router.use(requireAdmin);
+
+// ======================== Admin: 兑换码批量生成 ========================
+router.post('/redeem-codes/generate', async (req, res) => {
+  try {
+    const { tier, count = 1 } = req.body || {};
+    if (!['basic', 'plus', 'pro'].includes(tier)) {
+      return res.status(400).json({ error: '档位必须是 basic / plus / pro' });
+    }
+    const n = Math.min(Math.max(parseInt(count, 10) || 1, 1), 200);
+    const codes = await coins.generateRedeemCodes(tier, n);
+    res.json({ success: true, tier, count: codes.length, codes });
+  } catch (err) {
+    console.error('[admin] generate redeem codes error:', err);
+    res.status(500).json({ error: '生成兑换码失败' });
+  }
+});
 
 // ======================== Admin: workflows list ========================
 router.get('/workflows', async (_req, res) => {

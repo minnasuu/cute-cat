@@ -65,27 +65,40 @@ router.get('/packages', (_req, res) => {
 });
 
 // ── 充值(模拟支付) ──
-router.post('/recharge', async (req, res) => {
+// 已废弃: 由兑换码方案替代,保留接口但返回提示,避免旧前端报错。
+router.post('/recharge', (_req, res) => {
+  res.status(410).json({ error: '充值已改为兑换码模式,请使用 /api/account/redeem' });
+});
+
+// ── 兑换码档位(前端展示三档信息) ──
+router.get('/redeem-tiers', (_req, res) => {
+  res.json({ tiers: coins.getRedeemTiers() });
+});
+
+// ── 兑换码核销 ──
+router.post('/redeem', async (req, res) => {
   try {
-    const { packageId } = req.body || {};
-    const pkg = coins.getPackage(packageId);
-    if (!pkg) return res.status(400).json({ error: '套餐不存在' });
-
-    const balance = await coins.addCoins(req.userId, pkg.coins, 'recharge', {
-      refId: pkg.id,
-      note: `充值 ${pkg.name}(${pkg.coins} 喵币 = ${pkg.yuan} 元)`,
-    });
-
-    // 首次成功充值 → 升级会员
-    const u = await prisma.user.findUnique({ where: { id: req.userId }, select: { role: true } });
-    if (u && u.role === 'user') {
-      await prisma.user.update({ where: { id: req.userId }, data: { role: 'member' } });
+    const { code } = req.body || {};
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: '请输入兑换码' });
     }
-
-    res.json({ success: true, coins: balance, package: pkg, role: u?.role === 'user' ? 'member' : u?.role });
+    const result = await coins.redeemCode(req.userId, code);
+    res.json({
+      success: true,
+      coins: result.coins,
+      tier: result.tier,
+      name: result.name,
+      role: result.role,
+    });
   } catch (err) {
-    console.error('[account] recharge error:', err);
-    res.status(500).json({ error: '充值失败' });
+    if (err.message === 'INVALID_CODE') {
+      return res.status(400).json({ error: '兑换码无效' });
+    }
+    if (err.message === 'CODE_ALREADY_USED') {
+      return res.status(409).json({ error: '兑换码已被使用' });
+    }
+    console.error('[account] redeem error:', err);
+    res.status(500).json({ error: '兑换失败,请稍后重试' });
   }
 });
 

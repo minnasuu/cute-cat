@@ -5,6 +5,7 @@ import { buildSimilarPrompt } from "../lib/similar-prompt";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useComposerPrompt } from "../contexts/composer-prompt";
 import { teamApi, apiClient } from "../lib/api";
+import { showToast } from "../../../components/Toast";
 
 const TAKE = 24;
 
@@ -76,9 +77,17 @@ export default function InspinationsPage() {
 
   const loadMore = () => { if (!loading && cursorRef.current) void fetchList(true, cursorRef.current); };
 
+  // 上传图片大小上限:1 MB(与后端 multer 一致,前端先拦一次省流量)
+  const MAX_UPLOAD_BYTES = 1 * 1024 * 1024;
+
   /* ── file ingestion ──────────────────────────────────────────── */
   async function handleFiles(list: FileList | File[]) {
     for (const raw of Array.from(list)) {
+      // 前端预检:超 1MB 直接报错,不发请求
+      if (raw.size > MAX_UPLOAD_BYTES) {
+        showToast(`「${raw.name || '图片'}」超过 1MB,请压缩后再上传`, 'warning');
+        continue;
+      }
       const id = crypto.randomUUID();
       setUploads((u) => [...u, { id, file: raw.name, status: "compressing" }]);
       try {
@@ -142,6 +151,9 @@ export default function InspinationsPage() {
           analysisStatus: 'failed' as const,
           analysisError: res.analysisError || 'unknown',
         } : it));
+        if (res.analysisError === 'insufficient_coins') {
+          showToast('喵币不足,请充值后再分析', 'warning');
+        }
       }
       // status === 'success' 无需处理,后续 polling 轮会拿到新状态
     } catch (err) {
@@ -199,9 +211,9 @@ export default function InspinationsPage() {
     <div className="p-6 lg:p-8 max-w-[1400px] mx-auto">
       <header className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-[40px] font-semibold text-gray-800 tracking-tight">Inspirations</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {total > 0 ? `${total} inspiration${total === 1 ? "" : "s"} in the atelier` : "Drop in an image to start your atelier"}
+          <h1 className="text-[32px] font-semibold text-text-primary tracking-tight">灵感</h1>
+          <p className="text-sm text-text-tertiary mt-1">
+            {total > 0 ? `工作室共有 ${total} 张灵感图` : "拖入或粘贴一张图片，开启你的工作室"}
           </p>
         </div>
         <UploadButton onFiles={handleFiles} />
@@ -211,13 +223,13 @@ export default function InspinationsPage() {
       {editing && <EditModal asset={editing} onClose={() => setEditing(null)} onSave={handleSaveEdit} />}
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="Search by category, silhouette, …"
+        <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="按类别、廓形搜索…"
           className="w-60 bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
         <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-xs">
           {(["recent", "uses"] as const).map((k) => (
             <button key={k} onClick={() => setFilter((f) => ({ ...f, sort: k }))}
               className={`px-3 py-2 transition-colors ${filter.sort === k ? "bg-primary-500 text-white" : "bg-white hover:bg-gray-100 text-gray-700"}`}>
-              {k === "recent" ? "Most recent" : "Most used"}
+              {k === "recent" ? "最近" : "最多使用"}
             </button>
           ))}
         </div>
@@ -245,7 +257,7 @@ export default function InspinationsPage() {
           {cursor && (
             <div className="flex justify-center mt-8">
               <button onClick={loadMore} disabled={loading} className="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:border-gray-800 disabled:opacity-50">
-                {loading ? "Loading…" : "Load more"}
+                {loading ? "加载中…" : "加载更多"}
               </button>
             </div>
           )}
@@ -271,8 +283,8 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
   };
   // 分类标签:优先 category; pending 显示 analysing; failed 显示失败+重试
   const categoryLabel = asset.analysisStatus === 'failed'
-    ? `分析失败(${asset.analysisError || 'unknown'})`
-    : asset.category || (asset.analysisStatus === 'pending' ? 'Analysing…' : '未分类');
+    ? (asset.analysisError === 'insufficient_coins' ? '喵币不足' : `分析失败(${asset.analysisError || 'unknown'})`)
+    : asset.category || (asset.analysisStatus === 'pending' ? '分析中…' : '未分类');
   // hover 卡片上显示风格标签(如有)
   const shortStyle = asset.visualStyle
     ? (asset.visualStyle.length > 28 ? asset.visualStyle.slice(0, 28) + "…" : asset.visualStyle)
@@ -294,7 +306,7 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
           )}
           <button onClick={(e) => { e.stopPropagation(); onEdit(asset); }}
             className="w-7 h-7 rounded-full bg-white/90 hover:bg-white text-gray-700 text-xs flex items-center justify-center shadow-sm" title="编辑">✎</button>
-          <button onClick={(e) => { e.stopPropagation(); if (confirm("删除这张灵感图?")) onDelete(asset.id); }}
+          <button onClick={(e) => { e.stopPropagation(); if (confirm("删除这张灵感图？")) onDelete(asset.id); }}
             className="w-7 h-7 rounded-full bg-white/90 hover:bg-red-50 text-red-500 text-xs flex items-center justify-center shadow-sm" title="删除">✕</button>
         </div>
         {/* 制作相似(hover 显示,主操作按钮) */}
@@ -318,10 +330,10 @@ function AssetCard({ asset, onDelete, onEdit, onRetry }: { asset: InspirationIte
         {hasAnalysis && (
           <div className="absolute inset-0 bg-black/75 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-3 text-white flex flex-col gap-2 overflow-y-auto" style={{ pointerEvents: "none" }}>
             {asset.visualStyle && (
-              <div className="text-[11px] leading-relaxed"><span className="text-[10px] uppercase tracking-wider opacity-50">Style · </span>{asset.visualStyle}</div>
+              <div className="text-[11px] leading-relaxed"><span className="text-[10px] uppercase tracking-wider opacity-50">风格 · </span>{asset.visualStyle}</div>
             )}
             {asset.designApproach && (
-              <p className="text-[11px] leading-relaxed opacity-90"><span className="text-[10px] uppercase tracking-wider opacity-50">Approach · </span>{asset.designApproach}</p>
+              <p className="text-[11px] leading-relaxed opacity-90"><span className="text-[10px] uppercase tracking-wider opacity-50">思路 · </span>{asset.designApproach}</p>
             )}
             {asset.inspiration && asset.inspiration.length > 0 && (
               <ul className="text-[10px] leading-relaxed space-y-1 mt-1 pt-1 border-t border-white/10">
@@ -485,7 +497,7 @@ function UploadButton({ onFiles }: { onFiles: (f: FileList | File[]) => void }) 
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button onClick={() => ref.current?.click()} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-sm">+ Upload</button>
+      <button onClick={() => ref.current?.click()} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-sm">+ 上传</button>
       <input ref={ref} type="file" accept="image/*" multiple className="hidden"
         onChange={(e) => { if (e.target.files?.length) onFiles(e.target.files); e.target.value = ""; }} />
     </>
@@ -497,13 +509,13 @@ function EmptyDrop({ onDrop, onFiles }: { onDrop: (e: React.DragEvent) => void; 
   return (
     <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
       className="border-2 border-dashed border-gray-300 rounded-2xl py-20 text-center hover:border-primary-400 transition-colors">
-      <div className="text-gray-500 text-sm">Drag & drop inspiration images here, or</div>
-      <button onClick={() => ref.current?.click()} className="mt-3 inline-flex rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-5 py-2 text-sm font-medium">Choose files</button>
-      <div className="text-gray-500 text-sm mt-2">or paste from clipboard <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">⌘V</span></div>
+      <div className="text-gray-500 text-sm">拖入或粘贴灵感图，或</div>
+      <button onClick={() => ref.current?.click()} className="mt-3 inline-flex rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-5 py-2 text-sm font-medium">选择文件</button>
+      <div className="text-gray-500 text-sm mt-2">剪贴板粘贴 <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">⌘V</span></div>
       <input ref={ref} type="file" accept="image/*" multiple className="hidden"
         onChange={(e) => { if (e.target.files) onFiles(e.target.files); e.target.value = ""; }} />
       <p className="text-[11px] text-gray-500 mt-4 max-w-md mx-auto leading-relaxed">
-        We auto-compress on the browser, then send each image to AI for a structured 4-dimension analysis (category · visual style · design approach · inspiration).
+        浏览器端自动压缩后,送 AI 做 4 维度结构化分析(类别 · 视觉风格 · 设计思路 · 设计启发)。单次上传不超过 1MB。
       </p>
     </div>
   );

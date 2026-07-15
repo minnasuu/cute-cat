@@ -20,7 +20,7 @@ import { teamApi } from "../lib/api";
 import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type DesignMode, type Product, type ProductStatus } from "../types/design";
 import { MAIN_SLOT, LINEART_SLOT, RENDER_SLOT, slotRole, swapMainImage } from "../lib/imageRole";
 
-const ALL_MODES: DesignMode[] = ["illustration", "single", "material-combo", "occasion"];
+const ALL_MODES: DesignMode[] = ["illustration", "single", "material-combo", "style-mutate", "occasion"];
 const SEASON_PRESETS = ["春", "夏", "秋", "冬", "春秋", "秋冬", "春夏", "四季"];
 
 interface Props {
@@ -176,7 +176,9 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {renderImages.map((im, i) => {
                       const realIdx = mergedImages.indexOf(im);
-                      const src = product.mode === "material-combo" ? product.sourceImages?.[realIdx] : undefined;
+                      const src = (product.mode === "material-combo" || product.mode === "style-mutate")
+                        ? product.sourceImages?.[realIdx]
+                        : undefined;
                       const hasSrc = !!(src?.style || src?.fabric);
                       const busy = replacingSlot === im.slot;
                       return (

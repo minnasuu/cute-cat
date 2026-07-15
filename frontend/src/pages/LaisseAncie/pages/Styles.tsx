@@ -95,7 +95,7 @@ export default function StylesPage() {
   return (
     <div className="grid grid-cols-[220px_1fr] h-[calc(100vh-64px)] min-h-0">
       <aside className="border-r border-gray-200 bg-gray-50 px-4 py-5 flex flex-col overflow-auto">
-        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">Styles</div>
+        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">款式分类</div>
         <div className="flex flex-col gap-1 flex-1">
           {STYLE_CATEGORIES.map((c) => {
             const count = rows.filter((m) => m.category === c.key).length;
@@ -114,8 +114,8 @@ export default function StylesPage() {
       <main className="overflow-auto bg-white">
         <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-[34px] font-semibold text-gray-800 tracking-tight">款式</h1>
-            <p className="text-xs text-gray-500 mt-0.5">{cat} · {visible.length} {visible.length === 1 ? "item" : "items"}</p>
+            <h1 className="text-[32px] font-semibold text-text-primary tracking-tight">款式</h1>
+            <p className="text-sm text-text-tertiary mt-1">{cat} · 共 {visible.length} 款</p>
           </div>
           <div className="flex items-center gap-3">
             <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="按名称、标签搜索…"

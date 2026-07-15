@@ -102,6 +102,9 @@ if [ $MIGRATE_EXIT -ne 0 ]; then
   npx prisma migrate resolve --applied 20260709000000_inspiration_ai_analysis 2>/dev/null || true
   npx prisma migrate resolve --applied 20260710000000_inspiration_analysis_status 2>/dev/null || true
   npx prisma migrate resolve --applied 20260711000000_inspiration_analysis_error 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260715000003_brand_user_defined_empty 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260716000000_redemption_code 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260716000001_brand_status_config 2>/dev/null || true
   # Try again
   npx prisma migrate deploy 2>&1
   MIGRATE_EXIT2=$?

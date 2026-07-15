@@ -22,6 +22,7 @@ const prisma = new PrismaClient();
 const { asyncHandler } = require('../middleware/asyncHandler');
 const { callArkStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
+const coins = require('../lib/coins');
 const storage = require('../lib/storage');
 const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
 const designGeneratorRouter = require('./design-generator');
@@ -30,6 +31,9 @@ const {
 } = require('../lib/laisse-ancie-helpers');
 
 const router = express.Router();
+
+// 上传单图大小上限:1 MB(前端+后端双端校验,超出直接拒收)
+const MAX_UPLOAD_BYTES = 1 * 1024 * 1024;
 
 // 调试用的轻便 multer(field 名 'file'),落点 tmp,调试完后 unlink
 const debugImageUpload = multer({
@@ -43,7 +47,7 @@ const debugImageUpload = multer({
       cb(null, `dbg-${Date.now().toString(36)}${ext}`);
     },
   }),
-  limits: { fileSize: 12 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 }).single('file');
 
 // TMP_DIR 必须在 multer 启动前物理存在(multer 不等待 async callback)
@@ -60,7 +64,7 @@ const multerStorage = multer.diskStorage({
 });
 const upload = multer({
   storage: multerStorage,
-  limits: { fileSize: 12 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpe?g|png|webp|avif|gif)$/i.test(file.mimetype)) cb(null, true);
     else cb(new Error('unsupported mime'));
@@ -111,8 +115,12 @@ router.route('/brand')
     const data = pickDefined(req.body ?? {}, [
       'logo', 'nameZh', 'nameEn', 'cnFont', 'enFont', 'sloganZh', 'sloganEn',
       'voice', 'audienceAgeMin', 'audienceAgeMax', 'priceMin', 'priceMax',
-      'systemSnippet',
+      'systemSnippet', 'statusConfig',
     ]);
+    // statusConfig 必须是数组,否则忽略(前端 JSON 可控但服务端兜底)
+    if (data.statusConfig !== undefined && !Array.isArray(data.statusConfig)) {
+      delete data.statusConfig;
+    }
     // create 路径:直接落用户提交值(列已可空,无值=空 brand,不再注入 demo 填充);
     // 仅补一个默认 systemSnippet 占位,避免 AI 侧拿到空串。
     const profile = await prisma.lABrandProfile.upsert({
@@ -132,13 +140,21 @@ router.route('/brand')
     res.json({ profile, colors: pairs });
   }));
 
+// 把 multer 错误翻译成中文友好 JSON,供各 upload 回调复用
+function multerError(res, err) {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: '图片过大,请上传不超过 1MB 的图片' });
+  }
+  if (err.message === 'unsupported mime') {
+    return res.status(400).json({ error: '不支持的图片格式,请上传 JPG / PNG / WebP' });
+  }
+  return res.status(400).json({ error: `上传失败: ${err.message}` });
+}
+
 // POST /api/teams/:teamId/brand/logo —— 上传品牌标识图,直接写入 profile.logo 并返回 { id, url }
 router.post('/brand/logo', (req, res) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) {
-      console.error('[team-workbench] brand logo multer error:', err.message);
-      return res.status(400).json({ error: `上传失败: ${err.message}` });
-    }
+    if (err) return multerError(res, err);
     if (!req.file) return res.status(400).json({ error: 'no file' });
     try {
       const savePath = createSavePath(`brands/${req.team.id}`, req.file.filename);
@@ -299,6 +315,9 @@ router.post('/inspirations', (req, res) => {
   upload.single('file')(req, res, async (err) => {
     if (err) {
       console.error('[team-workbench] upload multer error:', err.message, err.code, err.field);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: '图片过大,请上传不超过 1MB 的图片' });
+      }
       return res.status(400).json({ error: `上传失败: ${err.message}` });
     }
     if (!req.file) {
@@ -331,7 +350,7 @@ router.post('/inspirations', (req, res) => {
       const filePath = storage.mode === 'local'
         ? path.join(storage.UPLOAD_ROOT, ...savePath.split('/'))
         : null;
-      void runInspirationAnalysis(asset.id, filePath, url);
+      void runInspirationAnalysis(asset.id, filePath, url, req.userId);
     } catch (e) {
       console.error('[team-workbench] create inspiration failed:', e);
       res.status(500).json({ error: `写入失败: ${e.message}` });
@@ -352,8 +371,22 @@ function toAbsoluteImageUrl(publicUrl) {
 // 异步分析灵感图片,失败把原因写入 analysisError(供前端重试接口返回)
 // 返回 'success' | 'failed',调用方可据此响应前端
 // filePath:本地绝对路径(本地模式,保留以兼容,已不再用于读图);publicUrl:公网 URL(所有模式,含 S3)
-async function runInspirationAnalysis(id, filePath, publicUrl) {
+// userId:触发分析的用户,用于扣喵币(5 喵币/千 tokens,按固定单价扣)
+async function runInspirationAnalysis(id, filePath, publicUrl, userId) {
   try {
+    // 先扣喵币(余额不足 → 标记 failed:insufficient_coins,不送 AI)
+    const cost = coins.getCost('inspiration_analyze');
+    try {
+      if (userId) await coins.consumeCoins(userId, cost, { refId: id, note: `灵感分析 ${cost} 🐾` });
+    } catch (err) {
+      if (err.code === 'INSUFFICIENT_COINS') {
+        console.warn(`[team-workbench] inspiration ${id} skip: user ${userId} insufficient coins (need ${cost})`);
+        await prisma.lAInspirationAsset.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: 'insufficient_coins' } }).catch(() => {});
+        return 'failed';
+      }
+      throw err;
+    }
+
     // 直接用过 Ark 能拉取的图片 URL(不再绕回读本地磁盘),省 base64 传输且绕过本地文件路径错位
     let imageUrl = toAbsoluteImageUrl(publicUrl);
 
@@ -415,7 +448,8 @@ router.post('/inspirations/:id/analyze', asyncHandler(async (req, res) => {
   // owned.url 是公网/相对 URL,必须作为 publicUrl(第 3 参数)传入,才能让 toAbsoluteImageUrl 拼出
   // Ark 可拉取的绝对 URL;若误作 filePath(第 2 参数)传入,publicUrl 为 undefined,会走本地文件兜底并
   // 因路径不存在而必然返回 error:'file',导致重试永远失败。
-  const status = await runInspirationAnalysis(owned.id, null, owned.url);
+  // 重试分析同样扣喵币
+  const status = await runInspirationAnalysis(owned.id, null, owned.url, req.userId);
   const updated = await prisma.lAInspirationAsset.findUnique({
     where: { id: owned.id },
     select: { id: true, analysisStatus: true, analysisError: true, category: true },
@@ -441,10 +475,7 @@ router.patch('/inspirations/:id', asyncHandler(async (req, res) => {
 // AI 分析字段不变,不触发重新解析(避免覆盖已有分析或重复耗时)
 router.patch('/inspirations/:id/image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) {
-      console.error('[team-workbench] replace image multer error:', err.message);
-      return res.status(400).json({ error: `上传失败: ${err.message}` });
-    }
+    if (err) return multerError(res, err);
     if (!req.file) {
       return res.status(400).json({ error: 'no file' });
     }
@@ -574,10 +605,7 @@ router.patch('/materials/:id', asyncHandler(async (req, res) => {
 // multipart form-data, field "file";写入材料的 image 字段
 router.post('/materials/:id/image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) {
-      console.error('[team-workbench] material image multer error:', err.message);
-      return res.status(400).json({ error: `上传失败: ${err.message}` });
-    }
+    if (err) return multerError(res, err);
     if (!req.file) {
       return res.status(400).json({ error: 'no file' });
     }
@@ -604,10 +632,7 @@ router.post('/materials/:id/image', (req, res) => {
 // 写入材料的 colorImages[idx].url
 router.post('/materials/:id/color-image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) {
-      console.error('[team-workbench] material color-image multer error:', err.message);
-      return res.status(400).json({ error: `上传失败: ${err.message}` });
-    }
+    if (err) return multerError(res, err);
     if (!req.file) return res.status(400).json({ error: 'no file' });
     const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
     if (!owned) return res.status(404).json({ error: 'not found' });
@@ -690,10 +715,7 @@ router.patch('/styles/:id', asyncHandler(async (req, res) => {
 // POST /api/teams/:teamId/styles/:id/image —— 上传/替换款式参考图
 router.post('/styles/:id/image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) {
-      console.error('[team-workbench] style image multer error:', err.message);
-      return res.status(400).json({ error: `上传失败: ${err.message}` });
-    }
+    if (err) return multerError(res, err);
     if (!req.file) return res.status(400).json({ error: 'no file' });
     const owned = await findOwned(prisma.lAStyle, req.params.id, req.team.id);
     if (!owned) return res.status(404).json({ error: 'not found' });
@@ -893,10 +915,7 @@ const MAIN_SLOT = "main";
 const RENDER_SLOT = "render";
 router.post('/products/:id/image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) {
-      console.error('[team-workbench] product image upload multer error:', err.message);
-      return res.status(400).json({ error: `上传失败: ${err.message}` });
-    }
+    if (err) return multerError(res, err);
     if (!req.file) return res.status(400).json({ error: 'no file' });
     try {
       const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);

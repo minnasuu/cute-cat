@@ -1,16 +1,18 @@
 // @ts-nocheck
-export type DesignMode = "illustration" | "single" | "material-combo" | "occasion";
+export type DesignMode = "illustration" | "single" | "material-combo" | "style-mutate" | "occasion";
 
 export const MODE_LABEL: Record<DesignMode, string> = {
   illustration:  "插画",
   single:        "灵感扩散",
   "material-combo": "材料组合",
+  "style-mutate": "款式裂变",
   occasion:      "专题系列",
 };
 export const MODE_HINT: Record<DesignMode, string> = {
   illustration:  "为 Lookbook / 印花 / 主视觉 / 包装等输出的原创图形作品。可同步存入视觉资产库。",
   single:        "围绕单件产品的灵感扩散：chat 汲取灵感库 → 方案 → 线稿 → 选材料 → 成图。",
   "material-combo": "固定输入(名称 + 面料图 + 款式参考 + 描述),AI 结合品牌信息自动出白底效果图。",
+  "style-mutate": "钉死一张母款,沿廓形 / 领型 / 袖长 / 长短 / 细节轴裂变多张子款白底图。",
   occasion:      "围绕特定节日（春节、情人节、圣诞）按主题对齐的产品系列。",
 };
 

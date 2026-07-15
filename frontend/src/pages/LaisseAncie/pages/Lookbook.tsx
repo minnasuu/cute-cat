@@ -2,22 +2,19 @@
 /**
  * Lookbook —— 款式总览。
  *
- * 表格列:预览(堆叠缩略图) / 产品 / 季节 / 品类 / 面料 / 目标价 / 状态(下拉编辑) / 知识 / 最近更新 / 操作。
- *  - 预览列:所有图片堆叠错位展示 + N 标记;
- *  - 状态列:下拉 select,直接调 advance 接口推进 / 回退工序;
- *  - 操作列:「编辑」→ 跳转单品设计工作台(携带产品上下文) / 「删除」行内确认。
- *  - 点击行 / 卡片 → 详情弹窗(含结构化方案、色块、灵感引用、工序时间线、推进按钮、编辑入口)。
- *  - 头部「+ 录入产品」→ 手动完整字段录入弹窗(view / edit / create 三态)。
+ * 表格列:图片叠放缩略图 / 产品名称 / 价格 / 状态 / 最近更新 / 备注信息 / 操作。
+ * 状态列:自定义彩色药丸选择器,每种状态可独立配置颜色与标签。
  */
 import { useMemo, useState } from "react";
 import { useDesignStore } from "../store/design";
-import { useSkillStore } from "../store/skill";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useEditingProduct } from "../contexts/editing-product";
 import { teamApi } from "../lib/api";
 import { ProductFormModal } from "../components/ProductFormModal";
-import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type Product, type ProductStatus } from "../types/design";
+import { MODE_LABEL, STATUS_LABEL, type Product, type ProductStatus } from "../types/design";
 import { MAIN_SLOT, slotRole } from "../lib/imageRole";
+import { StatusPicker, StatusConfigModal, useStatusConfig, type StatusDef } from "../components/StatusPicker";
+import { showToast } from "../../../components/Toast";
 
 /** 简易行内删除确认状态:id → 是否正在确认中。 */
 function useRowDelete() {
@@ -35,14 +32,9 @@ function useRowDelete() {
 }
 
 // 展示给用户的 Lookbook 创作模式 tab,与当前可用的设计工作台 tab 一致(系列已下线,仅「全部」中能看到历史系列数据)。
-const ALL_MODES = ["illustration", "single", "material-combo", "occasion"] as const;
-type TabKey = "illustration" | "single" | "material-combo" | "occasion" | "all";
+const ALL_MODES = ["illustration", "single", "material-combo", "style-mutate", "occasion"] as const;
+type TabKey = "illustration" | "single" | "material-combo" | "style-mutate" | "occasion" | "all";
 type ViewMode = "table" | "card";
-
-function nextStatus(s: ProductStatus): ProductStatus | null {
-  const i = STATUS_FLOW.indexOf(s);
-  return i === -1 || i >= STATUS_FLOW.length - 1 ? null : STATUS_FLOW[i + 1]!;
-}
 
 /**
  * 选卡片封面:主图 > 效果图(优先 editorial/flat/material-combo 等,跳过线稿) > 第一张 > null。
@@ -58,7 +50,7 @@ function pickCover(product: Product): string | null {
   const render = legacyMain
     .filter((im) => slotRole(im.slot) === "render")
     .sort((a, b) => {
-      const order = ["editorial", "flat", "single", "material-combo", "collection", "illustration", "hero-editorial", "detail", "final"];
+      const order = ["editorial", "flat", "single", "material-combo", "style-mutate", "collection", "illustration", "hero-editorial", "detail", "final"];
       return order.indexOf(a.slot) - order.indexOf(b.slot);
     })[0];
   if (render) return render.url;
@@ -74,9 +66,17 @@ function CardItem({ product, cover, onClick }: { product: Product; cover: string
           ? <img src={cover} alt={product.title} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
           : <div className="w-full h-full flex items-center justify-center text-[12px] text-gray-400">暂无图片</div>}
       </div>
-      <div className="px-3 py-2.5">
-        <div className="text-[13px] font-medium text-gray-900 truncate">{product.title || "(untitled)"}</div>
-        {product.category && <div className="text-[11px] text-gray-500 truncate mt-0.5">{product.category}</div>}
+      <div className="relative flex-1">
+        <div className="px-3 py-2.5">
+          <div className="text-[13px] font-medium text-gray-900 truncate">{product.title || "（未命名）"}</div>
+          {product.category && <div className="text-[11px] text-gray-500 truncate mt-0.5">{product.category}</div>}
+        </div>
+        {/* 卡片右下角红色价格 */}
+        {typeof product.targetPriceNum === "number" && (
+          <div className="absolute bottom-2 right-3 text-[13px] font-bold text-red-500">
+            ¥{product.targetPriceNum}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -92,6 +92,9 @@ export default function LookbookPage() {
   const [editor, setEditor] = useState<null | { mode: "create" } | { mode: "view" | "edit"; product: Product }>(null);
   const { confirming, setConfirming, pending, doDelete } = useRowDelete();
   const { setEditingProduct } = useEditingProduct();
+  const { user } = useAuth();
+  const { statuses: statusConfig, save: saveStatusConfig } = useStatusConfig();
+  const [configOpen, setConfigOpen] = useState(false);
 
   const items = useMemo(() => {
     let r = store.products;
@@ -104,9 +107,13 @@ export default function LookbookPage() {
   async function changeStatus(p: Product, status: ProductStatus) {
     if (status === p.status) return;
     if (!teamId) return;
-    const updated = await teamApi(teamId).setProductStatus(p.id, { status });
-    await store.refresh();
-    setEditor((prev) => (prev && "product" in prev && prev.product.id === p.id ? { ...prev, product: updated } : prev));
+    try {
+      const updated = await teamApi(teamId).setProductStatus(p.id, { status });
+      await store.refresh();
+      setEditor((prev) => (prev && "product" in prev && prev.product.id === p.id ? { ...prev, product: updated } : prev));
+    } catch (err: any) {
+      showToast(err?.message || "更新状态失败", "error");
+    }
   }
 
   /** 编辑:把产品塞入编辑上下文 + 跳转单品设计工作台 */
@@ -117,15 +124,15 @@ export default function LookbookPage() {
   }
 
   return (
-    <div className="p-8 lg:p-12 max-w-[1500px] mx-auto">
+    <div className="p-6 lg:p-8 max-w-[1400px] mx-auto">
       <header className="flex items-end justify-between mb-6">
         <div>
-          <h1 className="text-5xl font-semibold text-primary-600 tracking-tight">Lookbook</h1>
-          <p className="text-sm text-gray-500 mt-1">款式总览 — 按创作模式与工序筛选 · 下发推进工序 · 点击行编辑详情</p>
+          <h1 className="text-[32px] font-semibold text-text-primary tracking-tight">Lookbook</h1>
+          <p className="text-sm text-text-tertiary mt-1">款式总览 — 按创作模式与工序筛选 · 点击行编辑详情</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">
-            {items.length === store.products.length ? `${items.length} items` : `${items.length} / ${store.products.length}`}
+          <span className="text-xs text-text-tertiary">
+            {items.length === store.products.length ? `${items.length} 款产品` : `${items.length} / ${store.products.length}`}
           </span>
           <button onClick={() => setEditor({ mode: "create" })}
             className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-xl font-medium transition-colors">
@@ -140,12 +147,7 @@ export default function LookbookPage() {
         </div>
         <div className="flex items-center gap-3">
           {/* 工序状态筛选 */}
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ProductStatus | "all")}
-            className="text-[12px] border border-gray-200 rounded-xl px-3 py-1.5 bg-white text-gray-600 focus:outline-none focus:border-primary-500"
-            title="按工序状态筛选">
-            <option value="all">全部状态</option>
-            {STATUS_FLOW.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-          </select>
+          <StatusFilter value={statusFilter} onChange={setStatusFilter} statuses={statusConfig} />
           <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-[12px]">
             <button onClick={() => setView("table")}
               className={`px-3 py-1.5 transition-colors ${view === "table" ? "bg-primary-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
@@ -162,7 +164,7 @@ export default function LookbookPage() {
           {store.products.length === 0 ? (
             <>要去往 <span className="text-primary-600">Design</span> 开始创作，或点击「录入产品」，产品才会进入 Lookbook</>
           ) : (
-            <>没有符合「{tab === "all" ? "" : MODE_LABEL[tab] + " / "}{statusFilter === "all" ? "" : STATUS_LABEL[statusFilter]}」的产品</>
+            <>没有符合「{tab === "all" ? "" : MODE_LABEL[tab] + " / "}{statusFilter === "all" ? "" : statusConfig.find((s) => s.id === statusFilter)?.label || STATUS_LABEL[statusFilter]}」的产品</>
           )}
           {(tab !== "all" || statusFilter !== "all") && (
             <div>
@@ -183,7 +185,7 @@ export default function LookbookPage() {
           <table className="w-full text-[13px] border-collapse">
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-200">
-                {["预览", "产品", "季节", "品类", "面料", "目标价", "状态", "知识", "最近更新"].map((h) => (
+                {["预览", "产品名称", "价格", "状态", "最近更新", "备注信息", "操作"].map((h) => (
                   <th key={h} className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -196,16 +198,24 @@ export default function LookbookPage() {
                     <StackedThumbs product={p} />
                   </td>
                   <td className="px-3 py-3">
-                    <div className="font-medium text-gray-900">{p.title || "(untitled)"}</div>
-                    {p.description && <div className="text-[11px] text-gray-500 truncate max-w-[280px]">{p.description}</div>}
+                    <div className="font-medium text-gray-900">{p.title || "（未命名）"}</div>
+                    {p.category && <div className="text-[11px] text-gray-500 truncate max-w-[160px]">{p.category}</div>}
                   </td>
-                  <td className="px-3 py-3">{p.seasons?.join(", ") || "—"}</td>
-                  <td className="px-3 py-3">{p.category || "—"}</td>
-                  <td className="px-3 py-3 max-w-[200px] truncate">{p.fabricComposition || "—"}</td>
-                  <td className="px-3 py-3">{typeof p.targetPriceNum === "number" ? `¥${p.targetPriceNum}` : "—"}</td>
-                  <td className="px-3 py-3"><StatusSelect product={p} onChange={(s) => changeStatus(p, s)} /></td>
-                  <td className="px-3 py-3"><SkillsBadge productId={p.id} /></td>
-                  <td className="px-3 py-3 text-gray-500 font-mono text-[11px]">{new Date(p.updatedAt).toLocaleDateString()}</td>
+                  <td className="px-3 py-3 whitespace-nowrap">
+                    {typeof p.targetPriceNum === "number"
+                      ? <span className="font-bold text-red-500">¥{p.targetPriceNum}</span>
+                      : <span className="text-gray-400">—</span>}
+                  </td>
+                  <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                    <StatusPicker
+                      value={p.status}
+                      onChange={(s) => changeStatus(p, s as ProductStatus)}
+                      statuses={statusConfig}
+                      onOpenConfig={() => setConfigOpen(true)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-gray-500 font-mono text-[11px] whitespace-nowrap">{new Date(p.updatedAt).toLocaleDateString()}</td>
+                  <td className="px-3 py-3 max-w-[200px] truncate text-gray-500">{p.description || p.stitchNotes || "—"}</td>
                   {/* ── 操作:编辑 / 删除 ── */}
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
@@ -245,30 +255,40 @@ export default function LookbookPage() {
         onSaved={async () => { await store.refresh(); setEditor(null); }}
         onRequestEdit={(p) => setEditor({ mode: "edit", product: p })}
       />
+
+      {/* 状态配置弹窗 */}
+      <StatusConfigModal
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+        statuses={statusConfig}
+        onSave={saveStatusConfig}
+      />
     </div>
   );
 }
 
 // ── 子组件 ───────────────────────────────────────────────────
 
-/** 产品各工序对应色(从草稿灰→已上架绿) */
-const STATUS_COLORS: Record<ProductStatus, { text: string; bg: string; border: string }> = {
-  draft:        { text: "text-gray-600", bg: "bg-gray-100",   border: "border-gray-300" },
-  submitted:    { text: "text-sky-700",   bg: "bg-sky-50",     border: "border-sky-300" },
-  proto1:       { text: "text-amber-700", bg: "bg-amber-50",   border: "border-amber-300" },
-  proto1_done:  { text: "text-amber-800", bg: "bg-amber-100",  border: "border-amber-400" },
-  proto2:       { text: "text-orange-700",bg: "bg-orange-50",  border: "border-orange-300" },
-  proto2_done:  { text: "text-orange-800",bg: "bg-orange-100", border: "border-orange-400" },
-  bulk:         { text: "text-indigo-700",bg: "bg-indigo-50",  border: "border-indigo-300" },
-  bulk_done:    { text: "text-indigo-800",bg: "bg-indigo-100", border: "border-indigo-400" },
-  finished:     { text: "text-teal-700",  bg: "bg-teal-50",    border: "border-teal-300" },
-  pending_list: { text: "text-violet-700",bg: "bg-violet-50",  border: "border-violet-300" },
-  live:         { text: "text-green-700", bg: "bg-green-50",   border: "border-green-300" },
-};
+/** 状态列筛选下拉(借用 StatusPicker 的配置入口思路,简化为文字下拉) */
+function StatusFilter({
+  value, onChange, statuses,
+}: {
+  value: ProductStatus | "all";
+  onChange: (v: ProductStatus | "all") => void;
+  statuses: StatusDef[];
+}) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value as ProductStatus | "all")}
+      className="text-[12px] border border-gray-200 rounded-xl px-3 py-1.5 bg-white text-gray-600 focus:outline-none focus:border-primary-500"
+      title="按工序状态筛选">
+      <option value="all">全部状态</option>
+      {statuses.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+    </select>
+  );
+}
 
 /** 图片堆叠错位预览:最多 4 张 + N 标记; overrideUrl(用户上传)优先级最高,作为生成图的替换覆盖 */
 function StackedThumbs({ product }: { product: Product }) {
-  // 合并 images[] + 遗留 imageUrl(兼容未迁移数据),主图排最前,线稿排最后(缩略图不突显线稿)
   const raw = (product.images ?? []).filter((im): im is typeof im & { url: string } => !!im.url);
   if (!raw.some((im) => im.slot === MAIN_SLOT) && product.imageUrl) {
     raw.unshift({ slot: MAIN_SLOT, label: "主图", url: product.imageUrl });
@@ -326,29 +346,5 @@ function TabBtn({ current, value, onClick, label }: { current: TabKey; value: Ta
       {label}
     </button>
   );
-}
-
-function StatusSelect({ product, onChange }: { product: Product; onChange: (s: ProductStatus) => void }) {
-  const c = STATUS_COLORS[product.status] ?? STATUS_COLORS.draft;
-  return (
-    <select
-      value={product.status}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => onChange(e.target.value as ProductStatus)}
-      className={`text-[12px] px-2 py-1 rounded-lg border ${c.bg} ${c.text} ${c.border} focus:outline-none focus:border-primary-500 max-w-[150px]`}
-      title="点击切换工序状态"
-    >
-      {STATUS_FLOW.map((s) => (
-        <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-      ))}
-    </select>
-  );
-}
-
-function SkillsBadge({ productId }: { productId: string }) {
-  const skills = useSkillStore();
-  const n = skills.articles.filter((a) => (a.relatedProducts ?? []).includes(productId)).length;
-  if (n === 0) return <span className="text-[11px] text-gray-400">—</span>;
-  return <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary-100 text-primary-600">ⓢ {n}</span>;
 }
 
