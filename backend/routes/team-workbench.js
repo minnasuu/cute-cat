@@ -472,7 +472,7 @@ router.get('/materials', asyncHandler(async (req, res) => {
 router.post('/materials', asyncHandler(async (req, res) => {
   const data = pickDefined(req.body ?? {}, [
     'slug', 'category', 'name', 'code', 'supplier', 'origin',
-    'colors', 'composition', 'weight', 'texture', 'finish',
+    'colors', 'colorImages', 'composition', 'weight', 'texture', 'finish',
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',
@@ -492,6 +492,7 @@ router.post('/materials', asyncHandler(async (req, res) => {
         supplier: data.supplier || null,
         origin: data.origin || null,
         colors: Array.isArray(data.colors) ? data.colors : [],
+        colorImages: Array.isArray(data.colorImages) ? data.colorImages : [],
         composition: data.composition || null,
         weight: data.weight || null,
         texture: data.texture || null,
@@ -526,7 +527,7 @@ router.patch('/materials/:id', asyncHandler(async (req, res) => {
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, [
     'slug', 'category', 'name', 'code', 'supplier', 'origin',
-    'colors', 'composition', 'weight', 'texture', 'finish',
+    'colors', 'colorImages', 'composition', 'weight', 'texture', 'finish',
     'width', 'thickness', 'diameter', 'size', 'tex', 'shape',
     'originNote', 'care', 'uses', 'seasons', 'notes',
     'priceAmount', 'priceCur', 'priceUnit', 'priceNote',

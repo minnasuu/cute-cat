@@ -94,12 +94,14 @@ export default function MaterialsPage() {
   const handleSave = useCallback(async (values: Partial<MaterialRow> & { colorImages: Card[] }, pendingFiles?: (File | null)[]) => {
     if (!teamId) return;
     const api = teamApi(teamId);
-    // 从 payload 中剥离 colorImages,永远不写入 create/update
-    const { colorImages: _ci, ...data } = values;
-    void _ci;
+    // colorImages 含 hex + name + 已有 url,直接写入 create/update 主记录
     const files = pendingFiles || [];
-    const payload: any = { ...data };
-    for (const k of Object.keys(payload)) { if (payload[k] === "") payload[k] = null; }
+    const payload: any = { ...values };
+    for (const k of Object.keys(payload)) {
+      // colorImages 作为 Json 列保留为数组,其余空串字段置 null
+      if (k === "colorImages") continue;
+      if (payload[k] === "") payload[k] = null;
+    }
     let id = payload.id as string | undefined;
     if (id) {
       await api.updateMaterial(id, payload);
@@ -355,6 +357,11 @@ function MaterialForm({ initial, onCancel, onSave }: {
         texture: texture.trim() || null,
         finish: finish.trim() || null,
         colors: cards.map((c) => c.hex).filter(Boolean),
+        // 完整色卡(含 hex + name + 已有 url);File 对象单独走 uploadMaterialColorImage
+        // 注:url 为空串的色卡 = 有颜色/名但尚未上传图(或从库选的纯色卡),需一并持久化;三项全空视为未填写,过滤掉
+        colorImages: cards
+          .map((c) => ({ hex: c.hex || "", name: c.name || "", url: c.url || "" }))
+          .filter((c) => c.hex || c.name || c.url),
         notes: notes.trim() || null,
         priceAmount: priceAmount ? Number(priceAmount) : null,
         priceCur,
@@ -362,7 +369,6 @@ function MaterialForm({ initial, onCancel, onSave }: {
         uses: uses.split("\n").map((s) => s.trim()).filter(Boolean),
         care: care.split("\n").map((s) => s.trim()).filter(Boolean),
         seasons: seasons.split("\n").map((s) => s.trim()).filter(Boolean),
-        // colorImages 仅含可 JSON 序列化的字段;File 对象单独走 uploadMaterialColorImage
       };
       // 颜色图逐张压缩后单独传;create/update 接口不带 colorImages
       const pendingFiles = await Promise.all(cards.map(async (c) => {
