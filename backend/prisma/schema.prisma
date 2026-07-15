@@ -31,6 +31,7 @@ model User {
   teams         Team[]
   aiCallLogs    AICallLog[]
   coinTransactions CoinTransaction[]
+  communityPosts CommunityPost[]
   invitedUsers  User[]    @relation("UserInvites")
   invitedBy     User?     @relation("UserInvites", fields: [invitedById], references: [id])
 
@@ -423,6 +424,8 @@ model LAProduct {
   imageUrl          String?
   /** 是否公开到社区 */
   isPublic          Boolean  @default(false)
+  /** 社区中该作品的公开帖子(反向关系) */
+  communityPosts    CommunityPost[]
   status            String   @default("draft")
   statusHistory     Json     @default("[]")
   createdAt         DateTime @default(now())
