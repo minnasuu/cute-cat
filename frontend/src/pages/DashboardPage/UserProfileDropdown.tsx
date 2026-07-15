@@ -69,25 +69,39 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
     setOpen(true);
   };
 
+  const handlePersonalCenter = () => {
+    setOpen(false);
+    navigate("/account");
+  };
+
   return (
     <div ref={ref} className="relative">
       {/* Trigger */}
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full ${open ? 'bg-surface-secondary' : 'hover:bg-surface-secondary'} transition-colors`}
+        className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full ${open ? "bg-surface-secondary" : "hover:bg-surface-secondary"} transition-colors`}
       >
         <div className="w-8 h-8 rounded-full bg-primary-100 border border-primary-200 flex items-center justify-center text-sm font-black text-primary-600 select-none">
           {user.nickname.charAt(0).toUpperCase()}
         </div>
-        <span className="text-sm font-bold text-text-primary hidden sm:inline truncate max-w-[200px]">{user.nickname}</span>
+        <span className="text-sm font-bold text-text-primary hidden sm:inline truncate max-w-[200px]">
+          {user.nickname}
+        </span>
         <span className="px-2 py-0.5 bg-primary-50 border border-primary-200 text-primary-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
           {roleLabel}
         </span>
         <svg
-          className={`w-3.5 h-3.5 text-text-tertiary transition-transform ${open ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+          className={`w-3.5 h-3.5 text-text-tertiary transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19 9l-7 7-7-7"
+          />
         </svg>
       </button>
 
@@ -101,27 +115,45 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                 {user.nickname.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-bold text-text-primary truncate">{user.nickname}</div>
-                <div className="text-xs text-text-tertiary truncate">{user.email}</div>
+                <div className="text-sm font-bold text-text-primary truncate">
+                  {user.nickname}
+                </div>
+                <div className="text-xs text-text-tertiary truncate">
+                  {user.email}
+                </div>
               </div>
             </div>
           </div>
 
           {/* Coins section */}
           <div className="px-5 py-4 space-y-3">
-            <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">我的喵币</p>
+            <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">
+              我的喵币
+            </p>
 
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-secondary">余额</span>
-              <span className="text-sm font-black text-text-primary">🐾 {user.coins}</span>
+              <span className="text-xs font-medium text-text-secondary">
+                余额
+              </span>
+              <span className="text-sm font-black text-text-primary">
+                🐾 {user.coins}
+              </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-secondary">历史执行次数</span>
-              <span className="text-xs font-bold text-text-primary">{workflowRuns}</span>
+              <span className="text-xs font-medium text-text-secondary">
+                历史执行次数
+              </span>
+              <span className="text-xs font-bold text-text-primary">
+                {workflowRuns}
+              </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-secondary">角色 AI 调用（计次）</span>
-              <span className="text-xs font-bold text-text-primary">{totalAiCalls}</span>
+              <span className="text-xs font-medium text-text-secondary">
+                角色 AI 调用（计次）
+              </span>
+              <span className="text-xs font-bold text-text-primary">
+                {totalAiCalls}
+              </span>
             </div>
             <Link
               to="/account"
@@ -135,7 +167,9 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
           {/* 最近登录账号 */}
           {knownAccounts.length > 0 && (
             <div className="px-3 py-2 border-t border-border">
-              <p className="px-2 pt-1 pb-1.5 text-[10px] font-bold text-text-tertiary uppercase tracking-widest">切换账号</p>
+              <p className="px-2 pt-1 pb-1.5 text-[10px] font-bold text-text-tertiary uppercase tracking-widest">
+                切换账号
+              </p>
               {knownAccounts.map((acc) => (
                 <div
                   key={acc.email}
@@ -146,8 +180,12 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                     {acc.nickname.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-text-primary truncate">{acc.nickname}</div>
-                    <div className="text-[11px] text-text-tertiary truncate">{acc.email}</div>
+                    <div className="text-sm font-medium text-text-primary truncate">
+                      {acc.nickname}
+                    </div>
+                    <div className="text-[11px] text-text-tertiary truncate">
+                      {acc.email}
+                    </div>
                   </div>
                   <button
                     onClick={(e) => handleRemoveAccount(e, acc.email)}
@@ -163,13 +201,12 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
 
           {/* Actions */}
           <div className="px-3 py-2 border-t border-border">
-            <Link
-              to="/account"
-              onClick={() => setOpen(false)}
+            <button
+              onClick={handlePersonalCenter}
               className="block w-full px-3 py-2.5 text-sm font-medium text-text-tertiary hover:text-text-primary hover:bg-surface-secondary rounded-xl transition-colors"
             >
               个人中心
-            </Link>
+            </button>
             <button
               onClick={handleLogout}
               className="w-full px-3 py-2.5 text-sm font-medium text-text-tertiary hover:text-danger-500 hover:bg-danger-50 rounded-xl transition-colors text-left cursor-pointer"
