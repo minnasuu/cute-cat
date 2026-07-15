@@ -421,6 +421,8 @@ model LAProduct {
   barcode           String?
   whLocation        String?
   imageUrl          String?
+  /** 是否公开到社区 */
+  isPublic          Boolean  @default(false)
   status            String   @default("draft")
   statusHistory     Json     @default("[]")
   createdAt         DateTime @default(now())
@@ -445,4 +447,28 @@ model LACollection {
   createdAt    DateTime @default(now())
   updatedAt   DateTime @updatedAt
   @@index([teamId])
+}
+
+// ==================== 社区 —— 作品/反馈/通知 ====================
+
+model CommunityPost {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // work(作品) / feedback(反馈) / announcement(官方通知)
+  title       String
+  content     String?  @db.Text
+  /** 作品图数组:[{slot,label,url}] */
+  images      Json     @default("[]")
+  /** 作品类型时关联的 LAProduct.id */
+  refProductId String?
+  refProduct  LAProduct? @relation(fields: [refProductId], references: [id], onDelete: SetNull)
+  likes       Int      @default(0)
+  pinned      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([type, createdAt])
+  @@index([userId])
+  @@index([refProductId])
 }

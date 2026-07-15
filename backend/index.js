@@ -59,6 +59,7 @@ app.use('/api/assets', require('./routes/assets'));
 app.use('/api/email', require('./routes/email'));
 app.use('/api/account', require('./routes/account'));
 app.use('/api/workspaces', require('./routes/workspaces'));
+app.use('/api/community', require('./routes/community'));
 app.use('/health', require('./routes/health'));
 
 if (process.env.NODE_ENV === 'production') {
