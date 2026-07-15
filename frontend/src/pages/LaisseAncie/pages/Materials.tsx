@@ -33,34 +33,6 @@ function toCards(m: MaterialRow): Card[] {
   return [{ hex: "#cccccc", name: "", url: "", outOfStock: false, imageFile: null }];
 }
 
-const SEED: MaterialRow[] = [
-  {
-    id: "fabric-silk-001", slug: "lashed-silk-satin", category: "面料", name: "水洗真丝贡丝锦",
-    code: "HK-SS-21", supplier: "Silk Workshop Hangzhou", origin: "Hangzhou · China",
-    composition: "100% mulberry silk · 19 momme satin ground", weight: "19 momme", width: "135 cm",
-    finish: "garment-washed stone", care: ["hand-wash ≤30 °C", "no bleach", "iron reverse-side"],
-    uses: ["bias-cut slip dresses", "tailored camp-collar shirting"], seasons: ["SS", "Resort"],
-    priceAmount: 86, priceCur: "CNY", priceUnit: "/ metre · 135 cm", priceNote: "MOQ 100 m · lead 30 days",
-    colors: ["#d8c9a3", "#a89274", "#9b6a3a", "#1f3a44"],
-  },
-  {
-    id: "fabric-wool-001", slug: "double-face-merino", category: "面料", name: "双面美利奴法兰绒",
-    code: "BC-DF-1403", supplier: "Biella Textile Co.", origin: "Biella · Italy",
-    composition: "100% extra-fine ZQ Merino · 310 g/m² double-face", weight: "310 g/m²", width: "150 cm",
-    finish: "double-face, ready-to-cut selvedge",
-    care: ["dry-clean recommended", "steam only"], uses: ["unlined blazers", "duster coats"], seasons: ["FW", "Pre-fall"],
-    priceAmount: 112, priceCur: "EUR", priceUnit: "/ metre · 150 cm",
-    colors: ["#2c2a2d", "#8a8580", "#d3c4a9", "#c59289"],
-  },
-  {
-    id: "fabric-linen-001", slug: "linen-plain", category: "面料", name: "法国亚麻平纹",
-    code: "FR-LN-001", supplier: "Tissage de France", origin: "Normandie · France",
-    composition: "100% flax · 180 g/m² plain", weight: "180 g/m²", width: "150 cm",
-    uses: ["summer shirts", "trousers"], seasons: ["SS"],
-    priceAmount: 54, priceCur: "EUR", priceUnit: "/ metre · 150 cm",
-  },
-];
-
 export default function MaterialsPage() {
   const { teamId } = useCurrentTeam();
   const [q, setQ] = useState("");
@@ -73,9 +45,10 @@ export default function MaterialsPage() {
     setLoading(true);
     try {
       const r = await teamApi(tid).listMaterials();
-      setRows((!r || r.length === 0) ? SEED : r);
+      // 新用户从空开始,不再兜底填充 demo 色卡
+      setRows(Array.isArray(r) ? r : []);
     } catch {
-      setRows(SEED);
+      setRows([]);
     } finally { setLoading(false); }
   }, []);
 

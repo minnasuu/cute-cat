@@ -15,6 +15,7 @@ import type { SkillArticle } from "../LaisseAncie/types/skill";
 import type { StyleRow } from "../LaisseAncie/types/design";
 
 export interface BrandProfile {
+  logo?: string | null;
   nameZh?: string;
   nameEn?: string;
   sloganZh?: string;

@@ -30,7 +30,10 @@ import { matchInspirations, type MatchedInspiration } from "../lib/inspiration-m
 import { parseDesignProposal, extractHexColors } from "../lib/design-proposal";
 import { useEditingProduct } from "../contexts/editing-product";
 import { useComposerPrompt } from "../contexts/composer-prompt";
-import { SwatchStrip } from "../pages/Materials";
+import { ImageCard, LiveElapsed, Field, type GeneratedImage } from "./image-card";
+import { RecForm } from "./rec-form";
+import ComposerBrief from "./ComposerBrief";
+import ComposerPipeline from "./ComposerPipeline";
 
 type DesignStage =
   | "greeting"
@@ -276,14 +279,6 @@ async function streamChat(opts: {
   }
 }
 
-interface GeneratedImage {
-  slot: string;
-  label: string;
-  url?: string;
-  prompt?: string;
-  error?: string;
-}
-
 export default function ComposerPage({
   mode: modeProp,
   knowledge,
@@ -323,6 +318,11 @@ export default function ComposerPage({
   const referencesRef = useRef<InspirationItem[]>([]); // ref 镜像,避免 saveToLookbook 闭包读到旧值
   const intentRef = useRef<DesignIntent | null>(null); // 最近一次解析的设计意图,供线稿生成取 top-2 参考灵感
   const [recommendation, setRecommendation] = useState<MaterialRecommendation | null>(null); // AI 推荐的材质+配色方案
+  // 结构化设计简报(稳定左栏):名称 + 描述 + 参考灵感,与 chat 管线并存
+  const [designName, setDesignName] = useState("");
+  const [briefDescription, setBriefDescription] = useState("");
+  interface BriefRef { id: string; url: string; name: string; source: "upload" | "library"; category?: string | null; visualStyle?: string | null; analysisStatus?: string | null; }
+  const [briefRefs, setBriefRefs] = useState<BriefRef[]>([]);
   const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
 
   /** 从已解析灵感列表中取最多 2 个 category 作为产品品类展示 */
@@ -548,6 +548,29 @@ export default function ComposerPage({
     ].filter(Boolean).join("\n\n");
 
     return { block, refs, intent };
+  }
+
+  /** 从结构化简报生成:组合名称/描述/参考灵感为 prompt,清洗开场 greeting 后走 chat 企划流程 */
+  async function generateFromBrief() {
+    if (busy || knowledgeLoading || !designName.trim()) return;
+    const parts = [
+      `设计名称:${designName.trim()}`,
+      briefDescription.trim() ? `设计需求:${briefDescription.trim()}` : "",
+      briefRefs.length ? `参考灵感:${briefRefs.map((r) => r.name || r.category || "灵感").join("、")}` : "",
+    ].filter(Boolean);
+    const composed = `请基于以下简报开始设计企划:\n${parts.join("\n")}`;
+    // 清洗开场 greeting / 历史,从简报干净起步
+    setMsgs([]);
+    setStage("greeting");
+    setPlanText("");
+    // 档案化参考灵感到主 references(供系统 prompt 灵感池引用)
+    setReferences((prev) => [
+      ...prev,
+      ...briefRefs
+        .filter((b) => b.source === "library")
+        .map((b) => ({ id: b.id, url: b.url, category: b.category, visualStyle: b.visualStyle }) as any),
+    ]);
+    await send(composed);
   }
 
   /** 单品 / 系列:chat 主流程(设计顾问 + 灵感 + 知识 → 方案) */
@@ -1026,7 +1049,9 @@ export default function ComposerPage({
   // 线稿确认按钮(仅 presenting-lineart)
   const canConfirmLineart = mode !== "illustration" && stage === "presenting-lineart";
 
-  return (
+  // 插画模式沿用原 chat + 画布/侧栏布局(保持不动);单品/系列走结构化双栏(设计简报 + 生成流程)
+  if (mode === "illustration") {
+    return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] h-[calc(100vh-64px)] min-h-0">
         <div className="flex flex-col min-h-0">
@@ -1093,18 +1118,6 @@ export default function ComposerPage({
                     className={`px-3 py-1 rounded-md transition-colors ${(illustOutputMode === "html") ? "bg-primary-500 text-white font-medium" : "text-gray-600 hover:text-primary-600"}`}
                   >HTML</button>
                 </div>
-              </div>
-            )}
-
-            {/* 极速模式开关(仅 single 模式,企划确认后) */}
-            {canGenerate && mode === "single" && (
-              <div className="flex justify-center">
-                <label className="flex items-center gap-2 text-[12px] text-gray-600 cursor-pointer select-none py-1.5 px-3 rounded-lg bg-white border border-gray-200 hover:border-gray-300">
-                  <input type="checkbox" checked={expressMode}
-                    onChange={(e) => setExpressMode(e.target.checked)}
-                    className="rounded border-gray-300 text-primary-500 focus:ring-primary-400 cursor-pointer" />
-                  极速模式(跳过线稿和选材料,直接出图)
-                </label>
               </div>
             )}
 
@@ -1181,7 +1194,7 @@ export default function ComposerPage({
           <PromptBar
             placeholder={
               knowledgeLoading ? "加载知识库中…" :
-                stage === "greeting" ? (mode === "illustration" ? "输入一个主题 + 风格(如:猫咪 / 复古水彩)…" : "输入一个主题(猫咪/玫瑰/海洋/节气/极简…)") :
+                stage === "greeting" ? "输入一个主题 + 风格(如:猫咪 / 复古水彩)…" :
                   stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
                     (stage === "planning" || stage === "proposal") ? "确认方案(OK/开始),或提出修改意见…" :
                       (stage === "presenting" || stage === "presenting-html") ? "描述你想修改的地方…" :
@@ -1203,6 +1216,52 @@ export default function ComposerPage({
         ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} stage={stage} onSaveToLookbook={saveToLookbook} />
         : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
       }
+    </>
+    );
+  }
+
+  // ── 单品 / 系列:结构化双栏 ──
+  // 左:设计简报(固定表单 + 多轮细化输入) 右:生成流程(企划→线稿→材质→终稿)
+  const hasImg = images.some((im) => im.url);
+  return (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
+        <div className="overflow-y-auto bg-white border-r border-gray-200 min-h-0">
+          <ComposerBrief
+            designName={designName} setDesignName={setDesignName}
+            description={briefDescription} setDescription={setBriefDescription}
+            references={briefRefs as any} setReferences={setBriefRefs as any}
+            knowledge={knowledge} brandLoading={brandLoading} knowledgeLoading={knowledgeLoading}
+            generating={generating}
+            onGenerate={() => void generateFromBrief()}
+            onRefine={(t) => void send(t)}
+            onNewSession={resetSession}
+            refineBusy={busy}
+          />
+        </div>
+
+        {/* 右:生成流程 */}
+        <ComposerPipeline
+          stage={stage}
+          planText={planText}
+          images={images}
+          recommendation={recommendation}
+          generating={generating}
+          expressMode={expressMode}
+          onConfirmProposal={() => void startGeneration()}
+          onConfirmLineart={() => void confirmLineart()}
+          onGenerateFinal={() => void generateFinal()}
+          onRegenerateOne={regenerateOne}
+          onSaveToLookbook={saveToLookbook}
+          onRecommendationChange={setRecommendation}
+          onRefreshRecommendation={fetchRecommendation}
+        />
+      </div>
+
+      {/* 移动端抽屉(<md):单品走结构化方案/材质/成图抽屉 */}
+      {isMobile && (
+        <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
+      )}
     </>
   );
 }
@@ -1344,119 +1403,6 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation
   );
 }
 
-/** 材质+配色推荐编辑表单 */
-function RecForm({ recommendation, onChange, onRefresh, onConfirm, loading, disabled }: {
-  recommendation: MaterialRecommendation | null;
-  onChange: (r: MaterialRecommendation) => void;
-  onRefresh: () => void;
-  onConfirm: () => void;
-  loading: boolean;
-  disabled: boolean;
-}) {
-  const inputCls = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500 bg-white";
-  const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1 block";
-
-  if (loading || !recommendation) {
-    return (
-      <div>
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">AI 材质推荐</div>
-        <div className="text-[12px] text-gray-500">推荐中…</div>
-      </div>
-    );
-  }
-
-  const setField = (field: keyof MaterialRecommendation, value: any) => {
-    onChange({ ...recommendation, [field]: value });
-  };
-
-  const addColor = () => {
-    if (recommendation.colors.length >= 5) return;
-    onChange({ ...recommendation, colors: [...recommendation.colors, '#CCCCCC'] });
-  };
-
-  const removeColor = (idx: number) => {
-    if (recommendation.colors.length <= 1) return;
-    onChange({ ...recommendation, colors: recommendation.colors.filter((_, i) => i !== idx) });
-  };
-
-  const updateColor = (idx: number, hex: string) => {
-    const next = [...recommendation.colors];
-    next[idx] = hex;
-    onChange({ ...recommendation, colors: next });
-  };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500">AI 材质推荐</div>
-        <button onClick={onRefresh} disabled={disabled} className="text-[10px] text-primary-600 hover:underline disabled:opacity-40">
-          换一批
-        </button>
-      </div>
-
-      {/* 材质名 */}
-      <label className={labelCls}>材质名</label>
-      <input className={`${inputCls} mb-2.5`} value={recommendation.name}
-        onChange={(e) => setField('name', e.target.value)} placeholder="如:真丝双绉 / 棉麻平纹"
-        disabled={disabled} />
-
-      {/* 成分 */}
-      <label className={labelCls}>成分 / 克重</label>
-      <input className={`${inputCls} mb-2.5`} value={recommendation.composition ?? ''}
-        onChange={(e) => setField('composition', e.target.value)} placeholder="如:100%桑蚕丝 16mm"
-        disabled={disabled} />
-
-      {/* 触感 */}
-      <label className={labelCls}>触感 / 表面</label>
-      <input className={`${inputCls} mb-2.5`} value={recommendation.texture ?? ''}
-        onChange={(e) => setField('texture', e.target.value)} placeholder="如:光滑垂坠 / 粗粝自然"
-        disabled={disabled} />
-
-      {/* 后整 */}
-      <label className={labelCls}>后整工艺</label>
-      <input className={`${inputCls} mb-2.5`} value={recommendation.finish ?? ''}
-        onChange={(e) => setField('finish', e.target.value)} placeholder="如:哑光 / 丝光 / 水洗"
-        disabled={disabled} />
-
-      {/* 配色 */}
-      <div className="flex items-center justify-between mb-1">
-        <label className={`${labelCls} !mb-0`}>配色 ({recommendation.colors.length}/5)</label>
-        <button onClick={addColor} disabled={disabled || recommendation.colors.length >= 5}
-          className="text-[10px] text-primary-600 hover:underline disabled:opacity-40">+ 添加</button>
-      </div>
-      <div className="space-y-1.5 mb-3">
-        {recommendation.colors.map((c, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <input type="color" value={c} disabled={disabled}
-              onChange={(e) => updateColor(i, e.target.value)}
-              className="w-7 h-7 rounded border border-gray-200 cursor-pointer" />
-            <input className={`${inputCls} !py-1 flex-1`} value={c}
-              onChange={(e) => updateColor(i, e.target.value)} disabled={disabled} />
-            <button onClick={() => removeColor(i)} disabled={disabled || recommendation.colors.length <= 1}
-              className="text-[10px] text-gray-400 hover:text-red-500 disabled:opacity-30 shrink-0">✕</button>
-          </div>
-        ))}
-      </div>
-
-      {/* 配色预览 */}
-      <div className="relative h-6 rounded-lg overflow-hidden border border-gray-200 mb-3">
-        <SwatchStrip colors={recommendation.colors} />
-      </div>
-
-      {/* 推荐理由 */}
-      {recommendation.reason && (
-        <div className="text-[10px] text-gray-500 mb-3 italic">💬 {recommendation.reason}</div>
-      )}
-
-      {/* 确认按钮 */}
-      <button onClick={onConfirm} disabled={disabled || !recommendation.name.trim()}
-        className="w-full text-[12px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-3 py-2 rounded-lg font-medium transition-colors">
-        确认材质方案,生成效果图
-      </button>
-    </div>
-  );
-}
-
 /** 移动端企划抽屉(<md 才渲染),挂在 Composer 外层由父组件组合。 */
 export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating, expressMode }: {
   planText: string; open: boolean; onClose: () => void; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void;
@@ -1594,55 +1540,3 @@ export function IllustrationCanvasDrawer({ html, generating, open, onClose, onMo
   );
 }
 
-/** 单张设计图卡片 + 修图输入 */
-function ImageCard({ image, onRegenerate }: { image: GeneratedImage; onRegenerate: (inst: string) => void }) {
-  const [inst, setInst] = useState("");
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-      <div className="bg-gray-100 overflow-hidden">
-        {image.url ? (
-          <img src={image.url} alt={image.label} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">{image.error || "生成失败"}</div>
-        )}
-      </div>
-      <div className="p-2">
-        <div className="text-[11px] text-gray-600 font-medium mb-1">{image.label}</div>
-        {!open ? (
-          <button onClick={() => setOpen(true)} className="text-[10px] text-primary-600 hover:underline">修改</button>
-        ) : (
-          <div className="flex gap-1">
-            <input value={inst} onChange={(e) => setInst(e.target.value)} placeholder="修改意见…"
-              className="flex-1 text-[11px] border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-primary-500" />
-            <button onClick={() => { onRegenerate(inst); setInst(""); setOpen(false); }}
-              className="text-[10px] bg-primary-500 text-white px-2 rounded hover:bg-primary-500">生成</button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** 实时计时器(请求进行中显示) */
-function LiveElapsed({ startedAt, setTick }: { startedAt: number; setTick: React.Dispatch<React.SetStateAction<number>> }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = globalThis.setInterval(() => {
-      setNow(Date.now());
-      setTick((t) => t + 1);
-    }, 500);
-    return () => globalThis.clearInterval(id);
-  }, [setTick]);
-  const elapsed = now - startedAt;
-  return <div className="text-gray-500 max-w-[80%] inline-block whitespace-nowrap">请求中…{formatDuration(elapsed)}</div>;
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>
-      <div className="text-[12.5px] text-gray-700 whitespace-pre-wrap">{value}</div>
-    </div>
-  );
-}

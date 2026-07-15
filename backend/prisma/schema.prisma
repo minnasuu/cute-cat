@@ -193,14 +193,14 @@ model VibeFontAsset {
 model LABrandProfile {
   id              String   @id @default(uuid())
   teamId          String   @unique
-  nameZh          String
-  nameEn          String
+  logo            String?
+  nameZh          String?
+  nameEn          String?
   cnFont          String   @default("站酷xiaowei体")
   enFont          String   @default("Poller One")
-  sloganZh        String
-  sloganEn        String
-  greetingEn      String?
-  voice           Json     @default("[\"优雅\",\"松弛\",\"乐趣\"]")
+  sloganZh        String?
+  sloganEn        String?
+  voice           Json     @default("[]")
   audienceAgeMin  Int      @default(18)
   audienceAgeMax  Int      @default(30)
   priceMin        Int      @default(20)

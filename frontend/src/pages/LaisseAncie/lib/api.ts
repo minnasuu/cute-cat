@@ -41,6 +41,12 @@ export function teamApi(teamId: string) {
     // brand
     getBrand: () => _apiClient.get(pre('/brand')),
     patchBrand: (body: Record<string, unknown>) => _apiClient.patch(pre('/brand'), body),
+    // 品牌标识图上传(multipart, field "file") —— 写入 profile.logo,返回 { id, url }
+    uploadBrandLogo: (formData: FormData) =>
+      fetch(pre('/brand/logo'), { method: "POST", body: formData, credentials: "include" }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      }),
 
     // assets(通用资产)
     listAssets: (kind?: string) =>

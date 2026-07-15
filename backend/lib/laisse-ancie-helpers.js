@@ -14,15 +14,14 @@ function defaultBrand(partial) {
     nameEn: partial.nameEn || 'Laisse Ancie',
     cnFont: partial.cnFont || '站酷xiaowei体',
     enFont: partial.enFont || 'Poller One',
-    sloganZh: partial.sloganZh || '既来之，则安之',
-    sloganEn: partial.sloganEn || 'Just Open Yourself, Enjoy Life & Love.',
-    greetingEn: partial.greetingEn || "Good morning, It's another beautiful day!",
-    voice: partial.voice || ['优雅', '松弛', '乐趣'],
+    sloganZh: partial.sloganZh || '',
+    sloganEn: partial.sloganEn || '',
+    voice: partial.voice || [],
     audienceAgeMin: partial.audienceAgeMin ?? 18,
     audienceAgeMax: partial.audienceAgeMax ?? 30,
     priceMin: partial.priceMin ?? 20,
     priceMax: partial.priceMax ?? 500,
-    systemSnippet: partial.systemSnippet || defaultSystemSnippet(),
+    systemSnippet: partial.systemSnippet || null,
   };
 }
 

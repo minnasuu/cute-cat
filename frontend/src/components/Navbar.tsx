@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import CatLogo from './CatLogo';
@@ -44,9 +44,32 @@ const Navbar: React.FC<NavbarProps> = ({
   logoSize = 40,
 }) => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const isFixed = variant === 'fixed';
+
+  // 用户菜单:开关 + 点击外部关闭
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [menuOpen]);
+
+  const handleLogout = async () => {
+    setMenuOpen(false);
+    await logout();
+    navigate('/login');
+  };
+  const handleSwitchAccount = async () => {
+    setMenuOpen(false);
+    await logout();
+    navigate('/login');
+  };
 
   const headerClass = isFixed
     ? `fixed top-0 w-full z-50 transition-all duration-500 flex justify-between px-6 items-center ${scrolled ? 'py-3 bg-surface/80 backdrop-blur-xl' : 'py-5 bg-transparent'}`
@@ -56,14 +79,33 @@ const Navbar: React.FC<NavbarProps> = ({
     ? "" // fixed variant uses the header itself as flex container
     : "mx-auto px-6 h-16 flex items-center justify-between";
 
-  /* Default right section: user avatar (first char of nickname) + name */
+  /* Default right section: 用户头像(可展开菜单) + 名称 / 未登录登录入口 */
   const initial = (user?.nickname || user?.email || "?").trim().charAt(0).toUpperCase();
   const defaultRight = user ? (
     <div className="flex items-center gap-2">
       <ThemeToggle />
-      <span className="text-sm font-medium text-text-secondary max-w-[120px] truncate">{user.nickname || user.email}</span>
-      <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-bold flex items-center justify-center shrink-0">
-        {initial}
+      <div className="relative" ref={menuRef}>
+        <button onClick={() => setMenuOpen((o) => !o)}
+          className="flex items-center gap-2 rounded-full pr-0.5 pl-0.5 py-0.5 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+          <span className="text-sm font-medium text-text-secondary max-w-[120px] truncate">{user.nickname || user.email}</span>
+          <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-bold flex items-center justify-center shrink-0">
+            {initial}
+          </div>
+        </button>
+        {menuOpen && (
+          <div className="absolute right-0 mt-2 w-44 rounded-xl border border-border bg-surface shadow-lg overflow-hidden text-sm z-50">
+            <div className="px-3 py-2 border-b border-border">
+              <div className="font-medium text-text-primary truncate">{user.nickname || user.email}</div>
+              {user.nickname && <div className="text-[11px] text-text-secondary truncate">{user.email}</div>}
+            </div>
+            <button onClick={handleSwitchAccount} className="w-full text-left px-3 py-2 text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+              切换账号
+            </button>
+            <button onClick={handleLogout} className="w-full text-left px-3 py-2 text-red-500 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+              退出登录
+            </button>
+          </div>
+        )}
       </div>
     </div>
   ) : (

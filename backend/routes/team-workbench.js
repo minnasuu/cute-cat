@@ -109,14 +109,16 @@ router.route('/brand')
   }))
   .patch(asyncHandler(async (req, res) => {
     const data = pickDefined(req.body ?? {}, [
-      'nameZh', 'nameEn', 'cnFont', 'enFont', 'sloganZh', 'sloganEn',
-      'greetingEn', 'voice', 'audienceAgeMin', 'audienceAgeMax', 'priceMin', 'priceMax',
+      'logo', 'nameZh', 'nameEn', 'cnFont', 'enFont', 'sloganZh', 'sloganEn',
+      'voice', 'audienceAgeMin', 'audienceAgeMax', 'priceMin', 'priceMax',
       'systemSnippet',
     ]);
+    // create 路径:直接落用户提交值(列已可空,无值=空 brand,不再注入 demo 填充);
+    // 仅补一个默认 systemSnippet 占位,避免 AI 侧拿到空串。
     const profile = await prisma.lABrandProfile.upsert({
       where: { teamId: req.team.id },
       update: data,
-      create: { teamId: req.team.id, ...defaultBrand(data) },
+      create: { teamId: req.team.id, ...data, systemSnippet: data.systemSnippet || null },
     });
     if (Array.isArray(req.body.colors)) {
       await prisma.lAColorPair.deleteMany({ where: { teamId: req.team.id } });
@@ -129,6 +131,31 @@ router.route('/brand')
     const pairs = await prisma.lAColorPair.findMany({ where: { teamId: req.team.id } });
     res.json({ profile, colors: pairs });
   }));
+
+// POST /api/teams/:teamId/brand/logo —— 上传品牌标识图,直接写入 profile.logo 并返回 { id, url }
+router.post('/brand/logo', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('[team-workbench] brand logo multer error:', err.message);
+      return res.status(400).json({ error: `上传失败: ${err.message}` });
+    }
+    if (!req.file) return res.status(400).json({ error: 'no file' });
+    try {
+      const savePath = createSavePath(`brands/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      const profile = await prisma.lABrandProfile.upsert({
+        where: { teamId: req.team.id },
+        update: { logo: url },
+        create: { teamId: req.team.id, logo: url },
+      });
+      res.json({ id: profile.id, url });
+    } catch (e) {
+      console.error('[team-workbench] upload brand logo failed:', e);
+      res.status(500).json({ error: `上传失败: ${e.message}` });
+    }
+  });
+});
 
 /* ─── assets (通用资产,替代旧 visual-assets) ──────────────────── */
 
