@@ -3,7 +3,16 @@
  * image-card —— 设计图稿渲染原语(从 Composer 抽出,供设计简报/生成流程双栏复用)。
  */
 import { useEffect, useState } from "react";
-import { formatDuration } from "../lib/design";
+
+/** 格式化耗时为可读字符串 */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  const rem = Math.round(s % 60);
+  return `${m}m${rem}s`;
+}
 
 export interface GeneratedImage {
   slot: string;
