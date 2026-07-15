@@ -23,6 +23,46 @@ const path = require('path');
 const crypto = require('crypto');
 const storage = require('./storage');
 
+// 本地静态挂载前缀 —— localPublicUrl 拼出 "/uploads/<relPath>",这里用于反向剥离
+const LOCAL_UPLOAD_PREFIX = '/uploads/';
+// 扩展名 → MIME,用于本地文件转 base64 data URI
+const EXT_MIME = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp',
+};
+
+/**
+ * 把本地相对路径(/uploads/<relPath>)读回文件并转成 data URI。
+ * Maizi 的 images 只接受 URL 或 data URI,本地模式 public url 是相对路径,
+ * 外部拉不到,必须回退成 base64 data URI 才能作为参考图使用。
+ * 读取失败 / 非本地路径时返回 null。
+ */
+function localUrlToDataUri(localUrl) {
+  if (!localUrl || typeof localUrl !== 'string' || !localUrl.startsWith(LOCAL_UPLOAD_PREFIX)) return null;
+  const relPath = localUrl.slice(LOCAL_UPLOAD_PREFIX.length);
+  const absPath = path.join(storage.UPLOAD_ROOT, relPath);
+  try {
+    if (!fs.existsSync(absPath)) return null;
+    const buf = fs.readFileSync(absPath);
+    const ext = path.extname(absPath).toLowerCase();
+    const mime = EXT_MIME[ext] || 'image/png';
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch (e) {
+    console.warn(`[gen-image] read local ref image failed: ${absPath} (${e?.message || e})`);
+    return null;
+  }
+}
+
+/**
+ * 归一化参考图条目: URL / data URI 原样,本地 /uploads/... 路径转 data URI,
+ * 其余值丢弃。保证下游 images 数组每项都合法。
+ */
+function normalizeRefImage(url) {
+  if (!url || typeof url !== 'string') return null;
+  if (/^https?:\/\//.test(url) || /^data:/i.test(url)) return url;
+  return localUrlToDataUri(url);
+}
+
 /* ─── provider 配置 ─────────────────────────────────────────── */
 // 当前仅支持 maizi(MaiziTech v2,gpt-image-2) —— 唯一生图模型。
 // 文档: https://www.maizitech.xyz/docs/images-v2
@@ -77,16 +117,19 @@ const PROVIDERS = {
     fallbackSize: '1024x1024',
     defaultResolution: () => process.env.MAIZI_RESOLUTION || '1K',
     defaultQuality: () => process.env.MAIZI_QUALITY || 'medium',
-    // buildBody: 多图原生参考 —— image 传 URL 数组(图1,图2, ...)。
-    // TODO(配对 Maizi 文档后确认):若端点要求单图、base64 或 multipart,只改此处。
+    // buildBody: 多图原生参考 —— images 传 URL / data URI 数组(图1,图2, ...)。
+    // Maizi 只接受 http(s) URL 或 data:image/...;base64,...;本地模式 public url
+    // 为相对路径 /uploads/...,外部拉不到,须回退成 data URI 再传入。
     buildBody: (model, prompt, size, referenceImages, cfg) => {
-      const images = Array.isArray(referenceImages) ? referenceImages.filter(Boolean) : [];
+      const images = (Array.isArray(referenceImages) ? referenceImages : [])
+        .map(normalizeRefImage)
+        .filter(Boolean);
       return {
         model,
         prompt,
         size,
         n: 1,
-        image: images.length ? images : undefined,
+        images: images.length ? images : undefined,
         resolution: cfg.defaultResolution(),
         quality: cfg.defaultQuality(),
         response_format: 'b64_json',
@@ -125,7 +168,8 @@ function resolveProvider(opts) {
  * @param {string} [opts.safeName='image'] 文件名前缀
  * @param {string} [opts.provider='maizi'] 生图模型提供商('maizi' 文生图 | 'maizi-image-edit' 多图参考)
  * @param {string} [opts.model] 覆盖 provider 默认模型 ID
- * @param {string[]} [opts.referenceImages] 参考图 URL 数组(材料图等),顺序即图序号(图1, 图2, ...)。
+ * @param {string[]} [opts.referenceImages] 参考图数组(材料图等),顺序即图序号(图1, 图2, ...)。
+ *   每项接受 http(s) URL、data URI,以及本地模式相对路径 /uploads/...(自动回退为 data URI)。
  *   若 provider 声明 imageRef:true → 走图生图/真·参考图请求体;
  *   否则 → 被忽略(纯文生图供应商),调用方应在 prompt 中自行描述。
  * @param {string} [opts.referenceImageUrl] @deprecated 单参考图旧写法,等价于 referenceImages:[url]。
