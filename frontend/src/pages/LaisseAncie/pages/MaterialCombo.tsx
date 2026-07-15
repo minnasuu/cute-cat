@@ -285,6 +285,15 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     const now = new Date().toISOString();
     const brandColors = (knowledge?.brand?.colors || []).map((c: any) => c?.bg || c).filter(Boolean);
     const mixName = batch.fabrics?.slice(0, 6).map((f) => (f?.name || "").split("·")[0].trim()).filter(Boolean).join(" + ");
+    // 参考图来源(仅「库」来源保留,上传项为 undefined → 弹窗不展示)
+    const sourceImages = doneItems.map((it) => {
+      const fRow = fabricRows[it.fi];
+      const sRow = styleRows[it.si];
+      const src: { style?: { url: string; name: string }; fabric?: { url: string; name: string } } = {};
+      if (fRow && fRow.kind === "library-fabric") src.fabric = { url: fRow.url, name: fRow.name };
+      if (sRow && sRow.kind === "library-style") src.style = { url: sRow.url, name: sRow.name };
+      return Object.keys(src).length ? src : undefined;
+    });
     const product: any = {
       mode: "material-combo",
       title: name || "未命名材料组合",
@@ -295,6 +304,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         label: mode === "color-mix" && mixName ? `拼色（${mixName}）` : `面料${it.fi + 1} × 款式${it.si + 1}`,
         url: it.url!,
       })),
+      sourceImages,
       aiDraftRaw: JSON.stringify({
         batchId: batch.batchId, mode, name, description,
         fabrics: batch.fabrics, styles: batch.styles, items: batch.items,

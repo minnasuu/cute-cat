@@ -808,6 +808,8 @@ router.post('/products', asyncHandler(async (req, res) => {
       techPackUrl: data.techPackUrl || null,
       // 设计工作流生成的图片数组:[{slot, label, url}]
       images: Array.isArray(data.images) ? data.images : [],
+      // 生成图来源(与 images 按索引对齐):每张效果图的款式图 / 面料图(仅库来源有值,上传为 undefined)
+      sourceImages: Array.isArray(data.sourceImages) ? data.sourceImages : [],
       html: typeof data.html === 'string' ? data.html : null,
       aiDraftRaw: data.aiDraftRaw || null,
       imageUrl: data.imageUrl || null,

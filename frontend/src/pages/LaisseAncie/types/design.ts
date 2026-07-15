@@ -54,6 +54,16 @@ export interface ProductImage {
   url: string;
 }
 
+/** 生成图(single image)的库来源:款式图 / 面料图(仅当来源为「库」时存在) */
+export interface SourceRef {
+  url: string;
+  name: string;
+}
+
+/** 单张生成图对应的参考图来源,与 Product.images 按索引对齐。
+ *  style/fabric 缺省 = 该项为上传(非库),弹窗里不展示。 */
+export type ImageSourceImages = { style?: SourceRef; fabric?: SourceRef };
+
 /** 面料色卡条目(colorImages 一项);同一面料多个颜色各一张图 */
 export interface ColorImageEntry {
   hex?: string;
@@ -110,6 +120,9 @@ export interface Product {
   recommendation?: MaterialRecommendation;
   /** 设计工作流生成的图片数组:[{slot, label, url}] */
   images?: ProductImage[];
+  /** 生成图来源(与 images 按索引对齐):每张效果图的款式图 / 面料图(仅库来源有值)。
+   *  材料组合模式专用,用于详情弹窗回溯参考图。 */
+  sourceImages?: ImageSourceImages[];
   /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */
   html?: string;
   aiDraftRaw?: string;

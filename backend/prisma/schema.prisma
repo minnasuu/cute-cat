@@ -365,6 +365,8 @@ model LAProduct {
   materialId        String?
   /** 设计工作流生成的图片数组:[{slot, label, url}] */
   images            Json     @default("[]")
+  /** 生成图来源(与 images 按索引对齐):每张效果图的款式图 / 面料图(仅库来源有值,上传为 undefined)。材料组合专用。 */
+  sourceImages      Json     @default("[]")
   /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */
   html              String?  @db.Text
   aiDraftRaw        String?  @db.Text

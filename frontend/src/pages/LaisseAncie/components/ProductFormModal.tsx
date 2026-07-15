@@ -127,10 +127,13 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
                   <figcaption className="px-2 py-1 text-[10px] text-gray-600 font-medium truncate">主图</figcaption>
                 </figure>
               )}
-              {productImages.map((im) => {
+              {productImages.map((im, idx) => {
                 const busy = replacingSlot === im.slot;
+                // 材料组合:该张效果图的库来源参考图(款式图 / 面料图),仅库来源有值
+                const src = product.mode === "material-combo" ? product.sourceImages?.[idx] : undefined;
+                const hasSrc = !!(src?.style || src?.fabric);
                 return (
-                  <figure key={im.slot} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+                  <figure key={im.slot + idx} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
                     <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-cover" /></div>
                     <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
                       <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
@@ -140,6 +143,17 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
                           onChange={(e) => { const f = e.target.files?.[0]; if (f) void replaceSlotImage(im.slot, f); e.target.value = ""; }} />
                       </label>
                     </figcaption>
+                    {/* 参考图来源(款式图 + 面料图),并排小缩略图,仅库来源项展示 */}
+                    {hasSrc && (
+                      <div className="px-2 pb-2 flex items-center gap-2 border-t border-gray-100 pt-1.5">
+                        {src?.style
+                          ? <SourceThumb kind="款式" img={src.style} />
+                          : <SourcePlaceholder kind="款式" />}
+                        {src?.fabric
+                          ? <SourceThumb kind="面料" img={src.fabric} />
+                          : <SourcePlaceholder kind="面料" />}
+                      </div>
+                    )}
                   </figure>
                 );
               })}
@@ -428,6 +442,26 @@ function Detail({ k, v }: { k: string; v?: string }) {
     <div>
       <span className="text-gray-500 text-[10px] uppercase tracking-wider">{k}</span>
       <div className="text-gray-700 whitespace-pre-wrap">{v}</div>
+    </div>
+  );
+}
+
+/** 参考图小缩略图(款式图 / 面料图) */
+function SourceThumb({ kind, img }: { kind: string; img: { url: string; name: string } }) {
+  return (
+    <div className="flex items-center gap-1 min-w-0" title={`${kind}: ${img.name}`}>
+      <img src={img.url} alt={img.name} className="w-7 h-7 rounded object-cover border border-gray-200 bg-gray-100 shrink-0" />
+      <span className="text-[9px] text-gray-500 truncate">{kind}</span>
+    </div>
+  );
+}
+
+/** 来源为上传(非库)时的占位,保持两张图对齐一致 */
+function SourcePlaceholder({ kind }: { kind: string }) {
+  return (
+    <div className="flex items-center gap-1" title={`${kind}: 用户上传(非库资源)`}>
+      <div className="w-7 h-7 rounded border border-dashed border-gray-200 bg-gray-50 flex items-center text-[8px] text-gray-300 shrink-0">—</div>
+      <span className="text-[9px] text-gray-400">{kind}</span>
     </div>
   );
 }
