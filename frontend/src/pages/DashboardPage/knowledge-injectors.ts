@@ -48,7 +48,7 @@ type Injector = (prompt: string, deps: KnowledgeDeps) => string;
 const skillInjector: Injector = (prompt, deps) =>
   skillHintsFor(prompt, deps.skills, {
     n: 2,
-    categoryBoost: { "phase-03-design": 2, "phase-04-textile": 1, "phase-07-qa": 1 },
+    categoryBoost: { "phase-03-design": 2, "phase-04-textile": 1, "phase-01-research": 1, "phase-05-visual": 1 },
   });
 
 /** 资产(visual assets)注入:按 title/description/tag/season 关键词匹配 */

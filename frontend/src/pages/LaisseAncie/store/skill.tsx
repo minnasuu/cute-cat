@@ -20,7 +20,7 @@ interface ContextValue {
 const Ctx = createContext<ContextValue | null>(null);
 
 const SEED: SkillArticle[] = [
-  { id: "skill-seed-1", category: "phase-06-development", zhTitle: "French Seam 工艺检查清单",
+  { id: "skill-seed-1", category: "phase-03-design", zhTitle: "French Seam 工艺检查清单",
     title: "Quality checklist - French seams on 19 mm silk",
     body: "## Why French\n\n- 19 momme silks fray immediately on raw edge\n- H fell / flat fell gathers leave a ridge under the arm\n\n## Steps\n\n1. **Wrong sides together**, first pass 3 mm\n2. Trim to 1.5 mm\n3. Press open, fold again encasing - second pass 5 mm\n4. Press toward front\n\n## QC checklist\n- [ ] No raw edge visible\n- [ ] Seam sits flat when garment is turned\n- [ ] Tug 5N to ensure no pop",
     tags: ["french-seam", "silk", "19-momme", "qc"], relatedProducts: [], relatedMaterials: [],
@@ -40,21 +40,21 @@ const SEED: SkillArticle[] = [
     tags: ["bias", "block-102", "silk-dress"], relatedProducts: [], relatedMaterials: [],
     pinned: true, createdAt: "2025-03-01T00:00:00Z", updatedAt: "2025-03-01T00:00:00Z" },
 
-  { id: "skill-seed-4", category: "phase-06-development", zhTitle: "Biella Textile 系列 · 订货规范",
+  { id: "skill-seed-4", category: "phase-04-textile", zhTitle: "Biella Textile 系列 · 订货规范",
     title: "Biella Textile - lead times and MOQs (FW26 refresh)",
     body: "## Contact\n- Elena Vannucci - ev@biellatex.it\n- Tel +39 031 873 118\n\n## MOQ\n- 140 cm width: 200 m per colour\n- Lead time: 28 days ex-PO\n- Payment: 50 % up-front, balance against BL",
     tags: ["biella-textile", "silk", "lead-time", "moq"], relatedProducts: [], relatedMaterials: [],
     systemHint: "For double-face merino wool: MOQ 200 m / colour, 28-day lead time via Biella.",
     pinned: true, createdAt: "2024-10-01T00:00:00Z", updatedAt: "2024-10-01T00:00:00Z" },
 
-  { id: "skill-seed-5", category: "phase-08-brand", zhTitle: "Lookbook 文案 - Spring Tide 落地",
+  { id: "skill-seed-5", category: "phase-05-visual", zhTitle: "Lookbook 文案 - Spring Tide 落地",
     title: "Copy-deck seed - SS26 Spring Tide + Valentine crossover",
     body: "## Hero line\nTide is the moment between the first plunge and the last wash.\n\n## Voice checks\n- No must-have — use reaches for\n- No chic in Chinese\n- No disembodied adjectives — show the garment being worn",
     tags: ["lookbook", "copy", "springtide", "voice"], relatedProducts: [], relatedMaterials: [],
     systemHint: "Brand voice: 优雅 (graceful), 松弛 (unforced), 乐趣 (playful). Never formalwear / streetwear language.",
     pinned: true, createdAt: "2025-04-01T00:00:00Z", updatedAt: "2025-04-01T00:00:00Z" },
 
-  { id: "skill-seed-6", category: "phase-07-qa", zhTitle: "FQC 进仓检验清单",
+  { id: "skill-seed-6", category: "phase-03-design", zhTitle: "FQC 进仓检验清单",
     title: "FQC checklist - what goes green before a piece hits the WH",
     body: "## Visual\n- Stains / chalk marks / foreign fibres\n- Colour match against fabric swatch (D65 lightbox)\n\n## Dimensional\n- Chest, waist, shoulder, hem, sleeve\n- Allowance: +/-1.5 cm (silk) / +/-2.0 cm (wool)\n\n## Pull test\n- Seams: 60 N / 5 s no pop\n- Zipper: 500 open / close no snag",
     tags: ["fqc", "quality", "packaging", "wh"], relatedProducts: [], relatedMaterials: [],

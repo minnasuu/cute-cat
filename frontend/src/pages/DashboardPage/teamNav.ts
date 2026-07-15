@@ -2,11 +2,11 @@
  * 团队导航元数据。
  *
  * 左栏结构:
- *   ★ 灵感扩散 / 插画 / 材料组合          ← 三个平级一级设计 tab,点击进入各自创作
+ *   ★ 灵感扩散 / 材料组合                 ← 平级一级设计 tab,点击进入各自创作(插画暂时隐藏)
  *   ─────
  *   资源  ▾ (灵感 / Lookbook / 材料)     ← 合并为一组,作为设计调用的素材库
  *   ─────
- *   知识底座 ▾ (知识库 / 资产)           ← 团队通用知识(10 phase),注入 AI 的 system prompt
+ *   知识底座 ▾ (知识库 / 资产)           ← 团队通用知识(4 阶段),注入 AI 的 system prompt
  *
  * 未来新团队可覆写此配置:在「资源」或「知识底座」下增删子 tab。
  */
@@ -31,12 +31,12 @@ export interface NavSection {
 /**
  * 一级设计 tab(平级)。点击后右侧进入对应模式的创作:
  *   - 灵感扩散(single): chat → 灵感 → 方案 → 线稿 → 选材料 → 成图
- *   - 插画(illustration): chat 输出图片 / HTML 画布
  *   - 材料组合(material-combo): 固定表单(名称+面料图+款式参考图+描述) → 白底效果图
+ *
+ * 插画(illustration)模式暂时隐藏(仍可通过代码访问,不影响既有管线)。
  */
 export const DESIGN_TABS: { id: DesignMode; label: string; icon: string }[] = [
   { id: "single", label: "灵感扩散", icon: "◧" },
-  { id: "illustration", label: "插画", icon: "◨" },
   { id: "material-combo", label: "材料组合", icon: "◫" },
 ];
 

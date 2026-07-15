@@ -34,26 +34,21 @@ export default function SkillsPage() {
     return out;
   }, [store.articles]);
 
-  const comingSoon = cat !== "all" && SKILL_PHASE_META[cat as SkillPhaseId]?.comingSoon;
-  const showComingSoon = comingSoon && filtered.length === 0;
-
-  // 分组：核心知识（01~07） vs 即将开放（08~10）
-  const corePhases = ALL_PHASE_IDS.filter((id) => !SKILL_PHASE_META[id].comingSoon);
-  const laterPhases = ALL_PHASE_IDS.filter((id) => !!SKILL_PHASE_META[id].comingSoon);
+  // 所有 phase 均可写入(无 comingSoon 占位)
+  const phases = ALL_PHASE_IDS;
 
   return (
     <div className="grid grid-cols-[260px_1fr] h-[calc(100vh-64px)] min-h-0">
       <aside className="border-r border-gray-200 bg-gray-50 px-4 py-5 flex flex-col overflow-auto">
-        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">知识库 · 10 阶段</div>
+        <div className="px-2 mb-2 text-[10px] uppercase tracking-wider text-gray-500">知识库 · 4 阶段</div>
         <nav className="flex flex-col gap-0.5 flex-1">
           <CatBtn current={cat === "all"} onClick={() => setCat("all")} icon="✦" label="全部" count={store.articles.length} />
-          <div className="px-2 mt-3 mb-1 text-[10px] uppercase tracking-wider text-gray-400">核心知识</div>
-          {corePhases.map((c) => (
+          <div className="px-2 mt-3 mb-1 text-[10px] uppercase tracking-wider text-gray-400">服装设计</div>
+          {phases.map((c) => (
             <CatBtn key={c} current={cat === c} onClick={() => setCat(c)} icon={SKILL_PHASE_META[c].icon}
               label={`${SKILL_PHASE_META[c].phase}. ${SKILL_PHASE_META[c].labelZh}`} sublabel={SKILL_PHASE_META[c].labelEn}
               count={countByCat.get(c) ?? 0} />
           ))}
-          <ComingSoonGroup phases={laterPhases} active={cat} onPick={setCat} counts={countByCat} />
         </nav>
         <div className="mt-4 px-2 text-[10px] text-gray-500 leading-relaxed border-t border-gray-200 pt-3">
           所有 Design / Lookbook 生成的 AI 审核时都会默认从知识条目里匹配出 1～3 条 knowledge 作为上下文。
@@ -72,13 +67,11 @@ export default function SkillsPage() {
           <div className="flex gap-3">
             <input value={q} onChange={(e) => setQ(e.currentTarget.value)} placeholder="搜索标题 / 标签 / 内容 …"
               className="w-72 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
-            {!comingSoon && <AddArticleButton />}
+            <AddArticleButton />
           </div>
         </header>
 
-        {showComingSoon ? (
-          <ComingSoonPlaceholder phase={cat as SkillPhaseId} />
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="py-20 text-center text-gray-500 text-sm">该分类暂无条目 — 用右上角 + 新增一条。</div>
         ) : (
           <div className="p-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -93,39 +86,6 @@ export default function SkillsPage() {
 }
 
 /** 「即将开放」分组 — 折叠 + 置灰，点击展开仍只读 */
-function ComingSoonGroup({ phases, active, onPick, counts }: {
-  phases: SkillPhaseId[]; active: SkillPhaseId | "all"; onPick: (id: SkillPhaseId | "all") => void;
-  counts: Map<SkillPhaseId, number>;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <div>
-      <button onClick={() => setExpanded((v) => !v)}
-        className="w-full px-2 mt-3 mb-1 text-[10px] uppercase tracking-wider text-gray-400 flex items-center justify-between">
-        <span>即将开放 · 占位</span>
-        <span className="text-gray-400">{expanded ? "▾" : "▸"}</span>
-      </button>
-      {expanded && phases.map((c) => (
-        <CatBtn key={c} current={active === c} onClick={() => onPick(c)} icon={SKILL_PHASE_META[c].icon}
-          label={`${SKILL_PHASE_META[c].phase}. ${SKILL_PHASE_META[c].labelZh}`} sublabel={`${SKILL_PHASE_META[c].labelEn} · 即将开放`}
-          count={counts.get(c) ?? 0} disabled />
-      ))}
-    </div>
-  );
-}
-
-function ComingSoonPlaceholder({ phase }: { phase: SkillPhaseId }) {
-  const meta = SKILL_PHASE_META[phase];
-  return (
-    <div className="py-20 text-center">
-      <div className="text-5xl mb-3">🔒</div>
-      <div className="text-gray-700 font-medium">{meta.labelZh} · {meta.labelEn}</div>
-      <div className="text-sm text-gray-500 mt-1">{meta.hint}</div>
-      <div className="text-xs text-gray-400 mt-3">知识沉淀中，即将开放。</div>
-    </div>
-  );
-}
-
 function CatBtn({ current, onClick, icon, label, sublabel, count, disabled }: {
   current: boolean; onClick: () => void; icon: string; label: string; sublabel?: string; count?: number; disabled?: boolean;
 }) {
