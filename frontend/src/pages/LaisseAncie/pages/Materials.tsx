@@ -14,28 +14,28 @@ import type { MaterialRow } from "../store/resource";
 import type { ColorImageEntry } from "../types/design";
 import { compressForUpload } from "../lib/images";
 
-type Card = { hex: string; name: string; url: string; imageFile?: File | null };
+type Card = { hex: string; name: string; url: string; outOfStock?: boolean; imageFile?: File | null };
 
 function toCards(m: MaterialRow): Card[] {
   const ci = Array.isArray(m.colorImages) ? (m.colorImages as any[]) : [];
   if (ci.length) {
     return ci
       .filter((c) => c && typeof c === "object")
-      .map((c) => ({ hex: String(c.hex || ""), name: String(c.name || ""), url: String(c.url || ""), imageFile: null }));
+      .map((c) => ({ hex: String(c.hex || ""), name: String(c.name || ""), url: String(c.url || ""), outOfStock: c.outOfStock === true, imageFile: null }));
   }
   // 回退:老数据 colors(hex[]) → 每色一卡(url 空)
   const cols = Array.isArray(m.colors) ? m.colors : [];
-  if (cols.length) return cols.map((c) => ({ hex: String(c), name: "", url: "", imageFile: null }));
+  if (cols.length) return cols.map((c) => ({ hex: String(c), name: "", url: "", outOfStock: false, imageFile: null }));
   // 再回退:单图 → 单卡
-  if (m.image) return [{ hex: "", name: "", url: String(m.image), imageFile: null }];
-  return [{ hex: "#cccccc", name: "", url: "", imageFile: null }];
+  if (m.image) return [{ hex: "", name: "", url: String(m.image), outOfStock: false, imageFile: null }];
+  return [{ hex: "#cccccc", name: "", url: "", outOfStock: false, imageFile: null }];
 }
 
 const SEED: MaterialRow[] = [
   {
     id: "fabric-silk-001", slug: "lashed-silk-satin", category: "面料", name: "水洗真丝贡丝锦",
     code: "HK-SS-21", supplier: "Silk Workshop Hangzhou", origin: "Hangzhou · China",
-    composition: "100% mulberry silk · 19 momme satin ground", weight: "19 momme", texture: "washed matte satin",
+    composition: "100% mulberry silk · 19 momme satin ground", weight: "19 momme", width: "135 cm",
     finish: "garment-washed stone", care: ["hand-wash ≤30 °C", "no bleach", "iron reverse-side"],
     uses: ["bias-cut slip dresses", "tailored camp-collar shirting"], seasons: ["SS", "Resort"],
     priceAmount: 86, priceCur: "CNY", priceUnit: "/ metre · 135 cm", priceNote: "MOQ 100 m · lead 30 days",
@@ -44,7 +44,7 @@ const SEED: MaterialRow[] = [
   {
     id: "fabric-wool-001", slug: "double-face-merino", category: "面料", name: "双面美利奴法兰绒",
     code: "BC-DF-1403", supplier: "Biella Textile Co.", origin: "Biella · Italy",
-    composition: "100% extra-fine ZQ Merino · 310 g/m² double-face", weight: "310 g/m²", texture: "rounded, brushed on both faces",
+    composition: "100% extra-fine ZQ Merino · 310 g/m² double-face", weight: "310 g/m²", width: "150 cm",
     finish: "double-face, ready-to-cut selvedge",
     care: ["dry-clean recommended", "steam only"], uses: ["unlined blazers", "duster coats"], seasons: ["FW", "Pre-fall"],
     priceAmount: 112, priceCur: "EUR", priceUnit: "/ metre · 150 cm",
@@ -53,7 +53,7 @@ const SEED: MaterialRow[] = [
   {
     id: "fabric-linen-001", slug: "linen-plain", category: "面料", name: "法国亚麻平纹",
     code: "FR-LN-001", supplier: "Tissage de France", origin: "Normandie · France",
-    composition: "100% flax · 180 g/m² plain", weight: "180 g/m²", texture: "crisp slub",
+    composition: "100% flax · 180 g/m² plain", weight: "180 g/m²", width: "150 cm",
     uses: ["summer shirts", "trousers"], seasons: ["SS"],
     priceAmount: 54, priceCur: "EUR", priceUnit: "/ metre · 150 cm",
   },
@@ -266,8 +266,11 @@ function MaterialView({ mat, onEdit }: { mat: MaterialRow; onEdit: () => void })
                   <span className="w-16 h-16 rounded-lg border border-gray-200 shrink-0" style={{ background: c.hex || "#eee" }} aria-hidden />
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] text-gray-800 font-medium truncate">{c.name || "(未命名颜色)"}</div>
-                  {c.hex && <div className="text-[12px] font-mono text-gray-500 mt-0.5">{c.hex}</div>}
+                  <div className={`text-[13px] font-medium truncate ${c.outOfStock ? "text-gray-400 line-through" : "text-gray-800"}`}>{c.name || "(未命名颜色)"}</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {c.hex && <div className="text-[12px] font-mono text-gray-500">{c.hex}</div>}
+                    {c.outOfStock && <span className="text-[10px] text-amber-600 font-medium">缺货</span>}
+                  </div>
                 </div>
               </li>
             ))}
@@ -301,8 +304,8 @@ function MaterialView({ mat, onEdit }: { mat: MaterialRow; onEdit: () => void })
           <button onClick={onEdit} className="shrink-0 ml-4 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">编辑</button>
         </div>
         {mat.composition && <Section label="成分">{mat.composition}</Section>}
-        {mat.texture && <Section label="手感">{mat.texture}</Section>}
         {mat.weight && <Section label="克重"><span className="font-mono">{mat.weight}</span></Section>}
+        {mat.width && <Section label="幅宽"><span className="font-mono">{mat.width}</span></Section>}
         {mat.finish && <Section label="工艺">{mat.finish}</Section>}
         {mat.code && <Section label="代码"><span className="font-mono">{mat.code}</span></Section>}
         {mat.origin && <Section label="产地"><span className="font-mono">{mat.origin}</span></Section>}
@@ -330,7 +333,7 @@ function MaterialForm({ initial, onCancel, onSave }: {
   const [origin, setOrigin] = useState(initial?.origin ?? "");
   const [composition, setComposition] = useState(initial?.composition ?? "");
   const [weight, setWeight] = useState(initial?.weight ?? "");
-  const [texture, setTexture] = useState(initial?.texture ?? "");
+  const [width, setWidth] = useState(initial?.width ?? "");
   const [finish, setFinish] = useState(initial?.finish ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [priceAmount, setPriceAmount] = useState<string>(initial?.priceAmount != null ? String(initial.priceAmount) : "");
@@ -354,14 +357,14 @@ function MaterialForm({ initial, onCancel, onSave }: {
         origin: origin.trim() || null,
         composition: composition.trim() || null,
         weight: weight.trim() || null,
-        texture: texture.trim() || null,
+        width: width.trim() || null,
         finish: finish.trim() || null,
         colors: cards.map((c) => c.hex).filter(Boolean),
         // 完整色卡(含 hex + name + 已有 url);File 对象单独走 uploadMaterialColorImage
         // 注:url 为空串的色卡 = 有颜色/名但尚未上传图(或从库选的纯色卡),需一并持久化;三项全空视为未填写,过滤掉
         colorImages: cards
-          .map((c) => ({ hex: c.hex || "", name: c.name || "", url: c.url || "" }))
-          .filter((c) => c.hex || c.name || c.url),
+          .map((c) => ({ hex: c.hex || "", name: c.name || "", url: c.url || "", outOfStock: !!c.outOfStock }))
+          .filter((c) => c.hex || c.name || c.url || c.outOfStock),
         notes: notes.trim() || null,
         priceAmount: priceAmount ? Number(priceAmount) : null,
         priceCur,
@@ -383,8 +386,22 @@ function MaterialForm({ initial, onCancel, onSave }: {
 
   const updateCard = (i: number, patch: Partial<Card>) =>
     setCards((cs) => cs.map((c, j) => j === i ? { ...c, ...patch } : c));
-  const addCard = () => setCards((cs) => cs.length < 12 ? [...cs, { hex: "#cccccc", name: "", url: "", imageFile: null }] : cs);
+  const addCard = () => setCards((cs) => cs.length < 12 ? [...cs, { hex: "#cccccc", name: "", url: "", outOfStock: false, imageFile: null }] : cs);
   const removeCard = (i: number) => setCards((cs) => cs.length > 1 ? cs.filter((_, j) => j !== i) : cs);
+  // 批量上传:每张图自动新增一张色卡(上限 12 张),以文件对象暂存供预览,保存时逐张上传
+  const addBulkCards = (list: FileList | null) => {
+    if (!list || !list.length) return;
+    const incoming = Array.from(list);
+    setCards((cs) => {
+      const room = 12 - cs.length;
+      if (room <= 0) return cs;
+      const accepted = incoming.slice(0, room);
+      const newCards: Card[] = accepted.map((imageFile) => ({
+        hex: "#cccccc", name: "", url: "", outOfStock: false, imageFile,
+      }));
+      return [...cs, ...newCards];
+    });
+  };
 
   const inputCls = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500";
   const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1";
@@ -395,7 +412,14 @@ function MaterialForm({ initial, onCancel, onSave }: {
       <div>
         <div className="flex items-baseline justify-between mb-1">
           <div className={labelCls}>色卡 ({cards.length}/12)</div>
-          <button onClick={addCard} disabled={cards.length >= 12} className="text-[10px] text-primary-600 disabled:text-gray-300 hover:underline">+ 添加色卡</button>
+          <div className="flex items-center gap-3">
+            <label className="text-[10px] text-primary-600 hover:underline cursor-pointer">
+              批量上传
+              <input type="file" accept="image/*" multiple className="hidden"
+                onChange={(e) => { addBulkCards(e.target.files); e.target.value = ""; }} />
+            </label>
+            <button onClick={addCard} disabled={cards.length >= 12} className="text-[10px] text-primary-600 disabled:text-gray-300 hover:underline">+ 添加色卡</button>
+          </div>
         </div>
         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {cards.map((c, i) => (
@@ -422,6 +446,10 @@ function MaterialForm({ initial, onCancel, onSave }: {
                   const f = e.target.files?.[0] || null; updateCard(i, { imageFile: f });
                 }} />
               </label>
+              <label className={`text-[11px] cursor-pointer shrink-0 select-none ${c.outOfStock ? "text-amber-600" : "text-gray-400 hover:text-amber-500"}`}>
+                <input type="checkbox" checked={!!c.outOfStock} onChange={(e) => updateCard(i, { outOfStock: e.target.checked })} className="mr-0.5 align-middle" />
+                缺货
+              </label>
               <button onClick={() => removeCard(i)} disabled={cards.length <= 1} className="text-gray-400 hover:text-red-500 disabled:opacity-30 px-1">×</button>
             </div>
           ))}
@@ -437,7 +465,7 @@ function MaterialForm({ initial, onCancel, onSave }: {
         <div><div className={labelCls}>产地</div><input value={origin} onChange={(e) => setOrigin(e.target.value)} className={inputCls} /></div>
         <div><div className={labelCls}>克重</div><input value={weight} onChange={(e) => setWeight(e.target.value)} className={inputCls} /></div>
         <div className="col-span-2"><div className={labelCls}>成分</div><input value={composition} onChange={(e) => setComposition(e.target.value)} className={inputCls} /></div>
-        <div className="col-span-2"><div className={labelCls}>手感</div><input value={texture} onChange={(e) => setTexture(e.target.value)} className={inputCls} /></div>
+        <div className="col-span-2"><div className={labelCls}>幅宽</div><input value={width} onChange={(e) => setWidth(e.target.value)} placeholder="如:135 cm" className={inputCls} /></div>
         <div className="col-span-2"><div className={labelCls}>工艺</div><input value={finish} onChange={(e) => setFinish(e.target.value)} className={inputCls} /></div>
         <div className="col-span-2"><div className={labelCls}>备注</div><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} /></div>
       </div>
