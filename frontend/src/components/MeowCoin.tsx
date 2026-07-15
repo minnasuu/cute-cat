@@ -1,6 +1,6 @@
 import React from 'react';
 import type { CatColors } from './CatSVG';
-import { jumaoColors } from '../data/themes';
+import { baimaoColors } from "../data/themes";
 
 /**
  * 喵币图标。
@@ -20,7 +20,11 @@ interface MeowCoinProps {
   colors?: CatColors;
 }
 
-const MeowCoin: React.FC<MeowCoinProps> = ({ size = 24, className, colors = jumaoColors }) => {
+const MeowCoin: React.FC<MeowCoinProps> = ({
+  size = 24,
+  className,
+  colors = baimaoColors,
+}) => {
   const c = colors;
   return (
     <svg

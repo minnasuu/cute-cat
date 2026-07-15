@@ -106,6 +106,7 @@ if [ $MIGRATE_EXIT -ne 0 ]; then
   npx prisma migrate resolve --applied 20260716000000_redemption_code 2>/dev/null || true
   npx prisma migrate resolve --applied 20260716000001_brand_status_config 2>/dev/null || true
   npx prisma migrate resolve --applied 20260717000001_add_shared_columns 2>/dev/null || true
+  npx prisma migrate resolve --applied 20260717000002_create_illustration_asset 2>/dev/null || true
   # Try again
   npx prisma migrate deploy 2>&1
   MIGRATE_EXIT2=$?

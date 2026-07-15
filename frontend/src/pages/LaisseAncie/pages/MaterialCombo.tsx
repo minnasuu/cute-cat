@@ -81,33 +81,9 @@ interface FlatFabricCard {
   shared?: boolean; // 管理员共享 → 显示「系统」标签
 }
 
-type IllustrationRow =
-  | {
-      kind: "upload";
-      id: string;
-      file: File;
-      preview: string;
-      name: string;
-      analysisText?: string;
-    }
-  | {
-      kind: "library-illustration";
-      id: string;
-      illustrationId: string;
-      name: string;
-      url: string;
-      analysisText?: string;
-    };
-
 interface FabricPick { kind: "fabric"; matId: string; colorIdx: number; url: string; name: string; hex?: string }
 interface StylePick { kind: "style"; styleId: string; url: string; name: string }
-interface IllustrationPick {
-  kind: "illustration";
-  illustrationId: string;
-  url: string;
-  name: string;
-}
-type Pick = FabricPick | StylePick | IllustrationPick;
+type Pick = FabricPick | StylePick;
 
 export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLoading }: Props) {
   const { teamId, navigateTab } = useCurrentTeam();
@@ -120,12 +96,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const [styleRows, setStyleRows] = useState<StyleRow[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [picker, setPicker] = useState<
-    null | "fabric" | "style" | "illustration"
-  >(null);
-  const [illustrationRows, setIllustrationRows] = useState<IllustrationRow[]>(
-    [],
-  );
+  const [picker, setPicker] = useState<null | "fabric" | "style">(null);
   const [mode, setMode] = useState<Mode>("cross");
 
   // 切换生成模式(叉乘 / 拼色):清空槽位与批次,保留名称/描述
@@ -133,7 +104,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     if (next === mode) return;
     setFabricRows([]);
     setStyleRows([]);
-    setIllustrationRows([]);
     setBatch(null);
     setError(null);
     setMode(next);
@@ -147,7 +117,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
   const fabricRef = useRef<HTMLInputElement>(null);
   const styleRef = useRef<HTMLInputElement>(null);
-  const illustrationRef = useRef<HTMLInputElement>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
 
@@ -158,7 +127,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const cellCount = mode === "color-mix" ? (fabricRows.length > 0 && styleRows.length === 1 ? 1 : 0) : fabricRows.length * styleRows.length;
   const fabricsLimit = mode === "color-mix" ? MAX_FABRIC_MIXED : MAX_FABRIC;
   const stylesLimit = mode === "color-mix" ? 1 : MAX_STYLE;
-  const illustrationsLimit = 1;
   const canSubmit = !!name.trim()
     && fabricRows.length > 0
     && (mode === "color-mix" ? styleRows.length === 1 : styleRows.length > 0)
@@ -204,25 +172,16 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
   // ── 追加上传文件 ──
   function addUploads(
-    which: "fabric" | "style" | "illustration",
+    which: "fabric" | "style",
     list: FileList | null,
   ) {
     if (!list || !list.length) return;
     const incoming = Array.from(list);
     const setter =
-      which === "illustration"
-        ? setIllustrationRows
-        : which === "fabric"
-          ? setFabricRows
-          : setStyleRows;
+      which === "fabric" ? setFabricRows : setStyleRows;
     const limit =
-      which === "illustration"
-        ? illustrationsLimit
-        : which === "fabric"
-          ? fabricsLimit
-          : stylesLimit;
-    const label =
-      which === "illustration" ? "插画" : which === "fabric" ? "面料" : "款式";
+      which === "fabric" ? fabricsLimit : stylesLimit;
+    const label = which === "fabric" ? "面料" : "款式";
     setter((prev) => {
       const room = limit - prev.length;
       if (room <= 0) {
@@ -233,7 +192,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       if (incoming.length > room)
         setError(`${label}最多容纳 ${limit} 项,已取前 ${room} 个`);
       const newRows = accepted.map((file) => ({
-        kind: "upload",
+        kind: "upload" as const,
         id: uid(),
         file,
         preview: URL.createObjectURL(file),
@@ -266,40 +225,9 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     }]);
   }
 
-  function addLibraryIllustration(pick: IllustrationPick) {
-    if (illustrationRows.length >= illustrationsLimit) {
-      setError(`插画已达上限 ${illustrationsLimit} 项`);
-      return;
-    }
-    if (
-      illustrationRows.some(
-        (r) =>
-          r.kind === "library-illustration" &&
-          r.illustrationId === pick.illustrationId,
-      )
-    ) {
-      setError("该插画已添加");
-      return;
-    }
-    setIllustrationRows((prev) => [
-      ...prev,
-      {
-        kind: "library-illustration",
-        id: uid(),
-        illustrationId: pick.illustrationId,
-        name: pick.name,
-        url: pick.url,
-      },
-    ]);
-  }
-
-  function removeRow(which: "fabric" | "style" | "illustration", id: string) {
+  function removeRow(which: "fabric" | "style", id: string) {
     const setter =
-      which === "fabric"
-        ? setFabricRows
-        : which === "style"
-          ? setStyleRows
-          : setIllustrationRows;
+      which === "fabric" ? setFabricRows : setStyleRows;
     setter((prev) => {
       const item = prev.find((r) => r.id === id);
       if (item?.kind === "upload") URL.revokeObjectURL(item.preview);
@@ -336,19 +264,11 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         if (r.kind === "upload") return { kind: "upload", name: r.name };
         return { kind: "library-style", styleId: r.styleId };
       });
-      const illustrationsMeta = illustrationRows.map((r) => {
-        if (r.kind === "upload") return { kind: "upload", name: r.name };
-        return {
-          kind: "library-illustration",
-          illustrationId: r.illustrationId,
-        };
-      });
       const fd = new FormData();
       fd.append("name", name.trim());
       fd.append("description", description.trim());
       fd.append("fabricsMeta", JSON.stringify(fabricsMeta));
       fd.append("stylesMeta", JSON.stringify(stylesMeta));
-      fd.append("illustrationsMeta", JSON.stringify(illustrationsMeta));
       fd.append("mode", mode);
       for (const r of fabricRows)
         if (r.kind === "upload")
@@ -356,9 +276,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       for (const r of styleRows)
         if (r.kind === "upload")
           fd.append("styles", await compressForUpload(r.file));
-      for (const r of illustrationRows)
-        if (r.kind === "upload")
-          fd.append("illustrations", await compressForUpload(r.file));
       const url = teamApi(teamId).materialComboUrl;
       const res = await fetch(url, {
         method: "POST",
@@ -441,13 +358,9 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       const src: {
         style?: { url: string; name: string };
         fabric?: { url: string; name: string };
-        illustration?: { url: string; name: string };
       } = {};
       if (fRow && fRow.kind === "library-fabric") src.fabric = { url: fRow.url, name: fRow.name };
       if (sRow && sRow.kind === "library-style") src.style = { url: sRow.url, name: sRow.name };
-      const iRow = illustrationRows[0];
-      if (iRow && iRow.kind === "library-illustration")
-        src.illustration = { url: iRow.url, name: iRow.name };
       return Object.keys(src).length ? src : undefined;
     });
     const product: any = {
@@ -807,81 +720,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
               />
             </div>
 
-            {/* 插画槽位(上传 + 库):可印/刺绣到衣服上 */}
-            <div>
-              <label className={labelCls}>
-                插画(印花/刺绣){" "}
-                <span className="text-gray-400 normal-case tracking-normal">
-                  ({illustrationRows.length}/{illustrationsLimit})
-                </span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {illustrationRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
-                  >
-                    {row.kind === "upload" ? (
-                      <img
-                        src={row.preview}
-                        alt={row.name}
-                        className="w-full h-24 object-cover"
-                      />
-                    ) : (
-                      <img
-                        src={row.url}
-                        alt={row.name}
-                        className="w-full h-24 object-cover"
-                      />
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 p-1 bg-gradient-to-t from-black/70 to-transparent">
-                      <div className="text-[10px] text-white truncate">
-                        {row.name}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeRow("illustration", row.id)}
-                      className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[11px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      aria-label="移除插画"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-                {illustrationRows.length < illustrationsLimit &&
-                  !batchRunningOrAnalyzing && (
-                    <>
-                      <button
-                        onClick={() => illustrationRef.current?.click()}
-                        className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                      >
-                        <span className="text-lg text-gray-400">+</span>
-                        <span className="text-[10px] text-gray-400">
-                          添加插画
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => setPicker("illustration")}
-                        className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                      >
-                        <span className="text-base text-primary-500">▦</span>
-                        <span className="text-[10px] text-primary-600 mt-0.5">
-                          从库选择
-                        </span>
-                      </button>
-                    </>
-                  )}
-              </div>
-              <input
-                ref={illustrationRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => addUploads("illustration", e.target.files)}
-              />
-            </div>
-
             {/* 其他描述 */}
             <div>
               <label className={labelCls}>其他描述</label>
@@ -1166,7 +1004,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         onClose={() => setPicker(null)}
         onFabric={addLibraryFabric}
         onStyle={(p) => addLibraryStyle(p)}
-        onIllustration={addLibraryIllustration}
       />
     </div>
   );
@@ -1247,7 +1084,7 @@ function ColorMixResult({ batch, retryCell, hasSuccess, onSave }: { batch: Mater
 
 // ─── 库选择弹窗 ────────────────────────────────────────────────
 interface PickerProps {
-  mode: null | "fabric" | "style" | "illustration";
+  mode: null | "fabric" | "style";
   knowledge?: KnowledgeDeps;
   onClose: () => void;
   onFabric: (p: FabricPick) => void;
@@ -1257,7 +1094,6 @@ interface PickerProps {
     url: string;
     name: string;
   }) => void;
-  onIllustration: (p: IllustrationPick) => void;
 }
 
 function LibraryPickerModal({
@@ -1266,7 +1102,6 @@ function LibraryPickerModal({
   onClose,
   onFabric,
   onStyle,
-  onIllustration,
 }: PickerProps) {
   const [q, setQ] = useState("");
 
@@ -1277,7 +1112,6 @@ function LibraryPickerModal({
 
   if (!mode) return null;
   const isFabric = mode === "fabric";
-  const isIllustration = mode === "illustration";
 
   // 面料:展平为单个颜色卡片(colorImages 优先,回退 image / colors)
   const materials = (knowledge?.materials || []) as any[];
@@ -1349,28 +1183,13 @@ function LibraryPickerModal({
     );
   });
 
-  // 插画
-  const illustrations = (knowledge?.illustrations || []) as any[];
-  const illustrationFilter = illustrations.filter((i: any) => {
-    if (!q.trim()) return true;
-    const k = q.trim().toLowerCase();
-    return [i?.name || "", (i?.tags || []).join(" ")].some((f) =>
-      String(f).toLowerCase().includes(k),
-    );
-  });
-
   function handlePick(pick: Pick) {
     if (pick.kind === "fabric") onFabric(pick);
-    else if (pick.kind === "illustration") onIllustration(pick);
     else onStyle(pick);
     onClose();
   }
 
-  const title = isFabric
-    ? "选择面料色卡"
-    : isIllustration
-      ? "选择插画"
-      : "选择款式";
+  const title = isFabric ? "选择面料色卡" : "选择款式";
 
   return (
     <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
@@ -1381,16 +1200,14 @@ function LibraryPickerModal({
           placeholder={
             isFabric
               ? "搜索面料名 / 颜色 / 品类..."
-              : isIllustration
-                ? "搜索插画名 / 标签..."
-                : "搜索款式名 / 品类..."
+              : "搜索款式名 / 品类..."
           }
           className="w-full text-[12px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-primary-500"
           autoFocus
         />
       </div>
 
-      {!isFabric && !isIllustration && styleFilter.length === 0 && (
+      {!isFabric && styleFilter.length === 0 && (
         <div className="text-center text-[12px] text-gray-400 py-16">
           款式库里暂无款式,请先在「款式」页添加。
         </div>
@@ -1402,59 +1219,7 @@ function LibraryPickerModal({
             : "没有匹配的面料色卡。"}
         </div>
       )}
-      {isIllustration && illustrationFilter.length === 0 && (
-        <div className="text-center text-[12px] text-gray-400 py-16">
-          {illustrations.length === 0
-            ? "插画库里暂无插画,请先在「插画」页添加。"
-            : "没有匹配的插画。"}
-        </div>
-      )}
-
-      {isIllustration ? (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 max-h-[60vh] overflow-y-auto pr-1">
-          {illustrationFilter.map((i: any) => (
-            <button
-              key={i.id}
-              onClick={() =>
-                handlePick({
-                  kind: "illustration",
-                  illustrationId: i.id,
-                  url: i.image || "",
-                  name: i.name || "未命名插画",
-                })
-              }
-              className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden"
-            >
-              <div className="aspect-square w-full relative">
-                {i.image ? (
-                  <img
-                    src={i.image}
-                    alt={i.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-300">
-                    无图
-                  </div>
-                )}
-              </div>
-              <div className="px-1.5 py-1">
-                <div
-                  className="text-[9px] text-gray-700 truncate"
-                  title={i.name}
-                >
-                  {i.name}
-                </div>
-                {i.tags && i.tags.length > 0 && (
-                  <span className="inline-block mt-0.5 text-[8px] bg-gray-100 text-gray-500 px-1 rounded truncate max-w-full">
-                    {i.tags[0]}
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      ) : isFabric ? (
+      {isFabric ? (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-[60vh] overflow-y-auto pr-1">
           {cardFilter.map((c) => {
             const displayName = c.colorName || c.hex || c.matName;
