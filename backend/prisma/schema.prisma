@@ -69,21 +69,26 @@ model EmailVerification {
 // ==================== V2.0 团队系统 ====================
 
 model Team {
-  id          String    @id @default(uuid())
-  name        String
-  description String?   @db.Text
-  icon        String?
-  ownerId     String
-  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  name          String
+  description   String?   @db.Text
+  icon          String?
+  /** 工作台类型: clothing(服装) / knitting(编织) / beading(串珠) / … */
+  workspaceType String    @default("clothing")
+  /** 是否官方工作台(官方工作台不可被用户修改/删除) */
+  isOfficial    Boolean   @default(true)
+  ownerId       String
+  owner         User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  cats        TeamCat[]
-  workflows   Workflow[]
-  workflowRuns WorkflowRun[]
-  aiCallLogs  AICallLog[]
+  cats          TeamCat[]
+  workflows     Workflow[]
+  workflowRuns  WorkflowRun[]
+  aiCallLogs    AICallLog[]
 
   @@index([ownerId])
+  @@index([ownerId, workspaceType])
 }
 
 // ==================== V2.0 猫猫系统 ====================

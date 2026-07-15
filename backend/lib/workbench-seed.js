@@ -8,26 +8,57 @@ const { CAT_TEMPLATES, OFFICIAL_TEMPLATE_IDS } = require('../data/official-cats'
 const WORKBENCH_MARKER = '__cuca_workbench_v1__';
 
 /**
- * @param {import('@prisma/client').PrismaClient} prisma
- * @param {string} userId
+ * 官方工作台列表。当前仅服装工作台激活;后续在此数组追加即可扩展(编织、串珠…)。
  */
-async function ensureWorkbenchTeam(prisma, userId) {
-  let team = await prisma.team.findFirst({
-    where: { ownerId: userId, description: WORKBENCH_MARKER },
-  });
+const OFFICIAL_WORKSPACES = [
+  { workspaceType: 'clothing', name: '服装工作台', icon: '✂️' },
+  // { workspaceType: 'knitting', name: '编织工作台', icon: '🧶' },   // 后续开放
+  // { workspaceType: 'beading', name: '串珠工作台', icon: '📿' },   // 后续开放
+];
 
-  if (!team) {
-    team = await prisma.team.create({
+/** 为所有用户补齐官方工作台(服装/编织/串珠…),已存在则跳过。 */
+async function ensureOfficialWorkspaces(prisma, userId) {
+  const existing = await prisma.team.findMany({
+    where: { ownerId: userId, isOfficial: true, description: WORKBENCH_MARKER },
+  });
+  const existingTypes = new Set(existing.map((t) => t.workspaceType));
+
+  let first = null;
+  for (const ws of OFFICIAL_WORKSPACES) {
+    if (existingTypes.has(ws.workspaceType)) {
+      const found = existing.find((t) => t.workspaceType === ws.workspaceType);
+      if (!first) first = found;
+      continue;
+    }
+    const created = await prisma.team.create({
       data: {
-        name: '服装工作台',
+        name: ws.name,
+        icon: ws.icon,
+        workspaceType: ws.workspaceType,
+        isOfficial: true,
         description: WORKBENCH_MARKER,
         ownerId: userId,
       },
     });
+    if (!first) first = created;
+
+    // 为新工作台种入官方猫 + 种子工作流
+    await seedCatsAndWorkflowsForTeam(prisma, created.id);
   }
 
+  // 兼容存量团队:补 workspaceType(无标记的团队视为服装工作台)
+  await prisma.team.updateMany({
+    where: { ownerId: userId, workspaceType: { notIn: OFFICIAL_WORKSPACES.map((w) => w.workspaceType) } },
+    data: { workspaceType: 'clothing', isOfficial: false },
+  });
+
+  return first || existing[0] || null;
+}
+
+/** 单个工作台种入官方猫 + 种子工作流 */
+async function seedCatsAndWorkflowsForTeam(prisma, teamId) {
   const cats = await prisma.teamCat.findMany({
-    where: { teamId: team.id },
+    where: { teamId },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -39,7 +70,7 @@ async function ensureWorkbenchTeam(prisma, userId) {
     if (byTemplate[tmpl.id]) continue;
     const created = await prisma.teamCat.create({
       data: {
-        teamId: team.id,
+        teamId,
         templateId: tmpl.id,
         name: tmpl.name,
         role: tmpl.role,
@@ -58,13 +89,13 @@ async function ensureWorkbenchTeam(prisma, userId) {
     console.error('[workbench-seed] missing official cats after seed');
   }
 
-  const wfCount = await prisma.workflow.count({ where: { teamId: team.id } });
+  const wfCount = await prisma.workflow.count({ where: { teamId } });
   if (wfCount === 0) {
     const seedWfs = buildSeedWorkflowSteps(byTemplate);
     for (const w of seedWfs) {
       await prisma.workflow.create({
         data: {
-          teamId: team.id,
+          teamId,
           name: w.name,
           category: w.category || 'ecommerce',
           icon: w.icon,
@@ -77,18 +108,34 @@ async function ensureWorkbenchTeam(prisma, userId) {
         },
       });
     }
-  } else {
-    // 默认不自动修复/重建内置工作流：
-    // - 管理员后台允许编辑工作流，自动 repair 会覆盖修改，甚至在改名/删除后“新增一条种子工作流”
-    // 如需强制对齐种子步骤（仅运维场景），显式开启 WORKBENCH_REPAIR_WORKFLOWS=1
-    if (process.env.WORKBENCH_REPAIR_WORKFLOWS === '1') {
-      await repairWebPageBuilderWorkflowIfNeeded(prisma, team.id, byTemplate);
-      await repairBrandKitWorkflowIfNeeded(prisma, team.id, byTemplate);
-      await repairPosterWorkflowIfNeeded(prisma, team.id, byTemplate);
-    }
+  } else if (process.env.WORKBENCH_REPAIR_WORKFLOWS === '1') {
+      await repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, byTemplate);
+      await repairBrandKitWorkflowIfNeeded(prisma, teamId, byTemplate);
+      await repairPosterWorkflowIfNeeded(prisma, teamId, byTemplate);
+      await repairFashionDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
+      await repairPhoneCaseDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
+      await repairIllustrationDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
+  }
+}
+
+// ─── 兼容旧调用方:ensureWorkbenchTeam → 仍返回首个工作台(服装) ───
+async function ensureWorkbenchTeam(prisma, userId) {
+  const first = await ensureOfficialWorkspaces(prisma, userId);
+
+  // 若存量用户完全没有团队(极旧数据),兜底创建一个
+  if (!first) {
+    const team = await prisma.team.create({
+      data: { name: '服装工作台', workspaceType: 'clothing', isOfficial: true, description: WORKBENCH_MARKER, ownerId: userId },
+    });
+    await seedCatsAndWorkflowsForTeam(prisma, team.id);
+    return team;
   }
 
-  return team;
+  // 为首个工作台补猫/工作流(兼容存量:旧 ensureWorkbenchTeam 会补 seed)
+  const cats = await prisma.teamCat.count({ where: { teamId: first.id } });
+  if (cats === 0) await seedCatsAndWorkflowsForTeam(prisma, first.id);
+
+  return first;
 }
 
 /**
@@ -622,7 +669,10 @@ async function repairWorkbenchWorkflowsForTeam(prisma, teamId) {
 
 module.exports = {
   ensureWorkbenchTeam,
+  ensureOfficialWorkspaces,
   seedOfficialCatsForTeam,
+  seedCatsAndWorkflowsForTeam,
+  OFFICIAL_WORKSPACES,
   WORKBENCH_MARKER,
   buildSeedWorkflowSteps,
   repairWorkbenchWorkflowsForTeam,

@@ -50,13 +50,14 @@ export function CurrentTeamProvider({ children }: { children: ReactNode }) {
   const refreshTeams = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await apiClient.get<any[]>('/api/teams');
-      const normalized: TeamShape[] = Array.isArray(list) ? list.map(normalizeTeam) : [];
+      const data = await apiClient.get<{ workspaces: any[]; coins: number }>('/api/workspaces');
+      const list = Array.isArray(data.workspaces) ? data.workspaces : [];
+      const normalized: TeamShape[] = list.map(normalizeTeam);
       setTeams(normalized);
-      // 尚无选中团队 → 默认选第一个(兼容期即 Laisse Ancie / workbench 团队)
+      // 尚无选中团队 → 默认选第一个官方工作台(服装工作台)
       setTeamIdState((prev) => prev ?? normalized[0]?.id ?? null);
     } catch (err) {
-      console.error('[CurrentTeamContext] load teams failed', err);
+      console.error('[CurrentTeamContext] load workspaces failed', err);
       setTeams([]);
       setTeamIdState(null);
     } finally {
