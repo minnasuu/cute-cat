@@ -2,21 +2,21 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authMiddleware } = require('../middleware/auth');
 const { WORKBENCH_MARKER, repairWorkbenchWorkflowsForTeam } = require('../lib/workbench-seed');
+const { isAdminEmail } = require('../lib/admin');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-const ADMIN_EMAIL = 'minhansu508@gmail.com';
-
 router.use(authMiddleware);
 
+// 管理员鉴权(基于 env ADMIN_EMAILS,统一数据源)
 async function requireAdmin(req, res, next) {
   try {
     const u = await prisma.user.findUnique({
       where: { id: req.userId },
-      select: { email: true },
+      select: { email: true, role: true },
     });
-    if (!u || u.email !== ADMIN_EMAIL) {
+    if (!u || (u.role !== 'admin' && !isAdminEmail(u.email))) {
       return res.status(403).json({ error: '仅管理员可访问' });
     }
     return next();

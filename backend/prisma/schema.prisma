@@ -16,14 +16,42 @@ model User {
   password      String
   nickname      String
   avatar        String?
-  plan          String   @default("free")  // free / pro / enterprise
-  aiQuota       Int      @default(100)
-  aiUsed        Int      @default(0)
+  plan          String   @default("free")  // free / pro / enterprise (legacy,保留)
+  aiQuota       Int      @default(100)     // legacy,计费已迁移到 coins
+  aiUsed        Int      @default(0)       // legacy,计费已迁移到 coins
+  // ── 用户角色 ──
+  role          String   @default("user")      // admin / member / user
+  coins         Int      @default(100)         // 喵币余额(注册即送 100)
+  inviteCode    String?  @unique               // 个人邀请码
+  invitedById   String?                       // 邀请人 id
+  inviteCount   Int      @default(0)           // 已邀请成功人数
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   teams         Team[]
   aiCallLogs    AICallLog[]
+  coinTransactions CoinTransaction[]
+  invitedUsers  User[]    @relation("UserInvites")
+  invitedBy     User?     @relation("UserInvites", fields: [invitedById], references: [id])
+
+  @@index([inviteCode])
+  @@index([invitedById])
+}
+
+// ─── 喵币流水 ───
+model CoinTransaction {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount        Int      // 正数=收入,负数=支出
+  balanceAfter  Int      // 变动后余额(快照)
+  type          String   // recharge / signup_bonus / invite_reward / ai_consume / refund
+  refId         String?  // 关联 id(作品/订单等)
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, type])
 }
 
 model EmailVerification {

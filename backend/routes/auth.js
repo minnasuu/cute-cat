@@ -26,6 +26,8 @@ const nodemailer = require('nodemailer');
 const router = express.Router();
 const prisma = new PrismaClient();
 const { ensureWorkbenchTeam } = require('../lib/workbench-seed');
+const coins = require('../lib/coins');
+const { isAdminEmail } = require('../lib/admin');
 
 // ======================== 简易内存速率限制 ========================
 const rateLimitMap = new Map();
@@ -80,6 +82,25 @@ function resetTransporter() {
 
 function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+/** 根据邮箱与充值记录计算角色 */
+async function computeRole(userId, email) {
+  if (isAdminEmail(email)) return 'admin';
+  const hasRecharge = await prisma.coinTransaction.findFirst({
+    where: { userId, type: 'recharge' },
+    select: { id: true },
+  });
+  return hasRecharge ? 'member' : 'user';
+}
+
+/** 对外暴露的用户对象(含喵币/角色/邀请) */
+async function publicUser(userId) {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, nickname: true, avatar: true, role: true, coins: true, inviteCode: true, inviteCount: true, invitedById: true, createdAt: true },
+  });
+  return u;
 }
 
 // ======================== 公开配置（无需登录）========================
@@ -160,7 +181,7 @@ router.post('/send-code', async (req, res) => {
 // ======================== 注册 ========================
 router.post('/register', async (req, res) => {
   try {
-    const { email: rawEmail, password, nickname, code, betaCode } = req.body;
+    const { email: rawEmail, password, nickname, code, betaCode, inviteCode: inviteCodeRaw } = req.body;
     const email = normalizeEmail(rawEmail);
     if (!email || !password || !nickname || !code) {
       return res.status(400).json({ error: '请填写所有必填项' });
@@ -196,10 +217,39 @@ router.post('/register', async (req, res) => {
     if (existing) return res.status(400).json({ error: '该邮箱已注册' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 邀请人(可选,通过邀请码查找)
+    let inviter = null;
+    const inviteCodeStr = inviteCodeRaw ? String(inviteCodeRaw).trim() : '';
+    if (inviteCodeStr) {
+      inviter = await coins.findInviterByCode(inviteCodeStr);
+    }
+
     const user = await prisma.user.create({
-      data: { email, password: hashedPassword, nickname },
+      data: {
+        email,
+        password: hashedPassword,
+        nickname,
+        invitedById: inviter?.id ?? null,
+        role: isAdminEmail(email) ? 'admin' : 'user',
+      },
     });
     console.log('[auth] register: user created |', user.id, '|', email, '| hash length:', hashedPassword.length);
+
+    // 生成邀请码
+    await coins.ensureInviteCode(user.id);
+
+    // 注册奖励 100 喵币
+    await coins.addCoins(user.id, coins.SIGNUP_BONUS, 'signup_bonus', { note: '新用户注册奖励' });
+
+    // 邀请奖励(邀请人 +100,上限 INVITE_MAX)
+    if (inviter) {
+      const freshInviter = await prisma.user.findUnique({ where: { id: inviter.id }, select: { inviteCount: true } });
+      if (freshInviter && freshInviter.inviteCount < coins.INVITE_MAX) {
+        await coins.addCoins(inviter.id, coins.INVITE_REWARD, 'invite_reward', { refId: user.id, note: `邀请奖励: ${email}` });
+        await prisma.user.update({ where: { id: inviter.id }, data: { inviteCount: { increment: 1 } } });
+      }
+    }
 
     try {
       await ensureWorkbenchTeam(prisma, user.id);
@@ -215,10 +265,13 @@ router.post('/register', async (req, res) => {
 
     const tokens = generateTokens(user.id);
     setAuthCookies(res, tokens);
-    res.json({
-      success: true,
-      user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, plan: user.plan, aiQuota: user.aiQuota, aiUsed: user.aiUsed },
-    });
+    const fullUser = await publicUser(user.id);
+    // 确保 role 正确(管理员直接通过校验,不依赖充值)
+    if (fullUser && fullUser.role === 'user' && isAdminEmail(fullUser.email)) {
+      await prisma.user.update({ where: { id: user.id }, data: { role: 'admin' } });
+      fullUser.role = 'admin';
+    }
+    res.json({ success: true, user: fullUser });
   } catch (err) {
     console.error('[auth] register error:', err);
     res.status(500).json({ error: '注册失败' });
@@ -260,10 +313,7 @@ router.post('/login', async (req, res) => {
 
     const tokens = generateTokens(user.id);
     setAuthCookies(res, tokens);
-    res.json({
-      success: true,
-      user: { id: user.id, email: user.email, nickname: user.nickname, avatar: user.avatar, plan: user.plan, aiQuota: user.aiQuota, aiUsed: user.aiUsed },
-    });
+    res.json({ success: true, user: await publicUser(user.id) });
   } catch (err) {
     console.error('[auth] login error:', err);
     res.status(500).json({ error: '登录失败，请稍后重试' });
@@ -333,12 +383,14 @@ router.post('/logout', (req, res) => {
 // ======================== 获取当前用户 ========================
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-      select: { id: true, email: true, nickname: true, avatar: true, plan: true, aiQuota: true, aiUsed: true, createdAt: true },
-    });
-    if (!user) return res.status(404).json({ error: '用户不存在' });
-    res.json(user);
+    let u = await publicUser(req.userId);
+    if (!u) return res.status(404).json({ error: '用户不存在' });
+    // 兜底:管理员 email 但 role 未刷为 admin(存量数据)
+    if (u.role !== 'admin' && isAdminEmail(u.email)) {
+      await prisma.user.update({ where: { id: req.userId }, data: { role: 'admin' } });
+      u = await publicUser(req.userId);
+    }
+    res.json(u);
   } catch (err) {
     res.status(500).json({ error: '获取用户信息失败' });
   }

@@ -25,8 +25,27 @@ const storage = require('../lib/storage');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { findOwned } = require('../lib/laisse-ancie-helpers');
+const { chargeAI } = require('../lib/billing');
+const coins = require('../lib/coins');
 
 const router = express.Router();
+
+// ── 生图扣币:在调模型前按张数扣,余额不足返回 402 ──
+async function chargeImages(req, count, scenario, refId) {
+  if (!req.userId || count <= 0) return;
+  try {
+    await chargeAI(req.userId, scenario, { refId, count, note: `design:${scenario} x${count}` });
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') {
+      const e = new Error('喵币不足，请充值后再试');
+      e.code = 'INSUFFICIENT_COINS';
+      e.coins = await coins.getUserCoins(req.userId);
+      e.cost = coins.getCost(scenario) * count;
+      throw e;
+    }
+    throw err;
+  }
+}
 
 // ── material-combo 守卫常量 ───────────────────────────────────
 const MAX_FABRIC = 6;
@@ -356,8 +375,14 @@ router.post('/lineart', async (req, res) => {
     // 插画不进线稿流程,回退到标准图(防御性)
     return res.redirect(307, req.originalUrl.replace('/lineart', '/generate'));
   }
-  const imgOptsBase = { provider };
   const slots = planLineart(mode, plan);
+  try {
+    await chargeImages(req, slots.length, 'image_lineart', `lineart:${mode}`);
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    throw err;
+  }
+  const imgOptsBase = { provider };
   const results = await Promise.all(slots.map(async (slot) => {
     try {
       // 把参考灵感视觉描述注入线稿 prompt;把首图 URL 作为参考图传入 gen-image
@@ -391,9 +416,16 @@ router.post('/generate', async (req, res) => {
   const { mode = 'single', plan, provider } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
 
+  const slots = planImages(mode, plan);
+  try {
+    await chargeImages(req, slots.length, 'image_generate', `generate:${mode}`);
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    throw err;
+  }
+
   // provider 可选,未传则走 ark(唯一生图 provider,向后兼容)
   const imgOptsBase = { provider };
-  const slots = planImages(mode, plan);
   // 并行生成——总耗时取决于最慢的单张(而非 N 张串联),避免撑过 nginx proxy_read_timeout
   const results = await Promise.all(slots.map(async (slot) => {
     try {
@@ -423,6 +455,13 @@ router.post('/generate', async (req, res) => {
 router.post('/regenerate', async (req, res) => {
   const { slot = 'flat', label = '图', plan, instruction = '', provider, mode, material } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
+
+  try {
+    await chargeImages(req, 1, 'image_regenerate', `regenerate:${slot}`);
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    throw err;
+  }
 
   // 在 plan 基础上叠加修图指令
   // 拼合全部模式下的 slot(含线稿),按 slot 名匹配;找不到就按 slot 名回退
@@ -545,8 +584,15 @@ router.post('/generate-final', async (req, res) => {
   if (!plan) return res.status(400).json({ error: 'plan required' });
   if (!material || !material.name) return res.status(400).json({ error: 'material required' });
 
-  // 最终图 base prompt(复用 planImages 的产品图描述)
   const baseSlots = planImages(mode, plan);
+  try {
+    await chargeImages(req, baseSlots.length, 'image_generate', `generate-final:${mode}`);
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    throw err;
+  }
+
+  // 最终图 base prompt(复用 planImages 的产品图描述)
   const materialDesc = [
     `Material: ${material.name}.`,
     material.composition || material.texture ? `${[material.composition, material.texture].filter(Boolean).join(' · ')}.` : '',
@@ -650,6 +696,14 @@ router.post('/material-combo', (req, res) => {
       if (stylesMeta.length > MAX_STYLE) return res.status(400).json({ error: `款式最多 ${MAX_STYLE} 项` });
       const totalCells = fabricsMeta.length * stylesMeta.length;
       if (totalCells > MAX_CELLS) return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
+    }
+
+    // material-combo 按总张数预扣喵币(余额不足 402)
+    try {
+      await chargeImages(req, mode === 'color-mix' ? 1 : totalCells, 'material_combo_per_image', `material-combo:${mode}`);
+    } catch (err) {
+      if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+      throw err;
     }
 
     try {
@@ -776,6 +830,14 @@ router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
 
   const fi = Number.parseInt(req.body?.fi, 10);
   const si = Number.parseInt(req.body?.si, 10);
+
+  // 单格重生成扣 1 张
+  try {
+    await chargeImages(req, 1, 'image_regenerate', `material-combo:regenerate:${fi}-${si}`);
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    throw err;
+  }
   if (!Number.isInteger(fi) || !Number.isInteger(si)) {
     return res.status(400).json({ error: 'fi / si 必须为整数' });
   }

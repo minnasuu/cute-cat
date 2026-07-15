@@ -24,6 +24,7 @@ const LaisseAncieApp = lazy(() =>
   }),
 );
 const AdminWorkflowsPage = lazy(() => import('./pages/AdminWorkflowsPage'));
+const AccountPage = lazy(() => import('./pages/AccountPage'));
 
 const LoadingScreen = () => (
   <div className="min-h-screen flex items-center justify-center text-text-tertiary">加载中...</div>
@@ -53,13 +54,12 @@ const LandingRoute: React.FC = () => {
   return <LandingPage />;
 };
 
-// Admin-only route: only specified emails can access
-const ADMIN_ROUTE_EMAILS = ['minhansu508@gmail.com'];
+// Admin-only route: 仅 role==='admin' 可访问(后端 me 接口返回 role)
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
-  if (!ADMIN_ROUTE_EMAILS.includes(user.email)) return <Navigate to="/dashboard" replace />;
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 };
 
@@ -123,6 +123,16 @@ const App: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <LaisseAncieApp />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Account - requires login */}
+              <Route
+                path="/account"
+                element={
+                  <ProtectedRoute>
+                    <AccountPage />
                   </ProtectedRoute>
                 }
               />

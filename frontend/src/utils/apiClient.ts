@@ -96,7 +96,22 @@ class ApiClient {
 
     // 401 + auth 路径(不应 refresh) → 走错误处理
     if (!response.ok) {
-      const msg = this.friendlyStatusMessage(response.status) || (await this.readErrorBody(response));
+      const statusMsg = this.friendlyStatusMessage(response.status);
+      // 喵币不足:特殊提示并引导充值
+      if (response.status === 402) {
+        let payload: any = {};
+        try { payload = await response.json(); } catch { /* ignore */ }
+        const detail = payload?.error || '喵币不足，请充值后再试';
+        if (!silent) {
+          const coins = payload?.coins != null ? ` (余额 🪙 ${payload.coins})` : '';
+          showToast(`${detail}${coins}`, 'warning');
+        }
+        const err = new Error(detail) as Error & { code?: string; coins?: number };
+        err.code = 'INSUFFICIENT_COINS';
+        err.coins = payload?.coins;
+        throw err;
+      }
+      const msg = statusMsg || (await this.readErrorBody(response));
       if (!silent) showToast(msg);
       throw new Error(msg);
     }

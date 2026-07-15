@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../utils/apiClient';
 import CatLogo from '../components/CatLogo';
@@ -10,6 +10,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RegisterPage: React.FC = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -18,6 +19,7 @@ const RegisterPage: React.FC = () => {
   const [nickname, setNickname] = useState('');
   const [code, setCode] = useState('');
   const [betaCode, setBetaCode] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
   const [codeLoading, setCodeLoading] = useState(false);
@@ -31,6 +33,12 @@ const RegisterPage: React.FC = () => {
       .then((d) => setBetaRequired(d.betaRequired))
       .catch(() => setBetaRequired(true));
   }, []);
+
+  // 邀请链接 ?invite=CODE 自动填入
+  useEffect(() => {
+    const inv = searchParams.get('invite');
+    if (inv) setInviteCode(inv.trim().toUpperCase());
+  }, [searchParams]);
 
   const handleSendCode = async () => {
     if (!email) { showToast('请先输入邮箱', 'warning'); return; }
@@ -72,8 +80,9 @@ const RegisterPage: React.FC = () => {
         nickname.trim(),
         code.trim(),
         betaRequired ? betaCode.trim() : undefined,
+        inviteCode.trim() || undefined,
       );
-      showToast('注册成功，欢迎加入！', 'success');
+      showToast('注册成功，欢迎加入！已获赠 100 🪙 体验喵币', 'success');
       navigate('/dashboard');
     } catch {
       // apiClient already shows toast with specific error message
@@ -111,6 +120,18 @@ const RegisterPage: React.FC = () => {
                 <p className="text-xs text-amber-600 mt-1.5">当前为内测阶段，需要邀请码才能注册</p>
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">邀请码（选填）</label>
+              <input
+                type="text"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                placeholder="输入好友的邀请码，注册后双方均可获得喵币"
+                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none font-mono tracking-widest text-center uppercase"
+              />
+              <p className="text-xs text-text-tertiary mt-1.5">使用邀请码注册，你和邀请人各得 100 🪙。</p>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-1">昵称</label>

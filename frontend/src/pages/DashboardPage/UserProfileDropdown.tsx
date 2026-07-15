@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 interface User {
   id: string;
   email: string;
   nickname: string;
   avatar?: string;
-  plan: string;
-  aiQuota?: number;
-  aiUsed?: number;
+  plan?: string;
+  role: 'admin' | 'member' | 'user';
+  coins: number;
 }
 
 interface UserProfileDropdownProps {
@@ -19,10 +20,10 @@ interface UserProfileDropdownProps {
   onLogout: () => void | Promise<void>;
 }
 
-const PLAN_LABELS: Record<string, string> = {
-  free: 'Free',
-  pro: 'Pro',
-  enterprise: 'Enterprise',
+const ROLE_LABELS: Record<string, string> = {
+  admin: '管理员',
+  member: '会员',
+  user: '用户',
 };
 
 const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
@@ -42,12 +43,7 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const planLabel = PLAN_LABELS[user.plan] || user.plan;
-  const aiQuota = user.aiQuota ?? 100;
-  const aiUsed = user.aiUsed ?? 0;
-  const aiPercent = aiQuota > 0 ? Math.min(100, Math.round((aiUsed / aiQuota) * 100)) : 0;
-
-  const formatLimit = (val: number) => (val >= 999 ? '∞' : String(val));
+  const roleLabel = ROLE_LABELS[user.role] || user.role;
 
   return (
     <div ref={ref} className="relative">
@@ -61,7 +57,7 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
         </div>
         <span className="text-sm font-bold text-text-primary hidden sm:inline truncate max-w-[200px]">{user.nickname}</span>
         <span className="px-2 py-0.5 bg-primary-50 border border-primary-200 text-primary-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
-          {planLabel}
+          {roleLabel}
         </span>
         <svg
           className={`w-3.5 h-3.5 text-text-tertiary transition-transform ${open ? 'rotate-180' : ''}`}
@@ -87,10 +83,14 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
             </div>
           </div>
 
-          {/* Quota section */}
+          {/* Coins section */}
           <div className="px-5 py-4 space-y-3">
-            <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">账户用量</p>
+            <p className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">我的喵币</p>
 
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-text-secondary">余额</span>
+              <span className="text-sm font-black text-text-primary">🪙 {user.coins}</span>
+            </div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-secondary">历史执行次数</span>
               <span className="text-xs font-bold text-text-primary">{workflowRuns}</span>
@@ -99,23 +99,24 @@ const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
               <span className="text-xs font-medium text-text-secondary">角色 AI 调用（计次）</span>
               <span className="text-xs font-bold text-text-primary">{totalAiCalls}</span>
             </div>
-            {/* AI Calls */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-medium text-text-secondary">AI 额度</span>
-                <span className="text-xs font-bold text-text-primary">{aiUsed} / {formatLimit(aiQuota)}</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-surface-secondary overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${aiPercent >= 90 ? 'bg-danger-500' : aiPercent >= 70 ? 'bg-warning-400' : 'bg-primary-400'}`}
-                  style={{ width: `${aiPercent}%` }}
-                />
-              </div>
-            </div>
+            <Link
+              to="/account"
+              onClick={() => setOpen(false)}
+              className="block w-full py-2 text-center text-sm font-bold text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-xl transition-colors"
+            >
+              充值 / 账户管理
+            </Link>
           </div>
 
           {/* Actions */}
           <div className="px-3 py-2 border-t border-border">
+            <Link
+              to="/account"
+              onClick={() => setOpen(false)}
+              className="block w-full px-3 py-2.5 text-sm font-medium text-text-tertiary hover:text-text-primary hover:bg-surface-secondary rounded-xl transition-colors"
+            >
+              个人中心
+            </Link>
             <button
               onClick={onLogout}
               className="w-full px-3 py-2.5 text-sm font-medium text-text-tertiary hover:text-danger-500 hover:bg-danger-50 rounded-xl transition-colors text-left cursor-pointer"

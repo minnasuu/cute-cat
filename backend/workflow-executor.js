@@ -7,6 +7,8 @@
  */
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { chargeAI } = require('./lib/billing');
+const coins = require('./lib/coins');
 
 // ─── ARK 豆包文本调用 (火山方舟, OpenAI 兼容) — 唯一文本模型 ──
 // 模型: doubao-seed-2-1-pro-260628 (与灵感视觉分析共用同一 ARK key)
@@ -321,6 +323,21 @@ async function executeWorkflowIntoExistingRun(workflow, run, triggeredBy, option
       if (cat?.templateId) catTemplateId = cat.templateId;
       if (cat?.name) catName = cat.name;
       if (typeof cat?.systemPrompt === 'string') catSystemPrompt = cat.systemPrompt;
+    }
+
+    // 工作流每步扣喵币(原子扣减,余额不足终止流程并标记 failed)
+    if (triggeredBy) {
+      try {
+        await chargeAI(triggeredBy, 'workflow_step', { refId: run.id, note: `workflow:${workflow.name}#${i + 1}` });
+      } catch (err) {
+        if (err.code === 'INSUFFICIENT_COINS') {
+          console.warn(`[executor] 步骤 ${i + 1} 喵币不足,终止流程 | user=${triggeredBy}`);
+          hasFailed = true;
+          stepResults[i] = { success: false, data: null, summary: '喵币不足,请充值后再试', status: 'failed' };
+          continue;
+        }
+        throw err;
+      }
     }
 
     try {

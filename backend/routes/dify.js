@@ -3,6 +3,8 @@ const { PrismaClient } = require('@prisma/client');
 const { authMiddleware, getAccessTokenFromRequest, verifyToken } = require('../middleware/auth');
 const router = express.Router();
 const prisma = new PrismaClient();
+const { chargeAI } = require('../lib/billing');
+const coins = require('../lib/coins');
 
 /**
  * 可选认证中间件 — 有 token 就解析 userId，没有也放行
@@ -64,6 +66,19 @@ router.post('/generate-goal', optionalAuth, async (req, res) => {
       return res.status(500).json({ error: 'Server configuration error: DIFY_GOAL_API_KEY not set' });
     }
 
+    // 喵币扣减(generate-goal 走文本类)
+    if (req.userId) {
+      try {
+        await chargeAI(req.userId, 'chat_text', { refId: 'generate-goal', note: 'generate-goal' });
+      } catch (err) {
+        if (err.code === 'INSUFFICIENT_COINS') {
+          const coinsLeft = await coins.getUserCoins(req.userId);
+          return res.status(402).json({ error: '喵币不足，请充值后再试', code: 'INSUFFICIENT_COINS', coins: coinsLeft, cost: coins.getCost('chat_text') });
+        }
+        throw err;
+      }
+    }
+
     // 调用 Dify Workflow API
     const response = await fetch(`${difyApiUrl}/workflows/run`, {
       method: 'POST',
@@ -91,7 +106,7 @@ router.post('/generate-goal', optionalAuth, async (req, res) => {
     }
 
     const result = await response.json();
-    
+
     console.log('Dify API Response:', JSON.stringify(result, null, 2));
     
     // 尝试多种可能的数据结构
@@ -159,8 +174,10 @@ router.post('/generate-goal', optionalAuth, async (req, res) => {
       });
     }
 
-    // 记录 AI 用量
-    const usage = await recordAiUsage(req.userId, { taskId: 'generate-goal', model: 'dify' });
+    // 记录 AI 用量(保留 legacy 日志)
+    if (req.userId) await recordAiUsage(req.userId, { taskId: 'generate-goal', model: 'dify' });
+
+    const coinsLeft = req.userId ? await coins.getUserCoins(req.userId) : null;
 
     // 返回处理后的数据
     res.json({
@@ -188,7 +205,7 @@ router.post('/generate-goal', optionalAuth, async (req, res) => {
           timeSpent: item.timeSpent || 0
         }))
       },
-      ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+      ...(coinsLeft != null ? { coins: coinsLeft } : {}),
     });
 
   } catch (error) {
@@ -317,11 +334,17 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
       return endSSE();
     }
 
-    // 配额检查
+    // 喵币扣减(仅已登录用户)
     if (req.userId) {
-      const u = await prisma.user.findUnique({ where: { id: req.userId }, select: { aiUsed: true, aiQuota: true } });
-      if (u && u.aiUsed >= u.aiQuota) {
-        sendSSE('error', { error: 'AI 额度已用完', aiUsed: u.aiUsed, aiQuota: u.aiQuota });
+      try {
+        await chargeAI(req.userId, 'chat_text', { refId: taskId, note: `skill:stream:${taskId}` });
+      } catch (err) {
+        if (err.code === 'INSUFFICIENT_COINS') {
+          const coinsLeft = await coins.getUserCoins(req.userId);
+          sendSSE('error', { error: '喵币不足，请充值后再试', code: 'INSUFFICIENT_COINS', coins: coinsLeft, cost: coins.getCost('chat_text') });
+        } else {
+          sendSSE('error', { error: err.message || '扣费失败' });
+        }
         return endSSE();
       }
     }
@@ -398,11 +421,12 @@ router.post('/skill/stream', optionalAuth, async (req, res) => {
       }
 
       clearTimeout(timeout);
-      const usage = await recordAiUsage(req.userId, { taskId, model: 'ark', teamId, catId });
+      if (req.userId) await recordAiUsage(req.userId, { taskId, model: 'ark', teamId, catId });
+      const coinsLeft = req.userId ? await coins.getUserCoins(req.userId) : null;
       sendSSE('done', {
         answer: fullAnswer,
         model: 'ark',
-        ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+        ...(coinsLeft != null ? { coins: coinsLeft } : {}),
       });
     } catch (err) {
       clearTimeout(timeout);
@@ -428,11 +452,16 @@ router.post('/skill', optionalAuth, async (req, res) => {
       return res.status(400).json({ error: 'taskId and text are required' });
     }
 
-    // 配额检查（仅已登录用户）
+    // 喵币扣减(仅已登录用户;未登录放行但无法扣币)
     if (req.userId) {
-      const u = await prisma.user.findUnique({ where: { id: req.userId }, select: { aiUsed: true, aiQuota: true } });
-      if (u && u.aiUsed >= u.aiQuota) {
-        return res.status(429).json({ error: 'AI 额度已用完，请联系管理员或升级套餐', aiUsed: u.aiUsed, aiQuota: u.aiQuota });
+      try {
+        await chargeAI(req.userId, 'chat_text', { refId: taskId, note: `skill:${taskId}` });
+      } catch (err) {
+        if (err.code === 'INSUFFICIENT_COINS') {
+          const coinsLeft = await coins.getUserCoins(req.userId);
+          return res.status(402).json({ error: '喵币不足，请充值后再试', code: 'INSUFFICIENT_COINS', coins: coinsLeft, cost: coins.getCost('chat_text') });
+        }
+        throw err;
       }
     }
 
@@ -491,14 +520,15 @@ router.post('/skill', optionalAuth, async (req, res) => {
 
     console.log(`[ai/skill] taskId=${taskId}, model=${selectedModel}, answer length=${answer.length}`);
 
-    // 记录 AI 用量
-    const usage = await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
+    // 记录 AI 用量(保留 legacy 日志)
+    if (req.userId) await recordAiUsage(req.userId, { taskId, model: selectedModel, teamId, catId });
 
+    const coinsLeft = req.userId ? await coins.getUserCoins(req.userId) : null;
     res.json({
       answer,
       model: selectedModel,
       conversationId: `${selectedModel}-${taskId}-${Date.now()}`,
-      ...(usage ? { aiUsed: usage.aiUsed, aiQuota: usage.aiQuota } : {}),
+      ...(coinsLeft != null ? { coins: coinsLeft } : {}),
     });
   } catch (error) {
     console.error('[ai/skill] Error:', error);
