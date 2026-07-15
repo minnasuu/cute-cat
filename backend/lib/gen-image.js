@@ -43,8 +43,8 @@ const PROVIDERS = {
     defaultResolution: () => process.env.MAIZI_RESOLUTION || '1K',
     // quality: standard/low/high/medium
     defaultQuality: () => process.env.MAIZI_QUALITY || 'medium',
-    // referenceImageUrl 被忽略(gpt-image-2 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
-    buildBody: (model, prompt, size, _referenceImageUrl, cfg) => ({
+    // referenceImages 被忽略(gpt-image-2 纯文生图) —— 调用方需在 prompt 中自行描述材料信息
+    buildBody: (model, prompt, size, _referenceImages, cfg) => ({
       model, prompt, size, n: 1,
       resolution: cfg.defaultResolution(),
       quality: cfg.defaultQuality(),
@@ -60,38 +60,52 @@ const PROVIDERS = {
     },
     label: 'MaiziTech',
   },
+
+  // ─── 图像编辑 provider:原生多图参考(图生图) ─────────────────────
+  // imageRef:true —— provider 真正消费 referenceImages,按参考图生图。
+  // 关键假设(占位,以 MaiziTech 真实文档为准,联调时只改 buildBody 这一处):
+  //   · 字段名 image 接受 URL 数组(多图原生参考)—— 若端点只接受单图或改用
+  //     multipart / base64 编码,只需调整下方 buildBody 与 extractImage。
+  // 模型 id 走 env MAIZI_IMAGE_EDIT_MODEL,便于切到不同版本无需改代码。
+  'maizi-image-edit': {
+    apiKey: () => process.env.MAIZI_API_KEY,
+    missingKeyError: 'MAIZI_API_KEY not set',
+    baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v2',
+    defaultModel: () => process.env.MAIZI_IMAGE_EDIT_MODEL || 'gpt-image-edit',
+    imageRef: true,
+    sizeMap: { '1:1': '1024x1024', '3:4': '832x1216', '4:3': '1216x832', '9:16': '832x1216', '16:9': '1216x832' },
+    fallbackSize: '1024x1024',
+    defaultResolution: () => process.env.MAIZI_RESOLUTION || '1K',
+    defaultQuality: () => process.env.MAIZI_QUALITY || 'medium',
+    // buildBody: 多图原生参考 —— image 传 URL 数组(图1,图2, ...)。
+    // TODO(配对 Maizi 文档后确认):若端点要求单图、base64 或 multipart,只改此处。
+    buildBody: (model, prompt, size, referenceImages, cfg) => {
+      const images = Array.isArray(referenceImages) ? referenceImages.filter(Boolean) : [];
+      return {
+        model,
+        prompt,
+        size,
+        n: 1,
+        image: images.length ? images : undefined,
+        resolution: cfg.defaultResolution(),
+        quality: cfg.defaultQuality(),
+        response_format: 'b64_json',
+      };
+    },
+    extractImage: (data) => {
+      const b64 = data?.data?.[0]?.b64_json || data?.data?.[0]?.url || null;
+      if (!b64) return null;
+      if (/^https?:\/\//.test(b64)) return { url: b64 };
+      return { buffer: Buffer.from(b64, 'base64') };
+    },
+    label: 'Maizi-ImageEdit',
+  },
 };
 
 /**
- * imageRef —— 占位扩展点:声明一个支持「真·参考图」的供应商(如 Maizi 图像编辑 / FLUX)。
- * 当 provider 匹配到此配置且传入 referenceImageUrl 时,走参考图请求体;
- * 未配置时 resolveProvider 会回退到 maizi。
- *
- * 启用方式:在 PROVIDERS 中补充该 provider 的apiKey / baseUrl / sizeMap / buildBody(需带上 image)。
- * 例:
- *   'maizi-image-edit': {
- *     apiKey: () => process.env.MAIZI_API_KEY,
- *     baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v2',
- *     defaultModel: () => process.env.MAIZI_IMAGE_EDIT_MODEL || 'gpt-image-edit-...',
- *     imageRef: true,
- *     sizeMap: { '1:1': '1024x1024', ... },
- *     fallbackSize: '1024x1024',
- *     defaultResolution: () => '1K',
- *     defaultQuality: () => 'medium',
- *     buildBody: (model, prompt, size, referenceImageUrl, cfg) => ({
- *       model, prompt, image: referenceImageUrl, size,
- *       resolution: cfg.defaultResolution(), quality: cfg.defaultQuality(),
- *       response_format: 'b64_json',
- *     }),
- *     extractImage: (data) => { const b64 = data?.data?.[0]?.b64_json; return b64 ? { buffer: Buffer.from(b64, 'base64') } : null; },
- *     label: 'Maizi-ImageEdit',
- *   },
- */
-
-/**
  * 解析本次请求使用的 provider。
- * 当前全局唯一 provider 为 'maizi'(MaiziTech);保留入参/env 仅为向后兼容,
- * 传入其它值一律回退到 maizi。
+ * 内置 'maizi'(文生图) 与 'maizi-image-edit'(图像编辑 / 多图参考);
+ * 传其它值一律回退到 maizi。
  */
 function resolveProvider(opts) {
   const p = (opts?.provider || process.env.IMAGE_PROVIDER || 'maizi').toLowerCase();
@@ -109,18 +123,25 @@ function resolveProvider(opts) {
  * @param {string} opts.teamId 团队 ID(用作 uploads 子目录)
  * @param {string} [opts.aspectRatio='1:1'] 设计工作流比例
  * @param {string} [opts.safeName='image'] 文件名前缀
- * @param {string} [opts.provider='maizi'] 生图模型提供商('maizi')
+ * @param {string} [opts.provider='maizi'] 生图模型提供商('maizi' 文生图 | 'maizi-image-edit' 多图参考)
  * @param {string} [opts.model] 覆盖 provider 默认模型 ID
- * @param {string} [opts.referenceImageUrl] 参考图 URL(材料图等)
- *   若 provider 声明 imageRef:true → 走图生图/参考图请求体(真·参考图);
- *   否则 → 将材料视觉信息以文字形式追加到 prompt(降级),保证所有供应商可用
+ * @param {string[]} [opts.referenceImages] 参考图 URL 数组(材料图等),顺序即图序号(图1, 图2, ...)。
+ *   若 provider 声明 imageRef:true → 走图生图/真·参考图请求体;
+ *   否则 → 被忽略(纯文生图供应商),调用方应在 prompt 中自行描述。
+ * @param {string} [opts.referenceImageUrl] @deprecated 单参考图旧写法,等价于 referenceImages:[url]。
+ *   为 pixel-image / lineart 等调用方保留,新代码请用 referenceImages。
  * @returns {Promise<{ url: string, prompt: string, model: string } | { error: string }>}
  */
 async function generateImage(prompt, opts) {
-  const { teamId, aspectRatio = '1:1', safeName = 'image', model: modelOverride, referenceImageUrl } = opts || {};
+  const { teamId, aspectRatio = '1:1', safeName = 'image', model: modelOverride, referenceImageUrl, referenceImages } = opts || {};
   if (!prompt || !prompt.trim()) {
     return { error: 'empty prompt' };
   }
+  // 归一化参考图:优先用 referenceImages(数组),回退旧单图 referenceImageUrl,再过滤空串。
+  // 顺序即图序号(图1, 图2, ...),与 prompt 中的「图1换成图2的面料花样」对齐。
+  const refs = (Array.isArray(referenceImages) && referenceImages.length)
+    ? referenceImages.filter(Boolean)
+    : (referenceImageUrl ? [referenceImageUrl] : []);
   if (!teamId) {
     return { error: 'teamId required' };
   }
@@ -133,8 +154,6 @@ async function generateImage(prompt, opts) {
     return { error: cfg.missingKeyError };
   }
 
-  // 文字降级:provider 不支持参考图时,把「参考图」降级为 prompt 末尾的材料描述
-  // (调用方也可在调之前就写好材料描述;此处仅在未显式描述时追加一句提示,避免重复)
   const effectivePrompt = prompt;
 
   const baseUrl = cfg.baseUrl();
@@ -155,14 +174,14 @@ async function generateImage(prompt, opts) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
     try {
-      console.log(`[gen-image] attempt ${attempt}: ${source}, prompt=${effectivePrompt.slice(0, 60)}…${referenceImageUrl ? `, refImage=${referenceImageUrl.slice(0, 40)}…` : ''}`);
+      console.log(`[gen-image] attempt ${attempt}: ${source}, prompt=${effectivePrompt.slice(0, 60)}…${refs.length ? `, refImages=${refs.length}×${refs[0].slice(0, 40)}…` : ''}`);
       const res = await fetch(`${baseUrl}/images/generations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, referenceImageUrl, cfg)),
+        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, refs, cfg)),
         signal: controller.signal,
       });
 
