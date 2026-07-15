@@ -111,7 +111,12 @@ const PROVIDERS = {
     apiKey: () => process.env.MAIZI_API_KEY,
     missingKeyError: 'MAIZI_API_KEY not set',
     baseUrl: () => process.env.MAIZI_BASE_URL || 'https://www.maizitech.xyz/v2',
-    defaultModel: () => process.env.MAIZI_IMAGE_EDIT_MODEL || 'gpt-image-edit',
+    // 图生图端点路径。默认 /images/generations(与文生图同路径、由 model 区分);
+    // 若 Maizi 要求独立的编辑端点(如 /images/edits),改 env MAIZI_IMAGE_EDIT_PATH。
+    path: () => process.env.MAIZI_IMAGE_EDIT_PATH || '/images/generations',
+    // 图生模型 id。gpt-image-edit 是占位,Maizi 实际会拒绝(不可用/不支持图片生成);
+    // 正确 id 以控制台为准,通过 env MAIZI_IMAGE_EDIT_MODEL 注入(默认回落到文生图 gpt-image-2)。
+    defaultModel: () => process.env.MAIZI_IMAGE_EDIT_MODEL || 'gpt-image-2',
     imageRef: true,
     sizeMap: { '1:1': '1024x1024', '3:4': '832x1216', '4:3': '1216x832', '9:16': '832x1216', '16:9': '1216x832' },
     fallbackSize: '1024x1024',
@@ -218,8 +223,10 @@ async function generateImage(prompt, opts) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
     try {
-      console.log(`[gen-image] attempt ${attempt}: ${source}, prompt=${effectivePrompt.slice(0, 60)}…${refs.length ? `, refImages=${refs.length}×${refs[0].slice(0, 40)}…` : ''}`);
-      const res = await fetch(`${baseUrl}/images/generations`, {
+      // 图生图 endpoint:默认 /images/generations,可通过 cfg.path()(env MAIZI_IMAGE_EDIT_PATH) 切到 /images/edits 等独立编辑端点
+      const url = `${baseUrl}${cfg.path ? cfg.path() : '/images/generations'}`;
+      console.log(`[gen-image] attempt ${attempt}: POST ${url} model=${model}, size=${size}${refs.length ? `, refImages=${refs.length}×${refs[0].slice(0, 40)}…` : ''}, prompt=${effectivePrompt.slice(0, 60)}…`);
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
