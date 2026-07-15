@@ -17,6 +17,7 @@ import { useEditingProduct } from "../contexts/editing-product";
 import { teamApi } from "../lib/api";
 import { ProductFormModal } from "../components/ProductFormModal";
 import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type Product, type ProductStatus } from "../types/design";
+import { MAIN_SLOT, slotRole } from "../lib/imageRole";
 
 /** 简易行内删除确认状态:id → 是否正在确认中。 */
 function useRowDelete() {
@@ -43,16 +44,25 @@ function nextStatus(s: ProductStatus): ProductStatus | null {
   return i === -1 || i >= STATUS_FLOW.length - 1 ? null : STATUS_FLOW[i + 1]!;
 }
 
-/** 选卡片封面:优先「效果图」类 slot(跳过线稿),回退到 imageUrl 兜底 */
+/**
+ * 选卡片封面:主图 > 效果图(优先 editorial/flat/material-combo 等,跳过线稿) > 第一张 > null。
+ * 合并 images[] + 遗留 imageUrl(兼容未迁移数据)。
+ */
 function pickCover(product: Product): string | null {
   const imgs = (product.images ?? []).filter((im) => im.url);
-  if (!imgs.length) return product.imageUrl ?? null;
-  const renderSlots = ["editorial", "flat", "single", "material-combo", "collection", "illustration", "hero-editorial", "detail", "final"];
-  for (const slot of renderSlots) {
-    const found = imgs.find((im) => im.slot === slot);
-    if (found) return found.url;
-  }
-  return imgs[0]?.url ?? product.imageUrl ?? null;
+  const legacyMain = !imgs.some((im) => im.slot === MAIN_SLOT) && product.imageUrl
+    ? [{ slot: MAIN_SLOT, label: "主图", url: product.imageUrl }, ...imgs]
+    : imgs;
+  const main = legacyMain.find((im) => im.slot === MAIN_SLOT);
+  if (main) return main.url;
+  const render = legacyMain
+    .filter((im) => slotRole(im.slot) === "render")
+    .sort((a, b) => {
+      const order = ["editorial", "flat", "single", "material-combo", "collection", "illustration", "hero-editorial", "detail", "final"];
+      return order.indexOf(a.slot) - order.indexOf(b.slot);
+    })[0];
+  if (render) return render.url;
+  return legacyMain[0]?.url ?? null;
 }
 
 /** 卡片视图的单张卡片:效果图作封面 + 标题文字 + 点击打开详情弹窗 */
@@ -183,7 +193,7 @@ export default function LookbookPage() {
                 <tr key={p.id} className="border-b border-gray-200 hover:bg-primary-50/40 cursor-pointer transition-colors"
                   onClick={() => setEditor({ mode: "view", product: p })}>
                   <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                    <StackedThumbs product={p} overrideUrl={p.imageUrl} />
+                    <StackedThumbs product={p} />
                   </td>
                   <td className="px-3 py-3">
                     <div className="font-medium text-gray-900">{p.title || "(untitled)"}</div>
@@ -257,17 +267,17 @@ const STATUS_COLORS: Record<ProductStatus, { text: string; bg: string; border: s
 };
 
 /** 图片堆叠错位预览:最多 4 张 + N 标记; overrideUrl(用户上传)优先级最高,作为生成图的替换覆盖 */
-function StackedThumbs({ product, overrideUrl }: { product: Product; overrideUrl?: string }) {
-  // 用户上传的替换图:单张铺满预览,标记"已替换"
-  if (overrideUrl) {
-    return (
-      <div className="relative w-[72px] h-[72px]" title="已用上传图替换)">
-        <img src={overrideUrl} alt="替换图" className="absolute inset-0 w-full h-full rounded-md border-2 border-white shadow-sm object-cover bg-gray-100" />
-        <span className="absolute top-0 left-0 px-1 py-0.5 rounded-br-md bg-primary-500 text-white text-[8px] font-medium z-10">替换</span>
-      </div>
-    );
+function StackedThumbs({ product }: { product: Product }) {
+  // 合并 images[] + 遗留 imageUrl(兼容未迁移数据),主图排最前,线稿排最后(缩略图不突显线稿)
+  const raw = (product.images ?? []).filter((im): im is typeof im & { url: string } => !!im.url);
+  if (!raw.some((im) => im.slot === MAIN_SLOT) && product.imageUrl) {
+    raw.unshift({ slot: MAIN_SLOT, label: "主图", url: product.imageUrl });
   }
-  const imgs = (product.images ?? []).filter((im): im is typeof im & { url: string } => !!im.url);
+  const imgs = [
+    ...raw.filter((im) => im.slot === MAIN_SLOT),
+    ...raw.filter((im) => slotRole(im.slot) === "render"),
+    ...raw.filter((im) => im.slot !== MAIN_SLOT && slotRole(im.slot) !== "render"),
+  ];
   if (imgs.length === 0) {
     return product.html ? (
       <div className="relative w-[72px] h-[72px]">

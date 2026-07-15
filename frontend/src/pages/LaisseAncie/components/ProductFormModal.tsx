@@ -2,21 +2,23 @@
 /**
  * Lookbook 产品的三态弹窗 —— view / edit / create。
  *
- *   view   :只读详情(设计图、工序时间线、推进按钮、结构化方案、基础字段),
- *           右上角「编辑」切入 edit;
+ *   view   :只读详情(图片(主图/效果图/线稿)、工序时间线、推进按钮、结构化方案、基础字段),
+ *           右上角「编辑」切入 edit;view 内支持「设为主图 / 降为效果图」(主图↔效果图互换);
  *   edit   :完整作者字段表单(mode/标题/季节/品类/面料/配色/目标价/版型/工艺/主图);
  *   create :同 edit,仅新建。
  *
- * 主图通过 /products/:id/image 上传(无 slot → 写 imageUrl 主图);
+ * 图片统一进 images[].slot:主图(slot="main")/线稿(lineart)/效果图(其余)。
+ * 上传默认主图(无 slot → slot="main",已有主图则旧主图降级为效果图);
  * 其余字段经 /products (POST/PATCH) 持久化。工序状态由时间线/推进按钮单独管理,
  * 不纳入本表单(与表格行内 StatusSelect / 推进按钮的既有职责保持一致)。
  */
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Modal } from "./ui";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useDesignStore } from "../store/design";
 import { teamApi } from "../lib/api";
 import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type DesignMode, type Product, type ProductStatus } from "../types/design";
+import { MAIN_SLOT, LINEART_SLOT, RENDER_SLOT, slotRole, swapMainImage } from "../lib/imageRole";
 
 const ALL_MODES: DesignMode[] = ["illustration", "single", "material-combo", "occasion"];
 const SEASON_PRESETS = ["春", "夏", "秋", "冬", "春秋", "秋冬", "春夏", "四季"];
@@ -83,10 +85,21 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
   const [submitting, setSubmitting] = useState(false);
   const [replacingSlot, setReplacingSlot] = useState<string | null>(null);
 
-  const productImages = (product.images ?? []).filter((im) => im.url);
+  // 合并 images[] + 遗留 imageUrl(兼容未迁移数据),按角色分组
+  const mergedImages = useMemo(() => {
+    const imgs = (product.images ?? []).filter((im) => im.url).map((im) => ({ ...im }));
+    if (!imgs.some((im) => im.slot === MAIN_SLOT) && product.imageUrl) {
+      imgs.unshift({ slot: MAIN_SLOT, label: "主图", url: product.imageUrl });
+    }
+    return imgs;
+  }, [product.images, product.imageUrl]);
+  const mainImages = mergedImages.filter((im) => im.slot === MAIN_SLOT);
+  const renderImages = mergedImages.filter((im) => slotRole(im.slot) === "render");
+  const lineartImages = mergedImages.filter((im) => im.slot === LINEART_SLOT);
   const hasHtml = !!product.html;
   const colors = product.colors ?? [];
 
+  // 仅 view 态用到的「替换某 slot 上传」(线稿/效果图单张替换)
   async function replaceSlotImage(slot: string, file: File) {
     if (!teamId) return;
     setReplacingSlot(slot);
@@ -97,6 +110,20 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
       await teamApi(teamId).uploadProductImage(product.id, fd);
       await store.refresh();
     } finally { setReplacingSlot(null); }
+  }
+
+  // 主图互换:前端算好整张 images[] + imageUrl,一次 PATCH 提交
+  const [swapping, setSwapping] = useState(false);
+  async function changeMain(action: "promote" | "demote", targetIndex: number) {
+    if (!teamId || swapping) return;
+    setSwapping(true);
+    try {
+      const { images, imageUrl } = swapMainImage(mergedImages, targetIndex, action);
+      await teamApi(teamId).updateProduct(product.id, { images, imageUrl });
+      await store.refresh();
+    } catch (e: any) {
+      alert(`操作失败: ${e?.message || e}`);
+    } finally { setSwapping(false); }
   }
 
   async function advance() {
@@ -110,53 +137,102 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
 
   return (
     <div className="flex-1 min-h-0 h-[60vh] overflow-auto pr-1 text-xs">
-      {/* 设计工作流生成的图片 / 插画 HTML */}
-      {(productImages.length > 0 || hasHtml || product.imageUrl) && (
+      {/* 图片(主图 / 效果图 / 线稿) + 插画 HTML */}
+      {(mergedImages.length > 0 || hasHtml) && (
         <div className="mb-5">
-          <SectionLabel>{hasHtml ? "插画 HTML 画布" : `图片 (${productImages.length || (product.imageUrl ? 1 : 0)})`}</SectionLabel>
+          <SectionLabel>{hasHtml ? "插画 HTML 画布" : `图片 (${mergedImages.length})`}</SectionLabel>
           {hasHtml ? (
             <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
               <iframe srcDoc={product.html!} sandbox="allow-scripts" title="插画 HTML 画布" className="w-full bg-white"
                 style={{ aspectRatio: "1 / 1", border: "none" }} />
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {product.imageUrl && (
-                <figure className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-                  <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={product.imageUrl} alt="主图" className="w-full h-full object-cover" /></div>
-                  <figcaption className="px-2 py-1 text-[10px] text-gray-600 font-medium truncate">主图</figcaption>
-                </figure>
+            <div className="space-y-3">
+              {/* 主图 */}
+              {mainImages.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">主图</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {mainImages.map((im, i) => {
+                      const realIdx = mergedImages.indexOf(im);
+                      return (
+                        <figure key={`main-${i}`} className="rounded-xl border border-primary-200 overflow-hidden bg-gray-50">
+                          <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-cover" /></div>
+                          <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
+                            <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
+                            <button disabled={swapping} onClick={() => changeMain("demote", realIdx)}
+                              className="shrink-0 text-[10px] text-amber-600 hover:text-amber-700 font-medium disabled:opacity-50">降为效果图</button>
+                          </figcaption>
+                        </figure>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
-              {productImages.map((im, idx) => {
-                const busy = replacingSlot === im.slot;
-                // 材料组合:该张效果图的库来源参考图(款式图 / 面料图),仅库来源有值
-                const src = product.mode === "material-combo" ? product.sourceImages?.[idx] : undefined;
-                const hasSrc = !!(src?.style || src?.fabric);
-                return (
-                  <figure key={im.slot + idx} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-                    <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-cover" /></div>
-                    <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
-                      <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
-                      <label className="shrink-0 cursor-pointer text-[10px] text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50">
-                        {busy ? "替换中" : "替换"}
-                        <input type="file" accept="image/*" className="hidden" disabled={busy}
-                          onChange={(e) => { const f = e.target.files?.[0]; if (f) void replaceSlotImage(im.slot, f); e.target.value = ""; }} />
-                      </label>
-                    </figcaption>
-                    {/* 参考图来源(款式图 + 面料图),并排小缩略图,仅库来源项展示 */}
-                    {hasSrc && (
-                      <div className="px-2 pb-2 flex items-center gap-2 border-t border-gray-100 pt-1.5">
-                        {src?.style
-                          ? <SourceThumb kind="款式" img={src.style} />
-                          : <SourcePlaceholder kind="款式" />}
-                        {src?.fabric
-                          ? <SourceThumb kind="面料" img={src.fabric} />
-                          : <SourcePlaceholder kind="面料" />}
-                      </div>
-                    )}
-                  </figure>
-                );
-              })}
+              {/* 效果图(AI 生成,可能多图;可提升为主图) */}
+              {renderImages.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">效果图</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {renderImages.map((im, i) => {
+                      const realIdx = mergedImages.indexOf(im);
+                      const src = product.mode === "material-combo" ? product.sourceImages?.[realIdx] : undefined;
+                      const hasSrc = !!(src?.style || src?.fabric);
+                      const busy = replacingSlot === im.slot;
+                      return (
+                        <figure key={`render-${im.slot}-${i}`} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+                          <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-cover" /></div>
+                          <figcaption className="px-2 py-1 space-y-0.5">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
+                              <span className="flex items-center gap-1">
+                                <button disabled={swapping} onClick={() => changeMain("promote", realIdx)}
+                                  className="shrink-0 text-[10px] text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50">设为主图</button>
+                                <label className="shrink-0 cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 font-medium disabled:opacity-50">
+                                  {busy ? "替换中" : "替换"}
+                                  <input type="file" accept="image/*" className="hidden" disabled={busy}
+                                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void replaceSlotImage(im.slot, f); e.target.value = ""; }} />
+                                </label>
+                              </span>
+                            </div>
+                          </figcaption>
+                          {/* 材料组合:参考图来源(款式图 + 面料图小缩略图) */}
+                          {hasSrc && (
+                            <div className="px-2 pb-2 flex items-center gap-2 border-t border-gray-100 pt-1.5">
+                              {src?.style ? <SourceThumb kind="款式" img={src.style} /> : <SourcePlaceholder kind="款式" />}
+                              {src?.fabric ? <SourceThumb kind="面料" img={src.fabric} /> : <SourcePlaceholder kind="面料" />}
+                            </div>
+                          )}
+                        </figure>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* 线稿(灵感扩散专属,不参与主图互换) */}
+              {lineartImages.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">线稿</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {lineartImages.map((im, i) => {
+                      const busy = replacingSlot === im.slot;
+                      return (
+                        <figure key={`lineart-${i}`} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+                          <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-cover" /></div>
+                          <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
+                            <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
+                            <label className="shrink-0 cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 font-medium disabled:opacity-50">
+                              {busy ? "替换中" : "替换"}
+                              <input type="file" accept="image/*" className="hidden" disabled={busy}
+                                onChange={(e) => { const f = e.target.files?.[0]; if (f) void replaceSlotImage(im.slot, f); e.target.value = ""; }} />
+                            </label>
+                          </figcaption>
+                        </figure>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -269,7 +345,9 @@ function ProductForm({ initial, onCancel, onSave }: {
   const [silhouette, setSilhouette] = useState(initial?.silhouette ?? "");
   const [fabricComposition, setFabricComposition] = useState(initial?.fabricComposition ?? "");
   const [stitchNotes, setStitchNotes] = useState(initial?.stitchNotes ?? "");
-  const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? "");
+  // 主图预览:优先 imageUrl,兼容已迁移到 images[](slot=main)的数据
+  const mainFromImages = (initial?.images ?? []).find((im) => im.slot === MAIN_SLOT)?.url;
+  const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? mainFromImages ?? "");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [status] = useState<ProductStatus>(initial?.status ?? "draft");
 

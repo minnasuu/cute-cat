@@ -47,7 +47,13 @@ export interface StatusLogEntry {
   attachments?: string[];
 }
 
-/** 设计工作流生成的一张图片(录入 Lookbook 时存入 Product.images) */
+/**
+ * 设计工作流生成的一张图片(录入 Lookbook 时存入 Product.images)。
+ * 三种角色由 slot 区分(详见 lib/imageRole):
+ *   "main"    — 主图(至多一张,封面首选);用户上传默认主图,可与效果图互换
+ *   "lineart" — 线稿(灵感扩散专属,不参与主图互换)
+ *   其余(final/material-combo/editorial/flat/render/...) — 效果图(AI 生成)
+ */
 export interface ProductImage {
   slot: string;
   label: string;

@@ -856,8 +856,13 @@ router.post('/products/:id/advance', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/teams/:teamId/products/:id/image — multipart form-data, field "file"
-// 可选 field "slot":有 slot 时替换 images[] 中对应条目的 url(线稿/效果图单张替换);
-// 无 slot 时写入 imageUrl(兼容主图/封面)。返回更新后的产品。
+// 可选 field "slot":
+//   无 slot → 上传主图(slot="main"):图片默认主图;若已有主图则旧主图降级为效果图(render),
+//     实现主图互换,imageUrl 同步为当前主图 url(派生兼容字段)。
+//   有 slot → 替换 images[] 中对应 slot 的 url(线稿/效果图单张替换);找不到则追加一条。
+// 返回更新后的产品。
+const MAIN_SLOT = "main";
+const RENDER_SLOT = "render";
 router.post('/products/:id/image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
     if (err) {
@@ -882,7 +887,12 @@ router.post('/products/:id/image', (req, res) => {
         else imgs.push({ slot, label: slot, url });
         p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { images: imgs } });
       } else {
-        p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { imageUrl: url } });
+        // 无 slot → 主图:已有主图则降级为 render,再追加新主图(原子互换);同步 imageUrl
+        const imgs = (Array.isArray(owned.images) ? owned.images : [])
+          .map((im) => (im && im.slot === MAIN_SLOT ? { ...im, slot: RENDER_SLOT } : im));
+        const label = req.body?.label?.toString().trim() || "主图";
+        imgs.push({ slot: MAIN_SLOT, label, url });
+        p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { images: imgs, imageUrl: url } });
       }
       res.status(201).json(p);
     } catch (e) {
