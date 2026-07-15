@@ -11,16 +11,16 @@
  */
 
 const PHASES = [
-  { phase: 1,  id: "phase-01-research",     labelZh: "市场与趋势研究", labelEn: "Research",        comingSoon: false },
-  { phase: 2,  id: "phase-02-concept",      labelZh: "设计企划",       labelEn: "Concept",         comingSoon: false },
-  { phase: 3,  id: "phase-03-design",       labelZh: "服装设计",       labelEn: "Design",          comingSoon: false },
-  { phase: 4,  id: "phase-04-textile",      labelZh: "面料研究",       labelEn: "Textile Science", comingSoon: false },
-  { phase: 5,  id: "phase-05-visual",       labelZh: "视觉表现",       labelEn: "Visualization",   comingSoon: false },
-  { phase: 6,  id: "phase-06-development",  labelZh: "版型工艺生产",   labelEn: "Development",     comingSoon: false },
-  { phase: 7,  id: "phase-07-qa",           labelZh: "设计评审",       labelEn: "Quality Review",  comingSoon: false },
-  { phase: 8,  id: "phase-08-brand",        labelZh: "品牌运营",       labelEn: "Brand Ops",       comingSoon: true },
-  { phase: 9,  id: "phase-09-marketing",    labelZh: "营销增长",       labelEn: "Marketing",       comingSoon: true },
-  { phase: 10, id: "phase-10-ecommerce",    labelZh: "销售转化",       labelEn: "Ecommerce",       comingSoon: true },
+  { phase: 1, id: "phase-01-research", labelZh: "市场与趋势研究", labelEn: "Research", comingSoon: false },
+  { phase: 2, id: "phase-02-concept", labelZh: "设计方案", labelEn: "Concept", comingSoon: false },
+  { phase: 3, id: "phase-03-design", labelZh: "服装设计", labelEn: "Design", comingSoon: false },
+  { phase: 4, id: "phase-04-textile", labelZh: "面料研究", labelEn: "Textile Science", comingSoon: false },
+  { phase: 5, id: "phase-05-visual", labelZh: "视觉表现", labelEn: "Visualization", comingSoon: false },
+  { phase: 6, id: "phase-06-development", labelZh: "版型工艺生产", labelEn: "Development", comingSoon: false },
+  { phase: 7, id: "phase-07-qa", labelZh: "设计评审", labelEn: "Quality Review", comingSoon: false },
+  { phase: 8, id: "phase-08-brand", labelZh: "品牌运营", labelEn: "Brand Ops", comingSoon: true },
+  { phase: 9, id: "phase-09-marketing", labelZh: "营销增长", labelEn: "Marketing", comingSoon: true },
+  { phase: 10, id: "phase-10-ecommerce", labelZh: "销售转化", labelEn: "Ecommerce", comingSoon: true },
 ];
 
 const PHASE_MAP = Object.fromEntries(PHASES.map((p) => [p.id, p]));

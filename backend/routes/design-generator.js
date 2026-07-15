@@ -5,7 +5,7 @@
  *
  * 挂在 `/api/teams/:teamId/design`,由 team-workbench.js 的 sub-router 挂载。
  *
- * POST /api/teams/:teamId/design/generate       —— 按设计企划批量生成图片
+ * POST /api/teams/:teamId/design/generate       —— 按设计方案批量生成图片
  * POST /api/teams/:teamId/design/regenerate     —— 单张图重生成(修图)
  * POST /api/teams/:teamId/design/lineart        —— 生成设计线稿(单品/系列)
  * POST /api/teams/:teamId/design/generate-final —— 材料驱动的最终成图
@@ -134,13 +134,13 @@ async function runBatch(batchId) {
 
     const makePrompt = b.mode === 'color-mix'
       ? () => buildColorMixPrompt({
-          name: b.name, description: b.description, brand: b.brand,
-          fabrics: b.fabrics, style: b.styles[0],
-        })
+        name: b.name, description: b.description, brand: b.brand,
+        fabrics: b.fabrics, style: b.styles[0],
+      })
       : (cell) => buildMaterialComboPrompt({
-          name: b.name, description: b.description, brand: b.brand,
-          fabric: b.fabrics[cell.fi], style: b.styles[cell.si],
-        });
+        name: b.name, description: b.description, brand: b.brand,
+        fabric: b.fabrics[cell.fi], style: b.styles[cell.si],
+      });
 
     // 参考图顺序=图序号:叉乘 [款式, 面料];拼色 [款式, 面料1, 面料2, ...]。空 url 会被 gen-image 过滤。
     const makeRefImages = b.mode === 'color-mix'
@@ -189,7 +189,7 @@ async function runBatch(batchId) {
     // 全部完成(或失败) → 批次终态
     b.status = b.items.every((it) => it.status === 'done') ? 'done'
       : b.items.some((it) => it.status === 'done') ? 'done'
-      : b.status = 'error';
+        : b.status = 'error';
   } catch (e) {
     console.error(`[design-generator] runBatch ${batchId} error:`, e?.message || String(e));
     b.status = 'error';
@@ -609,8 +609,8 @@ router.post('/material-combo', (req, res) => {
     // 解析每种槽位的元数据(前端始终上传):按位置决定上传 or 库行
     let fabricsMeta = [];
     let stylesMeta = [];
-    try { if (req.body?.fabricsMeta) fabricsMeta = JSON.parse(req.body.fabricsMeta); } catch {}
-    try { if (req.body?.stylesMeta) stylesMeta = JSON.parse(req.body.stylesMeta); } catch {}
+    try { if (req.body?.fabricsMeta) fabricsMeta = JSON.parse(req.body.fabricsMeta); } catch { }
+    try { if (req.body?.stylesMeta) stylesMeta = JSON.parse(req.body.stylesMeta); } catch { }
     if (!Array.isArray(fabricsMeta) || !fabricsMeta.length) {
       return res.status(400).json({ error: 'fabricsMeta 缺失或为空' });
     }
@@ -799,13 +799,13 @@ router.post('/material-combo/batch/:batchId/regenerate', async (req, res) => {
     const mode = batch.mode === 'color-mix' ? 'color-mix' : 'cross';
     const prompt = mode === 'color-mix'
       ? buildColorMixPrompt({
-          name: batch.name, description: batch.description, brand: batch.brand,
-          fabrics: batch.fabrics, style: batch.styles[0],
-        })
+        name: batch.name, description: batch.description, brand: batch.brand,
+        fabrics: batch.fabrics, style: batch.styles[0],
+      })
       : buildMaterialComboPrompt({
-          name: batch.name, description: batch.description, brand: batch.brand,
-          fabric, style,
-        });
+        name: batch.name, description: batch.description, brand: batch.brand,
+        fabric, style,
+      });
     cell.prompt = prompt;
     const safeName = mode === 'color-mix'
       ? `material-combo-mix-${fi}-${si}`

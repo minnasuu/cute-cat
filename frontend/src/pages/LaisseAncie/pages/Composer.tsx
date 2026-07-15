@@ -431,7 +431,7 @@ export default function ComposerPage({
 
     // 清空编辑上下文(避免重复注入)
     clearEditingProduct();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingProduct]);
 
   // 「制作相似」新会话信号:nonce 变化时强制清空工作台(无确认),等同于 +新会话
@@ -511,10 +511,10 @@ export default function ComposerPage({
     const sloganZh = knowledge?.brand?.sloganZh?.trim();
     const sloganElement = hasLetteringElement(intent) && sloganEn
       ? [
-          "## 推荐品牌印花文案(方案中必须把这段 slogan 作为字母/文字/标语元素设计进去)",
-          `"${sloganEn}"`,
-          sloganZh ? `中文对照: ${sloganZh}` : null,
-        ].filter(Boolean).join("\n")
+        "## 推荐品牌印花文案(方案中必须把这段 slogan 作为字母/文字/标语元素设计进去)",
+        `"${sloganEn}"`,
+        sloganZh ? `中文对照: ${sloganZh}` : null,
+      ].filter(Boolean).join("\n")
       : "";
 
     // ── 灵感池一行摘要: #[id] category · visualStyle · designApproach | 配色 | 特征 ──
@@ -534,9 +534,9 @@ export default function ComposerPage({
     const block = [
       refs.length
         ? [
-            `## 品牌风格灵感池(${poolLabel},同品类作为品牌风格来源与设计思路参考,自由汲取,引用时用 #[ID] 标注)`,
-            ...libLines,
-          ].join("\n")
+          `## 品牌风格灵感池(${poolLabel},同品类作为品牌风格来源与设计思路参考,自由汲取,引用时用 #[ID] 标注)`,
+          ...libLines,
+        ].join("\n")
         : "## 品牌风格灵感池(灵感库为空,建议先到左侧上传灵感图,作为设计参考)",
       // 意图解析摘要(帮助 AI 快速理解维度)
       `## 设计意图(前端已解析)`,
@@ -558,7 +558,7 @@ export default function ComposerPage({
       briefDescription.trim() ? `设计需求:${briefDescription.trim()}` : "",
       briefRefs.length ? `参考灵感:${briefRefs.map((r) => r.name || r.category || "灵感").join("、")}` : "",
     ].filter(Boolean);
-    const composed = `请基于以下简报开始设计企划:\n${parts.join("\n")}`;
+    const composed = `请基于以下简报开始设计方案:\n${parts.join("\n")}`;
     // 清洗开场 greeting / 历史,从简报干净起步
     setMsgs([]);
     setStage("greeting");
@@ -1052,13 +1052,13 @@ export default function ComposerPage({
   // 插画模式沿用原 chat + 画布/侧栏布局(保持不动);单品/系列走结构化双栏(设计简报 + 生成流程)
   if (mode === "illustration") {
     return (
-    <>
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] h-[calc(100vh-64px)] min-h-0">
-        <div className="flex flex-col min-h-0">
-          <header className="flex items-center justify-between px-3 md:px-6 py-3 border-b border-gray-200 bg-white">
-            <div className="flex items-center justify-between gap-2">
-              {/* 模型切换下拉 */}
-              {/* <select
+      <>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] h-[calc(100vh-64px)] min-h-0">
+          <div className="flex flex-col min-h-0">
+            <header className="flex items-center justify-between px-3 md:px-6 py-3 border-b border-gray-200 bg-white">
+              <div className="flex items-center justify-between gap-2">
+                {/* 模型切换下拉 */}
+                {/* <select
                 value={model}
                 onChange={(e) => setModel(e.target.value as ModelId)}
                 disabled={busy || generating}
@@ -1069,154 +1069,154 @@ export default function ComposerPage({
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select> */}
-              {/* 移动端:插画+HTML→画布抽屉;其他→企划抽屉 */}
-              {isMobile && (
-                <button
-                  onClick={() => (mode === "illustration" && illustOutputMode === "html") ? setCanvasOpen(true) : setPlanOpen(true)}
-                  className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600"
-                >
-                  {(mode === "illustration" && illustOutputMode === "html") ? "画布" : "企划"}
-                </button>
+                {/* 移动端:插画+HTML→画布抽屉;其他→企划抽屉 */}
+                {isMobile && (
+                  <button
+                    onClick={() => (mode === "illustration" && illustOutputMode === "html") ? setCanvasOpen(true) : setPlanOpen(true)}
+                    className="text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600"
+                  >
+                    {(mode === "illustration" && illustOutputMode === "html") ? "画布" : "企划"}
+                  </button>
+                )}
+                <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
+              </div>
+              <button
+                onClick={resetSession}
+                disabled={busy || generating || illustBusy}
+                title="清空当前聊天与方案,开始一个全新设计"
+                className="shrink-0 text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 hover:border-gray-800 hover:text-gray-900 disabled:opacity-40"
+              >
+                + 新会话
+              </button>
+            </header>
+
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
+              {msgs.map((m) => (
+                <div key={m.id} className={`w-fit rounded-2xl px-4 py-3 max-w-[85%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
+                  {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
+                  {busy && m.role === "assistant" && m.startedAt && (
+                    <LiveElapsed startedAt={m.startedAt} setTick={setTick} />
+                  )}
+                  {!busy && m.timingMs && m.role === "assistant" && (
+                    <span className="text-[10px] text-gray-400 ml-1">{formatDuration(m.timingMs)}</span>
+                  )}
+                </div>
+              ))}
+
+              {/* 插画:图片/HTML 切换( proposer/planning / presenting / presenting-html 阶段均可见 ) */}
+              {mode === "illustration" && (stage === "planning" || stage === "proposal" || stage === "presenting" || stage === "presenting-html") && (
+                <div className="flex justify-center">
+                  <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-[12px] shadow-sm">
+                    <button
+                      onClick={() => setIllustOutputMode("image")}
+                      disabled={illustBusy || generating}
+                      className={`px-3 py-1 rounded-md transition-colors ${(illustOutputMode === "image") ? "bg-primary-500 text-white font-medium" : "text-gray-600 hover:text-primary-600"}`}
+                    >图片</button>
+                    <button
+                      onClick={() => setIllustOutputMode("html")}
+                      disabled={illustBusy || generating}
+                      className={`px-3 py-1 rounded-md transition-colors ${(illustOutputMode === "html") ? "bg-primary-500 text-white font-medium" : "text-gray-600 hover:text-primary-600"}`}
+                    >HTML</button>
+                  </div>
+                </div>
               )}
-              <span className="text-[11px] text-gray-500 font-mono capitalize">{stage}</span>
+
+              {/* 生成按钮(企划确认后) */}
+              {canGenerate && (
+                <div className="flex justify-center">
+                  <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
+                    {expressMode ? "确认方案,快速生成设计图"
+                      : mode === "illustration" ? (illustOutputMode === "html" ? "确认方案,生成插画 HTML" : "确认方案,生成插画图")
+                        : "确认方案,生成设计线稿"}
+                  </button>
+                </div>
+              )}
+
+              {/* 线稿确认按钮(仅 single / collection 的 presenting-lineart) */}
+              {canConfirmLineart && (
+                <div className="flex justify-center gap-3">
+                  <button onClick={saveToLookbook} className="px-5 py-3 rounded-2xl border border-gray-300 hover:border-gray-400 text-gray-600 font-medium text-sm transition-colors">
+                    保存到 Lookbook
+                  </button>
+                  <button onClick={confirmLineart} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
+                    线稿确认,下一步选材料
+                  </button>
+                </div>
+              )}
+
+              {/* 最终成图:进入 generating-final 时展示提示 */}
+              {stage === "generating-final" && (() => {
+                const lastMsg = [...msgs].reverse().find((m) => m.startedAt);
+                return (
+                  <div className="flex justify-center">
+                    <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
+                      {lastMsg?.startedAt ? <>⏳ 正在结合「{recommendation?.name}」生成最终设计图…<LiveElapsed startedAt={lastMsg.startedAt} setTick={setTick} /></> : `正在结合「{recommendation?.name}」生成最终设计图…`}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 生成中(单品/系列:图片;插画:图片 / HTML) */}
+              {(generating || inIllustGenerating) && (() => {
+                const lastMsg = [...msgs].reverse().find((m) => m.startedAt);
+                const label = mode === "illustration" ? (illustOutputMode === "html" ? "正在生成插画 HTML" : "正在生成插画图") : "正在生成设计图";
+                return (
+                  <div className="flex justify-center">
+                    <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
+                      {lastMsg?.startedAt ? <>{label}…<LiveElapsed startedAt={lastMsg.startedAt} setTick={setTick} /></> : `${label}…`}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 设计图展示(线稿 / 最终图 / 插画+图片) —— 录入按钮已移到右侧 preview 区 */}
+              {showImages && images.length > 0 && (
+                <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+                  <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                    {showLineart ? "设计线稿" : (showExpressImages ? "设计图(极速)" : (showFinalImages && recommendation ? `最终设计图 · ${recommendation.name}` : "设计图"))}
+                  </div>
+                  <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
+                    {images.map((im) => (
+                      <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 插画:生成后提示(画布在右侧 aside 渲染) */}
+              {showCanvas && (
+                <div className="bg-white rounded-2xl border border-gray-200 p-4 text-[12px] text-gray-600">
+                  ✨ 插画稿已生成,可在右侧画布查看;告诉我要调整的地方。
+                </div>
+              )}
             </div>
-            <button
-              onClick={resetSession}
-              disabled={busy || generating || illustBusy}
-              title="清空当前聊天与方案,开始一个全新设计"
-              className="shrink-0 text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 hover:border-gray-800 hover:text-gray-900 disabled:opacity-40"
-            >
-              + 新会话
-            </button>
-          </header>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 min-h-0 space-y-4 bg-gray-50">
-            {msgs.map((m) => (
-              <div key={m.id} className={`w-fit rounded-2xl px-4 py-3 max-w-[85%] text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-primary-500 text-white ml-auto rounded-br-sm whitespace-pre-wrap" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
-                {m.role === "assistant" ? <Markdown source={m.text} /> : m.text}
-                {busy && m.role === "assistant" && m.startedAt && (
-                  <LiveElapsed startedAt={m.startedAt} setTick={setTick} />
-                )}
-                {!busy && m.timingMs && m.role === "assistant" && (
-                  <span className="text-[10px] text-gray-400 ml-1">{formatDuration(m.timingMs)}</span>
-                )}
-              </div>
-            ))}
-
-            {/* 插画:图片/HTML 切换( proposer/planning / presenting / presenting-html 阶段均可见 ) */}
-            {mode === "illustration" && (stage === "planning" || stage === "proposal" || stage === "presenting" || stage === "presenting-html") && (
-              <div className="flex justify-center">
-                <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-[12px] shadow-sm">
-                  <button
-                    onClick={() => setIllustOutputMode("image")}
-                    disabled={illustBusy || generating}
-                    className={`px-3 py-1 rounded-md transition-colors ${(illustOutputMode === "image") ? "bg-primary-500 text-white font-medium" : "text-gray-600 hover:text-primary-600"}`}
-                  >图片</button>
-                  <button
-                    onClick={() => setIllustOutputMode("html")}
-                    disabled={illustBusy || generating}
-                    className={`px-3 py-1 rounded-md transition-colors ${(illustOutputMode === "html") ? "bg-primary-500 text-white font-medium" : "text-gray-600 hover:text-primary-600"}`}
-                  >HTML</button>
-                </div>
-              </div>
-            )}
-
-            {/* 生成按钮(企划确认后) */}
-            {canGenerate && (
-              <div className="flex justify-center">
-                <button onClick={startGeneration} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
-                  {expressMode ? "确认方案,快速生成设计图"
-                    : mode === "illustration" ? (illustOutputMode === "html" ? "确认方案,生成插画 HTML" : "确认方案,生成插画图")
-                    : "确认方案,生成设计线稿"}
-                </button>
-              </div>
-            )}
-
-            {/* 线稿确认按钮(仅 single / collection 的 presenting-lineart) */}
-            {canConfirmLineart && (
-              <div className="flex justify-center gap-3">
-                <button onClick={saveToLookbook} className="px-5 py-3 rounded-2xl border border-gray-300 hover:border-gray-400 text-gray-600 font-medium text-sm transition-colors">
-                  保存到 Lookbook
-                </button>
-                <button onClick={confirmLineart} className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm shadow-lg transition-colors">
-                  线稿确认,下一步选材料
-                </button>
-              </div>
-            )}
-
-            {/* 最终成图:进入 generating-final 时展示提示 */}
-            {stage === "generating-final" && (() => {
-              const lastMsg = [...msgs].reverse().find((m) => m.startedAt);
-              return (
-                <div className="flex justify-center">
-                  <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
-                    {lastMsg?.startedAt ? <>⏳ 正在结合「{recommendation?.name}」生成最终设计图…<LiveElapsed startedAt={lastMsg.startedAt} setTick={setTick} /></> : `正在结合「{recommendation?.name}」生成最终设计图…`}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* 生成中(单品/系列:图片;插画:图片 / HTML) */}
-            {(generating || inIllustGenerating) && (() => {
-              const lastMsg = [...msgs].reverse().find((m) => m.startedAt);
-              const label = mode === "illustration" ? (illustOutputMode === "html" ? "正在生成插画 HTML" : "正在生成插画图") : "正在生成设计图";
-              return (
-                <div className="flex justify-center">
-                  <div className="px-6 py-3 rounded-2xl bg-white border border-gray-200 text-gray-600 text-sm">
-                    {lastMsg?.startedAt ? <>{label}…<LiveElapsed startedAt={lastMsg.startedAt} setTick={setTick} /></> : `${label}…`}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* 设计图展示(线稿 / 最终图 / 插画+图片) —— 录入按钮已移到右侧 preview 区 */}
-            {showImages && images.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-wider text-gray-500">
-                  {showLineart ? "设计线稿" : (showExpressImages ? "设计图(极速)" : (showFinalImages && recommendation ? `最终设计图 · ${recommendation.name}` : "设计图"))}
-                </div>
-                <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
-                  {images.map((im) => (
-                    <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 插画:生成后提示(画布在右侧 aside 渲染) */}
-            {showCanvas && (
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 text-[12px] text-gray-600">
-                ✨ 插画稿已生成,可在右侧画布查看;告诉我要调整的地方。
-              </div>
-            )}
+            <PromptBar
+              placeholder={
+                knowledgeLoading ? "加载知识库中…" :
+                  stage === "greeting" ? "输入一个主题 + 风格(如:猫咪 / 复古水彩)…" :
+                    stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
+                      (stage === "planning" || stage === "proposal") ? "确认方案(OK/开始),或提出修改意见…" :
+                        (stage === "presenting" || stage === "presenting-html") ? "描述你想修改的地方…" :
+                          "输入…"
+              }
+              disabled={knowledgeLoading}
+              onSubmit={send}
+            />
           </div>
 
-          <PromptBar
-            placeholder={
-              knowledgeLoading ? "加载知识库中…" :
-                stage === "greeting" ? "输入一个主题 + 风格(如:猫咪 / 复古水彩)…" :
-                  stage === "brainstorming" ? "选一个方向(1/2/3),或提出自己的想法…" :
-                    (stage === "planning" || stage === "proposal") ? "确认方案(OK/开始),或提出修改意见…" :
-                      (stage === "presenting" || stage === "presenting-html") ? "描述你想修改的地方…" :
-                        "输入…"
-            }
-            disabled={knowledgeLoading}
-            onSubmit={send}
-          />
+          {/* 桌面端侧栏:单品/系列/插画+图片=设计方案·材料选择 / 插画+HTML=画布预览 + 修图输入 */}
+          {mode === "illustration" && illustOutputMode === "html"
+            ? <IllustrationCanvas html={illustHtml} generating={illustBusy} stage={stage} illustHtml={illustHtml} onModify={regenerateHtml} onSaveToLookbook={saveToLookbook} />
+            : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
+          }
         </div>
-
-        {/* 桌面端侧栏:单品/系列/插画+图片=设计方案·材料选择 / 插画+HTML=画布预览 + 修图输入 */}
-        {mode === "illustration" && illustOutputMode === "html"
-          ? <IllustrationCanvas html={illustHtml} generating={illustBusy} stage={stage} illustHtml={illustHtml} onModify={regenerateHtml} onSaveToLookbook={saveToLookbook} />
-          : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
+        {/* 移动端抽屉(<md,跟主内容同级渲染) */}
+        {isMobile && (mode === "illustration" && illustOutputMode === "html")
+          ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} stage={stage} onSaveToLookbook={saveToLookbook} />
+          : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
         }
-      </div>
-      {/* 移动端抽屉(<md,跟主内容同级渲染) */}
-      {isMobile && (mode === "illustration" && illustOutputMode === "html")
-        ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} stage={stage} onSaveToLookbook={saveToLookbook} />
-        : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
-      }
-    </>
+      </>
     );
   }
 

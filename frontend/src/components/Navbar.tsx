@@ -86,7 +86,7 @@ const Navbar: React.FC<NavbarProps> = ({
       <ThemeToggle />
       <div className="relative" ref={menuRef}>
         <button onClick={() => setMenuOpen((o) => !o)}
-          className="flex items-center gap-2 rounded-full pr-0.5 pl-0.5 py-0.5 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+          className="flex items-center gap-2 rounded-full pr-0.5 pl-3 py-0.5 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
           <span className="text-sm font-medium text-text-secondary max-w-[120px] truncate">{user.nickname || user.email}</span>
           <div className="w-8 h-8 rounded-full bg-primary-500 text-white text-sm font-bold flex items-center justify-center shrink-0">
             {initial}

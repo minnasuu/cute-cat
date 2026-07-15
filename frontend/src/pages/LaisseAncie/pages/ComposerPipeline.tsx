@@ -87,7 +87,7 @@ export default function ComposerPipeline(props: Props) {
       {/* 空态:简报未提交 */}
       {step === -1 && !generating && (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
-          填写左侧简报并点击<br />「生成设计企划」
+          填写左侧简报并点击<br />「生成设计方案」
         </div>
       )}
 

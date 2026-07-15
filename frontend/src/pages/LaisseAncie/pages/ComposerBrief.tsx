@@ -4,7 +4,7 @@
  *
  * 稳定结构化表单(替代原来的自由对话入口):顶部 header(标题+模式切换+新会话) +
  * 设计名称 + 灵感参考槽位(上传/粘贴/从库选,带 AI 分析标签) + 设计需求描述 + 品牌色/调性 +
- * 主按钮「生成设计企划」。底部保留 PromptBar,用于多轮细化。
+ * 主按钮「生成设计方案」。底部保留 PromptBar,用于多轮细化。
  *
  * 数据/管线仍由 ComposerPage 控制器提供;本组件只负责渲染 + 收集输入。
  */
@@ -226,7 +226,7 @@ export default function ComposerBrief({
         <div className="flex items-center gap-3">
           <button onClick={onGenerate} disabled={generating || refineBusy || !designName.trim()}
             className="px-5 py-2.5 rounded-2xl bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white font-medium text-sm shadow-lg transition-colors">
-            {generating ? "生成中…" : "生成设计企划"}
+            {generating ? "生成中…" : "生成设计方案"}
           </button>
           {(description.trim() || references.length > 0) && (
             <span className="text-[10px] text-gray-400">AI 将根据简报生成方案 → 线稿 → 选材质 → 成图</span>

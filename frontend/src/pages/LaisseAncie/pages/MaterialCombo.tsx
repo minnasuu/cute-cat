@@ -341,7 +341,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
       {/* 左:表单 */}
       <div className="overflow-y-auto bg-white">
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-6 py-3">
+        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3">
           <div className="flex items-center justify-between mb-1.5">
             <h1 className="text-[15px] font-medium text-gray-800">材料组合</h1>
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
@@ -354,7 +354,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           </span>
         </header>
 
-        <div className="p-6 space-y-5 max-w-2xl">
+        <div className="p-5 space-y-5 max-w-2xl">
           {/* 名称 */}
           <div>
             <label className={labelCls}>名称 *</label>
@@ -606,7 +606,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                 <details className="text-[11px] text-gray-500">
                   <summary className="cursor-pointer hover:text-gray-700">查看生成 prompt</summary>
                   <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">
-{batch.items.filter((it) => it.prompt).slice(0, 1).map((it, i) => `# 面料${it.fi + 1} × 款式${it.si + 1}\n${it.prompt}`).join("\n\n")}
+                    {batch.items.filter((it) => it.prompt).slice(0, 1).map((it, i) => `# 面料${it.fi + 1} × 款式${it.si + 1}\n${it.prompt}`).join("\n\n")}
                   </pre>
                 </details>
               )}
