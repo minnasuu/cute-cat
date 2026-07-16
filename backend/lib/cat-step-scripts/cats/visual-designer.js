@@ -2,9 +2,6 @@
 
 const { runWithAI, extractUpstreamText, resolveSystemPrompt } = require('../_framework');
 const { VISUAL_STYLES, getStyleCatalog } = require('../visual-prompt-library');
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
 
 const LAYOUT_ARCHETYPES = [
   'editorial',
@@ -15,36 +12,6 @@ const LAYOUT_ARCHETYPES = [
   'glassmorphism',
   'gradientMesh',
 ];
-
-function normalizeText(s) {
-  return String(s || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function scoreVibeItem(item, queryText) {
-  const q = normalizeText(queryText);
-  if (!q) return 0;
-  let score = 0;
-  const summary = normalizeText(item?.summary);
-  const tags = Array.isArray(item?.tags) ? item.tags.map((t) => normalizeText(t)).filter(Boolean) : [];
-  for (const t of tags) {
-    if (!t) continue;
-    if (q.includes(t)) score += 6;
-  }
-  if (summary) {
-    // summary 里出现的关键词（弱信号）
-    const tokens = summary.split(/[^a-z0-9\u4e00-\u9fff]+/).filter(Boolean).slice(0, 40);
-    for (const tok of tokens) {
-      if (tok.length < 2) continue;
-      if (q.includes(tok)) score += 1;
-    }
-  }
-  // official 微加权
-  if (item?.isOfficial) score += 2;
-  return score;
-}
 
 function safeJsonParseObject(text) {
   try {
@@ -79,22 +46,7 @@ ${catalogText}
 用中文输出，简洁明了。`;
 }
 
-function vibeItemCatalog(items) {
-  const head = `候选来自 Vibe Style Lib 灵感库（vibe-snap-library）。请在下列候选里选择最合适的一条。`;
-  const lines = items.map((it, idx) => {
-    const tags = Array.isArray(it.tags) ? it.tags.filter(Boolean).slice(0, 8).join('、') : '';
-    const summary = String(it.summary || '').trim();
-    return [
-      `### 候选 ${idx + 1}`,
-      `id: ${it.id}`,
-      tags ? `tags: ${tags}` : null,
-      summary ? `summary: ${summary.length > 220 ? `${summary.slice(0, 220)}…` : summary}` : 'summary: （空）',
-    ].filter(Boolean).join('\n');
-  });
-  return [head, ...lines].join('\n\n');
-}
-
-/** 与 frontend visual-designer.ts 一致：视觉风格 = 库内 prompt；用户需求 = 上游 */
+/** 视觉风格 = 内置候选 prompt；用户需求 = 上游 */
 function formatVisualDesignerOutput(upstream, visualPrompt) {
   const up = String(upstream || '').trim();
   const vis = String(visualPrompt || '').trim();
@@ -122,39 +74,8 @@ module.exports = async function runVisualDesigner(ctx) {
     ? upstreamText
     : '（无上游说明，请按通用企业官网场景选择风格。）';
 
-  // 优先从 Vibe Style Lib 灵感库读取候选（只用 summary/tags 给 AI 匹配；取最近 N 条避免上下文过长）
-  // 提高稳定性：只取 aiEnabled=true，且优先 official（官方 > 用户）。
-  const TAKE = Math.min(
-    Math.max(Number.parseInt(process.env.VIBE_STYLE_LIB_TAKE || '16', 10) || 16, 1),
-    50,
-  );
-  let vibeItems = [];
-  try {
-    vibeItems = await prisma.vibeStyleItem.findMany({
-      where: { aiEnabled: true },
-      orderBy: [{ isOfficial: 'desc' }, { createdAt: 'desc' }],
-      take: TAKE,
-      // designPrompt 不拼进候选目录，但需要在最终命中时返回给下游
-      select: { id: true, tags: true, summary: true, designPrompt: true, isOfficial: true },
-    });
-  } catch (e) {
-    console.warn('[visual-designer] load vibeStyleItem failed:', e?.message || String(e));
-    vibeItems = [];
-  }
-
-  const useVibeLibrary = Array.isArray(vibeItems) && vibeItems.length > 0;
-  // 尽量匹配成功：先用规则打分选 TopK，再让模型只在 TopK 内选 id
-  const matchQuery = `${userNeed}\n\n${upstreamText}`;
-  const ranked = useVibeLibrary
-    ? vibeItems
-        .map((it) => ({ it, score: scoreVibeItem(it, matchQuery) }))
-        .sort((a, b) => b.score - a.score)
-        .map((x) => x.it)
-    : [];
-  const TOPK = Math.min(8, ranked.length || 0);
-  const vibeCandidates = useVibeLibrary ? ranked.slice(0, Math.max(3, TOPK)) : [];
-
-  const catalogText = useVibeLibrary ? vibeItemCatalog(vibeCandidates) : getStyleCatalog();
+  // 候选来自内置视觉风格库（getStyleCatalog）
+  const catalogText = getStyleCatalog();
   const systemPromptBase = buildSystemPromptForCatalog(catalogText);
 
   const fullSystemPrompt = `${systemPromptBase}
@@ -163,9 +84,8 @@ module.exports = async function runVisualDesigner(ctx) {
 
 ${upstreamForSystem}`;
 
-  const userText = useVibeLibrary
-    ? '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：<id>」与「理由：…」，其中 <id> 必须来自候选里的 id（只允许从候选列表选择）。'
-    : '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
+  const userText =
+    '请根据上文「上游产品 / 交互参考」与候选，严格只输出两行：「选择：风格 N」与「理由：…」，不要输出其它任何内容。';
 
   // 支持管理员仅在「step」上覆盖 system prompt：
   // - 注意：不要把猫实例的 catSystemPrompt 当作覆盖，否则会导致落地页视觉步骤永远走“自由生成”分支
@@ -228,38 +148,16 @@ ${upstreamForSystem}`;
     const aiResponse = result.data.text;
     let selectedStyleId = '';
     let designPrompt = '';
-    let matchedStyleSummary = '';
-    let matchedStyleTags = [];
 
-    if (useVibeLibrary) {
-      const idMatch = aiResponse.match(/选择[:：]\s*([a-zA-Z0-9_-]+)/);
-      selectedStyleId = idMatch?.[1] ? String(idMatch[1]).trim() : '';
-      const picked =
-        vibeCandidates.find((x) => x.id === selectedStyleId) ||
-        vibeCandidates[0] ||
-        vibeItems.find((x) => x.id === selectedStyleId) ||
-        vibeItems[0];
-      if (!picked) {
-        console.warn('[visual-designer] vibe library empty after selection, fallback to builtin');
-      } else {
-        selectedStyleId = picked.id;
-        designPrompt = String(picked.designPrompt || '');
-        matchedStyleSummary = String(picked.summary || '').trim();
-        matchedStyleTags = Array.isArray(picked.tags) ? picked.tags : [];
-      }
+    const styleMatch = aiResponse.match(/风格\s*(\d+)/);
+    let selectedIndex = styleMatch ? parseInt(styleMatch[1], 10) - 1 : 0;
+    if (selectedIndex < 0 || selectedIndex >= VISUAL_STYLES.length) {
+      console.warn(`[visual-designer] AI 返回的风格编号无效: ${styleMatch?.[1]}, 默认使用第一个`);
+      selectedIndex = 0;
     }
-
-    if (!designPrompt) {
-      const styleMatch = aiResponse.match(/风格\s*(\d+)/);
-      let selectedIndex = styleMatch ? parseInt(styleMatch[1], 10) - 1 : 0;
-      if (selectedIndex < 0 || selectedIndex >= VISUAL_STYLES.length) {
-        console.warn(`[visual-designer] AI 返回的风格编号无效: ${styleMatch?.[1]}, 默认使用第一个`);
-        selectedIndex = 0;
-      }
-      const selected = VISUAL_STYLES[selectedIndex];
-      selectedStyleId = selected.id;
-      designPrompt = selected.prompt;
-    }
+    const selected = VISUAL_STYLES[selectedIndex];
+    selectedStyleId = selected.id;
+    designPrompt = selected.prompt;
 
     // 落地页：将上游 contentModel 与 uxNotes 一并打包输出，供前端工程师稳定消费
     if (stepId === 'wpb_visual') {
@@ -278,15 +176,8 @@ ${upstreamForSystem}`;
         kind: 'landing-visual-v2',
         // 1) 用户需求（来自 workflow context 的原始 userInput）
         userNeed,
-        // 2) vibe-style-lib 匹配风格（尽量匹配成功）
-        matchedStyle: useVibeLibrary
-          ? {
-              id: selectedStyleId,
-              tags: matchedStyleTags,
-              summary: matchedStyleSummary,
-              designPrompt: designPrompt,
-            }
-          : null,
+        // 2) 匹配风格（内置库命中）
+        matchedStyle: null,
         // 3) 通用视觉 prompt（留空，后续你补充）
         genericVisualPrompt: '',
         // 供下游渲染差异化

@@ -7,14 +7,12 @@ import type { AgentHandler, AgentContext, AgentResult } from './types';
 
 import runProductArchitect from './product-architect';
 import runUxDesigner from './ux-designer';
-import runVisualDesigner from './visual-designer';
 import runFrontendEngineer from './frontend-engineer';
 
 /** agentId → AgentHandler 映射 */
 const handlers: AgentHandler[] = [
   { id: 'product-architect', execute: runProductArchitect },
   { id: 'ux-designer', execute: runUxDesigner },
-  { id: 'visual-designer', execute: runVisualDesigner },
   { id: 'frontend-engineer', execute: runFrontendEngineer },
 ];
 

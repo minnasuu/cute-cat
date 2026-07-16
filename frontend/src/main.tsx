@@ -15,8 +15,6 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const DashboardHistoryPage = lazy(() => import('./pages/DashboardPage/HistoryPage'));
-const CommunityPage = lazy(() => import('./pages/CommunityPage'));
-const VibeAssets = lazy(() => import('./pages/VibeAssets').then((m) => ({ default: m.VibeAssets })));
 const LaisseAncieApp = lazy(() =>
   import('./pages/LaisseAncie').then((m) => {
     const Comp = (m as { LaisseAncieApp: React.ComponentType }).LaisseAncieApp;
@@ -66,105 +64,88 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const App: React.FC = () => {
   return (
     <ThemeProvider>
-    <ToastProvider>
-      <LanguageProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <Suspense fallback={<LoadingScreen />}>
-            <Routes>
-              {/* Landing - only for guests */}
-              <Route path="/" element={<LandingRoute />} />
-              <Route
-                path="/login"
-                element={
-                  <GuestRoute>
-                    <LoginPage />
-                  </GuestRoute>
-                }
-              />
-              <Route
-                path="/register"
-                element={
-                  <GuestRoute>
-                    <RegisterPage />
-                  </GuestRoute>
-                }
-              />
-              <Route
-                path="/forgot-password"
-                element={
-                  <GuestRoute>
-                    <ForgotPasswordPage />
-                  </GuestRoute>
-                }
-              />
-              <Route path="/community" element={<Navigate to="/dashboard" replace />} />
-              <Route
-                path="/vibe-assets"
-                element={
-                  <ProtectedRoute>
-                    <VibeAssets />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="/vibe-style-lib" element={<Navigate to="/vibe-assets" replace />} />
-              <Route
-                path="/admin"
-                element={
-                  <AdminRoute>
-                    <AdminPage />
-                  </AdminRoute>
-                }
-              />
-              {/* 旧管理路径 → 新管理员后台 */}
-              <Route path="/admin/workflows" element={<Navigate to="/admin" replace />} />
+      <ToastProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <Suspense fallback={<LoadingScreen />}>
+                <Routes>
+                  {/* Landing - only for guests */}
+                  <Route path="/" element={<LandingRoute />} />
+                  <Route
+                    path="/login"
+                    element={
+                      <GuestRoute>
+                        <LoginPage />
+                      </GuestRoute>
+                    }
+                  />
+                  <Route
+                    path="/register"
+                    element={
+                      <GuestRoute>
+                        <RegisterPage />
+                      </GuestRoute>
+                    }
+                  />
+                  <Route
+                    path="/forgot-password"
+                    element={
+                      <GuestRoute>
+                        <ForgotPasswordPage />
+                      </GuestRoute>
+                    }
+                  />
+                  <Route path="/community" element={<Navigate to="/dashboard" replace />} />
 
-              {/* Laisse Ancie — 已合并到通用团队工作台,重定向到 /dashboard */}
-              <Route
-                path="/laisse-ancie/*"
-                element={
-                  <ProtectedRoute>
-                    <LaisseAncieApp />
-                  </ProtectedRoute>
-                }
-              />
+                  <Route
+                    path="/admin"
+                    element={
+                      <AdminRoute>
+                        <AdminPage />
+                      </AdminRoute>
+                    }
+                  />
+                  {/* 旧管理路径 → 新管理员后台 */}
+                  <Route path="/admin/workflows" element={<Navigate to="/admin" replace />} />
 
-              {/* Account - requires login */}
-              <Route
-                path="/account"
-                element={
-                  <ProtectedRoute>
-                    <AccountPage />
-                  </ProtectedRoute>
-                }
-              />
 
-              {/* Dashboard - requires login */}
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <DashboardPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/dashboard/history"
-                element={
-                  <ProtectedRoute>
-                    <DashboardHistoryPage />
-                  </ProtectedRoute>
-                }
-              />
+                  {/* Account - requires login */}
+                  <Route
+                    path="/account"
+                    element={
+                      <ProtectedRoute>
+                        <AccountPage />
+                      </ProtectedRoute>
+                    }
+                  />
 
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-            </Suspense>
-          </BrowserRouter>
-        </AuthProvider>
-      </LanguageProvider>
-    </ToastProvider>
+                  {/* Dashboard - requires login */}
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <ProtectedRoute>
+                        <DashboardPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/dashboard/history"
+                    element={
+                      <ProtectedRoute>
+                        <DashboardHistoryPage />
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  {/* Fallback */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
+            </BrowserRouter>
+          </AuthProvider>
+        </LanguageProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 };

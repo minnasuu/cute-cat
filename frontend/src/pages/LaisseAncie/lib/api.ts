@@ -137,10 +137,11 @@ export function teamApi(teamId: string) {
     setStyleShared: (id: string, shared: boolean) =>
       _apiClient.patch(pre(`/styles/${id}/share`), { shared }),
     // 插画 CRUD + 图片上传(可印/刺绣到衣服上)
+    // 静默:插画表未就绪(迁移未应用)时后端返回 503,前端不弹 toast,避免操作报错弹窗
     listIllustrations: (silent?: boolean) => _apiClient.get(pre('/illustrations'), { silent }),
-    createIllustration: (body: Record<string, unknown>) => _apiClient.post(pre('/illustrations'), body),
-    updateIllustration: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/illustrations/${id}`), body),
-    deleteIllustration: (id: string) => _apiClient.delete(pre(`/illustrations/${id}`)),
+    createIllustration: (body: Record<string, unknown>) => _apiClient.post(pre('/illustrations'), body, { silent: true }),
+    updateIllustration: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/illustrations/${id}`), body, { silent: true }),
+    deleteIllustration: (id: string) => _apiClient.delete(pre(`/illustrations/${id}`), { silent: true }),
     uploadIllustrationImage: (id: string, formData: FormData) =>
       fetch(pre(`/illustrations/${id}/image`), { method: 'POST', body: formData, credentials: 'include' }).then((r) => {
         if (!r.ok) throw new Error(`API ${r.status}`);

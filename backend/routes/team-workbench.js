@@ -809,6 +809,11 @@ router.post('/illustrations', asyncHandler(async (req, res) => {
       },
     });
   } catch (eCreate) {
+    // 表尚未就绪(迁移未跑 / 表名修正迁移未应用)→ 静默返回,避免弹窗
+    if (eCreate?.code === 'P2021') {
+      console.warn('[team-workbench] illustrations table not ready (P2021), create skipped');
+      return res.status(503).json({ error: '插画表尚未就绪', code: 'TABLE_NOT_READY' });
+    }
     console.error('[team-workbench] createIllustration failed:', eCreate?.message || eCreate);
     return res.status(500).json({ error: `[create] ${eCreate?.message || '创建失败'}` });
   }
@@ -816,7 +821,16 @@ router.post('/illustrations', asyncHandler(async (req, res) => {
 }));
 
 router.patch('/illustrations/:id', asyncHandler(async (req, res) => {
-  const owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+  let owned;
+  try {
+    owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+  } catch (eFind) {
+    if (eFind?.code === 'P2021') {
+      console.warn('[team-workbench] illustrations table not ready (P2021), update skipped');
+      return res.status(503).json({ error: '插画表尚未就绪', code: 'TABLE_NOT_READY' });
+    }
+    throw eFind;
+  }
   if (!owned) return res.status(404).json({ error: 'not found' });
   const data = pickDefined(req.body ?? {}, ['slug', 'name', 'tags', 'image']);
   if (data.tags !== undefined) data.tags = Array.isArray(data.tags) ? data.tags : [];
@@ -824,6 +838,10 @@ router.patch('/illustrations/:id', asyncHandler(async (req, res) => {
   try {
     item = await prisma.lAIllustrationAsset.update({ where: { id: owned.id }, data });
   } catch (eUpdate) {
+    if (eUpdate?.code === 'P2021') {
+      console.warn('[team-workbench] illustrations table not ready (P2021), update skipped');
+      return res.status(503).json({ error: '插画表尚未就绪', code: 'TABLE_NOT_READY' });
+    }
     console.error('[team-workbench] updateIllustration failed:', eUpdate?.message || eUpdate);
     return res.status(500).json({ error: `[update] ${eUpdate?.message || '更新失败'}` });
   }
@@ -836,7 +854,17 @@ router.post('/illustrations/:id/image', (req, res) => {
   upload.single('file')(req, res, async (err) => {
     if (err) return multerError(res, err);
     if (!req.file) return res.status(400).json({ error: 'no file' });
-    const owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+    let owned;
+    try {
+      owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+    } catch (eFind) {
+      if (eFind?.code === 'P2021') {
+        console.warn('[team-workbench] illustrations table not ready (P2021), image upload skipped');
+        return res.status(503).json({ error: '插画表尚未就绪', code: 'TABLE_NOT_READY' });
+      }
+      console.error('[team-workbench] find illustration for image upload failed:', eFind);
+      return res.status(500).json({ error: `上传失败: ${eFind.message}` });
+    }
     if (!owned) return res.status(404).json({ error: 'not found' });
     try {
       const savePath = createSavePath(`illustrations/${req.team.id}`, req.file.filename);
@@ -845,6 +873,10 @@ router.post('/illustrations/:id/image', (req, res) => {
       const updated = await prisma.lAIllustrationAsset.update({ where: { id: owned.id }, data: { image: url } });
       res.json({ id: updated.id, url });
     } catch (e) {
+      if (e?.code === 'P2021') {
+        console.warn('[team-workbench] illustrations table not ready (P2021), image upload skipped');
+        return res.status(503).json({ error: '插画表尚未就绪', code: 'TABLE_NOT_READY' });
+      }
       console.error('[team-workbench] upload illustration image failed:', e);
       res.status(500).json({ error: `上传失败: ${e.message}` });
     }
@@ -852,9 +884,26 @@ router.post('/illustrations/:id/image', (req, res) => {
 });
 
 router.delete('/illustrations/:id', asyncHandler(async (req, res) => {
-  const owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+  let owned;
+  try {
+    owned = await findOwned(prisma.lAIllustrationAsset, req.params.id, req.team.id);
+  } catch (eFind) {
+    if (eFind?.code === 'P2021') {
+      console.warn('[team-workbench] illustrations table not ready (P2021), delete skipped');
+      return res.status(503).json({ error: '插画表尚未就绪', code: 'TABLE_NOT_READY' });
+    }
+    throw eFind;
+  }
   if (!owned) return res.status(404).json({ error: 'not found' });
-  await prisma.lAIllustrationAsset.delete({ where: { id: owned.id } });
+  try {
+    await prisma.lAIllustrationAsset.delete({ where: { id: owned.id } });
+  } catch (eDelete) {
+    if (eDelete?.code === 'P2021') {
+      console.warn('[team-workbench] illustrations table not ready (P2021), delete skipped');
+      return res.status(503).json({ error: '插画表尚未就绪', code: 'TABLE_NOT_READY' });
+    }
+    throw eDelete;
+  }
   res.json({ ok: true });
 }));
 
