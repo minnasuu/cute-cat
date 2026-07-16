@@ -1238,17 +1238,6 @@ export default function ComposerPage({
     <>
       <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
         <div className="flex flex-col bg-white border-r border-gray-200 min-h-0">
-          {/* 顶部:固定 header */}
-          <header className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200">
-            <span className="text-sm font-bold text-text-primary">设计简报</span>
-            <button
-              onClick={resetSession}
-              disabled={busy || generating}
-              className="text-[11px] border border-gray-200 rounded-md px-2 py-1 text-gray-600 hover:border-gray-800 disabled:opacity-40"
-            >
-              + 新会话
-            </button>
-          </header>
 
           {/* 中间:可滚动内容 */}
           <div className="flex-1 overflow-y-auto min-h-0">
