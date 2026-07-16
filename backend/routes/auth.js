@@ -231,14 +231,25 @@ async function computeRole(userId, email) {
 
 /** 对外暴露的用户对象(含喵币/角色/邀请) */
 async function publicUser(userId) {
-  const u = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true, email: true, nickname: true, avatar: true, role: true, coins: true,
-      inviteCode: true, inviteCount: true, invitedById: true, onboardingDone: true, createdAt: true,
-    },
-  });
-  return u;
+  // 兼容:新字段(onboardingDone 等)在迁移落地前可能不存在;查询失败时回退到基础字段
+  const baseSelect = {
+    id: true, email: true, nickname: true, avatar: true, role: true, coins: true,
+    inviteCode: true, inviteCount: true, invitedById: true, createdAt: true,
+  };
+  try {
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { ...baseSelect, onboardingDone: true },
+    });
+    return u;
+  } catch (err) {
+    // 新字段尚未迁移 → 回退到基础字段(onboardingDone 等返回 undefined)
+    if (String(err.message).includes('onboardingDone') || String(err.message).includes('column')) {
+      console.warn('[auth] publicUser:新字段未就绪,回退基础查询:', err.message);
+      return prisma.user.findUnique({ where: { id: userId }, select: baseSelect });
+    }
+    throw err;
+  }
 }
 
 // ======================== 公开配置（无需登录）========================
@@ -606,15 +617,38 @@ router.get('/me', authMiddleware, async (req, res) => {
 // ======================== 更新个人信息 ========================
 router.put('/profile', authMiddleware, async (req, res) => {
   try {
-    const { nickname, avatar, onboardingDone } = req.body;
+    const { nickname, avatar, onboardingDone, newPassword } = req.body;
+    const data = {
+      ...(nickname && { nickname }),
+      ...(avatar !== undefined && { avatar }),
+    };
+    // onboardingDone:新字段未迁移时忽略(避免 500)
+    if (typeof onboardingDone === 'boolean') {
+      try { data.onboardingDone = onboardingDone; } catch { /* ignore */ }
+    }
+    // 改密码(免密场景:仅有 newPassword)
+    if (newPassword) {
+      if (String(newPassword).length < 6) {
+        return res.status(400).json({ error: '新密码至少 6 位' });
+      }
+      data.password = bcrypt.hashSync(String(newPassword), 10);
+    }
     const user = await prisma.user.update({
       where: { id: req.userId },
-      data: {
-        ...(nickname && { nickname }),
-        ...(avatar !== undefined && { avatar }),
-        ...(typeof onboardingDone === 'boolean' && { onboardingDone }),
-      },
+      data,
       select: { id: true, email: true, nickname: true, avatar: true, plan: true, onboardingDone: true },
+    }).catch(async (err) => {
+      // 新字段未迁移 → 去掉 onboardingDone 重试
+      if (String(err.message).includes('onboardingDone') || String(err.message).includes('column')) {
+        console.warn('[auth] profile update:新字段未就绪,回退:', err.message);
+        delete data.onboardingDone;
+        return prisma.user.update({
+          where: { id: req.userId },
+          data,
+          select: { id: true, email: true, nickname: true, avatar: true, plan: true },
+        });
+      }
+      throw err;
     });
     res.json(user);
   } catch (err) {
