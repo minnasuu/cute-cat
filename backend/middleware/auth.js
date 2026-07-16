@@ -23,8 +23,18 @@ function verifyToken(token) {
   return jwt.verify(token, JWT_SECRET);
 }
 
-function cookieBaseOptions() {
-  const secure = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
+function isSecureCookie(req) {
+  // 显式配置优先
+  if (process.env.COOKIE_SECURE === 'true') return true;
+  if (process.env.COOKIE_SECURE === 'false') return false;
+  // 代理场景:X-Forwarded-Proto === 'https' 视为 https(nginx 终止 TLS 常见部署)
+  if (req?.headers['x-forwarded-proto'] === 'https') return true;
+  // 兜底:按 NODE_ENV
+  return process.env.NODE_ENV === 'production';
+}
+
+function cookieBaseOptions(req) {
+  const secure = isSecureCookie(req);
   return {
     httpOnly: true,
     sameSite: 'lax',
@@ -34,13 +44,13 @@ function cookieBaseOptions() {
 }
 
 function setAuthCookies(res, { accessToken, refreshToken }) {
-  const base = cookieBaseOptions();
+  const base = cookieBaseOptions(res.req);
   res.cookie(ACCESS_COOKIE, accessToken, { ...base, path: '/' });
   res.cookie(REFRESH_COOKIE, refreshToken, { ...base, path: '/api/auth' });
 }
 
 function clearAuthCookies(res) {
-  const base = cookieBaseOptions();
+  const base = cookieBaseOptions(res.req);
   res.clearCookie(ACCESS_COOKIE, { ...base, path: '/' });
   res.clearCookie(REFRESH_COOKIE, { ...base, path: '/api/auth' });
 }
