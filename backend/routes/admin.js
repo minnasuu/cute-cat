@@ -231,18 +231,22 @@ router.post('/workflows/repair-workbench', async (req, res) => {
 
 const beta = require('../lib/beta');
 
-// 统计
+// 统计(BetaCode 表未迁移时返回空统计,不 500)
 router.get('/beta-codes/stats', async (_req, res) => {
   try {
     const stats = await beta.betaStats();
     res.json(stats);
   } catch (err) {
     console.error('[admin] beta stats error:', err);
+    // 表未迁移 → 返回空统计
+    if (String(err.message).includes('beta_code') || String(err.message).includes('does not exist') || String(err.message).includes('table')) {
+      return res.json({ total: 0, used: 0, unused: 0 });
+    }
     res.status(500).json({ error: '获取内测码统计失败' });
   }
 });
 
-// 列表(分页)
+// 列表(分页,BetaCode 表未迁移时返回空列表,不 500)
 router.get('/beta-codes', async (req, res) => {
   try {
     const { page, pageSize } = req.query;
@@ -250,6 +254,10 @@ router.get('/beta-codes', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[admin] list beta codes error:', err);
+    // 表未迁移 → 返回空列表
+    if (String(err.message).includes('beta_code') || String(err.message).includes('does not exist') || String(err.message).includes('table')) {
+      return res.json({ total: 0, page: 1, pageSize: 50, rows: [] });
+    }
     res.status(500).json({ error: '获取内测码列表失败' });
   }
 });
@@ -294,18 +302,22 @@ router.delete('/beta-codes/:id', async (req, res) => {
 
 // ======================== Admin: 系统配置 ========================
 
-// 获取系统配置
+// 获取系统配置(SystemConfig 表未迁移时返回空值,不 500)
 router.get('/config/:key', async (req, res) => {
   try {
     const config = await prisma.systemConfig.findUnique({ where: { key: req.params.key } });
     res.json({ key: req.params.key, value: config?.value ?? null, note: config?.note ?? null, updatedBy: config?.updatedBy ?? null, updatedAt: config?.updatedAt ?? null });
   } catch (err) {
     console.error('[admin] get config error:', err);
+    // 表未迁移 → 返回空值
+    if (String(err.message).includes('system_config') || String(err.message).includes('does not exist') || String(err.message).includes('table')) {
+      return res.json({ key: req.params.key, value: null, note: null, updatedBy: null, updatedAt: null });
+    }
     res.status(500).json({ error: '获取配置失败' });
   }
 });
 
-// 更新系统配置
+// 更新系统配置(SystemConfig 表未迁移时返回失败提示,不 500)
 router.put('/config/:key', async (req, res) => {
   try {
     const { value, note } = req.body;
@@ -319,6 +331,10 @@ router.put('/config/:key', async (req, res) => {
     res.json({ success: true, key: updated.key, value: updated.value, note: updated.note, updatedBy: updated.updatedBy, updatedAt: updated.updatedAt });
   } catch (err) {
     console.error('[admin] update config error:', err);
+    // 表未迁移 → 返回友好提示
+    if (String(err.message).includes('system_config') || String(err.message).includes('does not exist') || String(err.message).includes('table')) {
+      return res.status(400).json({ error: '请先执行数据库迁移(npx prisma migrate dev)后再使用此功能' });
+    }
     res.status(500).json({ error: '更新配置失败' });
   }
 });

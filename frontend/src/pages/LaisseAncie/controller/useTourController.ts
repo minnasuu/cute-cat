@@ -18,6 +18,9 @@ import type { GeneratedImage } from "../pages/image-card";
 import { useAuth } from "../../../contexts/AuthContext";
 import { apiClient } from "../../../utils/apiClient";
 
+/** 本地存储 key:是否已完成引导 */
+const TOUR_DONE_KEY = "laisse-ancie:tour-done";
+
 /** 演示素材(从管理员用户的真实生成结果拉取,避免引导时调用 AI) */
 export interface TourDemoData {
   name: string;
