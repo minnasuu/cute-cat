@@ -86,4 +86,16 @@ app.listen(PORT, '0.0.0.0', () => {
   // 启动定时工作流调度器
   const { startScheduler } = require('./scheduler');
   startScheduler();
+
+  // 一次性迁移:把 env BETA_CODES 存量旧码写入 DB(若 DB 无未使用码)
+  try {
+    const beta = require('./lib/beta');
+    beta.migrateLegacyEnvCodes().then((r) => {
+      if (r.migrated > 0) {
+        `[beta] migrateLegacyEnvCodes: migrated ${r.migrated} code(s) from env`;
+      }
+    }).catch((e) => console.error('[beta] migrateLegacyEnvCodes failed:', e));
+  } catch (e) {
+    console.error('[beta] beta module load failed:', e);
+  }
 });

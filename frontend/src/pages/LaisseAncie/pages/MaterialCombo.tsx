@@ -26,6 +26,9 @@ import {
   AI_COST_PER_IMAGE,
 } from "../../../components/GenerateButton";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useMaterialComboTour } from "../controller/useMaterialComboTour";
+import MaterialComboTourOverlay from "../components/MaterialComboTourOverlay";
+import { useImageRetry } from "../../../hooks/useImageRetry";
 
 // ─── 上限约束(与后端同步) ─────────────────────────────────────
 const MAX_FABRIC = 6;   // 面料上限
@@ -99,16 +102,25 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const [picker, setPicker] = useState<null | "fabric" | "style">(null);
   const [mode, setMode] = useState<Mode>("cross");
 
-  // 切换生成模式(叉乘 / 拼色):清空槽位与批次,保留名称/描述
+  // 切换生成模式(叉乘 / 拼色):清空批次,保留槽位(名称/面料/款式/描述/文字)
   function switchMode(next: Mode) {
     if (next === mode) return;
-    setFabricRows([]);
-    setStyleRows([]);
     setBatch(null);
     setError(null);
     setMode(next);
     if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
   }
+
+  // ── 新手引导 ──
+  const tour = useMaterialComboTour({
+    mode,
+    setName,
+    setDescription,
+    setFabricRows,
+    setStyleRows,
+    setBatch,
+    switchMode,
+  });
 
   // ── 批次状态 ──
   const [batch, setBatch] = useState<MaterialComboBatch | null>(null);
@@ -142,12 +154,17 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const startPolling = useCallback((batchId: string) => {
     stopPolling();
     pollAttempts.current = 0;
+    resetRetries();
     pollTimer.current = setInterval(async () => {
       pollAttempts.current += 1;
       if (pollAttempts.current > POLL_MAX_ATTEMPTS) {
-        setError((prev) => prev || "部分图片生成超时,可点击失败单元格下方重试");
+        // 超时:标记 pending 格子为可重试的错误(错误局部化到格子,不显示左侧全局)
+        setBatch((b) => b ? {
+          ...b,
+          status: "done",
+          items: b.items.map((it) => it.status === "pending" ? { ...it, status: "error", error: "生成超时,可重试" } : it),
+        } : b);
         stopPolling();
-        setBatch((b) => b ? { ...b, status: "done" } : b);
         return;
       }
       try {
@@ -160,10 +177,18 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         setFabricRows((prev) => prev.map((r, i) => data.fabrics[i]?.text != null ? { ...r, analysisText: data.fabrics[i].text } : r));
         setStyleRows((prev) => prev.map((r, i) => data.styles[i]?.text != null ? { ...r, analysisText: data.styles[i].text } : r));
         setBatch(data);
+        // 轮询发现失败的格子 → 通过共享 hook 自动重试
+        if (data.items) {
+          for (const it of data.items) {
+            if (it.status === "error") {
+              tryAutoRetry(it, it.error || "生成失败");
+            }
+          }
+        }
         if (data.status === "done") stopPolling();
       } catch { /* 网络错误继续 */ }
     }, POLL_MS);
-  }, [teamId, stopPolling]);
+  }, [teamId, stopPolling, resetRetries, tryAutoRetry]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
@@ -323,8 +348,22 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     }
   }
 
+  // ── 生图自动重试 ──
+  const { resetRetries, tryAutoRetry } = useImageRetry({
+    maxRetries: 1,
+    getKey: (it) => `${it.fi}-${it.si}`,
+    retryFn: (item, isAutoRetry) => retryCell(item.fi, item.si, isAutoRetry),
+    onFailed: (item, error) => {
+      // 错误局部化到对应格子下方,不显示在左侧全局
+      setBatch((b) => {
+        if (!b) return b;
+        return { ...b, items: b.items.map((it) => it.fi === item.fi && it.si === item.si ? { ...it, status: "error", error: error || "生成失败,请重试" } : it) };
+      });
+    },
+  });
+
   // ── 单格重试 ──
-  async function retryCell(fi: number, si: number) {
+  async function retryCell(fi: number, si: number, isAutoRetry = false) {
     if (!batch) return;
     // optimistic:本格打回 pending,批次回到 running 并重启轮询
     setBatch((b) => {
@@ -342,11 +381,16 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       startPolling(batch.batchId);
     } catch (e: any) {
-      setError(e?.message || "重试失败");
-      setBatch((b) => {
-        if (!b) return b;
-        return { ...b, items: b.items.map((it) => it.fi === fi && it.si === si ? { ...it, status: "error", error: e?.message || "重试失败" } : it) };
-      });
+      // 使用共享 hook 决定是否自动重试
+      const item = batch.items.find((it) => it.fi === fi && it.si === si);
+      if (item && !isAutoRetry) {
+        tryAutoRetry(item, e?.message || "重试失败");
+      } else if (isAutoRetry) {
+        setBatch((b) => {
+          if (!b) return b;
+          return { ...b, items: b.items.map((it) => it.fi === fi && it.si === si ? { ...it, status: "error", error: e?.message || "生成失败,请重试" } : it) };
+        });
+      }
     }
   }
 
@@ -422,141 +466,329 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     ? batch.items.slice().sort((a, b) => a.si - b.si || a.fi - b.fi)
     : [];
 
+  // 引导步骤定义
+  const tourSteps = mode === 'cross'
+    ? [
+      { target: 'tour-name', title: '① 输入作品名称', description: '给你的材料组合取个名字,比如「春日雏菊连衣裙」。' },
+      { target: 'tour-fabric', title: '② 添加面料', description: '上传面料图或从面料库选择。可添加多张面料进行叉乘组合。' },
+      { target: 'tour-style', title: '③ 添加款式参考', description: '选择或上传款式参考图,系统会将每块面料与款式进行叉乘组合。' },
+      { target: 'tour-generate', title: '④ 点击生成', description: '点击底部「立即生成」,系统将自动组合生成多张白底效果图。', actionLabel: '立即生成' },
+      { target: 'tour-result', title: '⑤ 查看结果', description: '生成的效果图按款式×面料矩阵展示,可点击单张重试。' },
+    ]
+    : [
+      { target: 'tour-name', title: '① 输入作品名称', description: '给你的拼色作品取个名字。' },
+      { target: 'tour-fabric', title: '② 添加多块面料', description: '拼色模式下可添加多块面料(无需款式),系统会将它们拼成一张图。' },
+      { target: 'tour-generate', title: '③ 点击生成', description: '点击底部「立即生成」生成拼色效果图。', actionLabel: '立即生成' },
+      { target: 'tour-result', title: '④ 查看结果', description: '拼色结果展示,可重试生成。' },
+    ];
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
-      {/* 左:表单(上中下布局) */}
-      <div className="flex flex-col bg-white border-r border-gray-200 min-h-0">
-        {/* 顶部:固定 header */}
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
-          <div className="flex items-center justify-between">
-            <h1 className="text-[15px] font-medium text-gray-800 min-h-7">材料组合</h1>
-            <div className="h-7 flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
-              <button
-                onClick={() => switchMode("cross")}
-                className={`px-2 py-1 rounded-md ${mode === "cross" ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                叉乘
-              </button>
-              <button
-                onClick={() => switchMode("color-mix")}
-                className={`px-2 py-1 rounded-md ${mode === "color-mix" ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                拼色
-              </button>
-            </div>
-          </div>
-          <span className="text-[10px] text-gray-500">
-            {mode === "cross"
-              ? `m 面料 × n 款式 → m×n 白底图(≤${MAX_CELLS})`
-              : `多面料 × 1 款式 → 1 张拼色图(面料≤${MAX_FABRIC_MIXED})`}
-          </span>
-        </header>
-
-        {/* 中间:可滚动内容 */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="p-5 space-y-5 max-w-2xl">
-            {/* 名称 */}
-            <div>
-              <label className={labelCls}>
-                名称 <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="如:春日雏菊连衣裙"
-                className={inputCls}
-              />
-            </div>
-
-            {/* 面料槽位(上传 + 库)*/}
-            <div>
-              <label className={labelCls}>
-                面料{" "}
-                <span className="text-gray-400 normal-case tracking-normal">
-                  ({fabricRows.length}/{fabricsLimit})
-                </span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {fabricRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
+    <>
+      {/* 新手引导浮层 */}
+      {tour.tourActive && (
+        <MaterialComboTourOverlay
+          steps={tourSteps}
+          stepIdx={tour.tourStep}
+          onAdvance={tour.next}
+          onPrev={tour.prev}
+          onSkip={tour.skip}
+        />
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
+        {/* 左:表单(上中下布局) */}
+        <div className="flex flex-col bg-white min-h-0">
+          {/* 顶部:固定 header */}
+          <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
+            <div className="flex items-center justify-between">
+              <h1 className="text-[15px] font-medium text-gray-800 min-h-7 flex items-center gap-2">材料组合
+                {tour.shouldRegister && !tour.tourActive && (
+                  <button
+                    type="button"
+                    onClick={tour.startTour}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors font-normal"
                   >
-                    {row.kind === "text" ? (
-                      <div className="w-24 h-24 flex flex-col items-center justify-center bg-primary-50/50 border border-primary-100 rounded-lg p-1.5 text-center">
-                        <span className="text-primary-500 text-base">✎</span>
-                        <span className="text-[9px] text-primary-700 mt-1 line-clamp-3 leading-tight break-all">
-                          {row.description}
-                        </span>
-                      </div>
-                    ) : row.kind === "upload" ? (
-                      <img
-                        src={row.preview}
-                        alt={row.name}
-                        className="w-24 h-20 object-cover"
-                      />
-                    ) : row.url ? (
-                      <img
-                        src={row.url}
-                        alt={row.name}
-                        className="w-24 h-20 object-cover"
-                      />
-                    ) : (
-                      <div
-                        className="w-24 h-20"
-                        style={{ backgroundColor: row.hex || "#e5e7eb" }}
-                      />
-                    )}
-                    {row.kind === "library-fabric" && (
-                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
-                        库
-                      </span>
-                    )}
-                    {row.kind === "text" && (
-                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
-                        文
-                      </span>
-                    )}
-                    {row.kind === "library-fabric" &&
-                      row.hex &&
-                      !/^#/.test(row.name) && (
-                        <span className="absolute bottom-6 right-0.5 text-[8px] bg-white/80 text-gray-600 px-0.5">
-                          {row.hex}
+                    ? 新手引导
+                  </button>
+                )}
+              </h1>
+              <div className="h-7 flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
+                <button
+                  onClick={() => switchMode("cross")}
+                  className={`px-2 py-1 rounded-md ${mode === "cross" ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                  叉乘
+                </button>
+                <button
+                  onClick={() => switchMode("color-mix")}
+                  className={`px-2 py-1 rounded-md ${mode === "color-mix" ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                  拼色
+                </button>
+              </div>
+            </div>
+            <span className="text-[10px] text-gray-500">
+              {mode === "cross"
+                ? `m 面料 × n 款式 → m×n 白底图(≤${MAX_CELLS})`
+                : `多面料 × 1 款式 → 1 张拼色图(面料≤${MAX_FABRIC_MIXED})`}
+            </span>
+          </header>
+
+          {/* 中间:可滚动内容 */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="p-5 space-y-5 max-w-2xl">
+              {/* 名称 */}
+              <div data-tour="tour-name">
+                <label className={labelCls}>
+                  名称 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="如:春日雏菊连衣裙"
+                  className={inputCls}
+                />
+              </div>
+
+              {/* 面料槽位(上传 + 库)*/}
+              <div data-tour="tour-fabric">
+                <label className={labelCls}>
+                  面料{" "}
+                  <span className="text-gray-400 normal-case tracking-normal">
+                    ({fabricRows.length}/{fabricsLimit})
+                  </span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {fabricRows.map((row) => (
+                    <div
+                      key={row.id}
+                      className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
+                    >
+                      {row.kind === "text" ? (
+                        <div className="w-24 h-24 flex flex-col items-center justify-center bg-primary-50/50 border border-primary-100 rounded-lg p-1.5 text-center">
+                          <span className="text-primary-500 text-base">✎</span>
+                          <span className="text-[9px] text-primary-700 mt-1 line-clamp-3 leading-tight break-all">
+                            {row.description}
+                          </span>
+                        </div>
+                      ) : row.kind === "upload" ? (
+                        <img
+                          src={row.preview}
+                          alt={row.name}
+                          className="w-24 h-20 object-cover"
+                        />
+                      ) : row.url ? (
+                        <img
+                          src={row.url}
+                          alt={row.name}
+                          className="w-24 h-20 object-cover"
+                        />
+                      ) : (
+                        <div
+                          className="w-24 h-20"
+                          style={{ backgroundColor: row.hex || "#e5e7eb" }}
+                        />
+                      )}
+                      {row.kind === "library-fabric" && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
+                          库
                         </span>
                       )}
-                    {!batchRunningOrAnalyzing && (
-                      <button
-                        onClick={() => removeRow("fabric", row.id)}
-                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        ×
-                      </button>
+                      {row.kind === "text" && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
+                          文
+                        </span>
+                      )}
+                      {row.kind === "library-fabric" &&
+                        row.hex &&
+                        !/^#/.test(row.name) && (
+                          <span className="absolute bottom-6 right-0.5 text-[8px] bg-white/80 text-gray-600 px-0.5">
+                            {row.hex}
+                          </span>
+                        )}
+                      {!batchRunningOrAnalyzing && (
+                        <button
+                          onClick={() => removeRow("fabric", row.id)}
+                          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      )}
+                      {row.kind !== "text" && (
+                        <div
+                          className="px-1 py-0.5 text-[8px] text-gray-400 truncate"
+                          title={row.name}
+                        >
+                          {row.name}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {fabricRows.length < fabricsLimit &&
+                    !batchRunningOrAnalyzing && (
+                      <>
+                        <button
+                          onClick={() => fabricRef.current?.click()}
+                          className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                        >
+                          <span className="text-lg text-gray-400">+</span>
+                          <span className="text-[10px] text-gray-400">
+                            添加面料
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => setPicker("fabric")}
+                          className="w-28 h-28 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                        >
+                          <span className="text-base text-primary-500">▦</span>
+                          <span className="text-[10px] text-primary-600 mt-0.5">
+                            从库选择
+                          </span>
+                        </button>
+                      </>
                     )}
-                    {row.kind !== "text" && (
+                </div>
+                <input
+                  ref={fabricRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addUploads("fabric", e.target.files)}
+                />
+                {/* 文字描述面料(作为额外面料槽位) */}
+                {fabricText && !batchRunningOrAnalyzing && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {fabricText.split(/[,，]/).map((t, i) => {
+                      const desc = t.trim();
+                      if (!desc) return null;
+                      return (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
+                        >
+                          <span className="text-primary-400">✎</span>
+                          {desc}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFabricText((prev) =>
+                                prev
+                                  .split(/[,，]/)
+                                  .filter((x, idx) => idx !== i)
+                                  .join(","),
+                              )
+                            }
+                            className="text-primary-400 hover:text-red-500 leading-none ml-1"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {(!fabricText || !batchRunningOrAnalyzing) && (
+                  <textarea
+                    value={fabricText}
+                    onChange={(e) => setFabricText(e.target.value)}
+                    onBlur={() => {
+                      // 解析逗号分隔的多条文本,自动补充为 text 面料行(最多补到上限)
+                      const descs = fabricText
+                        .split(/[,，]/)
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      if (descs.length > 0 && fabricRows.length < fabricsLimit) {
+                        const room = fabricsLimit - fabricRows.length;
+                        const newRows: FabricRow[] = descs
+                          .slice(0, room)
+                          .map((d) => ({
+                            kind: "text" as const,
+                            id: crypto.randomUUID(),
+                            description: d,
+                          }));
+                        setFabricRows((prev) => [...prev, ...newRows]);
+                        setFabricText("");
+                      }
+                    }}
+                    placeholder="或文字描述面料,添加进槽位(逗号分隔多条,如:纯白色纯棉,天丝混纺,碎花雪纺)"
+                    rows={2}
+                    className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
+                    disabled={batchRunningOrAnalyzing}
+                  />
+                )}
+                <span className="text-[10px] text-gray-400">
+                  {mode === "cross"
+                    ? "面料上限 6 项,支持上传 / 库选 / 文字描述三种方式"
+                    : `拼色模式:按款式自由上传(建议≤${MAX_FABRIC_MIXED})`}
+                </span>
+              </div>
+
+              {/* 款式槽位(上传 + 库)*/}
+              <div data-tour="tour-style">
+                <label className={labelCls}>
+                  款式参考{" "}
+                  <span className="text-gray-400 normal-case tracking-normal">
+                    ({styleRows.length}/{stylesLimit})
+                  </span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {styleRows.map((row) => (
+                    <div
+                      key={row.id}
+                      className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
+                    >
+                      {row.kind === "upload" ? (
+                        <img
+                          src={row.preview}
+                          alt={row.name}
+                          className="w-24 h-20 object-cover"
+                        />
+                      ) : row.url ? (
+                        <img
+                          src={row.url}
+                          alt={row.name}
+                          className="w-24 h-20 object-cover"
+                        />
+                      ) : (
+                        <div className="w-24 h-20 border border-dashed border-gray-300 rounded flex items-center justify-center text-[10px] text-gray-300">
+                          无图
+                        </div>
+                      )}
+                      {row.kind !== "upload" && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
+                          库
+                        </span>
+                      )}
+                      {!batchRunningOrAnalyzing && (
+                        <button
+                          onClick={() => removeRow("style", row.id)}
+                          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      )}
                       <div
                         className="px-1 py-0.5 text-[8px] text-gray-400 truncate"
                         title={row.name}
                       >
                         {row.name}
                       </div>
-                    )}
-                  </div>
-                ))}
-                {fabricRows.length < fabricsLimit &&
-                  !batchRunningOrAnalyzing && (
+                    </div>
+                  ))}
+                  {styleRows.length < stylesLimit && !batchRunningOrAnalyzing && (
                     <>
                       <button
-                        onClick={() => fabricRef.current?.click()}
+                        onClick={() => styleRef.current?.click()}
                         className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                       >
                         <span className="text-lg text-gray-400">+</span>
                         <span className="text-[10px] text-gray-400">
-                          添加面料
+                          添加款式
                         </span>
                       </button>
                       <button
-                        onClick={() => setPicker("fabric")}
-                        className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                        onClick={() => setPicker("style")}
+                        className="w-28 h-28 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                       >
                         <span className="text-base text-primary-500">▦</span>
                         <span className="text-[10px] text-primary-600 mt-0.5">
@@ -565,451 +797,287 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                       </button>
                     </>
                   )}
+                </div>
+                <input
+                  ref={styleRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addUploads("style", e.target.files)}
+                />
               </div>
-              <input
-                ref={fabricRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => addUploads("fabric", e.target.files)}
+
+              {/* 其他描述 */}
+              <div>
+                <label className={labelCls}>其他描述</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  placeholder="补充设计想法、穿着场景、特殊工艺要求等(可选)"
+                  className={`${inputCls} resize-none`}
+                />
+              </div>
+
+              {/* 张数预览 */}
+              {fabricRows.length > 0 && styleRows.length > 0 && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
+                  {mode === "cross" ? (
+                    <>
+                      将生成{" "}
+                      <span className="font-medium text-primary-600">
+                        {fabricRows.length} × {styleRows.length} = {cellCount}
+                      </span>{" "}
+                      张白底效果图
+                      {cellCount > MAX_CELLS && (
+                        <span className="text-red-500 ml-2">
+                          超过上限 {MAX_CELLS},请减少图片
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      将生成{" "}
+                      <span className="font-medium text-primary-600">1</span>{" "}
+                      张拼色白底效果图（共 {fabricRows.length} 块面料拼接）
+                    </>
+                  )}
+                </div>
+              )}
+
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-600">
+                  ⚠ {error}
+                </div>
+              )}
+            </div>
+            {/* 结束滚动区 */}
+          </div>
+          {/* 结束滚动容器 */}
+
+          {/* 底部:固定行动按钮(按批次状态切换,与 Composer 规范一致) */}
+          <div className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
+            <div data-tour="tour-generate">
+              {hasSuccess && !batchRunningOrAnalyzing && !submitting ? (
+                <GenerateButton
+                  label={`保存到 Lookbook (${batch!.completed}/${batch!.total})`}
+                  estimatedCoins={0}
+                  userCoins={user?.coins}
+                  onClick={saveToLookbook}
+                />
+              ) : (
+                <GenerateButton
+                  label="立即生成"
+                  loading={submitting || batchRunningOrAnalyzing}
+                  disabled={!canSubmit}
+                  estimatedCoins={cellCount * AI_COST_PER_IMAGE}
+                  userCoins={user?.coins}
+                  onClick={submit}
+                />
+              )}
+            </div>
+            {batchRunningOrAnalyzing && batch && (
+              <div className="text-[11px] text-gray-500 mt-2 text-center">
+                {batch.completed + batch.failed}/{batch.total}
+                {batch.failed > 0 && (
+                  <span className="text-amber-600 ml-1">
+                    ({batch.failed} 张失败)
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 右:结果矩阵 */}
+        <aside data-tour="tour-result" className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
+          {!batch && !submitting && (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
+              上传面料与款式后<br />点击底部「立即生成」
+            </div>
+          )}
+
+          {submitting && (
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+                <span className="text-[12px] text-gray-500">
+                  正在上传并分析图片…
+                </span>
+              </div>
+            </div>
+          )}
+
+          {batch &&
+            batch.fabrics.length > 0 &&
+            batch.styles.length > 0 &&
+            (batch.mode === "color-mix" ? (
+              // 拼色模式:单张大图 + 底部面料缩略条(不标「拼色」标签)
+              <ColorMixResult
+                batch={batch}
+                retryCell={retryCell}
               />
-              {/* 文字描述面料(作为额外面料槽位) */}
-              {fabricText && !batchRunningOrAnalyzing && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {fabricText.split(/[,，]/).map((t, i) => {
-                    const desc = t.trim();
-                    if (!desc) return null;
+            ) : (
+              // 叉乘模式:纵向列表,每行 = 款式 × 面料 = 结果
+              <>
+                <div className="text-[10px] uppercase tracking-wider text-gray-500">
+                  生成结果 {fabricRows.length}×{styleRows.length} = {batch.items.length}
+                  {hasSuccess && (
+                    <span className="ml-2 text-gray-400 normal-case tracking-normal">({batch.completed}/{batch.total} 成功)</span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {sortedCrossItems.map((cell) => {
+                    const fRow = fabricRows[cell.fi];
+                    const sRow = styleRows[cell.si];
                     return (
-                      <span
-                        key={i}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
+                      <div
+                        key={`c-${cell.fi}-${cell.si}`}
+                        className="flex items-center gap-3 p-2.5 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors"
                       >
-                        <span className="text-primary-400">✎</span>
-                        {desc}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setFabricText((prev) =>
-                              prev
-                                .split(/[,，]/)
-                                .filter((x, idx) => idx !== i)
-                                .join(","),
-                            )
-                          }
-                          className="text-primary-400 hover:text-red-500 leading-none ml-1"
-                        >
+                        {/* 款式缩略图 */}
+                        <div className="shrink-0 text-center">
+                          <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 mx-auto">
+                            {sRow && sRow.kind === "upload" ? (
+                              <img
+                                src={batch.styles[cell.si]?.url || sRow.preview}
+                                alt={sRow.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : sRow && sRow.url ? (
+                              <img
+                                src={batch.styles[cell.si]?.url || sRow.url}
+                                alt={sRow.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-300">
+                                无图
+                              </div>
+                            )}
+                          </div>
+                          {sRow && (
+                            <div
+                              className="text-[9px] text-gray-500 mt-1 w-16 truncate"
+                              title={sRow.name}
+                            >
+                              {sRow.kind !== "upload"
+                                ? sRow.name
+                                : `款式${cell.si + 1}`}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 乘号 */}
+                        <span className="shrink-0 text-gray-300 text-sm font-light">
                           ×
-                        </button>
-                      </span>
+                        </span>
+
+                        {/* 面料缩略图 */}
+                        <div className="shrink-0 text-center">
+                          <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 mx-auto">
+                            {fRow && fRow.kind === "upload" ? (
+                              <img
+                                src={batch.fabrics[cell.fi]?.url || fRow.preview}
+                                alt={fRow.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : fRow && fRow.url ? (
+                              <img
+                                src={batch.fabrics[cell.fi]?.url || fRow.url}
+                                alt={fRow.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : fRow &&
+                              fRow.kind === "library-fabric" &&
+                              fRow.hex ? (
+                              <div
+                                className="w-full h-full"
+                                style={{ backgroundColor: fRow.hex }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-300">
+                                无图
+                              </div>
+                            )}
+                          </div>
+                          {fRow && (
+                            <div
+                              className="text-[9px] text-gray-500 mt-1 w-16 truncate"
+                              title={fRow.name}
+                            >
+                              {fRow.kind !== "upload"
+                                ? fRow.name
+                                : `面料${cell.fi + 1}`}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 等号 */}
+                        <span className="shrink-0 text-gray-300 text-sm font-light">
+                          ＝
+                        </span>
+
+                        {/* 结果 */}
+                        <div className="flex-1 min-w-0 flex justify-end">
+                          <div className="w-28 h-28 rounded-lg border border-gray-200 bg-white overflow-hidden flex flex-col shrink-0">
+                            <div className="flex-1 relative bg-white">
+                              {cell.status === "pending" && (
+                                <div className="w-full h-full flex items-center justify-center flex-col gap-1">
+                                  <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+                                  <span className="text-[9px] text-gray-400">
+                                    生成中…
+                                  </span>
+                                </div>
+                              )}
+                              {cell.status === "done" && (
+                                <img
+                                  src={cell.url}
+                                  alt={`面料${cell.fi + 1} × 款式${cell.si + 1}`}
+                                  className="w-full h-full object-contain"
+                                />
+                              )}
+                              {cell.status === "error" && (
+                                <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-2 text-center">
+                                  <span className="text-[10px] text-red-500">
+                                    {cell.error || "生成失败"}
+                                  </span>
+                                  <button
+                                    onClick={() => retryCell(cell.fi, cell.si)}
+                                    className="text-[10px] text-primary-600 underline hover:text-primary-700"
+                                  >
+                                    重试
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="px-1 py-0.5 text-[8px] text-center text-gray-400 border-t border-gray-100 truncate">
+                              面{cell.fi + 1} × 款{cell.si + 1}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
-              )}
-              {(!fabricText || !batchRunningOrAnalyzing) && (
-                <textarea
-                  value={fabricText}
-                  onChange={(e) => setFabricText(e.target.value)}
-                  onBlur={() => {
-                    // 解析逗号分隔的多条文本,自动补充为 text 面料行(最多补到上限)
-                    const descs = fabricText
-                      .split(/[,，]/)
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    if (descs.length > 0 && fabricRows.length < fabricsLimit) {
-                      const room = fabricsLimit - fabricRows.length;
-                      const newRows: FabricRow[] = descs
-                        .slice(0, room)
-                        .map((d) => ({
-                          kind: "text" as const,
-                          id: crypto.randomUUID(),
-                          description: d,
-                        }));
-                      setFabricRows((prev) => [...prev, ...newRows]);
-                      setFabricText("");
-                    }
-                  }}
-                  placeholder="或文字描述面料,添加进槽位(逗号分隔多条,如:纯白色纯棉,天丝混纺,碎花雪纺)"
-                  rows={2}
-                  className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
-                  disabled={batchRunningOrAnalyzing}
-                />
-              )}
-              <span className="text-[10px] text-gray-400">
-                {mode === "cross"
-                  ? "面料上限 6 项,支持上传 / 库选 / 文字描述三种方式"
-                  : `拼色模式:按款式自由上传(建议≤${MAX_FABRIC_MIXED})`}
-              </span>
-            </div>
 
-            {/* 款式槽位(上传 + 库)*/}
-            <div>
-              <label className={labelCls}>
-                款式参考{" "}
-                <span className="text-gray-400 normal-case tracking-normal">
-                  ({styleRows.length}/{stylesLimit})
-                </span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {styleRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
-                  >
-                    {row.kind === "upload" ? (
-                      <img
-                        src={row.preview}
-                        alt={row.name}
-                        className="w-24 h-20 object-cover"
-                      />
-                    ) : row.url ? (
-                      <img
-                        src={row.url}
-                        alt={row.name}
-                        className="w-24 h-20 object-cover"
-                      />
-                    ) : (
-                      <div className="w-24 h-20 border border-dashed border-gray-300 rounded flex items-center justify-center text-[10px] text-gray-300">
-                        无图
-                      </div>
-                    )}
-                    {row.kind !== "upload" && (
-                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
-                        库
-                      </span>
-                    )}
-                    {!batchRunningOrAnalyzing && (
-                      <button
-                        onClick={() => removeRow("style", row.id)}
-                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        ×
-                      </button>
-                    )}
-                    <div
-                      className="px-1 py-0.5 text-[8px] text-gray-400 truncate"
-                      title={row.name}
-                    >
-                      {row.name}
-                    </div>
-                  </div>
-                ))}
-                {styleRows.length < stylesLimit && !batchRunningOrAnalyzing && (
-                  <>
-                    <button
-                      onClick={() => styleRef.current?.click()}
-                      className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                    >
-                      <span className="text-lg text-gray-400">+</span>
-                      <span className="text-[10px] text-gray-400">
-                        添加款式
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => setPicker("style")}
-                      className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                    >
-                      <span className="text-base text-primary-500">▦</span>
-                      <span className="text-[10px] text-primary-600 mt-0.5">
-                        从库选择
-                      </span>
-                    </button>
-                  </>
-                )}
-              </div>
-              <input
-                ref={styleRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => addUploads("style", e.target.files)}
-              />
-            </div>
+                {/* 查看生成 prompt 已隐藏 */}
+              </>
+            ))}
+        </aside>
 
-            {/* 其他描述 */}
-            <div>
-              <label className={labelCls}>其他描述</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                placeholder="补充设计想法、穿着场景、特殊工艺要求等(可选)"
-                className={`${inputCls} resize-none`}
-              />
-            </div>
-
-            {/* 张数预览 */}
-            {fabricRows.length > 0 && styleRows.length > 0 && (
-              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-                {mode === "cross" ? (
-                  <>
-                    将生成{" "}
-                    <span className="font-medium text-primary-600">
-                      {fabricRows.length} × {styleRows.length} = {cellCount}
-                    </span>{" "}
-                    张白底效果图
-                    {cellCount > MAX_CELLS && (
-                      <span className="text-red-500 ml-2">
-                        超过上限 {MAX_CELLS},请减少图片
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    将生成{" "}
-                    <span className="font-medium text-primary-600">1</span>{" "}
-                    张拼色白底效果图（共 {fabricRows.length} 块面料拼接）
-                  </>
-                )}
-              </div>
-            )}
-
-            {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-600">
-                ⚠ {error}
-              </div>
-            )}
-          </div>
-          {/* 结束滚动区 */}
-        </div>
-        {/* 结束滚动容器 */}
-
-        {/* 底部:固定行动按钮(按批次状态切换,与 Composer 规范一致) */}
-        <div className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
-          {hasSuccess && !batchRunningOrAnalyzing && !submitting ? (
-            <GenerateButton
-              label={`保存到 Lookbook (${batch!.completed}/${batch!.total})`}
-              estimatedCoins={0}
-              userCoins={user?.coins}
-              onClick={saveToLookbook}
-            />
-          ) : (
-            <GenerateButton
-              label="立即生成"
-              loading={submitting || batchRunningOrAnalyzing}
-              disabled={!canSubmit}
-              estimatedCoins={cellCount * AI_COST_PER_IMAGE}
-              userCoins={user?.coins}
-              onClick={submit}
-            />
-          )}
-          {batchRunningOrAnalyzing && batch && (
-            <div className="text-[11px] text-gray-500 mt-2 text-center">
-              {batch.completed + batch.failed}/{batch.total}
-              {batch.failed > 0 && (
-                <span className="text-amber-600 ml-1">
-                  ({batch.failed} 张失败)
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+        {/* 库选择器 */}
+        <LibraryPickerModal
+          mode={picker}
+          knowledge={knowledge}
+          onClose={() => setPicker(null)}
+          onFabric={addLibraryFabric}
+          onStyle={(p) => addLibraryStyle(p)}
+        />
       </div>
-
-      {/* 右:结果矩阵 */}
-      <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
-        {!batch && !submitting && (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
-            上传面料与款式后<br />点击底部「立即生成」
-          </div>
-        )}
-
-        {submitting && (
-          <div className="flex items-center justify-center h-full">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
-              <span className="text-[12px] text-gray-500">
-                正在上传并分析图片…
-              </span>
-            </div>
-          </div>
-        )}
-
-        {batch &&
-          batch.fabrics.length > 0 &&
-          batch.styles.length > 0 &&
-          (batch.mode === "color-mix" ? (
-            // 拼色模式:单张大图 + 底部面料缩略条(不标「拼色」标签)
-            <ColorMixResult
-              batch={batch}
-              retryCell={retryCell}
-            />
-          ) : (
-            // 叉乘模式:纵向列表,每行 = 款式 × 面料 = 结果
-            <>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">
-                生成结果 {fabricRows.length}×{styleRows.length} = {batch.items.length}
-                {hasSuccess && (
-                  <span className="ml-2 text-gray-400 normal-case tracking-normal">({batch.completed}/{batch.total} 成功)</span>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {sortedCrossItems.map((cell) => {
-                  const fRow = fabricRows[cell.fi];
-                  const sRow = styleRows[cell.si];
-                  return (
-                    <div
-                      key={`c-${cell.fi}-${cell.si}`}
-                      className="flex items-center gap-3 p-2.5 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors"
-                    >
-                      {/* 款式缩略图 */}
-                      <div className="shrink-0 text-center">
-                        <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 mx-auto">
-                          {sRow && sRow.kind === "upload" ? (
-                            <img
-                              src={batch.styles[cell.si]?.url || sRow.preview}
-                              alt={sRow.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : sRow && sRow.url ? (
-                            <img
-                              src={batch.styles[cell.si]?.url || sRow.url}
-                              alt={sRow.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-300">
-                              无图
-                            </div>
-                          )}
-                        </div>
-                        {sRow && (
-                          <div
-                            className="text-[9px] text-gray-500 mt-1 w-16 truncate"
-                            title={sRow.name}
-                          >
-                            {sRow.kind !== "upload"
-                              ? sRow.name
-                              : `款式${cell.si + 1}`}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 乘号 */}
-                      <span className="shrink-0 text-gray-300 text-sm font-light">
-                        ×
-                      </span>
-
-                      {/* 面料缩略图 */}
-                      <div className="shrink-0 text-center">
-                        <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 mx-auto">
-                          {fRow && fRow.kind === "upload" ? (
-                            <img
-                              src={batch.fabrics[cell.fi]?.url || fRow.preview}
-                              alt={fRow.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : fRow && fRow.url ? (
-                            <img
-                              src={batch.fabrics[cell.fi]?.url || fRow.url}
-                              alt={fRow.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : fRow &&
-                            fRow.kind === "library-fabric" &&
-                            fRow.hex ? (
-                            <div
-                              className="w-full h-full"
-                              style={{ backgroundColor: fRow.hex }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-300">
-                              无图
-                            </div>
-                          )}
-                        </div>
-                        {fRow && (
-                          <div
-                            className="text-[9px] text-gray-500 mt-1 w-16 truncate"
-                            title={fRow.name}
-                          >
-                            {fRow.kind !== "upload"
-                              ? fRow.name
-                              : `面料${cell.fi + 1}`}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 等号 */}
-                      <span className="shrink-0 text-gray-300 text-sm font-light">
-                        ＝
-                      </span>
-
-                      {/* 结果 */}
-                      <div className="flex-1 min-w-0 flex justify-end">
-                        <div className="w-28 h-28 rounded-lg border border-gray-200 bg-white overflow-hidden flex flex-col shrink-0">
-                          <div className="flex-1 relative bg-white">
-                            {cell.status === "pending" && (
-                              <div className="w-full h-full flex items-center justify-center flex-col gap-1">
-                                <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
-                                <span className="text-[9px] text-gray-400">
-                                  生成中…
-                                </span>
-                              </div>
-                            )}
-                            {cell.status === "done" && (
-                              <img
-                                src={cell.url}
-                                alt={`面料${cell.fi + 1} × 款式${cell.si + 1}`}
-                                className="w-full h-full object-contain"
-                              />
-                            )}
-                            {cell.status === "error" && (
-                              <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-2 text-center">
-                                <span className="text-[10px] text-red-500">
-                                  {cell.error || "生成失败"}
-                                </span>
-                                <button
-                                  onClick={() => retryCell(cell.fi, cell.si)}
-                                  className="text-[10px] text-primary-600 underline hover:text-primary-700"
-                                >
-                                  重试
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <div className="px-1 py-0.5 text-[8px] text-center text-gray-400 border-t border-gray-100 truncate">
-                            面{cell.fi + 1} × 款{cell.si + 1}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {batch.items.find((it) => it.prompt) && (
-                <details className="text-[11px] text-gray-500">
-                  <summary className="cursor-pointer hover:text-gray-700">
-                    查看生成 prompt
-                  </summary>
-                  <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">
-                    {batch.items
-                      .filter((it) => it.prompt)
-                      .slice(0, 1)
-                      .map(
-                        (it, i) =>
-                          `# 面料${it.fi + 1} × 款式${it.si + 1}\n${it.prompt}`,
-                      )
-                      .join("\n\n")}
-                  </pre>
-                </details>
-              )}
-            </>
-          ))}
-      </aside>
-
-      {/* 库选择器 */}
-      <LibraryPickerModal
-        mode={picker}
-        knowledge={knowledge}
-        onClose={() => setPicker(null)}
-        onFabric={addLibraryFabric}
-        onStyle={(p) => addLibraryStyle(p)}
-      />
-    </div>
+    </>
   );
 }
 
@@ -1068,12 +1136,7 @@ function ColorMixResult({ batch, retryCell }: { batch: MaterialComboBatch; retry
         </div>
       </div>
 
-      {cell?.prompt && (
-        <details className="text-[11px] text-gray-500">
-          <summary className="cursor-pointer hover:text-gray-700">查看生成 prompt</summary>
-          <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">{cell.prompt}</pre>
-        </details>
-      )}
+      {/* 查看生成 prompt 已隐藏 */}
     </div>
   );
 }
@@ -1240,7 +1303,7 @@ function LibraryPickerModal({
               >
                 <div className="aspect-square w-full relative">
                   {c.shared && (
-                    <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">
+                    <span className="absolute top-2 left-2 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">
                       系统
                     </span>
                   )}
@@ -1311,7 +1374,7 @@ function LibraryPickerModal({
             >
               <div className="aspect-square w-full relative">
                 {s.shared && (
-                  <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">
+                  <span className="absolute top-2 left-2 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">
                     系统
                   </span>
                 )}

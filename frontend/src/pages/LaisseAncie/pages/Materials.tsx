@@ -192,11 +192,11 @@ function MaterialCard({
   const isDeleting = deleting === mat.id;
   return (
     <figure
-      className={`rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer ${isDeleting ? "opacity-40 pointer-events-none" : ""}`}
+      className={`rounded-2xl border border-gray-200 bg-white overflow-hidden cursor-pointer ${isDeleting ? "opacity-40 pointer-events-none" : ""}`}
     >
       <div className="relative h-48 overflow-hidden">
         {mat.shared && (
-          <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">系统</span>
+          <span className="absolute top-2 left-2 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">系统</span>
         )}
         {cards.some((c) => c.url) ? (
           <div className="absolute inset-0 flex">

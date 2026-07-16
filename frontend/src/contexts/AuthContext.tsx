@@ -21,6 +21,8 @@ export interface User {
   /** 已邀请成功人数 */
   inviteCount?: number;
   invitedById?: string;
+  /** 是否已完成灵感扩散新手引导(服务端持久化) */
+  onboardingDone?: boolean;
 }
 
 interface AuthContextType {

@@ -28,6 +28,7 @@ const prisma = new PrismaClient();
 const { ensureWorkbenchTeam } = require('../lib/workbench-seed');
 const coins = require('../lib/coins');
 const { isAdminEmail } = require('../lib/admin');
+const beta = require('../lib/beta');
 
 // ======================== 简易内存速率限制 ========================
 const rateLimitMap = new Map();
@@ -84,6 +85,140 @@ function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+/**
+ * 新手引导演示素材:取管理员用户最新的真实生成结果。
+ * 返回 { name, description, plan, lineartUrl, finalUrl, recommendation }
+ * 用于引导流程中替代 SVG mock,无需调用 AI。
+ */
+async function getTourDemoData() {
+  const adminUserId = process.env.TOUR_DEMO_USER_ID || 'cf88dd4b-d6e7-49f5-a549-6830937a6879';
+  // 找管理员的 team(任一即可)
+  const team = await prisma.team.findFirst({ where: { ownerId: adminUserId }, select: { id: true } });
+  const teamId = team?.id;
+  if (!teamId) return null;
+
+  // 找该 team 下最新的 single 模式产品(需有 images)
+  const products = await prisma.lAProduct.findMany({
+    where: { teamId, mode: 'single', images: { not: { equals: [] } } },
+    orderBy: { updatedAt: 'desc' },
+    take: 5,
+    select: {
+      title: true, description: true, images: true, sections: true,
+      materialId: true, fabricComposition: true, colors: true,
+    },
+  });
+
+  const pick = products.find((p) => {
+    const imgs = Array.isArray(p.images) ? p.images : [];
+    return imgs.length > 0;
+  }) || products[0];
+  if (!pick) return null;
+
+  const imgs = Array.isArray(pick.images) ? pick.images : [];
+  const lineart = imgs.find((i) => i.slot === 'lineart') || imgs.find((i) => i.slot !== 'final') || imgs[0];
+  const final = imgs.find((i) => i.slot === 'final') || imgs[imgs.length - 1];
+
+  // 方案文案:优先用 sections 结构化字段拼接,退而求其次用 description
+  let plan = '';
+  try {
+    const secs = typeof pick.sections === 'string' ? JSON.parse(pick.sections) : pick.sections;
+    if (Array.isArray(secs) && secs.length > 0) {
+      plan = secs.map((s) => {
+        const heading = s.heading ? `**${s.heading}**` : '';
+        const body = Array.isArray(s.body) ? s.body.join('\n') : (s.body || '');
+        return [heading, body].filter(Boolean).join('\n');
+      }).join('\n\n');
+    }
+  } catch { /* ignore */ }
+  if (!plan) plan = pick.description || '';
+
+  // 材质推荐(若该产品关联了材料)
+  let recommendation = null;
+  if (pick.materialId) {
+    const mat = await prisma.lAMaterial.findUnique({
+      where: { id: pick.materialId },
+      select: { name: true, category: true, texture: true, composition: true, colors: true, originNote: true },
+    });
+    if (mat) {
+      recommendation = {
+        name: mat.name || '',
+        category: mat.category || '面料',
+        texture: mat.texture || '',
+        composition: mat.composition || '',
+        colors: Array.isArray(mat.colors) ? mat.colors : [],
+        reason: mat.originNote || '',
+      };
+    }
+  }
+
+  return {
+    name: pick.title || '',
+    description: pick.description || '',
+    plan,
+    lineartUrl: lineart?.url || null,
+    finalUrl: final?.url || null,
+    recommendation,
+  };
+}
+
+/** 按指定 productId 取演示素材(用于材料组合/款式裂变等指定演示案例) */
+async function getTourDemoByProductId(productId) {
+  const pick = await prisma.lAProduct.findUnique({
+    where: { id: productId },
+    select: {
+      title: true, description: true, images: true, sections: true,
+      materialId: true, fabricComposition: true, colors: true, mode: true,
+    },
+  });
+  if (!pick) return null;
+
+  const imgs = Array.isArray(pick.images) ? pick.images : [];
+  const lineart = imgs.find((i) => i.slot === 'lineart') || imgs.find((i) => i.slot !== 'final') || imgs[0];
+  const final = imgs.find((i) => i.slot === 'final') || imgs[imgs.length - 1];
+
+  let plan = '';
+  try {
+    const secs = typeof pick.sections === 'string' ? JSON.parse(pick.sections) : pick.sections;
+    if (Array.isArray(secs) && secs.length > 0) {
+      plan = secs.map((s) => {
+        const heading = s.heading ? `**${s.heading}**` : '';
+        const body = Array.isArray(s.body) ? s.body.join('\n') : (s.body || '');
+        return [heading, body].filter(Boolean).join('\n');
+      }).join('\n\n');
+    }
+  } catch { /* ignore */ }
+  if (!plan) plan = pick.description || '';
+
+  let recommendation = null;
+  if (pick.materialId) {
+    const mat = await prisma.lAMaterial.findUnique({
+      where: { id: pick.materialId },
+      select: { name: true, category: true, texture: true, composition: true, colors: true, originNote: true },
+    });
+    if (mat) {
+      recommendation = {
+        name: mat.name || '',
+        category: mat.category || '面料',
+        texture: mat.texture || '',
+        composition: mat.composition || '',
+        colors: Array.isArray(mat.colors) ? mat.colors : [],
+        reason: mat.originNote || '',
+      };
+    }
+  }
+
+  return {
+    name: pick.title || '',
+    description: pick.description || '',
+    plan,
+    lineartUrl: lineart?.url || null,
+    finalUrl: final?.url || null,
+    recommendation,
+    imageUrls: imgs.filter((i) => i.url).map((i) => i.url),
+    mode: pick.mode,
+  };
+}
+
 /** 根据邮箱与充值记录计算角色 */
 async function computeRole(userId, email) {
   if (isAdminEmail(email)) return 'admin';
@@ -98,15 +233,45 @@ async function computeRole(userId, email) {
 async function publicUser(userId) {
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, nickname: true, avatar: true, role: true, coins: true, inviteCode: true, inviteCount: true, invitedById: true, createdAt: true },
+    select: {
+      id: true, email: true, nickname: true, avatar: true, role: true, coins: true,
+      inviteCode: true, inviteCount: true, invitedById: true, onboardingDone: true, createdAt: true,
+    },
   });
   return u;
 }
 
 // ======================== 公开配置（无需登录）========================
-router.get('/public-config', (req, res) => {
-  const betaCodes = (process.env.BETA_CODES || '').split(',').map((c) => c.trim()).filter(Boolean);
-  res.json({ betaRequired: betaCodes.length > 0 });
+router.get('/public-config', async (_req, res) => {
+  try {
+    const betaRequired = await beta.isBetaRestricted();
+    res.json({ betaRequired });
+  } catch (err) {
+    console.error('[auth] public-config error:', err);
+    // 出错时保守处理:要求内测码(避免无码开放注册)
+    res.json({ betaRequired: true });
+  }
+});
+
+// ======================== 新手引导演示素材（无需登录）========================
+// 取真实生成结果作为演示,避免引导时调用 AI 生图。
+// 灵感扩散:取管理员最新的 single 产品;
+// 材料组合/款式裂变:可通过 ?productId=xxx 指定演示产品。
+router.get('/tour-demo', async (req, res) => {
+  try {
+    const { productId } = req.query;
+    let demo = null;
+    if (productId) {
+      demo = await getTourDemoByProductId(String(productId));
+    }
+    if (!demo) {
+      demo = await getTourDemoData();
+    }
+    res.json(demo);
+  } catch (err) {
+    console.error('[auth] tour-demo error:', err);
+    res.json(null);
+  }
 });
 
 // ======================== 发送验证码 ========================
@@ -190,12 +355,13 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: '密码至少 6 位' });
     }
 
-    // Beta code verification
-    const betaCodes = (process.env.BETA_CODES || '').split(',').map(c => c.trim()).filter(Boolean);
-    if (betaCodes.length > 0) {
-      if (!betaCode || !betaCodes.includes(betaCode.trim())) {
-        return res.status(400).json({ error: '内测码无效，请联系管理员获取' });
-      }
+    // Beta code verification(数据库校验 + 一次性消费)
+    if (!betaCode || !String(betaCode).trim()) {
+      return res.status(400).json({ error: '请输入内测码' });
+    }
+    const normalizedBeta = beta.normalizeCode(betaCode);
+    if (!normalizedBeta) {
+      return res.status(400).json({ error: '内测码无效或已被使用' });
     }
 
     // Verify code
@@ -216,6 +382,9 @@ router.post('/register', async (req, res) => {
     const existing = await findUserByEmailInsensitive(email);
     if (existing) return res.status(400).json({ error: '该邮箱已注册' });
 
+    // 暂存内测码(创建用户后正式消费)
+    const pendingBetaCode = normalizedBeta;
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // 邀请人(可选,通过邀请码查找)
@@ -235,6 +404,17 @@ router.post('/register', async (req, res) => {
       },
     });
     console.log('[auth] register: user created |', user.id, '|', email, '| hash length:', hashedPassword.length);
+
+    // 正式消费内测码(带 userId)
+    const finalConsume = await beta.consumeBetaCode(pendingBetaCode, user.id);
+    if (!finalConsume.ok) {
+      // 消费失败 → 回滚:删除刚创建的用户,提示错误
+      await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+      const msg = finalConsume.reason === 'used'
+        ? '该内测码已被使用,请换一个重试'
+        : '内测码无效或已被使用,请联系管理员获取';
+      return res.status(400).json({ error: msg });
+    }
 
     // 生成邀请码
     await coins.ensureInviteCode(user.id);
@@ -426,11 +606,15 @@ router.get('/me', authMiddleware, async (req, res) => {
 // ======================== 更新个人信息 ========================
 router.put('/profile', authMiddleware, async (req, res) => {
   try {
-    const { nickname, avatar } = req.body;
+    const { nickname, avatar, onboardingDone } = req.body;
     const user = await prisma.user.update({
       where: { id: req.userId },
-      data: { ...(nickname && { nickname }), ...(avatar !== undefined && { avatar }) },
-      select: { id: true, email: true, nickname: true, avatar: true, plan: true },
+      data: {
+        ...(nickname && { nickname }),
+        ...(avatar !== undefined && { avatar }),
+        ...(typeof onboardingDone === 'boolean' && { onboardingDone }),
+      },
+      select: { id: true, email: true, nickname: true, avatar: true, plan: true, onboardingDone: true },
     });
     res.json(user);
   } catch (err) {

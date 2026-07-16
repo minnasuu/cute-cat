@@ -154,10 +154,10 @@ export default function StylesPage() {
 
 function StyleCard({ mat }: { mat: StyleRow }) {
   return (
-    <figure className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer">
+    <figure className="rounded-2xl border border-gray-200 bg-white overflow-hidden cursor-pointer">
       <div className="relative aspect-square overflow-hidden bg-gray-50">
         {mat.shared && (
-          <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">系统</span>
+          <span className="absolute top-2 left-2 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">系统</span>
         )}
         {mat.image ? (
           <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />

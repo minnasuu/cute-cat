@@ -3,8 +3,8 @@
  * ComposerBrief —— 灵感扩散左栏「设计简报」。
  *
  * 稳定结构化表单(替代原来的自由对话入口):顶部 header(标题+模式切换+新会话) +
- * 设计名称 + 灵感参考槽位(上传/粘贴/从库选,带 AI 分析标签) + 设计需求描述 + 品牌色/调性 +
- * 主按钮「生成设计方案」。底部保留 PromptBar,用于多轮细化。
+ * 设计名称 + 灵感参考槽位(上传/从库选) + 设计需求描述 + 品牌色/调性 +
+ * 底部保留多轮细化输入。
  *
  * 数据/管线仍由 ComposerPage 控制器提供;本组件只负责渲染 + 收集输入。
  */
@@ -20,9 +20,6 @@ export interface RefImage {
   url: string;
   name: string;
   source: "upload" | "library";
-  category?: string | null;
-  visualStyle?: string | null;
-  analysisStatus?: "pending" | "success" | "failed" | null;
 }
 
 interface Props {
@@ -75,7 +72,7 @@ export default function ComposerBrief({
     }
   }, [draftPrompt, clearDraftPrompt, setDescription]);
 
-  // 上传参考图 → 入库(inspirations)+ 取 AI 分析标签
+  // 上传参考图 → 入库(inspirations)
   async function handleFiles(list: FileList | null) {
     if (!list?.length || !teamId) return;
     setUploading(true);
@@ -86,33 +83,11 @@ export default function ComposerBrief({
         const fd = new FormData();
         fd.append("file", compressed);
         const res = await teamApi(teamId).uploadInspiration(fd);
-        const ref: RefImage = { id, url: res.url || res.thumbUrl || "", name: raw.name || "参考图", source: "upload", analysisStatus: "pending" };
+        const ref: RefImage = { id, url: res.url || res.thumbUrl || "", name: raw.name || "参考图", source: "upload" };
         setReferences((prev) => [...prev, ref]);
-        // 触发 AI 分析并轮询标签
-        try {
-          await teamApi(teamId).analyzeInspiration(res.id);
-          pollAnalysis(res.id, id);
-        } catch { /* 分析失败不影响参考图展示 */ }
       }
     } finally { setUploading(false); }
     if (fileRef.current) fileRef.current.value = "";
-  }
-
-  async function pollAnalysis(inspirationId: string, refId: string, attempts = 0) {
-    if (attempts > 60 || !teamId) return;
-    try {
-      const all = await teamApi(teamId).listInspirations({ take: 96 });
-      const found = all.items?.find((it) => it.id === inspirationId);
-      if (found && (found.category || found.visualStyle || found.analysisStatus === "success")) {
-        setReferences((prev) => prev.map((r) => r.id === refId ? { ...r, category: found.category, visualStyle: found.visualStyle, analysisStatus: "success" } : r));
-        return;
-      }
-      if (found?.analysisStatus === "failed") {
-        setReferences((prev) => prev.map((r) => r.id === refId ? { ...r, analysisStatus: "failed" } : r));
-        return;
-      }
-    } catch { /* 静默 */ }
-    setTimeout(() => pollAnalysis(inspirationId, refId, attempts + 1), 3000);
   }
 
   function removeRef(id: string) { setReferences((prev) => prev.filter((r) => r.id !== id)); }
@@ -120,7 +95,7 @@ export default function ComposerBrief({
   function pickFromLibrary(it: any) {
     setReferences((prev) => [...prev, {
       id: it.id, url: it.thumbUrl || it.url || it.image || "", name: it.name || it.category || "灵感",
-      source: "library", category: it.category, visualStyle: it.visualStyle, analysisStatus: "success",
+      source: "library",
     }]);
     setPickerOpen(false);
   }
@@ -205,20 +180,6 @@ export default function ComposerBrief({
                 >
                   {r.name}
                 </div>
-                {(r.category || r.visualStyle) && (
-                  <div className="px-1 pb-0.5 flex flex-wrap gap-0.5">
-                    {r.category && (
-                      <span className="text-[7px] bg-primary-50 text-primary-700 px-0.5 rounded">
-                        {r.category}
-                      </span>
-                    )}
-                    {r.analysisStatus === "pending" && (
-                      <span className="text-[7px] bg-gray-100 text-gray-500 px-0.5 rounded">
-                        分析中
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
             ))}
             {references.length < 6 && !generating && (
@@ -234,7 +195,7 @@ export default function ComposerBrief({
                 </button>
                 <button
                   onClick={() => setPickerOpen(true)}
-                  className="w-20 h-20 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                  className="w-28 h-28 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                 >
                   <span className="text-base text-primary-500">▦</span>
                   <span className="text-[9px] text-primary-600 mt-0.5">
@@ -255,7 +216,7 @@ export default function ComposerBrief({
             }}
           />
           <span className="text-[10px] text-gray-400">
-            上传图片自动 AI 分析(品类·风格),或直接选灵感库参考
+            上传图片作为参考,或直接选灵感库
           </span>
         </div>
 

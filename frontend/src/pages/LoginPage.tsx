@@ -7,13 +7,13 @@ import { AppIcon } from '../components/icons';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const PIPELINE = [
-  { icon: 'Sparkles', label: '灵感' },
-  { icon: 'Layers', label: '方案' },
-  { icon: 'Pencil', label: '线稿' },
-  { icon: 'Palette', label: '材料' },
-  { icon: 'Image', label: '成图' },
-] as const;
+// const PIPELINE = [
+//   { icon: 'Sparkles', label: '灵感' },
+//   { icon: 'Layers', label: '方案' },
+//   { icon: 'Pencil', label: '线稿' },
+//   { icon: 'Palette', label: '材料' },
+//   { icon: 'Image', label: '成图' },
+// ] as const;
 
 const FEATURES = [
   {
@@ -101,7 +101,7 @@ const LoginPage: React.FC = () => {
             </p>
 
             {/* Pipeline mechanism */}
-            <div className="mt-10" aria-label="创作流水线">
+            {/* <div className="mt-10" aria-label="创作流水线">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-text-tertiary mb-4">
                 创作机制
               </p>
@@ -125,7 +125,7 @@ const LoginPage: React.FC = () => {
                   </React.Fragment>
                 ))}
               </div>
-            </div>
+            </div> */}
 
             {/* Feature list */}
             <ul className="mt-10 space-y-5">

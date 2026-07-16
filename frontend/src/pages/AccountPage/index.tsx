@@ -86,11 +86,10 @@ const AccountPage: React.FC = () => {
   const [redeeming, setRedeeming] = useState(false);
   const [redeemMsg, setRedeemMsg] = useState<{ type: 'success' | 'error'; text: string; coins?: number } | null>(null);
 
-  // 修改密码弹窗
-  const [pwdModal, setPwdModal] = useState(false);
-  const [oldPassword, setOldPassword] = useState('');
+  // 密码显示 + 修改密码
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordDisplay] = useState('******');
   const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [pwdSaving, setPwdSaving] = useState(false);
   const [pwdError, setPwdError] = useState<string | null>(null);
 
@@ -151,33 +150,18 @@ const AccountPage: React.FC = () => {
     }
   };
 
-  const openPwdModal = () => {
-    setOldPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setPwdError(null);
-    setPwdModal(true);
-  };
-
-  const handleChangePassword = async () => {
-    if (!oldPassword || !newPassword) {
-      setPwdError('请填写完整');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPwdError('新密码至少 6 位');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPwdError('两次输入的新密码不一致');
+  // 内联修改密码(无需弹窗)
+  const handleChangePasswordInline = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      showToast('请输入至少 6 位的新密码', 'warning');
       return;
     }
     setPwdSaving(true);
     setPwdError(null);
     try {
-      await apiClient.put('/api/account/profile', { oldPassword, newPassword });
+      await apiClient.put('/api/account/profile', { newPassword });
       showToast('密码修改成功', 'success');
-      setPwdModal(false);
+      setNewPassword('');
     } catch (err: any) {
       setPwdError(err?.message || '修改失败');
     } finally {
@@ -305,17 +289,47 @@ const AccountPage: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">密码</label>
-            <div className="flex items-center gap-2 w-full max-w-md">
-              <div className="flex-1 px-4 py-3 rounded-xl border border-border bg-surface-secondary text-text-tertiary select-none">
-                ****** <button type="button" className="ml-1 text-text-tertiary hover:text-text-secondary" tabIndex={-1}>👁</button>
+            <div className="space-y-2 w-full max-w-md">
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={passwordDisplay}
+                  readOnly
+                  className="w-full px-4 py-3 pr-10 rounded-xl border border-border bg-surface-secondary text-text-tertiary select-none outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  )}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={openPwdModal}
-                className="px-4 py-2.5 rounded-xl border border-primary-200 bg-primary-50 text-primary-700 text-sm font-medium hover:bg-primary-100 transition-colors shrink-0"
-              >
-                修改密码
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="输入新密码(至少 6 位)"
+                  className="flex-1 px-4 py-3 rounded-xl border border-border bg-surface focus:bg-surface focus:ring-2 focus:ring-primary-100 focus:border-primary-400 outline-none text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={handleChangePasswordInline}
+                  disabled={!newPassword || newPassword.length < 6}
+                  className="px-4 py-2.5 rounded-xl border border-primary-200 bg-primary-50 text-primary-700 text-sm font-medium hover:bg-primary-100 transition-colors shrink-0 disabled:opacity-50"
+                >
+                  修改密码
+                </button>
+              </div>
+              {newPassword && newPassword.length < 6 && (
+                <p className="text-xs text-red-500">密码至少 6 位</p>
+              )}
             </div>
           </div>
           <button
@@ -579,68 +593,9 @@ const AccountPage: React.FC = () => {
       )}
 
       {/* 修改密码弹窗 */}
-      {pwdModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setPwdModal(false)}>
-          <div
-            className="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold text-text-primary">修改密码</h3>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">原密码</label>
-              <input
-                type="password"
-                value={oldPassword}
-                onChange={(e) => { setOldPassword(e.target.value); setPwdError(null); }}
-                placeholder="请输入原密码"
-                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">新密码</label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => { setNewPassword(e.target.value); setPwdError(null); }}
-                placeholder="至少 6 位"
-                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1">确认新密码</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setPwdError(null); }}
-                placeholder="再次输入新密码"
-                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleChangePassword(); }}
-              />
-            </div>
-            {pwdError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">
-                {pwdError}
-              </div>
-            )}
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setPwdModal(false)}
-                className="px-4 py-2 rounded-lg text-[12px] border border-border text-text-secondary hover:bg-surface-secondary transition-colors"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleChangePassword}
-                disabled={pwdSaving}
-                className="px-4 py-2 rounded-lg text-[12px] bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
-              >
-                {pwdSaving ? '处理中…' : '确认修改'}
-              </button>
-            </div>
-          </div>
+      {pwdError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 w-full max-w-md">
+          {pwdError}
         </div>
       )}
 

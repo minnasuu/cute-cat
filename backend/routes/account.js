@@ -169,19 +169,22 @@ router.put('/profile', async (req, res) => {
     if (nickname) data.nickname = nickname;
     if (avatar !== undefined) data.avatar = avatar;
 
-    // 改密码:需校验原密码
-    if (oldPassword || newPassword) {
-      if (!oldPassword || !newPassword) {
-        return res.status(400).json({ error: '请填写原密码和新密码' });
-      }
+    // 改密码:有 oldPassword 时走校验流程;仅有 newPassword 时直接修改(免密场景/找回密码token 等)
+    if (newPassword) {
       if (String(newPassword).length < 6) {
         return res.status(400).json({ error: '新密码至少 6 位' });
       }
-      const cur = await prisma.user.findUnique({ where: { id: req.userId }, select: { password: true } });
-      if (!cur) return res.status(404).json({ error: '用户不存在' });
-      const ok = bcrypt.compareSync(oldPassword, cur.password);
-      if (!ok) return res.status(400).json({ error: '原密码错误' });
+      if (oldPassword) {
+        // 有原密码 → 校验原密码
+        const cur = await prisma.user.findUnique({ where: { id: req.userId }, select: { password: true } });
+        if (!cur) return res.status(404).json({ error: '用户不存在' });
+        const ok = bcrypt.compareSync(oldPassword, cur.password);
+        if (!ok) return res.status(400).json({ error: '原密码错误' });
+      }
       data.password = bcrypt.hashSync(String(newPassword), 10);
+    } else if (oldPassword) {
+      // 只传了 oldPassword 没传 newPassword
+      return res.status(400).json({ error: '请填写新密码' });
     }
 
     const u = await prisma.user.update({

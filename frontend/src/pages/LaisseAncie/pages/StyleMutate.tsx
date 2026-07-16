@@ -16,6 +16,9 @@ import { compressForUpload } from "../lib/images";
 import { Modal } from "../components/ui";
 import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateButton";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useImageRetry } from "../../../hooks/useImageRetry";
+import { useStyleMutateTour } from "../controller/useStyleMutateTour";
+import MaterialComboTourOverlay from "../components/MaterialComboTourOverlay";
 
 const MAX_MUTATIONS = 8;
 const POLL_MS = 3000;
@@ -68,6 +71,7 @@ export const MUTATION_AXES: MutationAxis[] = [
   {
     id: "sleeve",
     label: "袖型",
+    categories: ["top", "dress", "outerwear"],
     options: [
       { id: "sleeveless", label: "无袖", promptHint: "Modify ONLY the sleeves. Remove sleeves to make it sleeveless." },
       { id: "cap", label: "盖袖", promptHint: "Modify ONLY the sleeves. Change them to cap sleeves." },
@@ -329,6 +333,36 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
 
+  // ── 生图自动重试 ──
+  // ── 新手引导 ──
+  const tour = useStyleMutateTour({
+    setName,
+    setDescription,
+    setCategory,
+    setMother,
+    setSelected,
+    setCustomMutations,
+    setBatch,
+  });
+
+  const { resetRetries, tryAutoRetry } = useImageRetry({
+    maxRetries: 1,
+    getKey: (it) => it.mi,
+    retryFn: (item, isAutoRetry) => retryCell(item.mi, isAutoRetry),
+    onFailed: (item, error) => {
+      // 两次都失败 → 错误局部化到对应图片下方,不显示在左侧全局
+      setBatch((b) => {
+        if (!b) return b;
+        return {
+          ...b,
+          items: b.items.map((it) =>
+            it.mi === item.mi ? { ...it, status: "error", error: error || "生成失败,请重试" } : it,
+          ),
+        };
+      });
+    },
+  });
+
   // 当前品类下可用的裂变轴:专属轴按品类匹配 + 通用轴在无专属替代时展示
   const visibleAxes = MUTATION_AXES.filter((axis) => {
     if (axis.categories && axis.categories.length > 0) {
@@ -390,12 +424,20 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     (batchId: string) => {
       stopPolling();
       pollAttempts.current = 0;
+      resetRetries();
       pollTimer.current = setInterval(async () => {
         pollAttempts.current += 1;
         if (pollAttempts.current > POLL_MAX_ATTEMPTS) {
-          setError((prev) => prev || "部分图片生成超时,可点击失败格重试");
+          // 超时:标记尚未完成的格子为失败(可手动重试)
+          setBatch((b) => {
+            if (!b) return b;
+            return {
+              ...b,
+              status: "done",
+              items: b.items.map((it) => it.status === "pending" ? { ...it, status: "error", error: "生成超时,可重试" } : it),
+            };
+          });
           stopPolling();
-          setBatch((b) => (b ? { ...b, status: "done" } : b));
           return;
         }
         try {
@@ -404,13 +446,21 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data: StyleMutateBatch = await res.json();
           setBatch(data);
+          // 轮询发现失败的格子 → 通过共享 hook 自动重试
+          if (data.items) {
+            for (const it of data.items) {
+              if (it.status === "error" && !removedMis.has(it.mi)) {
+                tryAutoRetry(it, it.error || "生成失败");
+              }
+            }
+          }
           if (data.status === "done" || data.status === "error") stopPolling();
         } catch {
           /* 轮询偶发失败忽略 */
         }
       }, POLL_MS);
     },
-    [stopPolling, teamId],
+    [stopPolling, teamId, removedMis, resetRetries, tryAutoRetry],
   );
 
   useEffect(() => () => stopPolling(), [stopPolling]);
@@ -568,14 +618,18 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     }
   }
 
-  async function retryCell(mi: number) {
+  /** 重试失败的格子(手动/自动共用) */
+  async function retryCell(mi: number, isAutoRetry = false) {
     if (!batch || !teamId) return;
-    setRemovedMis((prev) => {
-      if (!prev.has(mi)) return prev;
-      const next = new Set(prev);
-      next.delete(mi);
-      return next;
-    });
+    if (!isAutoRetry) {
+      setRemovedMis((prev) => {
+        if (!prev.has(mi)) return prev;
+        const next = new Set(prev);
+        next.delete(mi);
+        return next;
+      });
+    }
+    // 重置为 pending(隐藏之前的错误)
     setBatch((b) => {
       if (!b) return b;
       return {
@@ -597,16 +651,22 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       startPolling(batch.batchId);
     } catch (e: any) {
-      setError(e?.message || "重试失败");
-      setBatch((b) => {
-        if (!b) return b;
-        return {
-          ...b,
-          items: b.items.map((it) =>
-            it.mi === mi ? { ...it, status: "error", error: e?.message || "重试失败" } : it,
-          ),
-        };
-      });
+      // 使用共享 hook 决定是否自动重试
+      const item = batch.items.find((it) => it.mi === mi);
+      if (item && !isAutoRetry) {
+        tryAutoRetry(item, e?.message || "重试失败");
+      } else if (isAutoRetry) {
+        // 已重试过一次,仍失败 → 显示错误到图片下方
+        setBatch((b) => {
+          if (!b) return b;
+          return {
+            ...b,
+            items: b.items.map((it) =>
+              it.mi === mi ? { ...it, status: "error", error: e?.message || "生成失败,请重试" } : it,
+            ),
+          };
+        });
+      }
     }
   }
 
@@ -677,532 +737,568 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
         ? fabric.url
         : "";
 
+  // 引导步骤定义
+  const tourSteps = [
+    { target: 'tour-name', title: '① 输入作品名称', description: '给你的款式裂变作品取个名字,比如「春日雏菊连衣裙·裂变」。' },
+    { target: 'tour-category', title: '② 选择服装品类', description: '选择品类后系统展示对应的裂变维度选项(如袖型/领型仅上衣显示)。' },
+    { target: 'tour-mother', title: '③ 添加母款', description: '上传母款图或从款式库选择,系统将基于母款裂变出多张子款。' },
+    { target: 'tour-mutations', title: '④ 勾选裂变轴', description: '勾选要裂变的维度(袖型/衣长/下摆等),每个选项生成一张子款。' },
+    { target: 'tour-generate', title: '⑤ 点击生成', description: '点击底部按钮生成裂变子款白底图。', actionLabel: '立即生成' },
+    { target: 'tour-result', title: '⑥ 查看结果', description: '生成的子款图,可点击失败图重试,满意后保存到 Lookbook。' },
+  ];
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
-      {/* 左:表单(上中下布局) */}
-      <div className="flex flex-col bg-white border-r border-gray-200 min-h-0">
-        {/* 顶部:固定 header */}
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
-          <div className="flex items-center justify-between">
-            <h1 className="text-[15px] font-medium text-gray-800 min-h-7">款式裂变</h1>
-          </div>
-          <span className="text-[10px] text-gray-500">
-            1 母款 × 裂变轴选项 → N 张子款白底图(≤{MAX_MUTATIONS})
-          </span>
-        </header>
-
-        {/* 中间:可滚动内容 */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="p-5 space-y-5 max-w-2xl">
-            {/* 名称 */}
-            <div>
-              <label className={labelCls}>
-                名称 <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="如:春日雏菊连衣裙·裂变"
-                className={inputCls}
-                disabled={batchRunning}
-              />
-            </div>
-
-            {/* 母款 */}
-            <div>
-              <label className={labelCls}>
-                母款 <span className="text-red-500">*</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {mother && (
-                  <div className="w-28 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group">
-                    {motherPreview ? (
-                      <img src={motherPreview} alt={mother.name} className="w-28 h-24 object-cover" />
-                    ) : (
-                      <div className="w-28 h-24 flex items-center justify-center text-[10px] text-gray-300">无图</div>
-                    )}
-                    {mother.kind === "library-style" && (
-                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">库</span>
-                    )}
-                    {!batchRunning && (
-                      <button
-                        onClick={() => setMother(null)}
-                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        ×
-                      </button>
-                    )}
-                    <div className="px-1 py-0.5 text-[8px] text-gray-400 truncate" title={mother.name}>
-                      {mother.name}
-                    </div>
-                  </div>
+    <>
+      {/* 新手引导浮层 */}
+      {tour.tourActive && (
+        <MaterialComboTourOverlay
+          steps={tourSteps}
+          stepIdx={tour.tourStep}
+          onAdvance={tour.next}
+          onPrev={tour.prev}
+          onSkip={tour.skip}
+        />
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
+        {/* 左:表单(上中下布局) */}
+        <div className="flex flex-col bg-white min-h-0">
+          {/* 顶部:固定 header */}
+          <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
+            <div className="flex items-center justify-between">
+              <h1 className="text-[15px] font-medium text-gray-800 min-h-7 flex items-center gap-2">款式裂变
+                {tour.shouldRegister && !tour.tourActive && (
+                  <button
+                    type="button"
+                    onClick={tour.startTour}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors font-normal"
+                  >
+                    ? 新手引导
+                  </button>
                 )}
-                {!mother && !batchRunning && (
-                  <>
-                    <button
-                      onClick={() => styleRef.current?.click()}
-                      className="w-28 h-28 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                    >
-                      <span className="text-lg text-gray-400">+</span>
-                      <span className="text-[10px] text-gray-400">上传母款</span>
-                    </button>
-                    <button
-                      onClick={() => setPicker("style")}
-                      className="w-28 h-28 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                    >
-                      <span className="text-base text-primary-500">▦</span>
-                      <span className="text-[10px] text-primary-600 mt-0.5">从库选择</span>
-                    </button>
-                  </>
-                )}
-              </div>
-              <input
-                ref={styleRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => addMotherUpload(e.target.files)}
-              />
+              </h1>
             </div>
+            <span className="text-[10px] text-gray-500">
+              1 母款 × 裂变轴选项 → N 张子款白底图(≤{MAX_MUTATIONS})
+            </span>
+          </header>
 
-            {/* 服装品类筛选 */}
-            <div>
-              <label className={labelCls}>服装品类</label>
-              <div className="flex flex-wrap gap-1.5">
-                {GARMENT_CATEGORIES.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    disabled={batchRunning}
-                    onClick={() => {
-                      if (category === c.id) return;
-                      // 切换品类:清理会被新品类专属轴覆盖的通用轴勾选(如上衣→半身裙时,清除通用「衣长」勾选)
-                      setSelected((prev) => {
-                        const next = new Set(prev);
-                        for (const [universalId, coverMap] of Object.entries(UNIVERSAL_AXIS_COVERED_BY)) {
-                          if (coverMap[c.id]) {
-                            const axis = MUTATION_AXES.find((a) => a.id === universalId);
-                            axis?.options.forEach((o) => next.delete(mutKey(universalId, o.id)));
-                          }
-                        }
-                        return next;
-                      });
-                      setCategory(c.id);
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${category === c.id
-                      ? "bg-primary-50 border-primary-400 text-primary-700"
-                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
-                      } disabled:opacity-50`}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 裂变方式 + 裂变轴(手风琴:逐轴折叠,降低平铺认知负荷) */}
-            <div>
-              {/* 裂变方式切换 */}
-              <div className="mb-2">
-                <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => switchMutateMode("batch")}
-                    disabled={batchRunning}
-                    className={`px-2.5 py-1 rounded-md transition-colors ${mutateMode === "batch" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
-                  >
-                    批量生成
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => switchMutateMode("merge")}
-                    disabled={batchRunning}
-                    className={`px-2.5 py-1 rounded-md transition-colors ${mutateMode === "merge" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
-                  >
-                    合并生成
-                  </button>
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  {mutateMode === "batch"
-                    ? "每个选项生成一张子款白底图(可多选,最多 8 张)"
-                    : "所选维度合并生成一张子款图(每个维度单选)"}
-                </p>
-              </div>
-
-              <label className={labelCls}>
-                裂变轴{" "}
-                <span className="text-gray-400 normal-case tracking-normal">
-                  (已选 {selectedMutations.length}{mutateMode === "batch" ? `/${MAX_MUTATIONS}` : ""})
-                  {category && <span className="ml-1 text-primary-500">· {GARMENT_CATEGORIES.find((c) => c.id === category)?.label}</span>}
-                </span>
-              </label>
-              {!category && (
-                <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
-                  请先选择服装品类,系统将展示对应的裂变维度选项
-                </div>
-              )}
-              {category && visibleAxes.length === 0 && (
-                <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
-                  该品类暂无预置裂变轴,请使用下方自定义款式输入
-                </div>
-              )}
-
-              {/* 裂变轴:每轴一行,标签横向铺开,溢出滚动 */}
-              {category && (
-                <div className="space-y-2">
-                  {visibleAxes.map((axis) => {
-                    const disabledByFabric = axis.id === "fabric" && fabric != null;
-                    return (
-                      <div
-                        key={axis.id}
-                        className={`flex items-center gap-1 ${disabledByFabric ? "opacity-40 pointer-events-none" : ""}`}
-                      >
-                        {/* 左:轴标题 */}
-                        <span className="shrink-0 text-[11px] font-medium text-gray-700 w-14 text-right">{axis.label}</span>
-                        {/* 中:分割线(占满剩余空间) */}
-                        <div className="flex-1 mx-1.5 border-t border-dashed border-gray-200" />
-                        {/* 右:选项横向滚动 */}
-                        <div className="shrink-0 overflow-x-auto max-w-[75%] scrollbar-none">
-                          <div className="flex gap-1.5 w-max">
-                            {axis.options.map((opt) => {
-                              const key = mutKey(axis.id, opt.id);
-                              const on = selected.has(key);
-                              return (
-                                <button
-                                  key={opt.id}
-                                  type="button"
-                                  disabled={batchRunning || disabledByFabric}
-                                  onClick={() => toggleOption(axis.id, opt.id)}
-                                  className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors whitespace-nowrap ${on
-                                    ? "bg-primary-500 text-white border-primary-500"
-                                    : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
-                                    } disabled:opacity-50`}
-                                >
-                                  {opt.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* 自定义裂变款式(Tag Input) */}
-            <div>
-              <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 min-h-[32px] focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-100">
-                {customMutations.map((t) => (
-                  <span
-                    key={t}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
-                  >
-                    {t}
-                    {!batchRunning && (
-                      <button
-                        type="button"
-                        onClick={() => setCustomMutations((prev) => prev.filter((x) => x !== t))}
-                        className="text-primary-400 hover:text-red-500 leading-none"
-                      >×</button>
-                    )}
-                  </span>
-                ))}
+          {/* 中间:可滚动内容 */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="p-5 space-y-5 max-w-2xl">
+              {/* 名称 */}
+              <div data-tour="tour-name">
+                <label className={labelCls}>
+                  名称 <span className="text-red-500">*</span>
+                </label>
                 <input
-                  value={customInput}
-                  onChange={(e) => { setCustomInput(e.target.value); setError(null); }}
-                  onKeyDown={handleCustomKeyDown}
-                  onBlur={() => { if (customInput.trim()) addCustomMutation(customInput); }}
-                  placeholder={customMutations.length ? "继续输入…" : "自定义款式，输入后回车添加，如: 不对称领口…"}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="如:春日雏菊连衣裙·裂变"
+                  className={inputCls}
                   disabled={batchRunning}
-                  className="flex-1 min-w-[100px] outline-none text-[12px] bg-transparent placeholder:text-gray-400 py-0.5"
                 />
               </div>
-              <p className="text-[10px] text-gray-400 mt-1">单次有效,不会保存到库。将作为额外裂变维度生成子款白底图。</p>
-            </div>
 
-            {/* 可选锁定面料 */}
-            <div>
-              <label className={labelCls}>
-                锁定面料 <span className="text-gray-400 normal-case tracking-normal">(可选)</span>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {fabric && (
-                  <div className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group">
-                    {fabricPreview ? (
-                      <img src={fabricPreview} alt={fabric.name} className="w-24 h-20 object-cover" />
-                    ) : fabric.kind === "library-fabric" && fabric.hex ? (
-                      <div className="w-24 h-20" style={{ backgroundColor: fabric.hex }} />
-                    ) : (
-                      <div className="w-24 h-20 bg-gray-200" />
-                    )}
-                    {fabric.kind === "library-fabric" && (
-                      <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">库</span>
-                    )}
-                    {!batchRunning && (
+              {/* 母款 */}
+              <div data-tour="tour-mother">
+                <label className={labelCls}>
+                  母款 <span className="text-red-500">*</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {mother && (
+                    <div className="w-28 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group">
+                      {motherPreview ? (
+                        <img src={motherPreview} alt={mother.name} className="w-28 h-24 object-cover" />
+                      ) : (
+                        <div className="w-28 h-24 flex items-center justify-center text-[10px] text-gray-300">无图</div>
+                      )}
+                      {mother.kind === "library-style" && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">库</span>
+                      )}
+                      {!batchRunning && (
+                        <button
+                          onClick={() => setMother(null)}
+                          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      )}
+                      <div className="px-1 py-0.5 text-[8px] text-gray-400 truncate" title={mother.name}>
+                        {mother.name}
+                      </div>
+                    </div>
+                  )}
+                  {!mother && !batchRunning && (
+                    <>
                       <button
-                        onClick={() => setFabric(null)}
-                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => styleRef.current?.click()}
+                        className="w-28 h-28 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                       >
-                        ×
+                        <span className="text-lg text-gray-400">+</span>
+                        <span className="text-[10px] text-gray-400">上传母款</span>
                       </button>
-                    )}
-                    <div className="px-1 py-0.5 text-[8px] text-gray-400 truncate" title={fabric.name}>
-                      {fabric.name}
-                    </div>
-                  </div>
-                )}
-                {!fabric && !batchRunning && (
-                  <>
-                    <button
-                      onClick={() => fabricRef.current?.click()}
-                      className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                    >
-                      <span className="text-lg text-gray-400">+</span>
-                      <span className="text-[10px] text-gray-400">上传面料</span>
-                    </button>
-                    <button
-                      onClick={() => setPicker("fabric")}
-                      className="w-24 h-24 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                    >
-                      <span className="text-base text-primary-500">▦</span>
-                      <span className="text-[10px] text-primary-600 mt-0.5">从库选择</span>
-                    </button>
-                  </>
-                )}
-                {/* 文本描述面料 */}
-                {fabric?.kind === "text" && !batchRunning && (
-                  <div className="w-full rounded-lg border border-primary-200 bg-primary-50/30 p-2 flex items-start gap-2 mt-2">
-                    <span className="text-primary-500 shrink-0 mt-0.5">✎</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[11px] font-medium text-primary-700 truncate">{fabric.description}</div>
-                    </div>
-                    <button onClick={() => setFabric(null)} className="text-primary-400 hover:text-red-500 shrink-0" title="清除">×</button>
-                  </div>
-                )}
-              </div>
-              <input
-                ref={fabricRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => addFabricUpload(e.target.files)}
-              />
-              {(!fabric || fabric.kind !== "text") && !batchRunning && (
-                <textarea
-                  value={fabricTextInput}
-                  onChange={(e) => setFabricTextInput(e.target.value)}
-                  onBlur={() => { if (fabricTextInput.trim()) setFabric({ kind: "text", id: crypto.randomUUID(), description: fabricTextInput.trim() }); }}
-                  placeholder="或描述面料文字,如:纯白色纯棉面料、真丝双绉、藏青色斜纹棉…"
-                  rows={2}
-                  className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
+                      <button
+                        onClick={() => setPicker("style")}
+                        className="w-28 h-28 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-base text-primary-500">▦</span>
+                        <span className="text-[10px] text-primary-600 mt-0.5">从库选择</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+                <input
+                  ref={styleRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => addMotherUpload(e.target.files)}
                 />
-              )}
-              <span className="text-[10px] text-gray-400">子款默认继承母款面料花色；锁定后面料保持不变,且「面料材质」裂变轴将禁用失效。支持上传 / 库选 / 文字描述三种方式。</span>
-            </div>
-
-            {/* 描述 */}
-            <div>
-              <label className={labelCls}>其他描述</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                placeholder="补充希望保留的母款 DNA、禁忌改动等(可选)"
-                className={`${inputCls} resize-none`}
-                disabled={batchRunning}
-              />
-            </div>
-
-            {selectedMutations.length > 0 && (
-              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-                {mutateMode === "merge" ? (
-                  <>将生成 <span className="font-medium text-primary-600">1</span> 张合并裂变图(合并 {selectedMutations.length} 个维度)</>
-                ) : (
-                  <>将生成{" "}
-                    <span className="font-medium text-primary-600">{selectedMutations.length}</span>{" "}
-                    张子款白底图
-                    {selectedMutations.length > MAX_MUTATIONS && (
-                      <span className="text-red-500 ml-2">超过上限 {MAX_MUTATIONS}</span>
-                    )}</>
-                )}
               </div>
-            )}
 
-            {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-600">
-                ⚠ {error}
+              {/* 服装品类筛选 */}
+              <div data-tour="tour-category">
+                <label className={labelCls}>服装品类</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {GARMENT_CATEGORIES.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      disabled={batchRunning}
+                      onClick={() => {
+                        if (category === c.id) return;
+                        // 切换品类:清理会被新品类专属轴覆盖的通用轴勾选(如上衣→半身裙时,清除通用「衣长」勾选)
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          for (const [universalId, coverMap] of Object.entries(UNIVERSAL_AXIS_COVERED_BY)) {
+                            if (coverMap[c.id]) {
+                              const axis = MUTATION_AXES.find((a) => a.id === universalId);
+                              axis?.options.forEach((o) => next.delete(mutKey(universalId, o.id)));
+                            }
+                          }
+                          return next;
+                        });
+                        setCategory(c.id);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${category === c.id
+                        ? "bg-primary-50 border-primary-400 text-primary-700"
+                        : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
+                        } disabled:opacity-50`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-          </div>{/* 结束滚动区 */}
-        </div>{/* 结束滚动容器 */}
 
-        {/* 底部:固定行动按钮(按批次状态切换,与 Composer 规范一致) */}
-        <div className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
-          {hasSuccess && !batchRunning && !submitting ? (
-            <GenerateButton
-              label={`保存到 Lookbook (${visibleCompleted}/${visibleItems.length})`}
-              estimatedCoins={0}
-              userCoins={user?.coins}
-              onClick={saveToLookbook}
-            />
-          ) : (
-            <GenerateButton
-              label="立即生成"
-              loading={submitting || batchRunning}
-              disabled={!canSubmit}
-              estimatedCoins={(mutateMode === "merge" ? 1 : selectedMutations.length) * AI_COST_PER_IMAGE}
-              userCoins={user?.coins}
-              onClick={submit}
-            />
-          )}
-          {batchRunning && batch && (
-            <div className="text-[11px] text-gray-500 mt-2 text-center">
-              {batch.completed + batch.failed}/{batch.total}
-              {batch.failed > 0 && (
-                <span className="text-amber-600 ml-1">({batch.failed} 张失败)</span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 右:结果网格 */}
-      <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
-        {!batch && !submitting && (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
-            选择母款并勾选裂变轴后<br />点击底部「立即生成」
-          </div>
-        )}
-
-        {submitting && (
-          <div className="flex items-center justify-center h-full">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
-              <span className="text-[12px] text-gray-500">正在上传并启动批次…</span>
-            </div>
-          </div>
-        )}
-
-        {batch && (
-          <>
-            <div className="text-[10px] uppercase tracking-wider text-gray-500">
-              裂变结果 · {visibleItems.length} 张
-              {hasSuccess && (
-                <span className="ml-2 text-gray-400 normal-case tracking-normal">({visibleCompleted}/{visibleItems.length} 成功)</span>
-              )}
-            </div>
-
-            {/* 母款锚点 */}
-            <div className="flex items-center gap-3 text-[11px] text-gray-600">
-              <span className="text-gray-400 shrink-0">母款:</span>
-              {batch.mother?.url ? (
-                <img
-                  src={batch.mother.url}
-                  alt=""
-                  className="w-12 h-12 rounded-lg object-cover border border-gray-200"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-lg bg-gray-100" />
-              )}
-              <span className="truncate">{batch.mother?.name || "(无)"}</span>
-            </div>
-
-            {visibleItems.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-8 py-10">
-                结果已清空，可重新勾选裂变轴生成
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {visibleItems.map((cell) => (
-                  <div
-                    key={`m-${cell.mi}`}
-                    className="rounded-xl border border-gray-200 bg-white overflow-hidden relative group"
-                  >
+              {/* 裂变方式 + 裂变轴(手风琴:逐轴折叠,降低平铺认知负荷) */}
+              <div data-tour="tour-mutations">
+                {/* 裂变方式切换 */}
+                <div className="mb-2">
+                  <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
                     <button
                       type="button"
-                      onClick={() => removeResult(cell.mi)}
-                      aria-label={`删除 ${cell.label}`}
-                      title="删除此结果"
-                      className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-black/50 text-white text-[12px] leading-none flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-black/70"
+                      onClick={() => switchMutateMode("batch")}
+                      disabled={batchRunning}
+                      className={`px-2.5 py-1 rounded-md transition-colors ${mutateMode === "batch" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
                     >
-                      ×
+                      批量生成
                     </button>
-                    <div className="aspect-square relative bg-white">
-                      {cell.status === "pending" && (
-                        <div className="w-full h-full flex items-center justify-center flex-col gap-1">
-                          <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
-                          <span className="text-[9px] text-gray-400">生成中…</span>
-                        </div>
-                      )}
-                      {cell.status === "done" && (
-                        <img src={cell.url} alt={cell.label} className="w-full h-full object-contain" />
-                      )}
-                      {cell.status === "error" && (
-                        <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-2 text-center">
-                          <span className="text-[10px] text-red-500">{cell.error || "生成失败"}</span>
-                          <button
-                            onClick={() => retryCell(cell.mi)}
-                            className="text-[10px] text-primary-600 underline hover:text-primary-700"
-                          >
-                            重试
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="px-2 py-1.5 text-[10px] text-gray-600 border-t border-gray-100 truncate" title={cell.label}>
-                      {cell.label}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => switchMutateMode("merge")}
+                      disabled={batchRunning}
+                      className={`px-2.5 py-1 rounded-md transition-colors ${mutateMode === "merge" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
+                    >
+                      合并生成
+                    </button>
+                    <span className="relative group ml-0.5 flex items-center">
+                      <span className="w-4 h-4 rounded-full bg-gray-300 text-white text-[10px] flex items-center justify-center cursor-help">?</span>
+                      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-20 w-56 rounded-lg bg-gray-800 text-white text-[10.5px] leading-relaxed px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                        {mutateMode === "batch"
+                          ? "每个选项生成一张子款白底图(可多选,最多 8 张)"
+                          : "所选维度合并生成一张子款图(每个维度单选)"}
+                        <span className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-800" />
+                      </span>
+                    </span>
                   </div>
-                ))}
+                </div>
+
+                <label className={labelCls}>
+                  裂变轴{" "}
+                  <span className="text-gray-400 normal-case tracking-normal">
+                    (已选 {selectedMutations.length}{mutateMode === "batch" ? `/${MAX_MUTATIONS}` : ""})
+                    {category && <span className="ml-1 text-primary-500">· {GARMENT_CATEGORIES.find((c) => c.id === category)?.label}</span>}
+                  </span>
+                </label>
+                {!category && (
+                  <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
+                    请先选择服装品类,系统将展示对应的裂变维度选项
+                  </div>
+                )}
+                {category && visibleAxes.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
+                    该品类暂无预置裂变轴,请使用下方自定义款式输入
+                  </div>
+                )}
+
+                {/* 裂变轴:每轴一行,标签横向铺开,溢出滚动 */}
+                {category && (
+                  <div className="space-y-2">
+                    {visibleAxes.map((axis) => {
+                      const disabledByFabric = axis.id === "fabric" && fabric != null;
+                      return (
+                        <div
+                          key={axis.id}
+                          className={`flex items-center gap-1 ${disabledByFabric ? "opacity-40 pointer-events-none" : ""}`}
+                        >
+                          {/* 左:轴标题 */}
+                          <span className="shrink-0 text-[11px] font-medium text-gray-700 w-14 text-right">{axis.label}</span>
+                          {/* 中:分割线(占满剩余空间) */}
+                          <div className="flex-1 mx-1.5 border-t border-dashed border-gray-200" />
+                          {/* 右:选项横向滚动 */}
+                          <div className="shrink-0 overflow-x-auto max-w-[75%] scrollbar-none">
+                            <div className="flex gap-1.5 w-max">
+                              {axis.options.map((opt) => {
+                                const key = mutKey(axis.id, opt.id);
+                                const on = selected.has(key);
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    disabled={batchRunning || disabledByFabric}
+                                    onClick={() => toggleOption(axis.id, opt.id)}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors whitespace-nowrap ${on
+                                      ? "bg-primary-500 text-white border-primary-500"
+                                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
+                                      } disabled:opacity-50`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 自定义裂变款式(Tag Input) */}
+              <div>
+                <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 min-h-[32px] focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-100">
+                  {customMutations.map((t) => (
+                    <span
+                      key={t}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
+                    >
+                      {t}
+                      {!batchRunning && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomMutations((prev) => prev.filter((x) => x !== t))}
+                          className="text-primary-400 hover:text-red-500 leading-none"
+                        >×</button>
+                      )}
+                    </span>
+                  ))}
+                  <input
+                    value={customInput}
+                    onChange={(e) => { setCustomInput(e.target.value); setError(null); }}
+                    onKeyDown={handleCustomKeyDown}
+                    onBlur={() => { if (customInput.trim()) addCustomMutation(customInput); }}
+                    placeholder={customMutations.length ? "继续输入…" : "自定义款式，输入后回车添加，如: 不对称领口…"}
+                    disabled={batchRunning}
+                    className="flex-1 min-w-[100px] outline-none text-[12px] bg-transparent placeholder:text-gray-400 py-0.5"
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">单次有效,不会保存到库。将作为额外裂变维度生成子款白底图。</p>
+              </div>
+
+              {/* 可选锁定面料 */}
+              <div>
+                <label className={labelCls}>
+                  锁定面料 <span className="text-gray-400 normal-case tracking-normal">(可选)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {fabric && (
+                    <div className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group">
+                      {fabricPreview ? (
+                        <img src={fabricPreview} alt={fabric.name} className="w-24 h-20 object-cover" />
+                      ) : fabric.kind === "library-fabric" && fabric.hex ? (
+                        <div className="w-24 h-20" style={{ backgroundColor: fabric.hex }} />
+                      ) : (
+                        <div className="w-24 h-20 bg-gray-200" />
+                      )}
+                      {fabric.kind === "library-fabric" && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">库</span>
+                      )}
+                      {!batchRunning && (
+                        <button
+                          onClick={() => setFabric(null)}
+                          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      )}
+                      <div className="px-1 py-0.5 text-[8px] text-gray-400 truncate" title={fabric.name}>
+                        {fabric.name}
+                      </div>
+                    </div>
+                  )}
+                  {!fabric && !batchRunning && (
+                    <>
+                      <button
+                        onClick={() => fabricRef.current?.click()}
+                        className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-lg text-gray-400">+</span>
+                        <span className="text-[10px] text-gray-400">上传面料</span>
+                      </button>
+                      <button
+                        onClick={() => setPicker("fabric")}
+                        className="w-28 h-28 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-base text-primary-500">▦</span>
+                        <span className="text-[10px] text-primary-600 mt-0.5">从库选择</span>
+                      </button>
+                    </>
+                  )}
+                  {/* 文本描述面料 */}
+                  {fabric?.kind === "text" && !batchRunning && (
+                    <div className="w-full rounded-lg border border-primary-200 bg-primary-50/30 p-2 flex items-start gap-2 mt-2">
+                      <span className="text-primary-500 shrink-0 mt-0.5">✎</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] font-medium text-primary-700 truncate">{fabric.description}</div>
+                      </div>
+                      <button onClick={() => setFabric(null)} className="text-primary-400 hover:text-red-500 shrink-0" title="清除">×</button>
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={fabricRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => addFabricUpload(e.target.files)}
+                />
+                {(!fabric || fabric.kind !== "text") && !batchRunning && (
+                  <textarea
+                    value={fabricTextInput}
+                    onChange={(e) => setFabricTextInput(e.target.value)}
+                    onBlur={() => { if (fabricTextInput.trim()) setFabric({ kind: "text", id: crypto.randomUUID(), description: fabricTextInput.trim() }); }}
+                    placeholder="或描述面料文字,如:纯白色纯棉面料、真丝双绉、藏青色斜纹棉…"
+                    rows={2}
+                    className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
+                  />
+                )}
+                <span className="text-[10px] text-gray-400">子款默认继承母款面料花色；锁定后面料保持不变,且「面料材质」裂变轴将禁用失效。支持上传 / 库选 / 文字描述三种方式。</span>
+              </div>
+
+              {/* 描述 */}
+              <div>
+                <label className={labelCls}>其他描述</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  placeholder="补充希望保留的母款 DNA、禁忌改动等(可选)"
+                  className={`${inputCls} resize-none`}
+                  disabled={batchRunning}
+                />
+              </div>
+
+              {selectedMutations.length > 0 && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
+                  {mutateMode === "merge" ? (
+                    <>将生成 <span className="font-medium text-primary-600">1</span> 张合并裂变图(合并 {selectedMutations.length} 个维度)</>
+                  ) : (
+                    <>将生成{" "}
+                      <span className="font-medium text-primary-600">{selectedMutations.length}</span>{" "}
+                      张子款白底图
+                      {selectedMutations.length > MAX_MUTATIONS && (
+                        <span className="text-red-500 ml-2">超过上限 {MAX_MUTATIONS}</span>
+                      )}</>
+                  )}
+                </div>
+              )}
+
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-600">
+                  ⚠ {error}
+                </div>
+              )}
+            </div>{/* 结束滚动区 */}
+          </div>{/* 结束滚动容器 */}
+
+          {/* 底部:固定行动按钮(按批次状态切换,与 Composer 规范一致) */}
+          <div data-tour="tour-generate" className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
+            {hasSuccess && !batchRunning && !submitting ? (
+              <GenerateButton
+                label={`保存到 Lookbook (${visibleCompleted}/${visibleItems.length})`}
+                estimatedCoins={0}
+                userCoins={user?.coins}
+                onClick={saveToLookbook}
+              />
+            ) : (
+              <GenerateButton
+                label="立即生成"
+                loading={submitting || batchRunning}
+                disabled={!canSubmit}
+                estimatedCoins={(mutateMode === "merge" ? 1 : selectedMutations.length) * AI_COST_PER_IMAGE}
+                userCoins={user?.coins}
+                onClick={submit}
+              />
+            )}
+            {batchRunning && batch && (
+              <div className="text-[11px] text-gray-500 mt-2 text-center">
+                {batch.completed + batch.failed}/{batch.total}
+                {batch.failed > 0 && (
+                  <span className="text-amber-600 ml-1">({batch.failed} 张失败)</span>
+                )}
               </div>
             )}
+          </div>
+        </div>
 
-            {visibleItems.find((it) => it.prompt) && (
-              <details className="text-[11px] text-gray-500">
-                <summary className="cursor-pointer hover:text-gray-700">查看生成 prompt</summary>
-                <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">
-                  {visibleItems
-                    .filter((it) => it.prompt)
-                    .slice(0, 2)
-                    .map((it) => `# ${it.label}\n${it.prompt}`)
-                    .join("\n\n")}
-                </pre>
-              </details>
-            )}
-          </>
-        )}
-      </aside>
+        {/* 右:结果网格 */}
+        <aside data-tour="tour-result" className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
+          {!batch && !submitting && (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
+              选择母款并勾选裂变轴后<br />点击底部「立即生成」
+            </div>
+          )}
 
-      <StyleLibraryPicker
-        mode={picker}
-        knowledge={knowledge}
-        onClose={() => setPicker(null)}
-        onStyle={(p) => {
-          setMother({
-            kind: "library-style",
-            id: crypto.randomUUID(),
-            styleId: p.styleId,
-            name: p.name,
-            url: p.url,
-          });
-          setPicker(null);
-        }}
-        onFabric={(p) => {
-          setFabric({
-            kind: "library-fabric",
-            id: crypto.randomUUID(),
-            matId: p.matId,
-            colorIdx: p.colorIdx,
-            name: p.name,
-            url: p.url,
-            hex: p.hex,
-          });
-          setPicker(null);
-        }}
-      />
-    </div>
+          {submitting && (
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+                <span className="text-[12px] text-gray-500">正在上传并启动批次…</span>
+              </div>
+            </div>
+          )}
+
+          {batch && (
+            <>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500">
+                裂变结果 · {visibleItems.length} 张
+                {hasSuccess && (
+                  <span className="ml-2 text-gray-400 normal-case tracking-normal">({visibleCompleted}/{visibleItems.length} 成功)</span>
+                )}
+              </div>
+
+              {/* 母款锚点 */}
+              <div className="flex items-center gap-3 text-[11px] text-gray-600">
+                <span className="text-gray-400 shrink-0">母款:</span>
+                {batch.mother?.url ? (
+                  <img
+                    src={batch.mother.url}
+                    alt=""
+                    className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-gray-100" />
+                )}
+                <span className="truncate">{batch.mother?.name || "(无)"}</span>
+              </div>
+
+              {visibleItems.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-8 py-10">
+                  结果已清空，可重新勾选裂变轴生成
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {visibleItems.map((cell) => (
+                    <div
+                      key={`m-${cell.mi}`}
+                      className="rounded-xl border border-gray-200 bg-white overflow-hidden relative group"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => removeResult(cell.mi)}
+                        aria-label={`删除 ${cell.label}`}
+                        title="删除此结果"
+                        className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-black/50 text-white text-[12px] leading-none flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-black/70"
+                      >
+                        ×
+                      </button>
+                      <div className="aspect-square relative bg-white">
+                        {cell.status === "pending" && (
+                          <div className="w-full h-full flex items-center justify-center flex-col gap-1">
+                            <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+                            <span className="text-[9px] text-gray-400">生成中…</span>
+                          </div>
+                        )}
+                        {cell.status === "done" && (
+                          <img src={cell.url} alt={cell.label} className="w-full h-full object-contain" />
+                        )}
+                        {cell.status === "error" && (
+                          <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-2 text-center">
+                            <span className="text-[10px] text-red-500">{cell.error || "生成失败"}</span>
+                            <button
+                              onClick={() => retryCell(cell.mi)}
+                              className="text-[10px] text-primary-600 underline hover:text-primary-700"
+                            >
+                              重试
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="px-2 py-1.5 text-[10px] text-gray-600 border-t border-gray-100 truncate" title={cell.label}>
+                        {cell.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {visibleItems.find((it) => it.prompt) && (
+                <details className="text-[11px] text-gray-500">
+                  <summary className="cursor-pointer hover:text-gray-700">查看生成 prompt</summary>
+                  <pre className="mt-2 whitespace-pre-wrap leading-relaxed text-gray-600 max-h-60 overflow-y-auto rounded-lg bg-white border border-gray-200 p-3 font-mono text-[10px]">
+                    {visibleItems
+                      .filter((it) => it.prompt)
+                      .slice(0, 2)
+                      .map((it) => `# ${it.label}\n${it.prompt}`)
+                      .join("\n\n")}
+                  </pre>
+                </details>
+              )}
+            </>
+          )}
+        </aside>
+
+        <StyleLibraryPicker
+          mode={picker}
+          knowledge={knowledge}
+          onClose={() => setPicker(null)}
+          onStyle={(p) => {
+            setMother({
+              kind: "library-style",
+              id: crypto.randomUUID(),
+              styleId: p.styleId,
+              name: p.name,
+              url: p.url,
+            });
+            setPicker(null);
+          }}
+          onFabric={(p) => {
+            setFabric({
+              kind: "library-fabric",
+              id: crypto.randomUUID(),
+              matId: p.matId,
+              colorIdx: p.colorIdx,
+              name: p.name,
+              url: p.url,
+              hex: p.hex,
+            });
+            setPicker(null);
+          }}
+        />
+      </div>
+    </>
   );
 }
 
@@ -1318,7 +1414,7 @@ function StyleLibraryPicker({
                 >
                   <div className="aspect-square w-full relative">
                     {c.shared && (
-                      <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">系统</span>
+                      <span className="absolute top-2 left-2 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">系统</span>
                     )}
                     {c.url ? (
                       <img src={c.url} alt={fullName} className="w-full h-full object-cover" />
@@ -1351,7 +1447,7 @@ function StyleLibraryPicker({
             >
               <div className="aspect-square w-full relative">
                 {s.shared && (
-                  <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-md bg-amber-500/95 text-white font-medium">系统</span>
+                  <span className="absolute top-2 left-2 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">系统</span>
                 )}
                 {s.image ? (
                   <img src={s.image} alt={s.name} className="w-full h-full object-cover" />

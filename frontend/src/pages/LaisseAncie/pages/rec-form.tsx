@@ -8,13 +8,15 @@
 import { SwatchStrip } from "./Materials";
 import type { MaterialRecommendation } from "../types/design";
 
-export function RecForm({ recommendation, onChange, onRefresh, onConfirm, loading, disabled }: {
+export function RecForm({ recommendation, onChange, onRefresh, onConfirm, loading, disabled, readOnly = false }: {
   recommendation: MaterialRecommendation | null;
   onChange: (r: MaterialRecommendation) => void;
   onRefresh: () => void;
   onConfirm?: () => void;
   loading: boolean;
   disabled: boolean;
+  /** 只读模式:步骤已确认,隐藏编辑 UI */
+  readOnly?: boolean;
 }) {
   const inputCls = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500 bg-white";
   const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1 block";
@@ -47,6 +49,27 @@ export function RecForm({ recommendation, onChange, onRefresh, onConfirm, loadin
     next[idx] = hex;
     onChange({ ...recommendation, colors: next });
   };
+
+  // 只读模式:步骤已确认,仅展示内容,隐藏编辑入口
+  if (readOnly) {
+    return (
+      <div>
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">AI 材质推荐 ✓</div>
+        <div className="text-[12px] text-gray-700 font-medium mb-1">{recommendation.name}</div>
+        {recommendation.composition && <div className="text-[11px] text-gray-500 mb-1">{recommendation.composition}</div>}
+        {recommendation.texture && <div className="text-[11px] text-gray-500 mb-1">{recommendation.texture}</div>}
+        {recommendation.finish && <div className="text-[11px] text-gray-500 mb-2">{recommendation.finish}</div>}
+        <div className="flex gap-1 mb-2">
+          {recommendation.colors.map((c, i) => (
+            <span key={i} className="w-5 h-5 rounded border border-gray-200" style={{ background: c }} title={c} />
+          ))}
+        </div>
+        {recommendation.reason && (
+          <div className="text-[10px] text-gray-500 italic">💬 {recommendation.reason}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>

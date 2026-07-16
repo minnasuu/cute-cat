@@ -32,7 +32,7 @@ import { parseDesignProposal, extractHexColors } from "../lib/design-proposal";
 import { useEditingProduct } from "../contexts/editing-product";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useComposerPrompt } from "../contexts/composer-prompt";
-import { ImageCard, LiveElapsed, Field, type GeneratedImage } from "./image-card";
+import { ImageCell, LiveElapsed, Field, type GeneratedImage } from "./image-card";
 import { RecForm } from "./rec-form";
 import ComposerBrief from "./ComposerBrief";
 import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateButton";
@@ -993,8 +993,8 @@ export default function ComposerPage({
     }
   }
 
-  // 单图修图(线稿 / 最终图均走此接口;最终图自动叠加材料描述)
-  async function regenerateOne(slot: string, label: string, instruction: string) {
+  // 单图修图:支持预览模式(返回新图 URL 待用户确认)或直接替换
+  async function regenerateOne(slot: string, label: string, instruction: string, onResult?: (url: string) => void) {
     if (!instruction.trim()) return;
     setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "user", text: `修改「${label}」: ${instruction}` }]);
     setBusy(true);
@@ -1014,8 +1014,15 @@ export default function ComposerPage({
       const data = await res.json();
       const elapsed = Date.now() - t0;
       if (data.url) {
-        setImages((prev) => prev.map((im) => im.slot === slot ? { ...im, url: data.url, originalUrl: data.originalUrl ?? null, prompt: data.prompt } : im));
-        setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `✅ 已更新「${label}」(${formatDuration(elapsed)})`, timingMs: elapsed }]);
+        // 预览模式:返回 URL,由调用方决定是否替换
+        if (onResult) {
+          onResult(data.url);
+          setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `✨「${label}」预览已生成,确认后替换(${formatDuration(elapsed)})`, timingMs: elapsed }]);
+        } else {
+          // 直接替换模式(向后兼容)
+          setImages((prev) => prev.map((im) => im.slot === slot ? { ...im, url: data.url, originalUrl: data.originalUrl ?? null, prompt: data.prompt } : im));
+          setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `✅ 已更新「${label}」(${formatDuration(elapsed)})`, timingMs: elapsed }]);
+        }
       } else {
         setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 修图失败(${formatDuration(elapsed)}): ${data.error || "未知错误"}`, timingMs: elapsed }]);
       }
@@ -1026,6 +1033,11 @@ export default function ComposerPage({
       setBusy(false);
     }
   }
+
+  /** 确认替换预览图(将用户确认的 URL 写入 images) */
+  const confirmReplace = useCallback((slot: string, url: string) => {
+    setImages((prev) => prev.map((im) => im.slot === slot ? { ...im, url } : im));
+  }, []);
 
   /** 把本次设计录入 Lookbook(含结构化解析)。
    *  - 单品/系列/插画+图片:必须有图片;
@@ -1243,7 +1255,7 @@ export default function ComposerPage({
                   </div>
                   <div className={images.length === 1 ? "max-w-sm mx-auto" : "grid grid-cols-2 gap-2 md:gap-3"}>
                     {images.map((im) => (
-                      <ImageCard key={im.slot} image={im} onRegenerate={(inst) => regenerateOne(im.slot, im.label, inst)} />
+                      <ImageCell key={im.slot} image={im} onRegenerate={(inst, onResult) => regenerateOne(im.slot, im.label, inst, onResult)} />
                     ))}
                   </div>
                 </div>
@@ -1327,7 +1339,7 @@ export default function ComposerPage({
     }
     // 生成线稿 / 图片中
     if (stage === "generating-lineart" || stage === "generating") {
-      return { label: "生成中", onClick: () => {}, loading: true, disabled: true, coins: 0 };
+      return { label: "生成中", onClick: () => { }, loading: true, disabled: true, coins: 0 };
     }
     // 线稿就绪:确认线稿 → 选材料
     if (stage === "presenting-lineart") {
@@ -1351,7 +1363,7 @@ export default function ComposerPage({
     }
     // 生成终稿中
     if (stage === "generating-final") {
-      return { label: "生成中", onClick: () => {}, loading: true, disabled: true, coins: 0 };
+      return { label: "生成中", onClick: () => { }, loading: true, disabled: true, coins: 0 };
     }
     // 终稿就绪:保存到 Lookbook
     if (stage === "presenting") {
@@ -1380,7 +1392,7 @@ export default function ComposerPage({
         />
       )}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
-        <div className="flex flex-col bg-white border-r border-gray-200 min-h-0">
+        <div className="flex flex-col bg-white min-h-0">
 
           {/* 中间:可滚动内容 */}
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -1419,7 +1431,8 @@ export default function ComposerPage({
           recommendation={recommendation}
           generating={generating}
           expressMode={expressMode}
-          onRegenerateOne={regenerateOne}
+          onRegeneratePreview={(slot, label, inst, onResult) => void regenerateOne(slot, label, inst, onResult)}
+          onConfirmReplace={(slot, url) => confirmReplace(slot, url)}
           onRecommendationChange={setRecommendation}
           onRefreshRecommendation={fetchRecommendation}
         />

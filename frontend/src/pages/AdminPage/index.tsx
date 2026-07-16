@@ -6,12 +6,13 @@
  * 管理员可点击「调整」弹窗直接加/扣用户喵币。
  * 仅 role==='admin' 可访问(由 main.tsx AdminRoute 守卫)。
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../utils/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
 import MeowCoin from "../../components/MeowCoin";
 import Navbar from "../../components/Navbar";
 import { AppIcon } from "../../components/icons/AppIcon";
+import BetaCodeManager from "./BetaCodeManager";
 
 type CoinsSummary = {
   signupBonus: number;
@@ -61,6 +62,13 @@ export default function AdminPage() {
   const [adjustingState, setAdjustingState] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
 
+  // 系统可用喵币配置
+  const [availableCoins, setAvailableCoins] = useState<number>(0);
+  const [availableCoinsInput, setAvailableCoinsInput] = useState("");
+  const [editingConfig, setEditingConfig] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+
   const loadUsers = () => {
     setLoading(true);
     apiClient
@@ -72,8 +80,38 @@ export default function AdminPage() {
       .finally(() => setLoading(false));
   };
 
+  const loadAvailableCoins = useCallback(() => {
+    apiClient
+      .get<{ value: string | null }>("/api/admin/config/available_coins")
+      .then((d) => {
+        const val = Number(d.value) || 0;
+        setAvailableCoins(val);
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveAvailableCoins = async () => {
+    const num = Number(availableCoinsInput);
+    if (!Number.isInteger(num) || num < 0) {
+      setConfigError("请输入非负整数");
+      return;
+    }
+    setSavingConfig(true);
+    setConfigError(null);
+    try {
+      await apiClient.put("/api/admin/config/available_coins", { value: num });
+      setAvailableCoins(num);
+      setEditingConfig(false);
+    } catch {
+      setConfigError("保存失败");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   useEffect(() => {
     loadUsers();
+    loadAvailableCoins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -175,14 +213,57 @@ export default function AdminPage() {
           </div>
 
           {/* 统计卡片 */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
             <StatCard icon="Users" label="用户总数" value={stats.total} />
             <StatCard icon="Shield" label="管理员" value={stats.admins} color="text-danger-600" />
             <StatCard icon="Gift" label="会员数" value={stats.members} color="text-amber-600" />
             <StatCard icon="Coins" label="系统喵币总量" value={stats.totalCoins} color="text-primary-600" />
+            <StatCard
+              icon="Wallet"
+              label="系统可用喵币"
+              value={availableCoins}
+              color="text-violet-600"
+              editable
+              onEdit={() => { setAvailableCoinsInput(String(availableCoins)); setConfigError(null); setEditingConfig(true); }}
+            />
             <StatCard icon="Gift" label="新用户赠送" value={stats.totalSignupBonus} color="text-emerald-600" />
             <StatCard icon="Coins" label="充值总额" value={stats.totalRecharge} color="text-sky-600" />
           </div>
+
+          {/* 系统可用喵币编辑弹窗 */}
+          {editingConfig && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setEditingConfig(false)}>
+              <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-md space-y-4" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-text-primary">修改系统可用喵币</h3>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-text-tertiary mb-1 block">可用喵币数量</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={availableCoinsInput}
+                    onChange={(e) => setAvailableCoinsInput(e.target.value)}
+                    placeholder="输入可用喵币数量"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:ring-2 focus:ring-primary-100 focus:border-primary-400 outline-none"
+                    autoFocus
+                  />
+                </div>
+                {configError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">{configError}</div>
+                )}
+                <div className="flex justify-end gap-2 pt-1">
+                  <button type="button" onClick={() => setEditingConfig(false)} className="px-4 py-2 rounded-lg text-[12px] border border-border text-text-secondary hover:bg-surface-secondary transition-colors">取消</button>
+                  <button
+                    type="button"
+                    onClick={saveAvailableCoins}
+                    disabled={savingConfig}
+                    className="px-4 py-2 rounded-lg text-[12px] bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                  >
+                    {savingConfig ? '保存中…' : '确认修改'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 工具栏 */}
           <div className="flex items-center gap-3">
@@ -201,6 +282,9 @@ export default function AdminPage() {
               共 {rows.length} / {users.length} 人
             </div>
           </div>
+
+          {/* 内测码管理 */}
+          <BetaCodeManager />
 
           {/* 表格 */}
           <div className="rounded-2xl border border-border bg-surface overflow-hidden">
@@ -421,20 +505,33 @@ export default function AdminPage() {
     label,
     value,
     color = "text-text-primary",
+    editable = false,
+    onEdit,
   }: {
     icon: string;
     label: string;
     value: number;
     color?: string;
+    editable?: boolean;
+    onEdit?: () => void;
   }) {
     return (
-      <div className="rounded-2xl border border-border bg-surface p-4 flex items-center gap-3">
+      <div
+        className={`rounded-2xl border border-border bg-surface p-4 flex items-center gap-3 ${editable ? "cursor-pointer hover:border-primary-300 hover:shadow-sm transition-all" : ""}`}
+        onClick={editable ? onEdit : undefined}
+        role={editable ? "button" : undefined}
+        tabIndex={editable ? 0 : undefined}
+        onKeyDown={editable ? (e) => { if (e.key === "Enter") onEdit?.(); } : undefined}
+      >
         <div className="w-10 h-10 rounded-xl bg-surface-tertiary flex items-center justify-center shrink-0">
           <AppIcon symbol={icon} size={18} className={color} />
         </div>
         <div>
           <div className={`text-xl font-black ${color}`}>{value.toLocaleString("zh-CN")}</div>
-          <div className="text-[11px] text-text-tertiary">{label}</div>
+          <div className="text-[11px] text-text-tertiary flex items-center gap-1">
+            {label}
+            {editable && <span className="text-primary-500 text-[9px]">✎</span>}
+          </div>
         </div>
       </div>
     );

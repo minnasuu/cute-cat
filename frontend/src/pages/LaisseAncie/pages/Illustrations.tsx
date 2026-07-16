@@ -127,7 +127,7 @@ export default function IllustrationsPage() {
 
 function IllustrationCard({ mat }: { mat: IllustrationRow }) {
   return (
-    <figure className="rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden cursor-pointer">
+    <figure className="rounded-2xl border border-gray-200 bg-white overflow-hidden cursor-pointer">
       <div className="relative aspect-square overflow-hidden bg-gray-50">
         {mat.image ? (
           <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />

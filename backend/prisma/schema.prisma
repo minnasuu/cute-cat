@@ -25,6 +25,8 @@ model User {
   inviteCode    String?  @unique               // 个人邀请码
   invitedById   String?                       // 邀请人 id
   inviteCount   Int      @default(0)           // 已邀请成功人数
+  // ── 新手引导 ──
+  onboardingDone Boolean  @default(false)      // 是否已完成灵感扩散引导(服务端持久化,防换浏览器重复)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -35,6 +37,7 @@ model User {
   invitedUsers  User[]    @relation("UserInvites")
   invitedBy     User?     @relation("UserInvites", fields: [invitedById], references: [id])
   redeemedCodes RedemptionCode[]
+  betaCodesUsed BetaCode[]
 
   @@index([inviteCode])
   @@index([invitedById])
@@ -474,4 +477,35 @@ model CommunityPost {
   @@index([type, createdAt])
   @@index([userId])
   @@index([refProductId])
+}
+
+// ==================== 内测码（一次性准入） ====================
+
+model BetaCode {
+  id        String   @id @default(uuid())
+  code      String   @unique   // 用户输入，存时大写去空格
+  used      Boolean  @default(false)
+  usedById  String?
+  usedBy    User?    @relation(fields: [usedById], references: [id], onDelete: SetNull)
+  usedAt    DateTime?
+  note      String?             // 备注(管理员标记用途,如"发给 XX 媒体"/"KOL-A")
+  createdBy String?             // 哪个管理员生成的(email)
+  createdAt DateTime @default(now())
+
+  @@index([code])
+  @@index([used])
+  @@index([usedById])
+}
+
+// ==================== 系统配置(key-value) ====================
+
+model SystemConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique   // 配置键(如 available_coins)
+  value     String             // 配置值(JSON 字符串)
+  note      String?            // 备注(说明用途)
+  updatedBy String?            // 最后修改者(email)
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
 }

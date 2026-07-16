@@ -227,5 +227,101 @@ router.post('/workflows/repair-workbench', async (req, res) => {
   }
 });
 
+// ======================== Admin: 内测码管理 ========================
+
+const beta = require('../lib/beta');
+
+// 统计
+router.get('/beta-codes/stats', async (_req, res) => {
+  try {
+    const stats = await beta.betaStats();
+    res.json(stats);
+  } catch (err) {
+    console.error('[admin] beta stats error:', err);
+    res.status(500).json({ error: '获取内测码统计失败' });
+  }
+});
+
+// 列表(分页)
+router.get('/beta-codes', async (req, res) => {
+  try {
+    const { page, pageSize } = req.query;
+    const result = await beta.listBetaCodes({ page, pageSize });
+    res.json(result);
+  } catch (err) {
+    console.error('[admin] list beta codes error:', err);
+    res.status(500).json({ error: '获取内测码列表失败' });
+  }
+});
+
+// 批量生成
+router.post('/beta-codes/generate', async (req, res) => {
+  try {
+    const { n = 1, note = '' } = req.body;
+    const count = Math.min(Math.max(parseInt(n, 10) || 1, 1), 500);
+    if (count > 500) return res.status(400).json({ error: '单次最多生成 500 个' });
+
+    // 记录操作的管理员 identity
+    const u = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { email: true },
+    });
+    const createdBy = u?.email || 'admin';
+
+    const codes = await beta.createBetaCodes(count, note, createdBy);
+    res.json({ success: true, count: codes.length, codes, note: note || '', createdBy });
+  } catch (err) {
+    console.error('[admin] generate beta codes error:', err);
+    res.status(500).json({ error: '生成内测码失败' });
+  }
+});
+
+// 删除未使用的内测码
+router.delete('/beta-codes/:id', async (req, res) => {
+  try {
+    const result = await beta.deleteBetaCode(req.params.id);
+    if (!result.ok) {
+      if (result.reason === 'not_found') return res.status(404).json({ error: '内测码不存在' });
+      if (result.reason === 'already_used') return res.status(400).json({ error: '已使用的内测码不可删除' });
+      return res.status(400).json({ error: '删除失败' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[admin] delete beta code error:', err);
+    res.status(500).json({ error: '删除内测码失败' });
+  }
+});
+
+// ======================== Admin: 系统配置 ========================
+
+// 获取系统配置
+router.get('/config/:key', async (req, res) => {
+  try {
+    const config = await prisma.systemConfig.findUnique({ where: { key: req.params.key } });
+    res.json({ key: req.params.key, value: config?.value ?? null, note: config?.note ?? null, updatedBy: config?.updatedBy ?? null, updatedAt: config?.updatedAt ?? null });
+  } catch (err) {
+    console.error('[admin] get config error:', err);
+    res.status(500).json({ error: '获取配置失败' });
+  }
+});
+
+// 更新系统配置
+router.put('/config/:key', async (req, res) => {
+  try {
+    const { value, note } = req.body;
+    if (value == null) return res.status(400).json({ error: '缺少 value' });
+    const adminUser = await prisma.user.findUnique({ where: { id: req.userId }, select: { email: true } });
+    const updated = await prisma.systemConfig.upsert({
+      where: { key: req.params.key },
+      create: { key: req.params.key, value: String(value), note: note || null, updatedBy: adminUser?.email || null },
+      update: { value: String(value), ...(note !== undefined && { note }), updatedBy: adminUser?.email || null },
+    });
+    res.json({ success: true, key: updated.key, value: updated.value, note: updated.note, updatedBy: updated.updatedBy, updatedAt: updated.updatedAt });
+  } catch (err) {
+    console.error('[admin] update config error:', err);
+    res.status(500).json({ error: '更新配置失败' });
+  }
+});
+
 module.exports = router;
 
