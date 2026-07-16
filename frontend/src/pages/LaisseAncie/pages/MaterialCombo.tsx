@@ -40,23 +40,23 @@ type Mode = "cross" | "color-mix";
 // ─── 槽位 discriminated union ─────────────────────────────────
 type FabricRow =
   | {
-      kind: "upload";
-      id: string;
-      file: File;
-      preview: string;
-      name: string;
-      analysisText?: string;
-    }
+    kind: "upload";
+    id: string;
+    file: File;
+    preview: string;
+    name: string;
+    analysisText?: string;
+  }
   | {
-      kind: "library-fabric";
-      id: string;
-      matId: string;
-      colorIdx: number;
-      name: string;
-      url: string;
-      hex?: string;
-      analysisText?: string;
-    }
+    kind: "library-fabric";
+    id: string;
+    matId: string;
+    colorIdx: number;
+    name: string;
+    url: string;
+    hex?: string;
+    analysisText?: string;
+  }
   | { kind: "text"; id: string; description: string; analysisText?: string };
 
 type StyleRow =
@@ -166,6 +166,13 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   }, [teamId, stopPolling]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  // 槽位数量变化(用户增删面料/款式)→ 清空旧批次,让底部按钮回到「生成」而非「保存」
+  useEffect(() => {
+    setBatch(null);
+    stopPolling();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fabricRows.length, styleRows.length]);
 
   // ── 唯一 id ──
   const uid = useCallback(() => `r-${Date.now().toString()}-${Math.random().toString(36).slice(2, 7)}`, []);
@@ -418,11 +425,11 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
       {/* 左:表单(上中下布局) */}
-      <div className="flex flex-col bg-white min-h-0">
+      <div className="flex flex-col bg-white border-r border-gray-200 min-h-0">
         {/* 顶部:固定 header */}
-        <header className="shrink-0 bg-white border-b border-gray-200 px-5 py-3">
+        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
           <div className="flex items-center justify-between">
-            <h1 className="text-[15px] font-medium text-gray-800">材料组合</h1>
+            <h1 className="text-[15px] font-medium text-gray-800 min-h-7">材料组合</h1>
             <div className="h-7 flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
               <button
                 onClick={() => switchMode("cross")}
@@ -768,14 +775,25 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         </div>
         {/* 结束滚动容器 */}
 
-        {/* 底部:固定提交按钮 */}
+        {/* 底部:固定行动按钮(按批次状态切换,与 Composer 规范一致) */}
         <div className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
-          <GenerateButton
-            loading={submitting || batchRunningOrAnalyzing}
-            estimatedCoins={cellCount * AI_COST_PER_IMAGE}
-            userCoins={user?.coins}
-            onClick={submit}
-          />
+          {hasSuccess && !batchRunningOrAnalyzing && !submitting ? (
+            <GenerateButton
+              label={`保存到 Lookbook (${batch!.completed}/${batch!.total})`}
+              estimatedCoins={0}
+              userCoins={user?.coins}
+              onClick={saveToLookbook}
+            />
+          ) : (
+            <GenerateButton
+              label="立即生成"
+              loading={submitting || batchRunningOrAnalyzing}
+              disabled={!canSubmit}
+              estimatedCoins={cellCount * AI_COST_PER_IMAGE}
+              userCoins={user?.coins}
+              onClick={submit}
+            />
+          )}
           {batchRunningOrAnalyzing && batch && (
             <div className="text-[11px] text-gray-500 mt-2 text-center">
               {batch.completed + batch.failed}/{batch.total}
@@ -792,12 +810,8 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       {/* 右:结果矩阵 */}
       <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
         {!batch && !submitting && (
-          <div className="flex items-center justify-center h-full">
-            <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-8 py-10 max-w-[280px]">
-              上传面料与款式后点击
-              <br />
-              「生成白底效果图」
-            </div>
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
+            上传面料与款式后<br />点击底部「立即生成」
           </div>
         )}
 
@@ -820,24 +834,14 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
             <ColorMixResult
               batch={batch}
               retryCell={retryCell}
-              hasSuccess={hasSuccess}
-              onSave={saveToLookbook}
             />
           ) : (
             // 叉乘模式:纵向列表,每行 = 款式 × 面料 = 结果
             <>
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-wider text-gray-500">
-                  生成结果 {fabricRows.length}×{styleRows.length} ={" "}
-                  {batch.items.length}
-                </div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500">
+                生成结果 {fabricRows.length}×{styleRows.length} = {batch.items.length}
                 {hasSuccess && (
-                  <button
-                    onClick={saveToLookbook}
-                    className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
-                  >
-                    保存到 Lookbook ({batch.completed}/{batch.total})
-                  </button>
+                  <span className="ml-2 text-gray-400 normal-case tracking-normal">({batch.completed}/{batch.total} 成功)</span>
                 )}
               </div>
 
@@ -1013,21 +1017,13 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
  * 拼色模式结果面板:单张大图 + 底部面料缩略条。
  * 严格不出现「拼色」文案,让用户感知与叉乘单图一致。
  */
-function ColorMixResult({ batch, retryCell, hasSuccess, onSave }: { batch: MaterialComboBatch; retryCell: (fi: number, si: number) => void; hasSuccess: boolean; onSave: () => void }) {
+function ColorMixResult({ batch, retryCell }: { batch: MaterialComboBatch; retryCell: (fi: number, si: number) => void }) {
   const cell = batch.items?.[0];
   const styleRow = batch.styles?.[0];
   const showingFabrics = batch.fabrics || [];
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500">结果</div>
-        {hasSuccess && (
-          <button onClick={onSave}
-            className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-            保存到 Lookbook
-          </button>
-        )}
-      </div>
+      <div className="text-[10px] uppercase tracking-wider text-gray-500">拼色结果</div>
 
       {/* 左侧 1 款式信息 */}
       <div className="flex items-center gap-3 text-[11px] text-gray-600">

@@ -1,5 +1,8 @@
 'use strict';
 
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
 /**
  * admin —— 统一管理员判断(单一数据源)。
  *
@@ -22,4 +25,10 @@ function isAdminEmail(email) {
   return getAdminEmails().includes(email.trim().toLowerCase());
 }
 
-module.exports = { getAdminEmails, isAdminEmail };
+async function isAdminUserId(userId) {
+  if (!userId) return false;
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  return !!u?.email && isAdminEmail(u.email);
+}
+
+module.exports = { getAdminEmails, isAdminEmail, isAdminUserId };

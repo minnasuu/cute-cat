@@ -9,16 +9,10 @@ const { authMiddleware } = require('../middleware/auth');
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// 管理员邮箱白名单（统一从 lib/admin.js 读取，单一数据源）
-const { isAdminEmail } = require('../lib/admin');
+// 管理员判断（统一从 lib/admin.js 读取，单一数据源）
+const { isAdminUserId } = require('../lib/admin');
 
 router.use(authMiddleware);
-
-async function isAdminUserId(userId) {
-  if (!userId) return false;
-  const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
-  return !!u?.email && isAdminEmail(u.email);
-}
 
 function parseScope(raw) {
   const s = typeof raw === 'string' ? raw.trim() : '';

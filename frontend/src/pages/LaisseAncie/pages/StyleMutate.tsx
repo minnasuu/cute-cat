@@ -313,6 +313,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const [picker, setPicker] = useState<null | "style" | "fabric">(null);
 
   const [category, setCategory] = useState<GarmentCategoryId | "">("");
+  const [expandedAxis, setExpandedAxis] = useState<string | null>(null);
   const [batch, setBatch] = useState<StyleMutateBatch | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -412,6 +413,13 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   );
 
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  // 输入变化(母款/面料/品类/勾选/自定义)→ 清空旧批次,让底部按钮回到「生成」
+  useEffect(() => {
+    setBatch(null);
+    stopPolling();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mother, fabric, selectedMutations.length, category, customMutations.length]);
 
   // 添加自定义裂变项(回车 / 逗号触发)
   function addCustomMutation(text: string) {
@@ -639,11 +647,11 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
       {/* 左:表单(上中下布局) */}
-      <div className="flex flex-col bg-white min-h-0">
+      <div className="flex flex-col bg-white border-r border-gray-200 min-h-0">
         {/* 顶部:固定 header */}
-        <header className="shrink-0 bg-white border-b border-gray-200 px-5 py-3">
+        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
           <div className="flex items-center justify-between">
-            <h1 className="text-[15px] font-medium text-gray-800">款式裂变</h1>
+            <h1 className="text-[15px] font-medium text-gray-800 min-h-7">款式裂变</h1>
           </div>
           <span className="text-[10px] text-gray-500">
             1 母款 × 裂变轴选项 → N 张子款白底图(≤{MAX_MUTATIONS})
@@ -735,6 +743,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   disabled={batchRunning}
                   onClick={() => {
                     if (category === c.id) return;
+                    setExpandedAxis(null);
                     // 切换品类:清理会被新品类专属轴覆盖的通用轴勾选(如上衣→半身裙时,清除通用「衣长」勾选)
                     setSelected((prev) => {
                       const next = new Set(prev);
@@ -760,7 +769,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
             </div>
           </div>
 
-          {/* 裂变轴(按品类过滤) */}
+          {/* 裂变轴(手风琴:逐轴折叠,降低平铺认知负荷) */}
           <div>
             <label className={labelCls}>
               裂变轴{" "}
@@ -779,43 +788,90 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                 该品类暂无预置裂变轴,请使用下方自定义款式输入
               </div>
             )}
-            <div className="space-y-4">
-              {visibleAxes.map((axis) => {
-                // 已锁定面料时,「面料材质」轴灰显禁选避免 prompt 矛盾
-                const disabledByFabric = axis.id === "fabric" && fabric != null;
-                return (
-                  <div key={axis.id} className={disabledByFabric ? "opacity-40 pointer-events-none" : ""}>
-                    <div className="flex items-center gap-1 mb-1.5">
-                      <span className="text-[11px] font-medium text-gray-700">{axis.label}</span>
-                      {disabledByFabric && (
-                        <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">已锁定</span>
+
+            {/* 已选汇总(全部折叠时也能查看 / 移除) */}
+            {selectedMutations.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {selectedMutations.map((m) => (
+                  <span
+                    key={`${m.axisId}::${m.optionId}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
+                  >
+                    {m.label}
+                    {!batchRunning && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (m.axisId === "custom") {
+                            setCustomMutations((prev) => prev.filter((x) => x !== m.optionId.replace(/^custom_/, "")));
+                          } else {
+                            toggleOption(m.axisId, m.optionId);
+                          }
+                        }}
+                        className="text-primary-400 hover:text-red-500 leading-none"
+                      >×</button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* 手风琴:每轴一行,点击展开选项 */}
+            {category && (
+              <div className="space-y-1.5">
+                {visibleAxes.map((axis) => {
+                  const disabledByFabric = axis.id === "fabric" && fabric != null;
+                  const axisSelCount = axis.options.filter((o) => selected.has(mutKey(axis.id, o.id))).length;
+                  const isOpen = expandedAxis === axis.id;
+                  return (
+                    <div
+                      key={axis.id}
+                      className={`rounded-lg border bg-white overflow-hidden transition-colors ${isOpen ? "border-primary-300" : "border-gray-200"} ${disabledByFabric ? "opacity-40 pointer-events-none" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setExpandedAxis(isOpen ? null : axis.id)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50/60 transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-medium text-gray-700">{axis.label}</span>
+                          {axisSelCount > 0 && (
+                            <span className="text-[9px] bg-primary-500 text-white px-1.5 py-0.5 rounded-full leading-none">{axisSelCount}</span>
+                          )}
+                          {disabledByFabric && (
+                            <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">已锁定</span>
+                          )}
+                        </span>
+                        <span className={`text-gray-400 text-[10px] transition-transform ${isOpen ? "rotate-90" : ""}`}>▶</span>
+                      </button>
+                      {isOpen && (
+                        <div className="px-3 pb-2.5 pt-2 flex flex-wrap gap-1.5 border-t border-gray-100">
+                          {axis.options.map((opt) => {
+                            const key = mutKey(axis.id, opt.id);
+                            const on = selected.has(key);
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                disabled={batchRunning || disabledByFabric}
+                                onClick={() => toggleOption(axis.id, opt.id)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${
+                                  on
+                                    ? "bg-primary-50 border-primary-400 text-primary-700"
+                                    : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
+                                } disabled:opacity-50`}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {axis.options.map((opt) => {
-                        const key = mutKey(axis.id, opt.id);
-                        const on = selected.has(key);
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            disabled={batchRunning || disabledByFabric}
-                            onClick={() => toggleOption(axis.id, opt.id)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${
-                              on
-                                ? "bg-primary-50 border-primary-400 text-primary-700"
-                                : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
-                            } disabled:opacity-50`}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* 自定义裂变款式(Tag Input) */}
@@ -964,14 +1020,25 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
           </div>{/* 结束滚动区 */}
           </div>{/* 结束滚动容器 */}
 
-          {/* 底部:固定生成按钮 */}
+          {/* 底部:固定行动按钮(按批次状态切换,与 Composer 规范一致) */}
           <div className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
-            <GenerateButton
-              loading={submitting || batchRunning}
-              estimatedCoins={selectedMutations.length * AI_COST_PER_IMAGE}
-              userCoins={user?.coins}
-              onClick={submit}
-            />
+            {hasSuccess && !batchRunning && !submitting ? (
+              <GenerateButton
+                label={`保存到 Lookbook (${visibleCompleted}/${visibleItems.length})`}
+                estimatedCoins={0}
+                userCoins={user?.coins}
+                onClick={saveToLookbook}
+              />
+            ) : (
+              <GenerateButton
+                label="立即生成"
+                loading={submitting || batchRunning}
+                disabled={!canSubmit}
+                estimatedCoins={selectedMutations.length * AI_COST_PER_IMAGE}
+                userCoins={user?.coins}
+                onClick={submit}
+              />
+            )}
             {batchRunning && batch && (
               <div className="text-[11px] text-gray-500 mt-2 text-center">
                 {batch.completed + batch.failed}/{batch.total}
@@ -986,12 +1053,8 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
       {/* 右:结果网格 */}
       <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
         {!batch && !submitting && (
-          <div className="flex items-center justify-center h-full">
-            <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-8 py-10 max-w-[280px]">
-              选择母款并勾选裂变轴后
-              <br />
-              点击「生成裂变款」
-            </div>
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
+            选择母款并勾选裂变轴后<br />点击底部「立即生成」
           </div>
         )}
 
@@ -1006,17 +1069,10 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
 
         {batch && (
           <>
-            <div className="flex items-center justify-between">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">
-                裂变结果 · {visibleItems.length} 张
-              </div>
+            <div className="text-[10px] uppercase tracking-wider text-gray-500">
+              裂变结果 · {visibleItems.length} 张
               {hasSuccess && (
-                <button
-                  onClick={saveToLookbook}
-                  className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
-                >
-                  保存到 Lookbook ({visibleCompleted}/{visibleItems.length})
-                </button>
+                <span className="ml-2 text-gray-400 normal-case tracking-normal">({visibleCompleted}/{visibleItems.length} 成功)</span>
               )}
             </div>
 
