@@ -48,18 +48,19 @@ const ROLE_LABELS: Record<string, string> = {
   user: '普通用户',
 };
 
-type TabId = 'profile' | 'recharge' | 'tx' | 'invite';
+type TabId = 'profile' | 'recharge' | 'recharge-records' | 'tx' | 'invite';
 
 /** 左侧 Tab 配置(含 Lucide 图标名,传给 AppIcon 渲染) */
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'profile', label: '个人信息', icon: 'User' },
   { id: 'recharge', label: '充值', icon: 'Wallet' },
+  { id: 'recharge-records', label: '充值明细', icon: 'ArrowDownCircle' },
   { id: 'tx', label: '用量明细', icon: 'ClipboardList' },
   { id: 'invite', label: '邀请好友', icon: 'Gift' },
 ];
 
 /**
- * AccountPage —— 个人中心:个人信息 / 充值 / 用量明细 / 邀请好友
+ * AccountPage —— 个人中心:个人信息 / 充值 / 充值明细 / 用量明细 / 邀请好友
  *
  * 布局:全局 Navbar + 左侧 Sidebar(Hero + 竖排 Tab) + 右侧内容区;
  * 移动端(<md):Sidebar 收起为抽屉,Navbar 提供汉堡按钮。
@@ -75,12 +76,27 @@ const AccountPage: React.FC = () => {
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [txLoading, setTxLoading] = useState(false);
+  const [rechargeRecords, setRechargeRecords] = useState<Tx[]>([]);
+  const [rechargeLoading, setRechargeLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('profile');
+  const [systemCoins, setSystemCoins] = useState<number>(0);
 
   // 兑换码
   const [redeemCode, setRedeemCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
   const [redeemMsg, setRedeemMsg] = useState<{ type: 'success' | 'error'; text: string; coins?: number } | null>(null);
+
+  // 修改密码弹窗
+  const [pwdModal, setPwdModal] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [pwdError, setPwdError] = useState<string | null>(null);
+
+  // 注销帐号弹窗
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (user) setNickname(user.nickname);
@@ -102,9 +118,26 @@ const AccountPage: React.FC = () => {
     }
   }, []);
 
+  const loadRechargeRecords = useCallback(async () => {
+    setRechargeLoading(true);
+    try {
+      const d = await apiClient.get<{ items: Tx[] }>('/api/account/recharge-records');
+      setRechargeRecords(d.items ?? []);
+    } catch { /* toast by apiClient */ } finally {
+      setRechargeLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'tx') loadTx();
-  }, [activeTab, loadTx]);
+    if (activeTab === 'recharge-records') loadRechargeRecords();
+    if (activeTab === 'recharge') {
+      // 刷新 systemCoins 以判断库存
+      apiClient.get<{ systemCoins: number }>('/api/account/me').then((d) => {
+        setSystemCoins(d.systemCoins ?? 0);
+      }).catch(() => {});
+    }
+  }, [activeTab, loadTx, loadRechargeRecords]);
 
   const handleSaveProfile = async () => {
     if (!nickname.trim()) { showToast('昵称不能为空', 'warning'); return; }
@@ -115,6 +148,40 @@ const AccountPage: React.FC = () => {
       showToast('保存成功', 'success');
     } catch { /* toast */ } finally {
       setSaving(false);
+    }
+  };
+
+  const openPwdModal = () => {
+    setOldPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPwdError(null);
+    setPwdModal(true);
+  };
+
+  const handleChangePassword = async () => {
+    if (!oldPassword || !newPassword) {
+      setPwdError('请填写完整');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPwdError('新密码至少 6 位');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwdError('两次输入的新密码不一致');
+      return;
+    }
+    setPwdSaving(true);
+    setPwdError(null);
+    try {
+      await apiClient.put('/api/account/profile', { oldPassword, newPassword });
+      showToast('密码修改成功', 'success');
+      setPwdModal(false);
+    } catch (err: any) {
+      setPwdError(err?.message || '修改失败');
+    } finally {
+      setPwdSaving(false);
     }
   };
 
@@ -143,6 +210,21 @@ const AccountPage: React.FC = () => {
       () => showToast('邀请链接已复制', 'success'),
       () => showToast('复制失败，请手动复制', 'warning'),
     );
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      await apiClient.delete('/api/auth/account');
+      showToast('帐号已注销', 'success');
+      setDeleteModal(false);
+      // 跳登出 -> 登录页
+      window.location.href = '/login';
+    } catch (err: any) {
+      showToast(err?.message || '注销失败', 'error');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   /** 切换 Tab;移动端同时关闭抽屉 */
@@ -198,6 +280,9 @@ const AccountPage: React.FC = () => {
     </>
   );
 
+  // 充值 tab 是否库存不足(用户余额 > 系统总量 95%)
+  const stockOut = systemCoins > 0 && (user?.coins ?? 0) > systemCoins * 0.95;
+
   /* ── 右侧内容区 ── */
   const renderActiveTab = () => (
     <div className="p-6 md:p-8 max-w-3xl">
@@ -218,6 +303,21 @@ const AccountPage: React.FC = () => {
             <div className="w-full max-w-md px-4 py-3 rounded-xl border border-border bg-surface-secondary text-text-tertiary">{user.email}</div>
             <p className="text-xs text-text-tertiary mt-1">邮箱不可修改</p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">密码</label>
+            <div className="flex items-center gap-2 w-full max-w-md">
+              <div className="flex-1 px-4 py-3 rounded-xl border border-border bg-surface-secondary text-text-tertiary select-none">
+                ****** <button type="button" className="ml-1 text-text-tertiary hover:text-text-secondary" tabIndex={-1}>👁</button>
+              </div>
+              <button
+                type="button"
+                onClick={openPwdModal}
+                className="px-4 py-2.5 rounded-xl border border-primary-200 bg-primary-50 text-primary-700 text-sm font-medium hover:bg-primary-100 transition-colors shrink-0"
+              >
+                修改密码
+              </button>
+            </div>
+          </div>
           <button
             onClick={handleSaveProfile}
             disabled={saving || !nickname.trim() || nickname.trim() === user.nickname}
@@ -225,6 +325,16 @@ const AccountPage: React.FC = () => {
           >
             {saving ? '保存中...' : '保存修改'}
           </button>
+          <div className="pt-4 mt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setDeleteModal(true)}
+              className="px-4 py-2 rounded-lg text-[12px] border border-danger-200 bg-danger-50 text-danger-600 hover:bg-danger-100 transition-colors"
+            >
+              注销帐号
+            </button>
+            <p className="text-[11px] text-text-tertiary mt-2">注销后,您的帐号及所有数据将被永久删除,不可恢复。</p>
+          </div>
         </div>
       )}
 
@@ -237,13 +347,19 @@ const AccountPage: React.FC = () => {
             <span className="text-xl font-black text-text-primary inline-flex items-center gap-1.5"><MeowCoin size={22} /> {user.coins}</span>
           </div>
 
+          {stockOut && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-700">
+              ⚠ 您的喵币余额已超过系统总量的 95%,充值入口暂不可用(库存不足)。
+            </div>
+          )}
+
           {/* 三档介绍 */}
           {tiers && (
             <div>
               <h3 className="text-sm font-bold text-text-primary mb-3">可选档位</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {(Object.entries(tiers) as [RedeemTierId, RedeemTier][]).map(([id, t]) => (
-                  <div key={id} className="rounded-[20px] border border-border bg-surface p-5 flex flex-col items-center text-center">
+                  <div key={id} className={`rounded-[20px] border border-border bg-surface p-5 flex flex-col items-center text-center ${stockOut ? 'opacity-50' : ''}`}>
                     <div className="text-2xl font-black text-primary-600 mb-1 inline-flex items-center gap-1.5"><MeowCoin size={22} /> {t.coins}</div>
                     <div className="text-sm font-bold text-text-primary mb-1">{t.name}</div>
                     <div className="text-xs text-text-tertiary">≈ {Math.round(t.coins / 9)} 次生图</div>
@@ -256,7 +372,7 @@ const AccountPage: React.FC = () => {
           )}
 
           {/* 输入兑换码 */}
-          <div className="rounded-[20px] border border-border bg-surface p-6 space-y-4">
+          <div className={`rounded-[20px] border border-border bg-surface p-6 space-y-4 ${stockOut ? 'opacity-50 pointer-events-none' : ''}`}>
             <h3 className="text-sm font-bold text-text-primary">输入兑换码</h3>
             <div className="flex gap-2">
               <input
@@ -264,12 +380,13 @@ const AccountPage: React.FC = () => {
                 onChange={(e) => { setRedeemCode(e.target.value); setRedeemMsg(null); }}
                 placeholder="请输入兑换码(如 B-XXXXXX)"
                 maxLength={32}
+                disabled={stockOut}
                 className="flex-1 px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none uppercase tracking-widest"
                 onKeyDown={(e) => { if (e.key === 'Enter') handleRedeem(); }}
               />
               <button
                 onClick={handleRedeem}
-                disabled={redeeming || !redeemCode.trim()}
+                disabled={redeeming || !redeemCode.trim() || stockOut}
                 className="px-6 py-2.5 bg-primary-500 text-white font-bold rounded-xl hover:bg-primary-600 transition-colors disabled:opacity-50 shrink-0"
               >
                 {redeeming ? '兑换中...' : '兑换'}
@@ -281,6 +398,50 @@ const AccountPage: React.FC = () => {
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 充值明细 */}
+      {activeTab === 'recharge-records' && (
+        <div className="rounded-[20px] border border-border bg-surface overflow-hidden">
+          <div className="px-5 py-4 border-b border-border">
+            <h2 className="text-base font-black text-text-primary">充值明细</h2>
+            <p className="text-xs text-text-tertiary mt-0.5">新用户赠送 / 邀请赠送 / 充值三类收入记录</p>
+          </div>
+          {rechargeLoading ? (
+            <p className="p-8 text-center text-text-tertiary">加载中…</p>
+          ) : rechargeRecords.length === 0 ? (
+            <p className="p-8 text-center text-text-tertiary">暂无充值记录</p>
+          ) : (
+            <ul className="divide-y divide-border max-h-[60vh] overflow-y-auto">
+              {rechargeRecords.map((tx) => {
+                const before = tx.balanceAfter - tx.amount;
+                return (
+                  <li key={tx.id} className="px-5 py-3 flex items-center justify-between">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          tx.type === 'signup_bonus' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                          tx.type === 'invite_reward' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                          'bg-sky-50 text-sky-700 border border-sky-200'
+                        }`}>
+                          {TX_TYPE_LABELS[tx.type] || tx.type}
+                        </span>
+                        <span className="text-sm font-bold text-text-primary">{tx.note || '—'}</span>
+                      </div>
+                      <div className="text-[11px] text-text-tertiary mt-0.5">{new Date(tx.createdAt).toLocaleString('zh-CN')}</div>
+                    </div>
+                    <div className="text-right shrink-0 ml-4">
+                      <div className="text-sm font-black text-primary-600 inline-flex items-center gap-1">
+                        +{tx.amount} <MeowCoin size={14} />
+                      </div>
+                      <div className="text-[11px] text-text-tertiary">{before} → {tx.balanceAfter}</div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
 
@@ -415,6 +576,109 @@ const AccountPage: React.FC = () => {
             {renderSidebar()}
           </aside>
         </>
+      )}
+
+      {/* 修改密码弹窗 */}
+      {pwdModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setPwdModal(false)}>
+          <div
+            className="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-text-primary">修改密码</h3>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">原密码</label>
+              <input
+                type="password"
+                value={oldPassword}
+                onChange={(e) => { setOldPassword(e.target.value); setPwdError(null); }}
+                placeholder="请输入原密码"
+                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">新密码</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => { setNewPassword(e.target.value); setPwdError(null); }}
+                placeholder="至少 6 位"
+                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1">确认新密码</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => { setConfirmPassword(e.target.value); setPwdError(null); }}
+                placeholder="再次输入新密码"
+                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleChangePassword(); }}
+              />
+            </div>
+            {pwdError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">
+                {pwdError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPwdModal(false)}
+                className="px-4 py-2 rounded-lg text-[12px] border border-border text-text-secondary hover:bg-surface-secondary transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleChangePassword}
+                disabled={pwdSaving}
+                className="px-4 py-2 rounded-lg text-[12px] bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              >
+                {pwdSaving ? '处理中…' : '确认修改'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 注销帐号弹窗 */}
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setDeleteModal(false)}>
+          <div
+            className="bg-surface border border-danger-200 rounded-2xl p-6 w-full max-w-sm space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <h3 className="text-lg font-bold text-danger-600">⚠ 注销帐号</h3>
+              <p className="text-sm text-text-secondary mt-2">
+                此操作<span className="font-bold text-danger-600">不可恢复</span>。您的帐号、喵币余额、作品、邀请关系等所有数据将被永久删除。
+              </p>
+              <p className="text-xs text-text-tertiary mt-2">
+                当前余额:<span className="font-bold text-text-primary ml-1">{user?.coins} 喵币</span>(一并清空)
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeleteModal(false)}
+                className="px-4 py-2 rounded-lg text-[12px] border border-border text-text-secondary hover:bg-surface-secondary transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg text-[12px] bg-danger-600 text-white hover:bg-danger-700 disabled:opacity-50 transition-colors"
+              >
+                {deleting ? '处理中…' : '确认注销'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

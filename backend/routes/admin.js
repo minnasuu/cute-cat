@@ -45,6 +45,23 @@ router.get('/users', async (_req, res) => {
         _count: { select: { coinTransactions: true } },
       },
     });
+
+    // 聚合每个用户的喵币来源(赠送 / 邀请 / 充值)
+    const userIds = users.map((u) => u.id);
+    const grouped = await prisma.coinTransaction.groupBy({
+      by: ['userId', 'type'],
+      where: { userId: { in: userIds }, type: { in: ['signup_bonus', 'invite_reward', 'recharge'] } },
+      _sum: { amount: true },
+    });
+    const summaryMap = {};
+    for (const g of grouped) {
+      if (!summaryMap[g.userId]) summaryMap[g.userId] = { signupBonus: 0, inviteReward: 0, recharge: 0 };
+      const sum = g._sum.amount ?? 0;
+      if (g.type === 'signup_bonus') summaryMap[g.userId].signupBonus = sum;
+      else if (g.type === 'invite_reward') summaryMap[g.userId].inviteReward = sum;
+      else if (g.type === 'recharge') summaryMap[g.userId].recharge = sum;
+    }
+
     res.json({
       users: users.map((u) => ({
         id: u.id,
@@ -56,11 +73,31 @@ router.get('/users', async (_req, res) => {
         inviteCount: u.inviteCount,
         txCount: u._count.coinTransactions,
         createdAt: u.createdAt,
+        coinsSummary: summaryMap[u.id] ?? { signupBonus: 0, inviteReward: 0, recharge: 0 },
       })),
     });
   } catch (err) {
     console.error('[admin] list users error:', err);
     res.status(500).json({ error: '获取用户列表失败' });
+  }
+});
+
+// ======================== Admin: 调整用户喵币 ========================
+router.post('/users/:id/coins', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, reason } = req.body || {};
+    if (!Number.isInteger(amount) || amount === 0) {
+      return res.status(400).json({ error: 'amount 必须是非零整数(正数加币/负数扣币)' });
+    }
+    const newBalance = await coins.adjustCoins(id, amount, typeof reason === 'string' ? reason : '');
+    res.json({ coins: newBalance });
+  } catch (err) {
+    if (err?.code === 'INSUFFICIENT_COINS') {
+      return res.status(400).json({ error: '余额不足,无法扣除' });
+    }
+    console.error('[admin] adjust coins error:', err);
+    res.status(500).json({ error: '调整喵币失败' });
   }
 });
 

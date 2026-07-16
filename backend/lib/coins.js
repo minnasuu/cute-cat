@@ -71,6 +71,29 @@ async function addCoins(userId, amount, type, { refId, note } = {}) {
   return user.coins;
 }
 
+// ─── 管理员调币(可正可负,扣币时校验余额,写流水) ───
+async function adjustCoins(userId, amount, reason) {
+  if (!Number.isInteger(amount) || amount === 0) {
+    throw new Error('adjustCoins: amount must be a non-zero integer');
+  }
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { coins: true } });
+  if (!user) throw new Error('用户不存在');
+  const newBalance = user.coins + amount;
+  if (newBalance < 0) {
+    const e = new Error('余额不足');
+    e.code = 'INSUFFICIENT_COINS';
+    throw e;
+  }
+  await prisma.user.update({ where: { id: userId }, data: { coins: newBalance } });
+  await recordTx(userId, {
+    amount,
+    balanceAfter: newBalance,
+    type: amount >= 0 ? 'refund' : 'adjust',
+    note: reason || (amount >= 0 ? '管理员加币' : '管理员扣币'),
+  });
+  return newBalance;
+}
+
 // ─── 消费(原子扣减,余额不足抛错) ───
 async function consumeCoins(userId, amount, { refId, note } = {}) {
   if (!Number.isInteger(amount) || amount <= 0) {
@@ -238,6 +261,7 @@ module.exports = {
   AI_COSTS,
   PACKAGES,
   addCoins,
+  adjustCoins,
   consumeCoins,
   getUserCoins,
   listTransactions,

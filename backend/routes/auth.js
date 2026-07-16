@@ -380,6 +380,33 @@ router.post('/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// ======================== 注销帐号 ========================
+// DELETE /api/auth/account —— 删除当前用户及级联数据,清除 cookie。
+// 关联清理策略: 级联删除的(CoinTransaction/Team.owner/AICallLog 等)由 DB 自动处理;
+// 自引用 invitedById 需手动置空,避免 FK 约束报错。
+router.delete('/account', authMiddleware, async (req, res) => {
+  try {
+    // 1. 解除「我邀请的人」对我的引用(避免自引用 FK 约束)
+    await prisma.user.updateMany({
+      where: { invitedById: req.userId },
+      data: { invitedById: null },
+    });
+
+    // 2. 删除用户
+    //    - owned Teams → cascade(Wrap TeamCat/Workflow/WorkflowRun/AICallLog/...)
+    //    - CoinTransaction, CommunityPost → cascade
+    //    - RedemptionCode.usedBy → SetNull
+    //    - 若用户是某 WorkflowStep 的引用等,视 cascade 配置自动处理
+    await prisma.user.delete({ where: { id: req.userId } });
+
+    clearAuthCookies(res);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[auth] delete account error:', err);
+    res.status(500).json({ error: '注销失败,请稍后重试' });
+  }
+});
+
 // ======================== 获取当前用户 ========================
 router.get('/me', authMiddleware, async (req, res) => {
   try {

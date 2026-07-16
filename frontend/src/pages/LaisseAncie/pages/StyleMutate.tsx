@@ -313,7 +313,6 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const [picker, setPicker] = useState<null | "style" | "fabric">(null);
 
   const [category, setCategory] = useState<GarmentCategoryId | "">("");
-  const [expandedAxis, setExpandedAxis] = useState<string | null>(null);
   const [batch, setBatch] = useState<StyleMutateBatch | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -777,7 +776,6 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                     disabled={batchRunning}
                     onClick={() => {
                       if (category === c.id) return;
-                      setExpandedAxis(null);
                       // 切换品类:清理会被新品类专属轴覆盖的通用轴勾选(如上衣→半身裙时,清除通用「衣长」勾选)
                       setSelected((prev) => {
                         const next = new Set(prev);
@@ -805,7 +803,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
             {/* 裂变方式 + 裂变轴(手风琴:逐轴折叠,降低平铺认知负荷) */}
             <div>
               {/* 裂变方式切换 */}
-              <div className="mb-3">
+              <div className="mb-2">
                 <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
                   <button
                     type="button"
@@ -849,63 +847,23 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                 </div>
               )}
 
-              {/* 已选汇总(全部折叠时也能查看 / 移除) */}
-              {selectedMutations.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {selectedMutations.map((m) => (
-                    <span
-                      key={`${m.axisId}::${m.optionId}`}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
-                    >
-                      {m.label}
-                      {!batchRunning && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (m.axisId === "custom") {
-                              setCustomMutations((prev) => prev.filter((x) => x !== m.optionId.replace(/^custom_/, "")));
-                            } else {
-                              toggleOption(m.axisId, m.optionId);
-                            }
-                          }}
-                          className="text-primary-400 hover:text-red-500 leading-none"
-                        >×</button>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* 手风琴:每轴一行,点击展开选项 */}
+              {/* 裂变轴:每轴一行,标签横向铺开,溢出滚动 */}
               {category && (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {visibleAxes.map((axis) => {
                     const disabledByFabric = axis.id === "fabric" && fabric != null;
-                    const axisSelCount = axis.options.filter((o) => selected.has(mutKey(axis.id, o.id))).length;
-                    const isOpen = expandedAxis === axis.id;
                     return (
                       <div
                         key={axis.id}
-                        className={`rounded-lg border bg-white overflow-hidden transition-colors ${isOpen ? "border-primary-300" : "border-gray-200"} ${disabledByFabric ? "opacity-40 pointer-events-none" : ""}`}
+                        className={`flex items-center gap-1 ${disabledByFabric ? "opacity-40 pointer-events-none" : ""}`}
                       >
-                        <button
-                          type="button"
-                          onClick={() => setExpandedAxis(isOpen ? null : axis.id)}
-                          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50/60 transition-colors"
-                        >
-                          <span className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-medium text-gray-700">{axis.label}</span>
-                            {axisSelCount > 0 && (
-                              <span className="text-[9px] bg-primary-500 text-white px-1.5 py-0.5 rounded-full leading-none">{axisSelCount}</span>
-                            )}
-                            {disabledByFabric && (
-                              <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">已锁定</span>
-                            )}
-                          </span>
-                          <span className={`text-gray-400 text-[10px] transition-transform ${isOpen ? "rotate-90" : ""}`}>▶</span>
-                        </button>
-                        {isOpen && (
-                          <div className="px-3 pb-2.5 pt-2 flex flex-wrap gap-1.5 border-t border-gray-100">
+                        {/* 左:轴标题 */}
+                        <span className="shrink-0 text-[11px] font-medium text-gray-700 w-14 text-right">{axis.label}</span>
+                        {/* 中:分割线(占满剩余空间) */}
+                        <div className="flex-1 mx-1.5 border-t border-dashed border-gray-200" />
+                        {/* 右:选项横向滚动 */}
+                        <div className="shrink-0 overflow-x-auto max-w-[55%] scrollbar-none">
+                          <div className="flex gap-1.5 w-max">
                             {axis.options.map((opt) => {
                               const key = mutKey(axis.id, opt.id);
                               const on = selected.has(key);
@@ -915,8 +873,8 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                                   type="button"
                                   disabled={batchRunning || disabledByFabric}
                                   onClick={() => toggleOption(axis.id, opt.id)}
-                                  className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${on
-                                    ? "bg-primary-50 border-primary-400 text-primary-700"
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors whitespace-nowrap ${on
+                                    ? "bg-primary-500 text-white border-primary-500"
                                     : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
                                     } disabled:opacity-50`}
                                 >
@@ -925,7 +883,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                               );
                             })}
                           </div>
-                        )}
+                        </div>
                       </div>
                     );
                   })}
@@ -935,9 +893,6 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
 
             {/* 自定义裂变款式(Tag Input) */}
             <div>
-              <label className={labelCls}>
-                自定义款式 <span className="text-gray-400 normal-case tracking-normal">(输入后回车添加)</span>
-              </label>
               <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 min-h-[32px] focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-100">
                 {customMutations.map((t) => (
                   <span
@@ -959,7 +914,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   onChange={(e) => { setCustomInput(e.target.value); setError(null); }}
                   onKeyDown={handleCustomKeyDown}
                   onBlur={() => { if (customInput.trim()) addCustomMutation(customInput); }}
-                  placeholder={customMutations.length ? "继续输入…" : "如: 泡泡袖、露背、开衩裙摆…"}
+                  placeholder={customMutations.length ? "继续输入…" : "自定义款式，输入后回车添加，如: 不对称领口…"}
                   disabled={batchRunning}
                   className="flex-1 min-w-[100px] outline-none text-[12px] bg-transparent placeholder:text-gray-400 py-0.5"
                 />

@@ -15,6 +15,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authMiddleware } = require('../middleware/auth');
+const bcrypt = require('bcryptjs');
 const coins = require('../lib/coins');
 
 const router = express.Router();
@@ -47,7 +48,14 @@ router.get('/me', async (req, res) => {
       include: { _count: { select: { coinTransactions: true } } },
     });
     if (!u) return res.status(404).json({ error: '用户不存在' });
-    res.json({ ...publicUser(u), txCount: u._count.coinTransactions });
+    // 系统喵币总量(全部用户余额之和),供前端判断充值库存:
+    // 若 user.coins > systemCoins * 0.95 则充值入口置灰
+    const agg = await prisma.user.aggregate({ _sum: { coins: true } });
+    res.json({
+      ...publicUser(u),
+      txCount: u._count.coinTransactions,
+      systemCoins: agg._sum.coins ?? 0,
+    });
   } catch (err) {
     console.error('[account] me error:', err);
     res.status(500).json({ error: '获取账户信息失败' });
@@ -116,6 +124,20 @@ router.get('/transactions', async (req, res) => {
   }
 });
 
+// ── 充值明细(三类收入:新用户赠送 / 邀请赠送 / 充值) ──
+router.get('/recharge-records', async (req, res) => {
+  try {
+    const items = await prisma.coinTransaction.findMany({
+      where: { userId: req.userId, type: { in: ['signup_bonus', 'invite_reward', 'recharge'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ items });
+  } catch (err) {
+    console.error('[account] recharge-records error:', err);
+    res.status(500).json({ error: '获取充值明细失败' });
+  }
+});
+
 // ── 邀请 ──
 router.get('/invite', async (req, res) => {
   try {
@@ -139,13 +161,32 @@ router.get('/invite', async (req, res) => {
   }
 });
 
-// ── 改资料 ──
+// ── 改资料(昵称/头像/密码) ──
 router.put('/profile', async (req, res) => {
   try {
-    const { nickname, avatar } = req.body;
+    const { nickname, avatar, oldPassword, newPassword } = req.body;
+    const data = {};
+    if (nickname) data.nickname = nickname;
+    if (avatar !== undefined) data.avatar = avatar;
+
+    // 改密码:需校验原密码
+    if (oldPassword || newPassword) {
+      if (!oldPassword || !newPassword) {
+        return res.status(400).json({ error: '请填写原密码和新密码' });
+      }
+      if (String(newPassword).length < 6) {
+        return res.status(400).json({ error: '新密码至少 6 位' });
+      }
+      const cur = await prisma.user.findUnique({ where: { id: req.userId }, select: { password: true } });
+      if (!cur) return res.status(404).json({ error: '用户不存在' });
+      const ok = bcrypt.compareSync(oldPassword, cur.password);
+      if (!ok) return res.status(400).json({ error: '原密码错误' });
+      data.password = bcrypt.hashSync(String(newPassword), 10);
+    }
+
     const u = await prisma.user.update({
       where: { id: req.userId },
-      data: { ...(nickname && { nickname }), ...(avatar !== undefined && { avatar }) },
+      data,
       select: { id: true, email: true, nickname: true, avatar: true, role: true, coins: true },
     });
     res.json(u);
