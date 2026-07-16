@@ -780,8 +780,17 @@ router.delete('/styles/:id', asyncHandler(async (req, res) => {
 
 router.get('/illustrations', asyncHandler(async (req, res) => {
   const where = { teamId: req.team.id };
-  const rows = await prisma.lAIllustrationAsset.findMany({ where, orderBy: [{ createdAt: 'desc' }] });
-  res.json(rows);
+  try {
+    const rows = await prisma.lAIllustrationAsset.findMany({ where, orderBy: [{ createdAt: 'desc' }] });
+    res.json(rows);
+  } catch (e) {
+    // 表尚未就绪(迁移未跑 / 表名修正迁移未应用)→ 返回空,避免首屏报错弹窗
+    if (e?.code === 'P2021') {
+      console.warn('[team-workbench] illustrations table not ready (P2021), returning empty');
+      return res.json([]);
+    }
+    throw e;
+  }
 }));
 
 router.post('/illustrations', asyncHandler(async (req, res) => {
