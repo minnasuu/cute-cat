@@ -2,7 +2,7 @@
 
 ALTER TABLE "LAProduct" ADD COLUMN IF NOT EXISTS "isPublic" BOOLEAN NOT NULL DEFAULT false;
 
-CREATE TABLE "CommunityPost" (
+CREATE TABLE IF NOT EXISTS "CommunityPost" (
     "id"            TEXT NOT NULL,
     "userId"        TEXT NOT NULL,
     "type"          TEXT NOT NULL,

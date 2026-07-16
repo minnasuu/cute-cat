@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import CatLogo from '../../components/CatLogo';
 import Navbar from '../../components/Navbar';
-import { AppIcon } from '../../components/icons';
 import MeowCoin from '../../components/MeowCoin';
 
 const NAV_ITEMS = [
@@ -11,21 +10,26 @@ const NAV_ITEMS = [
   { id: 'pricing', label: '计费', activeClass: 'text-secondary-500' },
 ];
 
+const icon1 = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 6C18 9.31371 20.6863 12 24 12C27.3137 12 30 9.31371 30 6H35.4545L42 15.8182L36.2727 20.7273V42H11.7273V20.7273L6 15.8182L12.5455 6H18Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round" /></svg>
+const icon2 = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 8H10" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M14 16H18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M16 6V10" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M8 14V18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M22 8H26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M30 16H34" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M32 6V10" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M24 14V18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M38 8H42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M40 14V18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M6 24H10" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M14 32H18" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M16 22V26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M8 30V34" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M22 24H26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M30 32H34" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M32 22V26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M24 30V34" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M38 24H42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M40 30V34" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M6 40H10" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M16 38V42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M22 40H26" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M32 38V42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M38 40H42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+const icon3 = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.0004 11.619C26.0933 11.619 27.7899 9.91347 27.7899 7.80952C27.7899 5.70558 26.0933 4 24.0004 4C21.9075 4 20.2109 5.70558 20.2109 7.80952C20.2109 9.91347 21.9075 11.619 24.0004 11.619Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round" /><path d="M9.78947 40.1906C11.8823 40.1906 13.5789 38.485 13.5789 36.3811C13.5789 34.2771 11.8823 32.5715 9.78947 32.5715C7.69661 32.5715 6 34.2771 6 36.3811C6 38.485 7.69661 40.1906 9.78947 40.1906Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round" /><path d="M38.2104 40.1906C40.3032 40.1906 41.9998 38.485 41.9998 36.3811C41.9998 34.2771 40.3032 32.5715 38.2104 32.5715C36.1175 32.5715 34.4209 34.2771 34.4209 36.3811C34.4209 38.485 36.1175 40.1906 38.2104 40.1906Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round" /><path d="M33.1426 10.3142C38.444 13.4629 41.9999 19.2664 41.9999 25.9048C41.9999 26.4816 41.9731 27.0522 41.9206 27.6152V27.6152" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M31.014 42.575C28.8585 43.4926 26.4883 44.0001 24.0001 44.0001C21.512 44.0001 19.1418 43.4926 16.9863 42.575" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M6.07936 27.6152C6.02685 27.0522 6 26.4816 6 25.9048C6 19.2664 9.5559 13.4629 14.8573 10.3142" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /></svg>
 const WORKSPACES = [
-  { icon: '✂️', name: '服装工作台', desc: '灵感扩散 → 方案 → 线稿 → 选材料 → 成图,材料组合一键出效果图', active: true },
-  { icon: '🧶', name: '编织工作台', desc: '即将开放', active: false },
-  { icon: '📿', name: '串珠工作台', desc: '即将开放', active: false },
+  { icon: icon1, name: '服装设计工作台', desc: '灵感扩散 → 方案 → 线稿 → 选材料 → 成图,材料组合一键出效果图', active: true },
+  { icon: icon2, name: '编织工作台', desc: '即将开放', active: false },
+  { icon: icon3, name: '串珠工作台', desc: '即将开放', active: false },
 ];
 
 const InlineCoin = () => <MeowCoin size={14} className="inline-block" />;
 
+const iconGift = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M41 44V20H7V44H41Z" fill="none" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M24 44V20" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M41 44H7" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><rect x="4" y="12" width="40" height="8" fill="none" stroke="#333" stroke-width="4" stroke-linejoin="round" /><path d="M16 4L24 12L32 4" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+const iconShare = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 40L36 28L32 32L28 36L24 40ZM24 40L4 20L16 8L24 16" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M17 23L32 8L44 20L36 28L28 20L22 26L17 23ZM17 23L24 16" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M28 36L25 33" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M32 32L29 29" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /></svg>
 const PRICING = [
-  { emoji: '🐾', title: <>按次计费,透明无套路</>, desc: <>充值喵币(7 元 = 1000 <InlineCoin />),GPT-Image-2 生图 9 <InlineCoin />/张、文本 1 <InlineCoin />/次,无隐藏费用。</> },
-  { emoji: '🎁', title: <>新用户送 100 <InlineCoin /></>, desc: <>注册即赠体验金,先试后买,满意再充值。</> },
-  { emoji: '🤝', title: <>邀请好友各得 100 <InlineCoin /></>, desc: <>分享邀请链接,邀请好友注册双方各得奖励,上限 10 人。</> },
+  { emoji: '🐾', title: <>按次计费</>, desc: <>充值喵币(7 元 = 1000 喵币)，GPT-Image-2 生图 9 喵币/张，生成失败退还。</> },
+  { emoji: iconGift, title: <>新用户送 100 喵币</>, desc: <>注册即赠体验金，先试后买，满意再充值。</> },
+  { emoji: iconShare, title: <>邀请好友各得 100 喵币</>, desc: <>分享邀请链接，邀请好友注册双方各得奖励，上限 5 人。</> },
 ];
 
-const CoinOrEmoji: React.FC<{ emoji: string; size?: number }> = ({ emoji, size = 32 }) =>
+const CoinOrEmoji: React.FC<{ emoji: React.ReactNode; size?: number }> = ({ emoji, size = 32 }) =>
   emoji === '🐾' ? <MeowCoin size={size} /> : <span>{emoji}</span>;
 
 const LandingPage: React.FC = () => {
@@ -103,7 +107,6 @@ const LandingPage: React.FC = () => {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary-50 to-accent-50 border border-primary-200 mb-10">
             <span className="text-sm font-bold text-primary-600">生图模型</span>
             <span className="text-sm font-black text-text-primary bg-white px-2.5 py-0.5 rounded-full shadow-sm">GPT-Image-2</span>
-            <span className="text-xs text-text-tertiary">驱动全系工作台出图</span>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-6">
@@ -128,15 +131,15 @@ const LandingPage: React.FC = () => {
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
-              { label: "生图模型", val: "GPT-Image-2", coin: false },
-              { label: "喵币计费", val: "7元=1000", coin: true },
-              { label: "生图单价", val: "9 /张", coin: true },
-              { label: "新人礼包", val: "100 ", coin: true },
+              { label: "生图模型", val: "GPT-Image-2" },
+              { label: "喵币计费", val: "7元=1000喵币" },
+              { label: "生图单价", val: "9 喵币 /张" },
+              { label: "新人礼包/邀请奖励", val: "100 喵币" },
             ].map((s, i) => (
               <div key={i} className="text-center">
                 <div className="text-2xl font-black text-text-primary inline-flex items-center gap-1">
+                  {i === 3 && <MeowCoin size={20} />}
                   {s.val}
-                  {(s as { coin?: boolean }).coin && <MeowCoin size={20} />}
                 </div>
                 <div className="text-xs font-bold text-text-tertiary uppercase tracking-widest mt-1">
                   {s.label}
@@ -155,7 +158,7 @@ const LandingPage: React.FC = () => {
               工作台
             </p>
             <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6">
-              每条赛道,一条专属流水线
+              每条赛道，都有多样的创作玩法
             </h2>
             <p className="text-lg text-text-secondary max-w-2xl mx-auto">
               切换工作台即可进入对应创作模式,各工作台额度通用。
@@ -173,7 +176,7 @@ const LandingPage: React.FC = () => {
                 </h3>
                 <p className="text-sm text-text-secondary">{w.desc}</p>
                 {w.active && (
-                  <span className="inline-block mt-4 px-3 py-1 bg-primary-500 text-white text-xs font-bold rounded-full">
+                  <span className="inline-block mt-4 px-3 py-1 border border-primary-300 text-primary-500 text-xs font-bold rounded-full">
                     当前开放
                   </span>
                 )}
@@ -196,11 +199,10 @@ const LandingPage: React.FC = () => {
               计费
             </p>
             <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6">
-              透明按次,先试后买
+              透明按次，先试后买
             </h2>
             <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-              无月费、无捆绑,按实际用量喵币计费。新用户送 100 <InlineCoin />{" "}
-              先体验。
+              无月费、无捆绑，按实际用量和模型价格使用喵币计费。新用户送 100 喵币体验（预计生成11张图）。
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -229,16 +231,15 @@ const LandingPage: React.FC = () => {
             社区
           </p>
           <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6">
-            从工作台到舞台
+            创作灵感，尽在社区
           </h2>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto mb-10">
-            将设计作品一键公开,在社区展示、获得反馈,与其他创作者交流灵感。
+            将设计作品一键公开，在社区展示，与其他创作者交流灵感。
           </p>
           <Link
             to="/community"
-            className="inline-flex items-center gap-2 px-8 py-4 text-lg font-bold bg-accent-500 text-white rounded-2xl hover:bg-accent-600 transition-all"
+            className="inline-flex items-center gap-2 px-8 py-4 text-lg font-bold bg-primary-500 text-white rounded-2xl hover:bg-accent-600 transition-all"
           >
-            <AppIcon symbol="Users" size={20} className="text-white" />
             逛逛社区
           </Link>
         </div>
@@ -251,15 +252,14 @@ const LandingPage: React.FC = () => {
             开始你的创作
           </h2>
           <p className="text-lg text-text-secondary max-w-xl mx-auto mb-10">
-            注册即送 100 <InlineCoin />
-            ,免费体验 AI 设计工作台的完整能力。
+            注册即送<InlineCoin /> 100 喵币，免费体验 AI 设计工作台的完整能力。
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               to="/register"
               className="w-full sm:w-auto px-10 py-4 text-lg font-bold bg-primary-500 text-text-inverse rounded-2xl hover:bg-primary-600 transition-all"
             >
-              免费注册
+              申请内测体验
             </Link>
             <Link
               to="/login"

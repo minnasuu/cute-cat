@@ -19,7 +19,7 @@ const FEATURES = [
   {
     icon: 'Shirt',
     title: '专属创作流水线',
-    desc: '服装工作台已开放：灵感扩散到成图，材料组合一键出效果。',
+    desc: '服装工作台已开放：灵感生图、材料组合、款式裂变，多种设计方式。',
   },
   {
     icon: 'Coins',
@@ -147,14 +147,14 @@ const LoginPage: React.FC = () => {
             </ul>
           </div>
 
-          <p className="lg:hidden mt-8 flex items-center justify-center gap-2 text-xs text-text-tertiary">
+          {/* <p className="lg:hidden mt-8 flex items-center justify-center gap-2 text-xs text-text-tertiary">
             <AppIcon symbol="Cat" size={14} className="text-text-tertiary shrink-0" />
             让可爱的猫猫帮你工作
           </p>
           <p className="hidden lg:flex items-center gap-2 text-xs text-text-tertiary login-rise" style={{ animationDelay: '700ms' }}>
             <AppIcon symbol="Cat" size={14} className="text-text-tertiary shrink-0" />
             让可爱的猫猫帮你工作
-          </p>
+          </p> */}
         </aside>
 
         {/* ── Login panel（移动端优先展示） ── */}
@@ -170,7 +170,7 @@ const LoginPage: React.FC = () => {
 
             <div className="hidden lg:block mb-8">
               <h2 className="text-2xl font-black tracking-tight text-text-primary">欢迎回来</h2>
-              <p className="mt-1.5 text-sm text-text-secondary">登录后继续你的创作流水线</p>
+              <p className="mt-1.5 text-sm text-text-secondary">登录后继续你的创作</p>
             </div>
             <h2 className="lg:hidden text-xl font-semibold text-text-primary mb-6">登录</h2>
 
@@ -242,9 +242,6 @@ const LoginPage: React.FC = () => {
               <AppIcon symbol="Gift" size={16} className="text-secondary-500 shrink-0 mt-0.5" />
               <span>
                 新用户注册即送体验喵币，先跑通一条流水线，满意再充值。
-                <Link to="/register" className="ml-1 text-primary-600 hover:text-primary-700 font-medium">
-                  立即体验
-                </Link>
               </span>
             </div>
           </div>

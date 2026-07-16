@@ -301,21 +301,7 @@ export default function ComposerBrief({
           </div>
         )}
 
-        {/* 主按钮 */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onGenerate}
-            disabled={generating || refineBusy || !designName.trim()}
-            className="px-5 py-2.5 rounded-2xl bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white font-medium text-sm shadow-lg transition-colors"
-          >
-            {generating ? "生成中…" : "生成设计方案"}
-          </button>
-          {(description.trim() || references.length > 0) && (
-            <span className="text-[10px] text-gray-400">
-              AI 将根据简报生成方案 → 线稿 → 选材质 → 成图
-            </span>
-          )}
-        </div>
+
       </div>
 
       {/* 多轮细化(保留对话入口,但收起在简报下方) */}

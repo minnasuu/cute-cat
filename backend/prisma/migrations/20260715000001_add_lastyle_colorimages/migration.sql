@@ -1,6 +1,6 @@
 -- Add LAStyle table (款式资源) + LAMaterial.colorImages (面料色卡)
 
-CREATE TABLE "LAStyle" (
+CREATE TABLE IF NOT EXISTS "LAStyle" (
     "id"        TEXT NOT NULL,
     "teamId"    TEXT NOT NULL,
     "slug"      TEXT NOT NULL,
@@ -14,8 +14,8 @@ CREATE TABLE "LAStyle" (
     CONSTRAINT "LAStyle_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "LAStyle_teamId_idx" ON "LAStyle"("teamId");
+CREATE INDEX IF NOT EXISTS "LAStyle_teamId_idx" ON "LAStyle"("teamId");
 
-CREATE INDEX "LAStyle_category_idx" ON "LAStyle"("category");
+CREATE INDEX IF NOT EXISTS "LAStyle_category_idx" ON "LAStyle"("category");
 
-ALTER TABLE "LAMaterial" ADD COLUMN "colorImages" JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE "LAMaterial" ADD COLUMN IF NOT EXISTS "colorImages" JSONB NOT NULL DEFAULT '[]'::jsonb;

@@ -96,7 +96,7 @@ export default function MaterialsPage() {
           const fd = new FormData();
           fd.append("file", file);
           fd.append("idx", String(i));
-          await api.uploadMaterialColorImage(id, fd).catch(() => {});
+          await api.uploadMaterialColorImage(id, fd).catch(() => { });
         }
       }
     }
@@ -623,15 +623,15 @@ function MaterialForm({
     setCards((cs) =>
       cs.length < MAX_CARDS
         ? [
-            ...cs,
-            {
-              hex: "#cccccc",
-              name: "",
-              url: "",
-              outOfStock: false,
-              imageFile: null,
-            },
-          ]
+          ...cs,
+          {
+            hex: "#cccccc",
+            name: "",
+            url: "",
+            outOfStock: false,
+            imageFile: null,
+          },
+        ]
         : cs,
     );
   const removeCard = (i: number) =>
@@ -832,7 +832,7 @@ function MaterialForm({
       {/* 基础信息 */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <div className={labelCls}>名称 *</div>
+          <div className={labelCls}>名称 <span className="text-red-500">*</span></div>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}

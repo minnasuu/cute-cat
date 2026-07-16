@@ -154,7 +154,7 @@ function BrandInfoAssets() {
                 onChange={(e) => { onLogo(e.target.files?.[0] || null); e.target.value = ""; }} />
             </div>
             <div className="flex-1 grid grid-cols-1 gap-3">
-              <div><div className={labelCls}>名称 *</div><input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="如:山海织物 / Montsea" className={inputCls} /></div>
+              <div><div className={labelCls}>名称 <span className="text-red-500">*</span></div><input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="如:山海织物 / Montsea" className={inputCls} /></div>
               <div><div className={labelCls}>Slogan</div><input value={form.slogan} onChange={(e) => set("slogan", e.target.value)} placeholder="如:自然·自洽 / Be in tune." className={inputCls} /></div>
             </div>
           </div>

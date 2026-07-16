@@ -11,7 +11,7 @@ const WORKBENCH_MARKER = '__cuca_workbench_v1__';
  * 官方工作台列表。当前仅服装工作台激活;后续在此数组追加即可扩展(编织、串珠…)。
  */
 const OFFICIAL_WORKSPACES = [
-  { workspaceType: 'clothing', name: '服装工作台', icon: '✂️' },
+  { workspaceType: 'clothing', name: '服装设计工作台', icon: '✂️' },
   // { workspaceType: 'knitting', name: '编织工作台', icon: '🧶' },   // 后续开放
   // { workspaceType: 'beading', name: '串珠工作台', icon: '📿' },   // 后续开放
 ];
@@ -109,12 +109,12 @@ async function seedCatsAndWorkflowsForTeam(prisma, teamId) {
       });
     }
   } else if (process.env.WORKBENCH_REPAIR_WORKFLOWS === '1') {
-      await repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, byTemplate);
-      await repairBrandKitWorkflowIfNeeded(prisma, teamId, byTemplate);
-      await repairPosterWorkflowIfNeeded(prisma, teamId, byTemplate);
-      await repairFashionDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
-      await repairPhoneCaseDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
-      await repairIllustrationDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
+    await repairWebPageBuilderWorkflowIfNeeded(prisma, teamId, byTemplate);
+    await repairBrandKitWorkflowIfNeeded(prisma, teamId, byTemplate);
+    await repairPosterWorkflowIfNeeded(prisma, teamId, byTemplate);
+    await repairFashionDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
+    await repairPhoneCaseDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
+    await repairIllustrationDesignWorkflowIfNeeded(prisma, teamId, byTemplate);
   }
 }
 
@@ -125,7 +125,7 @@ async function ensureWorkbenchTeam(prisma, userId) {
   // 若存量用户完全没有团队(极旧数据),兜底创建一个
   if (!first) {
     const team = await prisma.team.create({
-      data: { name: '服装工作台', workspaceType: 'clothing', isOfficial: true, description: WORKBENCH_MARKER, ownerId: userId },
+      data: { name: '服装设计工作台', workspaceType: 'clothing', isOfficial: true, description: WORKBENCH_MARKER, ownerId: userId },
     });
     await seedCatsAndWorkflowsForTeam(prisma, team.id);
     return team;

@@ -308,7 +308,7 @@ function StatusFilter({
 }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value as ProductStatus | "all")}
-      className="text-[12px] border border-gray-200 rounded-xl px-3 py-1.5 bg-white text-gray-600 focus:outline-none focus:border-primary-500"
+      className="text-[12px] border border-gray-200 rounded-xl pl-3 pr-8 py-1.5 bg-white text-gray-600 focus:outline-none focus:border-primary-500"
       title="按工序状态筛选">
       <option value="all">全部状态</option>
       {statuses.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}

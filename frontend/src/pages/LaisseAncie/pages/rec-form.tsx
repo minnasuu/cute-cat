@@ -1,6 +1,9 @@
 // @ts-nocheck
 /**
  * rec-form —— AI 材质+配色推荐编辑表单(从 Composer 抽出,供 ComposerPipeline 复用)。
+ *
+ * 本组件只负责展示与编辑材质/配色字段,不再渲染「确认」按钮——
+ * 流程推进按钮统一收纳到左栏底部 GenerateButton(按 stage 切换动作)。
  */
 import { SwatchStrip } from "./Materials";
 import type { MaterialRecommendation } from "../types/design";
@@ -9,7 +12,7 @@ export function RecForm({ recommendation, onChange, onRefresh, onConfirm, loadin
   recommendation: MaterialRecommendation | null;
   onChange: (r: MaterialRecommendation) => void;
   onRefresh: () => void;
-  onConfirm: () => void;
+  onConfirm?: () => void;
   loading: boolean;
   disabled: boolean;
 }) {
@@ -144,14 +147,6 @@ export function RecForm({ recommendation, onChange, onRefresh, onConfirm, loadin
           💬 {recommendation.reason}
         </div>
       )}
-
-      <button
-        onClick={onConfirm}
-        disabled={disabled || !recommendation.name.trim()}
-        className="w-full text-[12px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-3 py-2 rounded-lg font-medium transition-colors"
-      >
-        确认材质方案,生成效果图
-      </button>
     </div>
   );
 }

@@ -95,30 +95,26 @@ const RegisterPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-secondary-50 via-surface to-primary-50 flex items-center justify-center p-4">
       <div className="w-full max-w-xl">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-secondary-100 mb-3">
-            <CatLogo size={48} />
-          </div>
-        </div>
 
         {/* Form */}
         <div className="bg-surface rounded-2xl p-8 border border-border-strong">
-          <h2 className="text-xl text-center font-semibold text-text-primary mb-6">注册</h2>
+          <div className='flex gap-3 items-center justify-center mb-6'>
+            <CatLogo size={48} />
+            <h2 className="text-xl text-center font-semibold text-text-primary">欢迎注册，喵～</h2>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {betaRequired && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <label className="block text-sm font-semibold text-amber-700 mb-1">🔑 内测码</label>
+                <label className="flex items-baseline gap-1 text-sm font-semibold text-amber-700 mb-1">内测码<p className="text-xs text-amber-600">（当前为内测阶段，需要内测码才能注册）</p></label>
                 <input
                   type="text"
                   value={betaCode}
                   onChange={(e) => setBetaCode(e.target.value.toUpperCase())}
-                  placeholder="请输入内测邀请码"
+                  placeholder="请输入内测验证码"
                   required={betaRequired}
                   className="w-full px-4 py-3 rounded-xl border border-amber-300 bg-white focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all outline-none font-mono tracking-widest text-center text-lg"
                 />
-                <p className="text-xs text-amber-600 mt-1.5">当前为内测阶段，需要邀请码才能注册</p>
               </div>
             )}
 
@@ -131,7 +127,7 @@ const RegisterPage: React.FC = () => {
                 placeholder="输入好友的邀请码，注册后双方均可获得喵币"
                 className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none font-mono tracking-widest text-center uppercase"
               />
-              <p className="text-xs text-text-tertiary mt-1.5 inline-flex items-center gap-1">使用邀请码注册，你和邀请人各得 100 <MeowCoin size={14} />。</p>
+              <p className="text-xs text-text-tertiary mt-1.5 inline-flex items-center gap-1">使用邀请码注册，你和邀请人各得<MeowCoin size={14} /> 100 喵币。</p>
             </div>
 
             <div>
@@ -148,89 +144,88 @@ const RegisterPage: React.FC = () => {
 
             <div className="flex gap-2">
               <div className='flex-1'>
-              <label className="block text-sm font-medium text-text-secondary mb-1">邮箱</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                required
-                className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none"
-              />
-            </div>
-
-            <div className='flex-1'>
-              <label className="block text-sm font-medium text-text-secondary mb-1">验证码</label>
-              <p className="text-xs text-text-tertiary mb-1.5">验证码 10 分钟内有效，请填写最新一封邮件中的 6 位数字。</p>
-              <div className="relative flex gap-2">
+                <label className="block text-sm font-medium text-text-secondary mb-1">邮箱</label>
                 <input
-                  type="text"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="6位验证码"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
                   required
-                  maxLength={6}
-                  className="flex-1 px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none"
+                  className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none"
                 />
-                <button
-                  type="button"
-                  onClick={handleSendCode}
-                  disabled={codeLoading || countdown > 0}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-secondary-100 text-secondary-700 font-medium rounded-lg cursor-pointer hover:bg-secondary-200 transition-all disabled:opacity-50 whitespace-nowrap text-sm"
-                >
-                  {codeLoading ? '...' : countdown > 0 ? `${countdown}s` : codeSent ? '重发' : '获取验证码'}
-                </button>
               </div>
-            </div>
+
+              <div className='flex-1'>
+                <label className="flex items-center gap-1 text-sm font-medium text-text-secondary mb-1">验证码<span className="text-xs text-text-tertiary">（10 分钟内有效）</span></label>
+                <div className="relative flex gap-2">
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="6位验证码"
+                    required
+                    maxLength={6}
+                    className="flex-1 px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={codeLoading || countdown > 0}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-secondary-100 text-secondary-700 font-medium rounded-lg cursor-pointer hover:bg-secondary-200 transition-all disabled:opacity-50 whitespace-nowrap text-sm"
+                  >
+                    {codeLoading ? '...' : countdown > 0 ? `${countdown}s` : codeSent ? '重发' : '获取验证码'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-2">
               <div className='flex-1'>
-              <label className="block text-sm font-medium text-text-secondary mb-1">密码</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="至少6位密码"
-                  required
-                  minLength={6}
-                  className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none pr-12"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors text-sm select-none"
-                >
-                  {showPassword ? '隐藏' : '显示'}
-                </button>
+                <label className="block text-sm font-medium text-text-secondary mb-1">密码</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="至少6位密码"
+                    required
+                    minLength={6}
+                    className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none pr-12"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors text-sm select-none"
+                  >
+                    {showPassword ? '隐藏' : '显示'}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className='flex-1'>
-              <label className="block text-sm font-medium text-text-secondary mb-1">确认密码</label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="再次输入密码"
-                  required
-                  minLength={6}
-                  className={`w-full px-4 py-3 rounded-xl border bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none pr-12 ${confirmPassword && confirmPassword !== password ? 'border-red-400' : 'border-border-strong'}`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors text-sm select-none"
-                >
-                  {showConfirmPassword ? '隐藏' : '显示'}
-                </button>
+              <div className='flex-1'>
+                <label className="block text-sm font-medium text-text-secondary mb-1">确认密码</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="再次输入密码"
+                    required
+                    minLength={6}
+                    className={`w-full px-4 py-3 rounded-xl border bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none pr-12 ${confirmPassword && confirmPassword !== password ? 'border-red-400' : 'border-border-strong'}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors text-sm select-none"
+                  >
+                    {showConfirmPassword ? '隐藏' : '显示'}
+                  </button>
+                </div>
+                {confirmPassword && confirmPassword !== password && (
+                  <p className="text-xs text-red-500 mt-1">两次输入的密码不一致</p>
+                )}
               </div>
-              {confirmPassword && confirmPassword !== password && (
-                <p className="text-xs text-red-500 mt-1">两次输入的密码不一致</p>
-              )}
-            </div>
             </div>
 
             <button

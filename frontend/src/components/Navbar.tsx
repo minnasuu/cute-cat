@@ -53,7 +53,7 @@ const Navbar: React.FC<NavbarProps> = ({
   const ROLE_LABELS: Record<string, string> = {
     admin: '管理员',
     member: '会员',
-    user: '用户',
+    user: '体验用户',
   };
 
   const isFixed = variant === 'fixed';
@@ -117,13 +117,12 @@ const Navbar: React.FC<NavbarProps> = ({
                 <span className="font-medium text-text-primary truncate">
                   {user.nickname || user.email}
                 </span>
-                {user.role && user.role !== 'user' && (
+                {user.role && (
                   <span
-                    className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                      user.role === 'admin'
-                        ? 'bg-danger-50 text-danger-600 border border-danger-100'
-                        : 'bg-amber-50 text-amber-700 border border-amber-200'
-                    }`}
+                    className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${user.role === 'admin'
+                      ? 'bg-danger-50 text-danger-600 border border-danger-100'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}
                   >
                     {ROLE_LABELS[user.role] || user.role}
                   </span>

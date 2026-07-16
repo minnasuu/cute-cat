@@ -17,7 +17,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "User_inviteCode_key" ON "User"("inviteCode");
 
 CREATE INDEX IF NOT EXISTS "User_invitedById_idx" ON "User"("invitedById");
 
-CREATE TABLE "CoinTransaction" (
+CREATE TABLE IF NOT EXISTS "CoinTransaction" (
     "id"            TEXT NOT NULL,
     "userId"        TEXT NOT NULL,
     "amount"        INTEGER NOT NULL,

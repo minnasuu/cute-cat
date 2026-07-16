@@ -303,7 +303,7 @@ function IllustrationForm({ initial, onCancel, onSave }: {
 
       {/* 基础信息 */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><div className={labelCls}>名称 *</div><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></div>
+        <div className="col-span-2"><div className={labelCls}>名称 <span className="text-red-500">*</span></div><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></div>
         <div className="col-span-2">
           <div className={labelCls}>标签（逗号分隔）</div>
           <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="花卉, 复古, 几何" className={inputCls} />

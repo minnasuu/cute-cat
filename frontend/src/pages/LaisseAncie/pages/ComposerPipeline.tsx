@@ -1,12 +1,14 @@
 // @ts-nocheck
 /**
- * ComposerPipeline —— 灵感扩散右栏「生成流程」。
+ * ComposerPipeline —— 灵感扩散右栏「生成流程」(纯展示)。
  *
  * 把原来的 chat 流输出 + PlanSideBar 窄缩略,改成纵向分步面板:
  *   企划方案 → 设计线稿 → 材质推荐 → 终稿成图
  * 每一步一个固定卡片(结构稳定不跳动);未到达的步骤显示占位,正在生成的步骤显示 spinner + 计时。
  *
- * 数据来自现有状态(msgs/images/recommendation/stage),只是渲染位置从 chat 流/侧栏挪到固定卡片——状态机本身不动。
+ * 本组件只负责展示结构与内容,所有操作按钮(确认方案 / 确认线稿 / 确认材质 / 保存)
+ * 统一收纳到左栏底部 GenerateButton(按 stage 切换动作)。
+ * 数据来自现有状态(images/recommendation/stage),状态机本身不动。
  */
 import { Markdown } from "../lib/markdown";
 import { ImageCard, LiveElapsed, type GeneratedImage } from "./image-card";
@@ -26,12 +28,8 @@ interface Props {
   recommendation: MaterialRecommendation | null;
   generating: boolean;
   expressMode: boolean;
-  // 动作
-  onConfirmProposal: () => void;
-  onConfirmLineart: () => void;
-  onGenerateFinal: () => void;
+  // 动作(仅保留展示所需:修图 + 材质表单编辑/刷新;流程推进按钮已统一到左栏底部)
   onRegenerateOne: (slot: string, label: string, instruction: string) => void;
-  onSaveToLookbook: () => void;
   onRecommendationChange: (r: MaterialRecommendation) => void;
   onRefreshRecommendation: () => void;
 }
@@ -63,12 +61,11 @@ export default function ComposerPipeline(props: Props) {
   const finals = images.filter((im) => im.slot === "final" && im.url && !im.error);
   const hasLineart = lineart.length > 0;
   const hasFinal = finals.length > 0;
-  const showSave = (stage === "presenting" || stage === "presenting-lineart" || stage === "material-recommend") && (hasLineart || hasFinal);
 
   return (
-    <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
+    <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 px-5 pb-5 space-y-5">
       {/* 步骤指示 */}
-      <ol className="flex items-center gap-1 text-[10px]">
+      <ol className="flex items-center gap-1 text-[10px] sticky top-0 z-10 bg-white py-5 mb-0">
         {STEPS.map((s, i) => {
           const done = step > i;
           const active = step === i;
@@ -87,7 +84,7 @@ export default function ComposerPipeline(props: Props) {
       {/* 空态:简报未提交 */}
       {step === -1 && !generating && (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
-          填写左侧简报并点击<br />「生成设计方案」
+          填写左侧简报并点击<br />底部「生成设计方案」
         </div>
       )}
 
@@ -102,12 +99,6 @@ export default function ComposerPipeline(props: Props) {
           ) : generating && step === 0 ? (
             <StepSpinner label="正在生成企划方案" />
           ) : null}
-          {step === 0 && planText && !generating && (
-            <button onClick={props.onConfirmProposal}
-              className="mt-3 w-full text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
-              确认方案,生成线稿
-            </button>
-          )}
         </StepCard>
       )}
 
@@ -123,14 +114,6 @@ export default function ComposerPipeline(props: Props) {
           ) : (
             <div className="text-[12px] text-gray-500">线稿生成后在此预览</div>
           )}
-          {step === 1 && hasLineart && !generating && (
-            <div className="mt-3 flex gap-2">
-              <button onClick={props.onConfirmLineart}
-                className="flex-1 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 rounded-lg font-medium transition-colors">
-                线稿确认,下一步选材质
-              </button>
-            </div>
-          )}
         </StepCard>
       )}
 
@@ -141,7 +124,6 @@ export default function ComposerPipeline(props: Props) {
             recommendation={recommendation}
             onChange={props.onRecommendationChange}
             onRefresh={props.onRefreshRecommendation}
-            onConfirm={props.onGenerateFinal}
             loading={!recommendation}
             disabled={generating}
           />
@@ -163,14 +145,6 @@ export default function ComposerPipeline(props: Props) {
             <div className="text-[12px] text-gray-500">确认材质后在此预览终稿</div>
           )}
         </StepCard>
-      )}
-
-      {/* 保存到 Lookbook */}
-      {showSave && (
-        <button onClick={props.onSaveToLookbook}
-          className="w-full text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 rounded-lg font-medium transition-colors">
-          保存到 Lookbook
-        </button>
       )}
     </aside>
   );

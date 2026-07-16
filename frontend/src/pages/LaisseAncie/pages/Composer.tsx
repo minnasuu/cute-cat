@@ -1232,7 +1232,71 @@ export default function ComposerPage({
   }
 
   // ── 单品 / 系列:结构化双栏 ──
-  // 左:设计简报(固定 header + 可滚动内容 + 底部生成按钮) 右:生成流程(企划→线稿→材质→终稿)
+  // 左:设计简报(固定 header + 可滚动内容) 右:生成流程(企划→线稿→材质→终稿,纯展示)
+  // 所有推进按钮统一收纳到左栏底部 GenerateButton,按 stage 切换动作,避免多按钮同时出现
+  const stageAction = (() => {
+    if (mode === "illustration") return null;
+    // 无方案:生成设计方案
+    if (!planText && (stage === "greeting" || stage === "brainstorming" || stage === "references")) {
+      return {
+        label: "生成设计方案",
+        onClick: () => void generateFromBrief(),
+        loading: busy,
+        disabled: !designName.trim() || knowledgeLoading,
+        coins: 0,
+      };
+    }
+    // 方案就绪:确认方案 → 生成线稿(极速模式直接出图)
+    if (stage === "planning" || stage === "proposal") {
+      return {
+        label: expressMode ? "确认方案,立即生成" : "确认方案,生成线稿",
+        onClick: () => void startGeneration(),
+        loading: generating,
+        disabled: false,
+        coins: getGenerateCount() * AI_COST_PER_IMAGE,
+      };
+    }
+    // 生成线稿 / 图片中
+    if (stage === "generating-lineart" || stage === "generating") {
+      return { label: "生成中", onClick: () => {}, loading: true, disabled: true, coins: 0 };
+    }
+    // 线稿就绪:确认线稿 → 选材料
+    if (stage === "presenting-lineart") {
+      return {
+        label: "线稿确认,选材料",
+        onClick: () => void confirmLineart(),
+        loading: busy,
+        disabled: false,
+        coins: 0,
+      };
+    }
+    // 材质推荐:确认材质 → 生成终稿
+    if (stage === "material-recommend") {
+      return {
+        label: "确认材质,生成终稿",
+        onClick: () => void generateFinal(),
+        loading: generating,
+        disabled: !recommendation?.name.trim(),
+        coins: getGenerateCount() * AI_COST_PER_IMAGE,
+      };
+    }
+    // 生成终稿中
+    if (stage === "generating-final") {
+      return { label: "生成中", onClick: () => {}, loading: true, disabled: true, coins: 0 };
+    }
+    // 终稿就绪:保存到 Lookbook
+    if (stage === "presenting") {
+      return {
+        label: "保存到 Lookbook",
+        onClick: () => void saveToLookbook(),
+        loading: busy,
+        disabled: !images.some((im) => im.url),
+        coins: 0,
+      };
+    }
+    return null;
+  })();
+
   const hasImg = images.some((im) => im.url);
   return (
     <>
@@ -1247,21 +1311,22 @@ export default function ComposerPage({
               references={briefRefs as any} setReferences={setBriefRefs as any}
               knowledge={knowledge} brandLoading={brandLoading} knowledgeLoading={knowledgeLoading}
               generating={generating}
-              onGenerate={() => void generateFromBrief()}
               onRefine={(t) => void send(t)}
               onNewSession={resetSession}
               refineBusy={busy}
             />
           </div>
 
-          {/* 底部:固定生成按钮 */}
-          {canGenerate && (
+          {/* 底部:固定行动按钮(按 stage 切换动作,统一入口) */}
+          {stageAction && (
             <div className="shrink-0 border-t border-gray-200 bg-white px-4 pt-3 pb-4">
               <GenerateButton
-                loading={generating}
-                estimatedCoins={getGenerateCount() * AI_COST_PER_IMAGE}
+                label={stageAction.label}
+                loading={stageAction.loading}
+                disabled={stageAction.disabled}
+                estimatedCoins={stageAction.coins}
                 userCoins={user?.coins}
-                onClick={() => void startGeneration()}
+                onClick={stageAction.onClick}
               />
             </div>
           )}
@@ -1275,11 +1340,7 @@ export default function ComposerPage({
           recommendation={recommendation}
           generating={generating}
           expressMode={expressMode}
-          onConfirmProposal={() => void startGeneration()}
-          onConfirmLineart={() => void confirmLineart()}
-          onGenerateFinal={() => void generateFinal()}
           onRegenerateOne={regenerateOne}
-          onSaveToLookbook={saveToLookbook}
           onRecommendationChange={setRecommendation}
           onRefreshRecommendation={fetchRecommendation}
         />

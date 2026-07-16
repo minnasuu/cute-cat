@@ -377,7 +377,7 @@ function StyleForm({ initial, onCancel, onSave }: {
 
       {/* 基础信息 */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><div className={labelCls}>名称 *</div><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></div>
+        <div className="col-span-2"><div className={labelCls}>名称 <span className="text-red-500">*</span></div><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></div>
         <div className="col-span-2">
           <div className={labelCls}>类别</div>
           <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
