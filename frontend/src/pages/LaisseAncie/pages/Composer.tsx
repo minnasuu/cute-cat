@@ -37,6 +37,8 @@ import { RecForm } from "./rec-form";
 import ComposerBrief from "./ComposerBrief";
 import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateButton";
 import ComposerPipeline from "./ComposerPipeline";
+import TourOverlay, { type TourStep } from "../components/TourOverlay";
+import { useTourController } from "../controller/useTourController";
 
 type DesignStage =
   | "greeting"
@@ -54,6 +56,53 @@ type DesignStage =
   | "generating-final";
 
 const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
+
+/**
+ * 灵感扩散新手引导步骤定义(7 步)。
+ * 流程:简报(名称/参考/需求) → 生成方案 → 生成线稿(3s) → 推荐材质 → 生成终稿(3s) → 完成。
+ * 步骤 4/5/6/7 的「下一步」由 useTourController.advance() 触发对应的 mock 生成。
+ */
+const TOUR_STEPS: TourStep[] = [
+  {
+    target: "tour-name",
+    title: "① 给你的作品起个名",
+    description: "输入你想要的单品名称,比如「春日雏菊连衣裙」。\n引导已帮你填好示例,可以直接下一步。",
+  },
+  {
+    target: "tour-refs",
+    title: "② 添加灵感参考",
+    description: "上传参考图或从灵感库选,AI 会自动分析品类·风格。\n引导已帮你跳过这步,直接下一步。",
+  },
+  {
+    target: "tour-desc",
+    title: "③ 描述设计需求",
+    description: "人群、场景、风格调性,可选填。\n引导已帮你填好示例。",
+  },
+  {
+    target: "tour-generate-btn",
+    title: "④ 生成设计方案",
+    description: "点击底部按钮,AI 会结合灵感库生成一份完整企划方案。\n点「下一步」查看效果。",
+    actionLabel: "生成方案 →",
+  },
+  {
+    target: "tour-step-proposal",
+    title: "⑤ 方案已生成 — 进入线稿",
+    description: "企划方案已经就绪(右栏)。\n点「下一步」模拟生成线稿(约 3s),生成中会停留在本卡片。",
+    actionLabel: "生成线稿(3s) →",
+  },
+  {
+    target: "tour-step-lineart",
+    title: "⑥ 选择材质与配色",
+    description: "线稿已生成(右栏),AI 会根据方案推荐材质+配色。\n点「下一步」查看推荐。",
+    actionLabel: "确认材质 →",
+  },
+  {
+    target: "tour-step-material",
+    title: "⑦ 生成终稿成图",
+    description: "确认材质后生成最终设计图。\n点「完成」模拟生成(约 3s)并结束引导。",
+    actionLabel: "生成终稿(3s) ✨",
+  },
+];
 
 // AI 模型列表(后端唯一文本模型: 豆包 doubao-seed-2-1-pro,火山方舟)
 const MODELS = [
@@ -325,6 +374,17 @@ export default function ComposerPage({
   // 结构化设计简报(稳定左栏):名称 + 描述 + 参考灵感,与 chat 管线并存
   const [designName, setDesignName] = useState("");
   const [briefDescription, setBriefDescription] = useState("");
+
+  // —— 新手引导控制器(仅 single 模式注册;完成后写 localStorage,不再自动触发) ——
+  const tour = useTourController({
+    mode,
+    setStage,
+    setPlanText,
+    setImages,
+    setRecommendation,
+    setDesignName,
+    setDescription: setBriefDescription,
+  });
   interface BriefRef { id: string; url: string; name: string; source: "upload" | "library"; category?: string | null; visualStyle?: string | null; analysisStatus?: string | null; }
   const [briefRefs, setBriefRefs] = useState<BriefRef[]>([]);
   const setModel = (id: ModelId) => { setModelState(id); localStorage.setItem("laisse-ancie:model", id); };
@@ -363,6 +423,15 @@ export default function ComposerPage({
       setStage("greeting");
     }
   }, []);
+
+  // 新手引导自动触发:仅 single 模式 + 未完成过 + 开场白已渲染
+  useEffect(() => {
+    if (tour.shouldRegister && msgs.length > 0 && stage === "greeting" && !busy) {
+      // 等一帧入场,让开场白先渲染
+      const t = setTimeout(() => tour.startTour(), 300);
+      return () => clearTimeout(t);
+    }
+  }, [tour.shouldRegister, msgs.length, stage, busy]);
 
   // ── 编辑模式:从 Lookbook 跳转过来时,回填产品方案到 chat 上下文 ──
   const editInitializedRef = useRef(false);
@@ -1300,6 +1369,16 @@ export default function ComposerPage({
   const hasImg = images.some((im) => im.url);
   return (
     <>
+      {/* 新手引导浮层(仅引导激活时渲染) */}
+      {tour.tourActive && (
+        <TourOverlay
+          steps={TOUR_STEPS}
+          stepIdx={tour.tourStep}
+          onAdvance={tour.next}
+          onPrev={tour.prev}
+          onSkip={tour.skip}
+        />
+      )}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
         <div className="flex flex-col bg-white border-r border-gray-200 min-h-0">
 

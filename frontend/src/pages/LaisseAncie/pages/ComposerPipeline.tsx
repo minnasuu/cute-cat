@@ -65,7 +65,7 @@ export default function ComposerPipeline(props: Props) {
   return (
     <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 px-5 pb-5 space-y-5">
       {/* 步骤指示 */}
-      <ol className="flex items-center gap-1 text-[10px] sticky top-0 z-10 bg-white py-5 mb-0">
+      <ol data-tour="tour-pipeline" className="flex items-center gap-1 text-[10px] sticky top-0 z-10 bg-white py-5 mb-0">
         {STEPS.map((s, i) => {
           const done = step > i;
           const active = step === i;
@@ -90,7 +90,7 @@ export default function ComposerPipeline(props: Props) {
 
       {/* Step 1: 企划方案 */}
       {(step >= 0 || generating) && (
-        <StepCard title="企划方案" done={step > 0} active={step === 0}>
+        <StepCard data-tour="tour-step-proposal" title="企划方案" done={step > 0} active={step === 0}>
           {step === 0 && !planText && !generating && (
             <div className="text-[12px] text-gray-500">等待方案生成…</div>
           )}
@@ -104,7 +104,7 @@ export default function ComposerPipeline(props: Props) {
 
       {/* Step 2: 设计线稿 */}
       {step >= 1 && (
-        <StepCard title="设计线稿" done={step > 1} active={step === 1}>
+        <StepCard data-tour="tour-step-lineart" title="设计线稿" done={step > 1} active={step === 1}>
           {hasLineart ? (
             <div className={lineart.length === 1 ? "max-w-xs mx-auto" : "grid grid-cols-2 gap-2"}>
               {lineart.map((im) => <ImageCard key={im.slot + im.label} image={im} onRegenerate={(inst) => props.onRegenerateOne(im.slot, im.label, inst)} />)}
@@ -119,7 +119,7 @@ export default function ComposerPipeline(props: Props) {
 
       {/* Step 3: 材质推荐 */}
       {step >= 2 && (
-        <StepCard title="材质推荐" done={step > 2} active={step === 2}>
+        <StepCard data-tour="tour-step-material" title="材质推荐" done={step > 2} active={step === 2}>
           <RecForm
             recommendation={recommendation}
             onChange={props.onRecommendationChange}
@@ -132,7 +132,7 @@ export default function ComposerPipeline(props: Props) {
 
       {/* Step 4: 终稿成图 */}
       {step >= 3 && (
-        <StepCard title="终稿成图" done={false} active={step === 3}>
+        <StepCard data-tour="tour-step-final" title="终稿成图" done={false} active={step === 3}>
           {hasFinal ? (
             <div className={finals.length === 1 ? "max-w-xs mx-auto" : "grid grid-cols-2 gap-2"}>
               {finals.map((im) => <ImageCard key={im.slot + im.label} image={im} onRegenerate={(inst) => props.onRegenerateOne(im.slot, im.label, inst)} />)}
@@ -151,9 +151,9 @@ export default function ComposerPipeline(props: Props) {
 }
 
 /** 步骤卡片容器 */
-function StepCard({ title, done, active, children }: { title: string; done: boolean; active: boolean; children: React.ReactNode }) {
+function StepCard({ title, done, active, children, "data-tour": dataTour }: { title: string; done: boolean; active: boolean; children: React.ReactNode; "data-tour"?: string }) {
   return (
-    <div className={`rounded-2xl border bg-white overflow-hidden ${active ? "border-primary-300 shadow-sm" : done ? "border-gray-200" : "border-gray-200"}`}>
+    <div data-tour={dataTour} className={`rounded-2xl border bg-white overflow-hidden ${active ? "border-primary-300 shadow-sm" : done ? "border-gray-200" : "border-gray-200"}`}>
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50/60">
         <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] ${done ? "bg-primary-500 text-white" : active ? "bg-primary-100 text-primary-700" : "bg-gray-200 text-gray-400"}`}>
           {done ? "✓" : ""}

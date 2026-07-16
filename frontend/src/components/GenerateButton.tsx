@@ -61,6 +61,7 @@ export function GenerateButton({
     <div className={`flex flex-col items-center gap-1.5 ${className}`}>
       <button
         type="button"
+        data-tour="tour-generate-btn"
         onClick={onClick}
         disabled={isDisabled}
         className={`relative overflow-hidden px-8 py-3 rounded-2xl text-white font-bold text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100 disabled:cursor-not-allowed ${

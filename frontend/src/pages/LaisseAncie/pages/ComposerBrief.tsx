@@ -155,6 +155,7 @@ export default function ComposerBrief({
             名称 <span className="text-red-500">*</span>
           </label>
           <input
+            data-tour="tour-name"
             value={designName}
             onChange={(e) => setDesignName(e.target.value)}
             placeholder="如:春日雏菊连衣裙"
@@ -170,7 +171,7 @@ export default function ComposerBrief({
               ({references.length}/6)
             </span>
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div data-tour="tour-refs" className="flex flex-wrap gap-2">
             {references.map((r) => (
               <div
                 key={r.id}
@@ -262,6 +263,7 @@ export default function ComposerBrief({
         <div>
           <label className={labelCls}>设计需求</label>
           <textarea
+            data-tour="tour-desc"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}

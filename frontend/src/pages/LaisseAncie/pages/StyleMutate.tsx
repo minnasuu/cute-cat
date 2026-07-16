@@ -56,13 +56,13 @@ export const MUTATION_AXES: MutationAxis[] = [
     id: "silhouette",
     label: "版型",
     options: [
-      { id: "boxy", label: "Boxy 方正版", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a structured boxy fit with straight side seams." },
-      { id: "relaxed", label: "Relaxed 宽松", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a relaxed loose fit with comfortable ease." },
-      { id: "oversized", label: "Oversized  oversize", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to an oversized fit with generous volume." },
-      { id: "slim", label: "Slim 修身", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a slim fitted shape that follows the body." },
-      { id: "cocoon", label: "Cocoon 茧型", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a soft cocoon shape with rounded volume." },
-      { id: "trapeze", label: "Trapeze A-Line", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a trapeze A-line shape." },
-      { id: "fit-flare", label: "Fit & Flare", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Create a fitted upper body with a softly flared lower body." },
+      { id: "boxy", label: "方正版", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a structured boxy fit with straight side seams." },
+      { id: "relaxed", label: "宽松", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a relaxed loose fit with comfortable ease." },
+      { id: "oversized", label: "oversize", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to an oversized fit with generous volume." },
+      { id: "slim", label: "修身", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a slim fitted shape that follows the body." },
+      { id: "cocoon", label: "茧型", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a soft cocoon shape with rounded volume." },
+      { id: "trapeze", label: "梯形 A-字", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Change the silhouette to a trapeze A-line shape." },
+      { id: "fit-flare", label: "收腰外扩", promptHint: "Modify ONLY the garment silhouette. Keep all other design elements unchanged. Create a fitted upper body with a softly flared lower body." },
     ],
   },
   {
@@ -88,7 +88,7 @@ export const MUTATION_AXES: MutationAxis[] = [
       { id: "cropped", label: "短款", promptHint: "Modify ONLY the garment length. Shorten it to a cropped length." },
       { id: "regular", label: "常规", promptHint: "Modify ONLY the garment length. Keep a regular length." },
       { id: "longline", label: "长款", promptHint: "Modify ONLY the garment length. Extend it to a longline length." },
-      { id: "tunic", label: "Tunic", promptHint: "Modify ONLY the garment length. Extend it to a tunic length." },
+      { id: "tunic", label: "长袍", promptHint: "Modify ONLY the garment length. Extend it to a tunic length." },
     ],
   },
   {
@@ -862,7 +862,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                         {/* 中:分割线(占满剩余空间) */}
                         <div className="flex-1 mx-1.5 border-t border-dashed border-gray-200" />
                         {/* 右:选项横向滚动 */}
-                        <div className="shrink-0 overflow-x-auto max-w-[55%] scrollbar-none">
+                        <div className="shrink-0 overflow-x-auto max-w-[75%] scrollbar-none">
                           <div className="flex gap-1.5 w-max">
                             {axis.options.map((opt) => {
                               const key = mutKey(axis.id, opt.id);
@@ -999,7 +999,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
                 />
               )}
-              <span className="text-[10px] text-gray-400">子款默认继承母款面料花色；锁定后面料保持不变,且「面料材质」裂变轴将禁用。支持上传 / 库选 / 文字描述三种方式。</span>
+              <span className="text-[10px] text-gray-400">子款默认继承母款面料花色；锁定后面料保持不变,且「面料材质」裂变轴将禁用失效。支持上传 / 库选 / 文字描述三种方式。</span>
             </div>
 
             {/* 描述 */}
