@@ -382,9 +382,13 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   }
 
   // ── 单格重试 ──
+  // isAutoRetry=true 表示由轮询中的 tryAutoRetry 触发;此时不能调 startPolling,
+  // 否则会 stopPolling()+重置 pollAttempts+resetRetries(),把正在进行的轮询打断并把
+  // 重试计数清零 → 形成「轮询发现 error → 自动重试 → 重启轮询+清零重试 → 再发现 error…」
+  // 的无限循环,表现为格子一直「生成中…/待处理」且大模型后台收不到稳定请求。
   async function retryCell(fi: number, si: number, isAutoRetry = false) {
     if (!batch) return;
-    // optimistic:本格打回 pending,批次回到 running 并重启轮询
+    // optimistic:本格打回 pending,批次回到 running
     setBatch((b) => {
       if (!b) return b;
       return { ...b, status: "running", items: b.items.map((it) => it.fi === fi && it.si === si ? { ...it, status: "pending", error: undefined } : it) };
@@ -398,7 +402,8 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         body: JSON.stringify({ fi, si }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      startPolling(batch.batchId);
+      // 仅手动重试(用户点「重试」按钮)时重启轮询;自动重试时轮询仍在进行,不重启
+      if (!isAutoRetry) startPolling(batch.batchId);
     } catch (e: any) {
       // 使用共享 hook 决定是否自动重试
       const item = batch.items.find((it) => it.fi === fi && it.si === si);
