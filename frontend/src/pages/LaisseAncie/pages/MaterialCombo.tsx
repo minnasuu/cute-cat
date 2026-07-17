@@ -146,6 +146,20 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     && !batchRunningOrAnalyzing && !submitting
     && !brandLoading && !knowledgeLoading;
 
+  // ── 生图自动重试 ──(必须在 startPolling/stopPolling 之前,因为二者依赖 tryAutoRetry/resetRetries)
+  const { resetRetries, tryAutoRetry } = useImageRetry({
+    maxRetries: 1,
+    getKey: (it) => `${it.fi}-${it.si}`,
+    retryFn: (item, isAutoRetry) => retryCell(item.fi, item.si, isAutoRetry),
+    onFailed: (item, error) => {
+      // 错误局部化到对应格子下方,不显示在左侧全局
+      setBatch((b) => {
+        if (!b) return b;
+        return { ...b, items: b.items.map((it) => it.fi === item.fi && it.si === item.si ? { ...it, status: "error", error: error || "生成失败,请重试" } : it) };
+      });
+    },
+  });
+
   // ── 轮询启停 ──
   const stopPolling = useCallback(() => {
     if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
@@ -347,20 +361,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       setSubmitting(false);
     }
   }
-
-  // ── 生图自动重试 ──
-  const { resetRetries, tryAutoRetry } = useImageRetry({
-    maxRetries: 1,
-    getKey: (it) => `${it.fi}-${it.si}`,
-    retryFn: (item, isAutoRetry) => retryCell(item.fi, item.si, isAutoRetry),
-    onFailed: (item, error) => {
-      // 错误局部化到对应格子下方,不显示在左侧全局
-      setBatch((b) => {
-        if (!b) return b;
-        return { ...b, items: b.items.map((it) => it.fi === item.fi && it.si === item.si ? { ...it, status: "error", error: error || "生成失败,请重试" } : it) };
-      });
-    },
-  });
 
   // ── 单格重试 ──
   async function retryCell(fi: number, si: number, isAutoRetry = false) {
