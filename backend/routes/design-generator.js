@@ -138,11 +138,22 @@ function batchPublicView(b) {
   };
 }
 
-/** 清理过期批次,每 30s 扫一次 */
+/** 清理过期批次 + 兜底「永 pending」格子,每 30s 扫一次
+ *  正常情况下 mapConcurrent + 任务内 try/catch 已把每格置为 done/error;
+ *  若 generateImage 内出现未捕获异常或外部长时间无响应(比如上游模型服务 hang),批次状态会卡 running、格子卡 pending。
+ *  此 watchdog 给每个批次一个软上限(MC_BATCH_TTL_MS),超时即把仍在 pending 的格子标 error 并把批次置 done,
+ *  前端据此可提示用户「超时可重试」,避免永久 pending。 */
 setInterval(() => {
   const now = Date.now();
   for (const [id, b] of mcBatches) {
-    if (now - b.updatedAt > MC_BATCH_TTL_MS) mcBatches.delete(id);
+    if (now - b.updatedAt > MC_BATCH_TTL_MS) {
+      for (const it of b.items) {
+        if (it.status === 'pending' || it.status === 'running') { it.status = 'error'; it.error = '生成超时,请重试'; }
+      }
+      b.status = 'done';
+      b.updatedAt = now;
+      mcBatches.delete(id);
+    }
   }
 }, 30000).unref();
 
@@ -150,6 +161,8 @@ setInterval(() => {
 async function runBatch(batchId) {
   const b = mcBatches.get(batchId);
   if (!b) return;
+  // 诊断:进入调度的第一时间落日志,便于定位「POST 202 却永远 pending」类问题
+  console.log(`[design-generator] runBatch START batchId=${batchId} mode=${b.mode} cells=${b.items.length} provider=${MATERIAL_COMBO_PROVIDER}`);
   try {
     b.status = 'running';
     b.updatedAt = Date.now();
@@ -171,6 +184,8 @@ async function runBatch(batchId) {
       : (cell) => [b.styles[cell.si]?.url, b.fabrics[cell.fi]?.url, illustration?.url].filter(Boolean);
 
     const tasks = b.items.map((cell) => async () => {
+      const cellLabel = b.mode === 'color-mix' ? `mix-${cell.fi}-${cell.si}` : `f${cell.fi}-s${cell.si}`;
+      console.log(`[design-generator] runBatch cell START batchId=${batchId} cell=${cellLabel}`);
       // 输入校验
       if (b.mode === 'color-mix') {
         if (!b.fabrics?.length || !b.styles?.[0]) {
@@ -189,19 +204,28 @@ async function runBatch(batchId) {
         ? `material-combo-mix-${cell.fi}-${cell.si}`
         : `material-combo-f${cell.fi}-s${cell.si}`;
       const referenceImages = (b.mode === 'color-mix' ? makeRefImages() : makeRefImages(cell)).filter(Boolean);
-      const img = await generateImage(prompt, {
-        teamId: b.teamId,
-        aspectRatio: '1:1',
-        safeName,
-        provider: MATERIAL_COMBO_PROVIDER,
-        referenceImages,
-      });
-      if (img?.url) {
-        cell.url = img.url;
-        cell.status = 'done';
-      } else {
-        cell.error = img?.error || '生成失败';
+      try {
+        const img = await generateImage(prompt, {
+          teamId: b.teamId,
+          aspectRatio: '1:1',
+          safeName,
+          provider: MATERIAL_COMBO_PROVIDER,
+          referenceImages,
+        });
+        if (img?.url) {
+          cell.url = img.url;
+          cell.status = 'done';
+          console.log(`[design-generator] runBatch cell DONE batchId=${batchId} cell=${cellLabel}`);
+        } else {
+          cell.error = img?.error || '生成失败';
+          cell.status = 'error';
+          console.warn(`[design-generator] runBatch cell ERROR batchId=${batchId} cell=${cellLabel} error=${cell.error}`);
+        }
+      } catch (cellErr) {
+        // generateImage 理论上不抛出,但兜底:确保格子不会永远 pending
+        cell.error = cellErr?.message || '生成本格异常';
         cell.status = 'error';
+        console.error(`[design-generator] runBatch cell THROW batchId=${batchId} cell=${cellLabel} error=${cellErr?.message}`);
       }
       return cell;
     });
@@ -1134,11 +1158,14 @@ function buildStyleMutatePrompt({ name, description, mutation, hasFabric, fabric
 async function runStyleMutateBatch(batchId) {
   const b = smBatches.get(batchId);
   if (!b) return;
+  // 诊断:进入调度的第一时间落日志
+  console.log(`[design-generator] runStyleMutateBatch START batchId=${batchId} cells=${b.items.length} provider=${STYLE_MUTATE_PROVIDER} motherUrl=${b.mother?.url ? 'yes' : 'no'}`);
   try {
     b.status = 'running';
     b.updatedAt = Date.now();
 
     const tasks = b.items.map((cell) => async () => {
+      console.log(`[design-generator] style-mutate cell START batchId=${batchId} mi=${cell.mi} label=${cell.label}`);
       const mutation = b.mutations[cell.mi];
       if (!mutation || !b.mother?.url) {
         cell.status = 'error';
@@ -1154,19 +1181,27 @@ async function runStyleMutateBatch(batchId) {
       });
       cell.prompt = prompt;
       const referenceImages = [b.mother.url, b.fabric?.url].filter(Boolean);
-      const img = await generateImage(prompt, {
-        teamId: b.teamId,
-        aspectRatio: '1:1',
-        safeName: `style-mutate-${cell.mi}`,
-        provider: STYLE_MUTATE_PROVIDER,
-        referenceImages,
-      });
-      if (img?.url) {
-        cell.url = img.url;
-        cell.status = 'done';
-      } else {
-        cell.error = img?.error || '生成失败';
+      try {
+        const img = await generateImage(prompt, {
+          teamId: b.teamId,
+          aspectRatio: '1:1',
+          safeName: `style-mutate-${cell.mi}`,
+          provider: STYLE_MUTATE_PROVIDER,
+          referenceImages,
+        });
+        if (img?.url) {
+          cell.url = img.url;
+          cell.status = 'done';
+          console.log(`[design-generator] style-mutate cell DONE batchId=${batchId} mi=${cell.mi}`);
+        } else {
+          cell.error = img?.error || '生成失败';
+          cell.status = 'error';
+          console.warn(`[design-generator] style-mutate cell ERROR batchId=${batchId} mi=${cell.mi} error=${cell.error}`);
+        }
+      } catch (cellErr) {
+        cell.error = cellErr?.message || '生成本格异常';
         cell.status = 'error';
+        console.error(`[design-generator] style-mutate cell THROW batchId=${batchId} mi=${cell.mi} error=${cellErr?.message}`);
       }
       return cell;
     });
