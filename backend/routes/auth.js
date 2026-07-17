@@ -513,9 +513,6 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ error: '登录失败' });
   }
 });
-    res.status(500).json({ error: '登录失败，请稍后重试' });
-  }
-});
 
 // ======================== 忘记密码 ========================
 router.post('/reset-password', async (req, res) => {
