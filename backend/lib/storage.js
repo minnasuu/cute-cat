@@ -202,6 +202,77 @@ async function s3PutObject({ key, body, contentType }) {
     throw new Error(`S3 PUT ${canonUri} → HTTP ${res.status}: ${t}`);
   }
 }
+/**
+ * SigV4 签名删除 COS 对象 —— 与 s3PutObject 共享同一签名流水线,
+ * 仅 method=DELETE、payload=UNSIGNED-PAYLOAD、无 body。
+ * 幂等:204(已删) 和 404(不存在) 都视为成功,其余 HTTP 码抛错。
+ */
+async function s3DeleteObject(key) {
+  const region = process.env.S3_REGION || 'auto';
+  const service = 's3';
+  const now = new Date();
+  const ymd = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const iso = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const { host, urlBase, pathPrefix } = buildS3Location();
+  const canonUri = `${pathPrefix}/${canonKey(key)}`;
+  const payloadHash = 'UNSIGNED-PAYLOAD'; // DELETE 无 body
+  const canonHeaders = [
+    `host:${host}`,
+    `x-amz-content-sha256:${payloadHash}`,
+    `x-amz-date:${iso}`,
+  ].sort().join('\n');
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  const canonRequest = [
+    'DELETE',
+    canonUri,
+    '',  // queryStr
+    canonHeaders + '\n',
+    signedHeaders,
+    payloadHash,
+  ].join('\n');
+  const scope = `${ymd}/${region}/${service}/aws4_request`;
+  const stringToSign = ['AWS4-HMAC-SHA256', iso, scope, sha256Hex(canonRequest)].join('\n');
+  const kDate = hmac(`AWS4${process.env.S3_SECRET_ACCESS_KEY}`, ymd);
+  const kRegion = hmac(kDate, region);
+  const kService = hmac(kRegion, service);
+  const kSigning = hmac(kService, 'aws4_request');
+  const sig = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+  const auth = `AWS4-HMAC-SHA256 Credential=${process.env.S3_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
+
+  const url = `${urlBase}/${canonKey(key)}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': iso,
+      Authorization: auth,
+    },
+  });
+  // 204 No Content = 已删;404 Not Found = 已不存在 → 都视为成功(幂等)
+  if (res.ok || res.status === 404) return;
+  const t = await res.text().then((s) => s.slice(0, 300));
+  throw new Error(`S3 DELETE ${canonUri} → HTTP ${res.status}: ${t}`);
+}
+
+/**
+ * 从「运行时拼出的绝对 URL」反推出 COS object key —— s3PublicUrl 的精确逆运算。
+ *   优先用 S3_PUBLIC_BASE_URL,否则用 buildS3Location 派生的 urlBase(与生成时完全一致)。
+ * 逐段 decodeURIComponent 抵消 canonKey 的 percent-encoding,回收原始 key。
+ * 不是我们的 URL(前缀不匹配)时返回 null → 调用方应跳过,避免误删外部资源。
+ */
+function keyFromUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  // 去掉 query string(?...) 和 hash(#...)
+  const pathname = String(url).split('?')[0].split('#')[0];
+  const base = (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+  const fallbackBase = buildS3Location().urlBase.replace(/\/+$/, '');
+  let residual = null;
+  if (base && pathname.startsWith(base + '/')) residual = pathname.slice(base.length + 1);
+  else if (fallbackBase && pathname.startsWith(fallbackBase + '/')) residual = pathname.slice(fallbackBase.length + 1);
+  if (!residual) return null; // 不是我们的域名 → 拒绝
+  return residual.split('/').map((s) => decodeURIComponent(s)).join('/');
+}
+
 function s3PublicUrl(key) {
   const base = (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
   if (base) return `${base}/${canonKey(key)}`;
@@ -318,6 +389,34 @@ function createSavePath(folder, filename) {
   return mode === 's3' ? createS3SavePath(folder, filename) : createLocalSavePath(folder, filename);
 }
 
+/**
+ * 按「运行时拼出的绝对 URL」删除对应存储对象 —— 删除产品/素材等记录时级联清存储。
+ *   s3 模式:keyFromUrl 反推 key → s3DeleteObject(幂等,404 视为成功)。
+ *   local 模式:URL 形如 /uploads/<relPath>,定位到 UPLOAD_ROOT/<relPath> 后 unlink(不存在则忽略)。
+ * 返回 true 表示已尝试删除(含 404 已不存在);false 表示不是我们的 URL / 路径,跳过。
+ * 单个删除失败抛错,由调用方决定是中断还是仅记日志。
+ */
+async function deleteImageByUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  if (mode === 's3') {
+    const key = keyFromUrl(url);
+    if (!key) return false; // 不是我们的域名 → 跳过,避免误删外部资源
+    await s3DeleteObject(key);
+    return true;
+  }
+  // local: 仅处理 /uploads/<relPath>
+  const m = /^\/(uploads\/.*)$/.exec(url.split('?')[0].split('#')[0]);
+  if (!m) return false;
+  const abs = path.join(UPLOAD_ROOT, m[1]);
+  try {
+    fs.unlinkSync(abs);
+  } catch (e) {
+    if (e.code === 'ENOENT') return false; // 不存在 → 跳过
+    throw e;
+  }
+  return true;
+}
+
 module.exports = {
   mode,
   UPLOAD_ROOT,
@@ -328,5 +427,6 @@ module.exports = {
   putBuffer,
   getPublicUrl,
   createSavePath,
+  deleteImageByUrl,
   compressImageBuffer,
 };

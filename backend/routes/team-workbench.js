@@ -24,7 +24,7 @@ const { callArkStream } = require('../workflow-executor');
 const { analyzeInspiration } = require('../lib/analyze-inspiration');
 const coins = require('../lib/coins');
 const storage = require('../lib/storage');
-const { createSavePath, saveUpload, getPublicUrl, TMP_DIR } = storage;
+const { createSavePath, saveUpload, getPublicUrl, deleteImageByUrl, TMP_DIR } = storage;
 const designGeneratorRouter = require('./design-generator');
 const {
   defaultBrand, findOwned, pickDefined, tryParseJson, slugify,
@@ -982,6 +982,31 @@ router.delete('/skills/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ─── 产品图片 URL 收集(用于删除时级联清 COS) ────────────────
+// 仅收集「产品自己持有」的图片,不碰 sourceImages —— sourceImages 里的 style/fabric url
+// 指向共享素材/款式资源(被多个产品引用),删除会连带破坏其他产品的参考图。
+function collectProductImageUrls(p) {
+  if (!p) return [];
+  const urls = [];
+  const maybePush = (v) => { if (typeof v === 'string' && v) urls.push(v); };
+
+  maybePush(p.imageUrl);
+  maybePush(p.patternUrl);
+  maybePush(p.techPackUrl);
+  maybePush(p.patternFinalUrl);
+
+  // images: 设计工作流生成的图片数组 [{slot, label, url, originalUrl?}]
+  if (Array.isArray(p.images)) {
+    for (const im of p.images) {
+      if (!im || typeof im !== 'object') continue;
+      maybePush(im.url);
+      maybePush(im.originalUrl);
+    }
+  }
+  // 注意:跳过 sourceImages —— 它们是共享素材/款式资源的引用,不归本产品独享。
+  return urls;
+}
+
 /* ─── products (设计稿 → lookbook 总表) ─────────────────────── */
 
 router.get('/products', asyncHandler(async (req, res) => {
@@ -1145,7 +1170,21 @@ router.post('/products/:id/status', async (req, res) => {
 router.delete('/products/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
+  // 先收集本产品持有的图片 URL(删除后字段就没了),再删记录,最后异步清 COS。
+  // COS 清理失败只记日志,不阻塞/回滚删除本身(记录已删,前端不再引用这些 URL)。
+  const imageUrls = collectProductImageUrls(owned);
   await prisma.lAProduct.delete({ where: { id: owned.id } });
+  if (imageUrls.length) {
+    // fire-and-forget:不 await,避免 COS 抖动拖慢/阻塞删除响应
+    Promise.allSettled(imageUrls.map((u) => deleteImageByUrl(u)))
+      .then((results) => {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn(`[team-workbench] product ${owned.id} COS cleanup failed: ${r.reason?.message || r.reason}`);
+          }
+        }
+      });
+  }
   res.json({ ok: true });
 }));
 
