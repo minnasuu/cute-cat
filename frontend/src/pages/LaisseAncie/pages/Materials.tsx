@@ -299,7 +299,39 @@ function MaterialModal({ editor, onClose, onSwitchEdit, onSave, onDelete, deleti
   const isEditing = mode === "edit" || mode === "create";
   const title = mode === "create" ? "新增面料" : (mode === "edit" ? "编辑面料" : (mat?.name ?? "面料"));
   return (
-    <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
+    <Modal open onClose={onClose} title={
+      <div className="flex items-center max-w-full">
+        <div className="flex-1 min-w-0 truncate">{title}</div>
+       <div className="flex items-center justify-between">
+          <div className="shrink-0 ml-4 flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={toggleShare}
+                disabled={sharing}
+                className={`text-[12px] px-3 py-1.5 rounded-lg font-medium transition-colors ${shared ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+              >
+                {sharing ? "保存中…" : (shared ? "取消共享" : "设为共享")}
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={() => onDelete(mat)}
+                disabled={deleting === mat.id}
+                className="text-[12px] text-red-500 bg-red-500 hover:bg-red-600 hover:text-red-600 disabled:opacity-40 font-medium transition-colors"
+              >
+                {deleting === mat.id ? "删除中…" : "删除"}
+              </button>
+            )}
+            <button
+              onClick={onEdit}
+              className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+            >
+              编辑
+            </button>
+          </div>
+        </div>
+        </div>
+    } maxWidth={mode === "create" ? "600px" : "max-w-5xl"}>
       {!isEditing ? <MaterialView mat={mat!} onEdit={onSwitchEdit} onDelete={onDelete} deleting={deleting} /> : <MaterialForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />}
     </Modal>
   );
@@ -331,80 +363,9 @@ function MaterialView({ mat, onEdit, onDelete, deleting }: { mat: MaterialRow; o
     }
   };
   return (
-    <div className="grid grid-cols-[280px_1fr] gap-7 flex-1 min-h-0 h-[60vh]">
-      <aside className="rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 overflow-y-auto max-h-full h-fit">
-        {showCards ? (
-          <ul className="divide-y divide-gray-200">
-            {cards.map((c, i) => (
-              <li key={i} className="flex items-center gap-3 p-3">
-                {c.url ? (
-                  <img
-                    src={c.url}
-                    alt={c.name || c.hex}
-                    className="w-16 h-16 rounded-lg border border-gray-200 shrink-0 object-cover"
-                  />
-                ) : (
-                  <span
-                    className="w-16 h-16 rounded-lg border border-gray-200 shrink-0"
-                    style={{ background: c.hex || "#eee" }}
-                    aria-hidden
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div
-                    className={`text-[13px] font-medium truncate ${c.outOfStock ? "text-gray-400 line-through" : "text-gray-800"}`}
-                  >
-                    {c.name || "(未命名颜色)"}
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {c.hex && (
-                      <div className="text-[12px] font-mono text-gray-500">
-                        {c.hex}
-                      </div>
-                    )}
-                    {c.outOfStock && (
-                      <span className="text-[10px] text-amber-600 font-medium">
-                        缺货
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <>
-            {mat.image ? (
-              <div className="aspect-square overflow-hidden border-b border-gray-200">
-                <img
-                  src={mat.image}
-                  alt={mat.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ) : null}
-            <ul className="divide-y divide-gray-200">
-              {hexs.map((c) => (
-                <li key={c} className="flex items-center gap-3 p-3">
-                  <span
-                    className="w-14 h-14 rounded-lg border border-gray-200 shrink-0"
-                    style={{
-                      background: c.includes(",")
-                        ? `linear-gradient(135deg, ${c})`
-                        : c,
-                    }}
-                    aria-hidden
-                  />
-                  <div className="text-[13px] text-gray-800 font-mono">{c}</div>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </aside>
-
-      <article className="overflow-auto max-h-full text-xs space-y-5 pr-1">
-        <div className="flex items-center justify-between">
+    <div className="flex flex-col w-full h-[60vh]">
+       <article className="overflow-auto max-h-full text-xs space-y-5 pr-1 w-full">
+        <div className="grid grid-cols-6 md:grid-cols-3 gap-4">
           {price ? (
             <div className="flex items-baseline gap-1.5">
               <span className="text-3xl text-primary-600 font-semibold leading-none">
@@ -421,34 +382,7 @@ function MaterialView({ mat, onEdit, onDelete, deleting }: { mat: MaterialRow; o
               )}
             </div>
           ) : null}
-          <div className="shrink-0 ml-4 flex items-center gap-2">
-            {isAdmin && (
-              <button
-                onClick={toggleShare}
-                disabled={sharing}
-                className={`text-[12px] px-3 py-1.5 rounded-lg font-medium transition-colors ${shared ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
-              >
-                {sharing ? "保存中…" : (shared ? "取消共享" : "设为共享")}
-              </button>
-            )}
-            {onDelete && (
-              <button
-                onClick={() => onDelete(mat)}
-                disabled={deleting === mat.id}
-                className="text-[12px] text-red-500 hover:text-red-600 disabled:opacity-40 font-medium transition-colors"
-              >
-                {deleting === mat.id ? "删除中…" : "删除"}
-              </button>
-            )}
-            <button
-              onClick={onEdit}
-              className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
-            >
-              编辑
-            </button>
-          </div>
-        </div>
-        {mat.composition && <Section label="成分">{mat.composition}</Section>}
+          {mat.composition && <Section label="成分">{mat.composition}</Section>}
         {mat.weight && (
           <Section label="克重">
             <span className="font-mono">{mat.weight}</span>
@@ -514,7 +448,78 @@ function MaterialView({ mat, onEdit, onDelete, deleting }: { mat: MaterialRow; o
             </div>
           </Section>
         )}
+        </div>
       </article>
+      <aside className="rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 overflow-y-auto max-h-full h-fit">
+        {showCards ? (
+          <ul className="divide-y divide-gray-200 grid grid-cols-3 md:grid-cols-2 gap-2">
+            {cards.map((c, i) => (
+              <li key={i} className="w-80 flex items-center gap-3 p-3 border-b border-gray-200">
+                {c.url ? (
+                  <img
+                    src={c.url}
+                    alt={c.name || c.hex}
+                    className="w-25 h-25 rounded-lg border border-gray-200 shrink-0 object-cover"
+                  />
+                ) : (
+                  <span
+                    className="w-25 h-25 rounded-lg border border-gray-200 shrink-0"
+                    style={{ background: c.hex || "#eee" }}
+                    aria-hidden
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`text-[13px] font-medium truncate ${c.outOfStock ? "text-gray-400 line-through" : "text-gray-800"}`}
+                  >
+                    {c.name || "(未命名颜色)"}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {c.hex && (
+                      <div className="text-[12px] font-mono text-gray-500">
+                        {c.hex}
+                      </div>
+                    )}
+                    {c.outOfStock && (
+                      <span className="text-[10px] text-amber-600 font-medium">
+                        缺货
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <>
+            {mat.image ? (
+              <div className="aspect-square overflow-hidden border-b border-gray-200">
+                <img
+                  src={mat.image}
+                  alt={mat.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : null}
+            <ul className="divide-y divide-gray-200">
+              {hexs.map((c) => (
+                <li key={c} className="flex items-center gap-3 p-3">
+                  <span
+                    className="w-14 h-14 rounded-lg border border-gray-200 shrink-0"
+                    style={{
+                      background: c.includes(",")
+                        ? `linear-gradient(135deg, ${c})`
+                        : c,
+                    }}
+                    aria-hidden
+                  />
+                  <div className="text-[13px] text-gray-800 font-mono">{c}</div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </aside>
     </div>
   );
 }
@@ -754,13 +759,13 @@ function MaterialForm({
                   />
                 )}
               </div>
-              <div className="flex-1 grid grid-cols-[80px_1fr] gap-2 items-center">
+              <div className="flex-1 flex items-center gap-2 items-center">
                 <div className="flex items-center gap-1">
                   <input
                     type="color"
                     value={c.hex || "#cccccc"}
                     onChange={(e) => updateCard(i, { hex: e.target.value })}
-                    className="w-7 h-7 rounded cursor-pointer border border-gray-300 p-0"
+                    className="w-6 h-7 rounded cursor-pointer border border-gray-300 p-0 shrink-0"
                   />
                   <input
                     value={c.hex}

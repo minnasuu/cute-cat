@@ -60,7 +60,13 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Pro
   }
 
   return (
-    <Modal open onClose={onClose} title={title} maxWidth={isEditing ? "max-w-3xl" : "max-w-5xl"}>
+    <Modal open onClose={onClose} title={
+      <div className="flex items-center gap-2">{title}
+          <div className="flex items-center gap-3 mb-3">
+            <span className="bg-gray-800 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[product.status]}</span>
+          </div>
+        </div>
+    } maxWidth={isEditing ? "max-w-3xl" : "max-w-5xl"}>
       {!isEditing ? (
         <ProductView product={state.product} onEdit={() => onRequestEdit(state!.product)} onClose={onClose} />
       ) : (
@@ -250,9 +256,6 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
           ).sort((a, b) => a.at.localeCompare(b.at)).map((e) => (
             <li key={e.id} className="flex items-baseline gap-3">
               <span className="font-mono text-[10px] text-gray-500 w-36">{new Date(e.at).toLocaleString()}</span>
-              <span className={`px-2 py-0.5 rounded-full border ${e.status === product.status ? "bg-gray-800 border-gray-800 text-white" : "bg-gray-50 border-gray-200 text-gray-600"}`}>
-                {STATUS_LABEL[e.status]}
-              </span>
               {e.note && <span className="text-gray-600">{e.note}</span>}
             </li>
           ))}
@@ -295,31 +298,9 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
         </div>
       )}
 
-      {/* 推进操作 */}
-      {target ? (
-        <div className="border-t border-gray-200 pt-4">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="bg-gray-800 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[product.status]}</span>
-            <span className="text-gray-500">→</span>
-            <span className="bg-primary-500 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[target]}</span>
-          </div>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)}
-            placeholder="(可选) 批注 · 工厂 / 成本 / 样品反馈 …" rows={2}
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500" />
-        </div>
-      ) : (
-        <div className="border-t border-gray-200 pt-4 text-primary-600 text-[13px]">✓ 产品已上架,流水完成</div>
-      )}
-
       {/* 底部操作 */}
-      <div className="flex items-center justify-end gap-2 mt-5 pt-3 border-t border-gray-100">
+      <div className="flex items-center justify-end gap-2 mt-5 pt-3 border-t border-gray-100 sticky bottom-0 bg-white">
         <button onClick={onClose} className="text-[12px] text-gray-600 hover:underline px-3 py-1.5">关闭</button>
-        {target && (
-          <button disabled={submitting} onClick={advance}
-            className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50">
-            {submitting ? "推进中…" : `推进至 ${STATUS_LABEL[target]}`}
-          </button>
-        )}
         <button onClick={onEdit}
           className="text-[12px] bg-gray-800 hover:bg-gray-900 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">
           编辑
@@ -540,7 +521,7 @@ function SourceThumb({ kind, img }: { kind: string; img: { url: string; name: st
 function SourcePlaceholder({ kind }: { kind: string }) {
   return (
     <div className="flex items-center gap-1" title={`${kind}: 用户上传(非库资源)`}>
-      <div className="w-7 h-7 rounded border border-dashed border-gray-200 bg-gray-50 flex items-center text-[8px] text-gray-300 shrink-0">—</div>
+      <div className="w-7 h-7 rounded border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-[8px] text-gray-300 shrink-0">—</div>
       <span className="text-[9px] text-gray-400">{kind}</span>
     </div>
   );

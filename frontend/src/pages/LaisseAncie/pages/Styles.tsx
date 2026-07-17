@@ -186,7 +186,7 @@ function StyleModal({ editor, onClose, onSave }: {
   const mat = editor.mat ?? null;
 
   return (
-    <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
+    <Modal open onClose={onClose} title={title} maxWidth="600px">
       <StyleForm
         key={mat?.id ?? "new"}
         initial={mat}
@@ -240,8 +240,7 @@ function StyleForm({ initial, onCancel, onSave }: {
 
       {/* 图片上传 */}
       <div>
-        <div className={labelCls}>款式参考图</div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-center gap-3 justify-center">
           <div className="w-28 h-28 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden shrink-0">
             {imageUrl ? (
               <img src={imageUrl} alt="款式" className="w-full h-full object-cover" />
@@ -252,7 +251,7 @@ function StyleForm({ initial, onCancel, onSave }: {
               </div>
             )}
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 items-center">
             <label className="text-[11px] text-primary-600 hover:underline cursor-pointer">
               上传图片
               <input type="file" accept="image/*" className="hidden"
@@ -265,7 +264,7 @@ function StyleForm({ initial, onCancel, onSave }: {
             {imageUrl && (
               <button onClick={() => { setImageUrl(""); setImageFile(null); }} className="text-[11px] text-gray-500 hover:underline">移除图片</button>
             )}
-            <span className="text-[10px] text-gray-400">建议上传款式效果图或实物图</span>
+            <span className="text-[10px] text-gray-400">建议上传款式平铺效果图</span>
           </div>
         </div>
       </div>
