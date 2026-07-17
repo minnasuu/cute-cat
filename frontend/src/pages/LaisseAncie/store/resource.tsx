@@ -7,7 +7,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, type ReactNode } from "react";
 import { teamApi } from "../lib/api";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
-import type { StyleRow, IllustrationRow } from "../types/design";
+import type { StyleRow, IllustrationRow, ColorImageEntry } from "../types/design";
 
 export interface InspirationItem {
   id: string;
@@ -60,6 +60,8 @@ export interface MaterialRow {
   priceNote?: string | null;
   /** 材料参考图 URL */
   image?: string | null;
+  /** 多色色卡(每色一张图):[{ hex, name, url, outOfStock }] */
+  colorImages?: ColorImageEntry[];
   /** 管理员设为共享 → 所有用户可见可用(跨 teamId) */
   shared?: boolean;
   sharedById?: string | null;

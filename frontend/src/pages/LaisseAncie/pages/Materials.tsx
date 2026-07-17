@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Materials(面料库)——同面料多个颜色,每个颜色一张图(色卡=图片)。
  * 去掉类别筛选(全部视为面料),保留搜索与新增/编辑/只读 3 态弹窗。
@@ -12,7 +11,6 @@ import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useAuth } from "../../../contexts/AuthContext";
 import { Modal } from "../components/ui";
 import type { MaterialRow } from "../store/resource";
-import type { ColorImageEntry } from "../types/design";
 import { compressForUpload } from "../lib/images";
 import { extractDominantHex } from "../lib/extract-color";
 import { showToast } from "../../../components/Toast";
@@ -63,8 +61,8 @@ export default function MaterialsPage() {
     return rows.filter((m) =>
       m.name.toLowerCase().includes(needle) || (m.code || "").toLowerCase().includes(needle) ||
       (m.composition || "").toLowerCase().includes(needle) ||
-      (m.uses || []).some((u) => u.toLowerCase().includes(needle)) ||
-      (m.colors || []).some((c) => c.toLowerCase().includes(needle)) ||
+      (m.uses || []).some((u: string) => u.toLowerCase().includes(needle)) ||
+      (m.colors || []).some((c: string) => c.toLowerCase().includes(needle)) ||
       (m.supplier || "").toLowerCase().includes(needle));
   }, [q, rows]);
 
@@ -298,12 +296,32 @@ function MaterialModal({ editor, onClose, onSwitchEdit, onSave, onDelete, deleti
   const { mode, mat } = editor;
   const isEditing = mode === "edit" || mode === "create";
   const title = mode === "create" ? "新增面料" : (mode === "edit" ? "编辑面料" : (mat?.name ?? "面料"));
+  const { isAdmin } = useAuth();
+  const { teamId } = useCurrentTeam();
+  const [shared, setShared] = useState(!!mat?.shared);
+  const [sharing, setSharing] = useState(false);
+  useEffect(() => { setShared(!!mat?.shared); }, [mat]);
+  // 共享开关:仅管理员在只读态可用
+  const toggleShare = async () => {
+    if (!teamId || !mat || sharing) return;
+    const next = !shared;
+    setSharing(true);
+    setShared(next);
+    try {
+      await teamApi(teamId).setMaterialShared(mat.id, next);
+    } catch (e: any) {
+      setShared(!next);
+      showToast(e?.message || "操作失败", "error");
+    } finally {
+      setSharing(false);
+    }
+  };
   return (
     <Modal open onClose={onClose} title={
-      <div className="flex items-center max-w-full">
+      <div className="flex items-center gap-3 max-w-full">
         <div className="flex-1 min-w-0 truncate">{title}</div>
-       <div className="flex items-center justify-between">
-          <div className="shrink-0 ml-4 flex items-center gap-2">
+        {mode === "view" && mat && (
+          <div className="shrink-0 flex items-center gap-2">
             {isAdmin && (
               <button
                 onClick={toggleShare}
@@ -323,45 +341,26 @@ function MaterialModal({ editor, onClose, onSwitchEdit, onSave, onDelete, deleti
               </button>
             )}
             <button
-              onClick={onEdit}
+              onClick={onSwitchEdit}
               className="text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
             >
               编辑
             </button>
           </div>
-        </div>
-        </div>
+        )}
+      </div>
     } maxWidth={mode === "create" ? "600px" : "max-w-5xl"}>
-      {!isEditing ? <MaterialView mat={mat!} onEdit={onSwitchEdit} onDelete={onDelete} deleting={deleting} /> : <MaterialForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />}
+      {!isEditing ? <MaterialView mat={mat!} /> : <MaterialForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />}
     </Modal>
   );
 }
 
 /** 只读详情 */
-function MaterialView({ mat, onEdit, onDelete, deleting }: { mat: MaterialRow; onEdit: () => void; onDelete?: (m: MaterialRow) => void; deleting?: string | null }) {
-  const { teamId } = useCurrentTeam();
-  const { isAdmin } = useAuth();
-  const [shared, setShared] = useState(!!mat?.shared);
-  const [sharing, setSharing] = useState(false);
-  useEffect(() => { setShared(!!mat?.shared); }, [mat]);
+function MaterialView({ mat }: { mat: MaterialRow }) {
   const price = mat.priceAmount != null ? { amount: mat.priceAmount, currency: mat.priceCur || "CNY", unit: mat.priceUnit || "", note: mat.priceNote } : null;
   const cards = toCards(mat);
   const hexs: string[] = mat.colors ?? [];
   const showCards = cards.length > 0;
-  const toggleShare = async () => {
-    if (!teamId || sharing) return;
-    const next = !shared;
-    setSharing(true);
-    setShared(next);
-    try {
-      await teamApi(teamId).setMaterialShared(mat.id, next);
-    } catch (e: any) {
-      setShared(!next);
-      showToast(e?.message || "操作失败", "error");
-    } finally {
-      setSharing(false);
-    }
-  };
   return (
     <div className="flex flex-col w-full h-[60vh]">
        <article className="overflow-auto max-h-full text-xs space-y-5 pr-1 w-full">
@@ -412,7 +411,7 @@ function MaterialView({ mat, onEdit, onDelete, deleting }: { mat: MaterialRow; o
         {mat.uses && mat.uses.length > 0 && (
           <Section label="用途">
             <ul className="list-disc pl-4 space-y-0.5">
-              {mat.uses.map((u) => (
+              {mat.uses.map((u: string) => (
                 <li key={u}>{u}</li>
               ))}
             </ul>
@@ -421,7 +420,7 @@ function MaterialView({ mat, onEdit, onDelete, deleting }: { mat: MaterialRow; o
         {mat.seasons && mat.seasons.length > 0 && (
           <Section label="季节">
             <div className="flex flex-wrap gap-1.5">
-              {mat.seasons.map((s) => (
+              {mat.seasons.map((s: string) => (
                 <span
                   key={s}
                   className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700"
@@ -435,7 +434,7 @@ function MaterialView({ mat, onEdit, onDelete, deleting }: { mat: MaterialRow; o
         {mat.care && mat.care.length > 0 && (
           <Section label="洗护">
             <ul className="list-disc pl-4 space-y-0.5">
-              {mat.care.map((c) => (
+              {mat.care.map((c: string) => (
                 <li key={c}>{c}</li>
               ))}
             </ul>

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Lookbook —— 款式总览。
  *
@@ -41,9 +40,9 @@ type ViewMode = "table" | "card";
  * 合并 images[] + 遗留 imageUrl(兼容未迁移数据)。
  */
 function pickCover(product: Product): string | null {
-  const imgs = (product.images ?? []).filter((im) => im.url);
+  const imgs = (product?.images ?? []).filter((im) => im.url);
   const legacyMain = !imgs.some((im) => im.slot === MAIN_SLOT) && product.imageUrl
-    ? [{ slot: MAIN_SLOT, label: "主图", url: product.imageUrl }, ...imgs]
+    ? [{ slot: MAIN_SLOT, label: "主图", url: product?.imageUrl }, ...imgs]
     : imgs;
   const main = legacyMain.find((im) => im.slot === MAIN_SLOT);
   if (main) return main.url;
@@ -200,7 +199,7 @@ export default function LookbookPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {items.map((p) => (
             <CardItem key={p.id} product={p} cover={pickCover(p)}
-              onClick={() => setEditor({ mode: "view", product: p })} onDelete={() => setConfirming(p.id)}
+              onClick={() => setEditor({ mode: "view", product: p })}
               onDownload={() => handleDownload(p)} />
           ))}
         </div>

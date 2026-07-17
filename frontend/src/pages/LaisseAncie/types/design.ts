@@ -141,6 +141,8 @@ export interface Product {
   recommendation?: MaterialRecommendation;
   /** 设计工作流生成的图片数组:[{slot, label, url}] */
   images?: ProductImage[];
+  /** 遗留单图字段(迁移自 images[] 前的旧数据),作为 images 缺主图时的兜底封面 */
+  imageUrl?: string | null;
   /** 生成图来源(与 images 按索引对齐):每张效果图的款式图 / 面料图(仅库来源有值)。
    *  材料组合模式专用,用于详情弹窗回溯参考图。 */
   sourceImages?: ImageSourceImages[];

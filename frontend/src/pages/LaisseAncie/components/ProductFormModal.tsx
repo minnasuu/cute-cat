@@ -1,23 +1,24 @@
 // @ts-nocheck
 /**
- * Lookbook 产品的三态弹窗 —— view / edit / create。
+ * Lookbook 产品弹窗 —— 详情(view) + 内联编辑(edit) + 新建(create)。
  *
- *   view   :只读详情(图片(主图/效果图/线稿)、工序时间线、推进按钮、结构化方案、基础字段),
- *           右上角「编辑」切入 edit;view 内支持「设为主图 / 降为效果图」(主图↔效果图互换);
- *   edit   :完整作者字段表单(mode/标题/季节/品类/面料/配色/目标价/版型/工艺/主图);
- *   create :同 edit,仅新建。
+ * 设计要点(合并 edit 到 detail):
+ *   单一弹窗内:view 态展示详情 + 工序时间线 + 推进按钮 + 结构化方案 + 基础字段;
+ *   点「编辑」原地切到编辑态(同一弹窗,只把可编辑区块换成输入控件,图片/工序/方案区块保留),
+ *   保存成功落库 + store.refresh() 后回到 view 态继续展示最新值——没有"先关弹窗再开新弹窗"的体感。
+ *   create 态继续用完整独立表单(首次建产品),保持原样。
  *
  * 图片统一进 images[].slot:主图(slot="main")/线稿(lineart)/效果图(其余)。
  * 上传默认主图(无 slot → slot="main",已有主图则旧主图降级为效果图);
  * 其余字段经 /products (POST/PATCH) 持久化。工序状态由时间线/推进按钮单独管理,
  * 不纳入本表单(与表格行内 StatusSelect / 推进按钮的既有职责保持一致)。
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Modal } from "./ui";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useDesignStore } from "../store/design";
 import { teamApi } from "../lib/api";
-import { MODE_LABEL, STATUS_FLOW, STATUS_LABEL, type DesignMode, type Product, type ProductStatus } from "../types/design";
+import { MODE_LABEL, STATUS_LABEL, STATUS_FLOW, type DesignMode, type Product, type ProductStatus } from "../types/design";
 import { MAIN_SLOT, LINEART_SLOT, RENDER_SLOT, slotRole, swapMainImage } from "../lib/imageRole";
 
 const ALL_MODES: DesignMode[] = ["illustration", "single", "material-combo", "style-mutate", "occasion"];
@@ -27,7 +28,8 @@ interface Props {
   state: null | { mode: "create" } | { mode: "view" | "edit"; product: Product };
   onClose: () => void;
   onSaved: () => void;
-  onRequestEdit: (p: Product) => void;
+  /** 兼容旧调用方;view→edit 已内联切换,不再走外部接力 */
+  onRequestEdit?: (p: Product) => void;
 }
 
 export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Props) {
@@ -35,9 +37,11 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Pro
 
   if (!state) return null;
   const isEditing = state.mode === "edit" || state.mode === "create";
+  const product = "product" in state ? state.product : null;
   const title = state.mode === "create" ? "新增产品"
     : state.mode === "edit" ? "编辑产品"
-    : (state.product.title || "(untitled)");
+      : (product?.title || "(untitled)");
+  const statusLabel = product ? STATUS_LABEL[product.status] : "";
 
   async function handleSave(values: any) {
     if (!teamId) return;
@@ -61,18 +65,18 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Pro
 
   return (
     <Modal open onClose={onClose} title={
-      <div className="flex items-center gap-2">{title}
-          <div className="flex items-center gap-3 mb-3">
-            <span className="bg-gray-800 text-white px-2 py-1 rounded-full text-[11px]">{STATUS_LABEL[product.status]}</span>
-          </div>
-        </div>
+      <div className="flex items-center gap-3">{title}
+        {statusLabel && (
+          <span className="bg-gray-800 text-white px-2 py-1 rounded-full text-[11px]">{statusLabel}</span>
+        )}
+      </div>
     } maxWidth={isEditing ? "max-w-3xl" : "max-w-5xl"}>
       {!isEditing ? (
-        <ProductView product={state.product} onEdit={() => onRequestEdit(state!.product)} onClose={onClose} />
+        <ProductView product={product!} onClose={onClose} onSaved={onSaved} />
       ) : (
         <ProductForm
-          key={state.mode === "edit" ? state.product.id : "new"}
-          initial={state.mode === "edit" ? state.product : null}
+          key={state.mode === "edit" ? product!.id : "new"}
+          initial={state.mode === "edit" ? product : null}
           onCancel={onClose}
           onSave={handleSave}
         />
@@ -81,15 +85,85 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Pro
   );
 }
 
-// ── 只读详情 ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// view + 内联 edit 详情
+// ─────────────────────────────────────────────────────────────
 
-function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: () => void; onClose: () => void }) {
+function ProductView({ product, onClose, onSaved }: { product: Product; onClose: () => void; onSaved: () => void }) {
   const { teamId } = useCurrentTeam();
   const store = useDesignStore();
   const target = nextStatus(product.status);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [replacingSlot, setReplacingSlot] = useState<string | null>(null);
+  const [swapping, setSwapping] = useState(false);
+
+  // ── 内联编辑态 ──
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState<DesignMode>(product.mode);
+  const [title, setTitle] = useState(product.title);
+  const [description, setDescription] = useState(product.description);
+  const [seasons, setSeasons] = useState<string>((product.seasons ?? []).join("\n"));
+  const [category, setCategory] = useState(product.category ?? "");
+  const [colors, setColors] = useState<string[]>(product.colors?.length ? [...product.colors] : ["#cccccc"]);
+  const [targetPriceStr, setTargetPriceStr] = useState<string>(product.targetPriceNum != null ? String(product.targetPriceNum) : "");
+  const [silhouette, setSilhouette] = useState(product.silhouette ?? "");
+  const [fabricComposition, setFabricComposition] = useState(product.fabricComposition ?? "");
+  const [stitchNotes, setStitchNotes] = useState(product.stitchNotes ?? "");
+  const [imageUrl, setImageUrl] = useState<string>(() => {
+    const main = (product.images ?? []).find((im) => im.slot === MAIN_SLOT);
+    return main?.url || product.imageUrl || "";
+  });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+
+  const colorsCanAdd = colors.length < 5;
+  const colorsCanRemove = colors.length > 1;
+  const seasonList = seasons.split("\n").map((s) => s.trim()).filter(Boolean);
+  const toggleSeason = useCallback((s: string) => {
+    setSeasons((seasonList.includes(s) ? seasonList.filter((x) => x !== s) : [...seasonList, s]).join("\n"));
+  }, [seasonList]);
+
+  const cancelEdit = () => {
+    // 还原草稿
+    setMode(product.mode); setTitle(product.title); setDescription(product.description);
+    setSeasons((product.seasons ?? []).join("\n")); setCategory(product.category ?? "");
+    setColors(product.colors?.length ? [...product.colors] : ["#cccccc"]);
+    setTargetPriceStr(product.targetPriceNum != null ? String(product.targetPriceNum) : "");
+    setSilhouette(product.silhouette ?? ""); setFabricComposition(product.fabricComposition ?? "");
+    setStitchNotes(product.stitchNotes ?? "");
+    setImageUrl(() => { const m = (product.images ?? []).find((im) => im.slot === MAIN_SLOT); return m?.url || product.imageUrl || ""; });
+    setImageFile(null);
+    setEditing(false);
+  };
+
+  const submitEdit = async () => {
+    if (!title.trim() || !teamId) return;
+    setSaving(true);
+    try {
+      const api = teamApi(teamId);
+      const payload = {
+        mode, title: title.trim(), description: description.trim() || "",
+        seasons: seasonList, category: category.trim() || null, colors,
+        targetPriceNum: targetPriceStr ? Number(targetPriceStr) : null,
+        silhouette: silhouette.trim() || null, fabricComposition: fabricComposition.trim() || null,
+        stitchNotes: stitchNotes.trim() || null, imageUrl: imageUrl || null,
+      };
+      await api.updateProduct(product.id, payload);
+      if (imageFile) {
+        const fd = new FormData();
+        fd.append("file", imageFile);
+        await api.uploadProductImage(product.id, fd);
+      }
+      await store.refresh();
+      await onSaved();
+      setEditing(false);
+    } catch (e: any) {
+      alert(`保存失败: ${e?.message || e}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // 合并 images[] + 遗留 imageUrl(兼容未迁移数据),按角色分组
   const mergedImages = useMemo(() => {
@@ -103,9 +177,8 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
   const renderImages = mergedImages.filter((im) => slotRole(im.slot) === "render");
   const lineartImages = mergedImages.filter((im) => im.slot === LINEART_SLOT);
   const hasHtml = !!product.html;
-  const colors = product.colors ?? [];
+  const displayColors = product.colors ?? [];
 
-  // 仅 view 态用到的「替换某 slot 上传」(线稿/效果图单张替换)
   async function replaceSlotImage(slot: string, file: File) {
     if (!teamId) return;
     setReplacingSlot(slot);
@@ -118,14 +191,12 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
     } finally { setReplacingSlot(null); }
   }
 
-  // 主图互换:前端算好整张 images[] + imageUrl,一次 PATCH 提交
-  const [swapping, setSwapping] = useState(false);
   async function changeMain(action: "promote" | "demote", targetIndex: number) {
     if (!teamId || swapping) return;
     setSwapping(true);
     try {
-      const { images, imageUrl } = swapMainImage(mergedImages, targetIndex, action);
-      await teamApi(teamId).updateProduct(product.id, { images, imageUrl });
+      const { images, imageUrl: newUrl } = swapMainImage(mergedImages, targetIndex, action);
+      await teamApi(teamId).updateProduct(product.id, { images, imageUrl: newUrl });
       await store.refresh();
     } catch (e: any) {
       alert(`操作失败: ${e?.message || e}`);
@@ -141,6 +212,8 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
     } finally { setSubmitting(false); }
   }
 
+  const inputCls = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500";
+
   return (
     <div className="flex-1 min-h-0 h-[60vh] overflow-auto pr-1 text-xs">
       {/* 图片(主图 / 效果图 / 线稿) + 插画 HTML */}
@@ -154,7 +227,6 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
             </div>
           ) : (
             <div className="space-y-3">
-              {/* 主图 */}
               {mainImages.length > 0 && (
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">主图</div>
@@ -166,7 +238,7 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
                           <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-cover" /></div>
                           <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
                             <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
-                            <button disabled={swapping} onClick={() => changeMain("demote", realIdx)}
+                            <button disabled={swapping || editing} onClick={() => changeMain("demote", realIdx)}
                               className="shrink-0 text-[10px] text-amber-600 hover:text-amber-700 font-medium disabled:opacity-50">降为效果图</button>
                           </figcaption>
                         </figure>
@@ -175,7 +247,6 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
                   </div>
                 </div>
               )}
-              {/* 效果图(AI 生成,可能多图;可提升为主图) */}
               {renderImages.length > 0 && (
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">效果图</div>
@@ -194,17 +265,16 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
                             <div className="flex items-center justify-between gap-1">
                               <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
                               <span className="flex items-center gap-1">
-                                <button disabled={swapping} onClick={() => changeMain("promote", realIdx)}
+                                <button disabled={swapping || editing} onClick={() => changeMain("promote", realIdx)}
                                   className="shrink-0 text-[10px] text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50">设为主图</button>
                                 <label className="shrink-0 cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 font-medium disabled:opacity-50">
                                   {busy ? "替换中" : "替换"}
-                                  <input type="file" accept="image/*" className="hidden" disabled={busy}
+                                  <input type="file" accept="image/*" className="hidden" disabled={busy || editing}
                                     onChange={(e) => { const f = e.target.files?.[0]; if (f) void replaceSlotImage(im.slot, f); e.target.value = ""; }} />
                                 </label>
                               </span>
                             </div>
                           </figcaption>
-                          {/* 材料组合:参考图来源(款式图 + 面料图小缩略图) */}
                           {hasSrc && (
                             <div className="px-2 pb-2 flex items-center gap-2 border-t border-gray-100 pt-1.5">
                               {src?.style ? <SourceThumb kind="款式" img={src.style} /> : <SourcePlaceholder kind="款式" />}
@@ -217,7 +287,6 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
                   </div>
                 </div>
               )}
-              {/* 线稿(灵感扩散专属,不参与主图互换) */}
               {lineartImages.length > 0 && (
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">线稿</div>
@@ -231,7 +300,7 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
                             <span className="text-[10px] text-gray-600 font-medium truncate min-w-0">{im.label}</span>
                             <label className="shrink-0 cursor-pointer text-[10px] text-gray-400 hover:text-gray-600 font-medium disabled:opacity-50">
                               {busy ? "替换中" : "替换"}
-                              <input type="file" accept="image/*" className="hidden" disabled={busy}
+                              <input type="file" accept="image/*" className="hidden" disabled={busy || editing}
                                 onChange={(e) => { const f = e.target.files?.[0]; if (f) void replaceSlotImage(im.slot, f); e.target.value = ""; }} />
                             </label>
                           </figcaption>
@@ -246,7 +315,7 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
         </div>
       )}
 
-      {/* 时间线 + 推进 */}
+      {/* 工序时间线 + 推进(编辑态也保留,便于边改边推进) */}
       <div className="mb-5">
         <SectionLabel>工序时间线</SectionLabel>
         <ol className="space-y-2 max-h-32 overflow-y-auto pr-2">
@@ -265,52 +334,161 @@ function ProductView({ product, onEdit, onClose }: { product: Product; onEdit: (
       {/* 结构化方案 */}
       <DesignSections product={product} />
 
-      {/* 基础字段 */}
+      {/* ── 可编辑基础字段 ── */}
+      {/* 产品名 + 创作模式 */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-[12px] border-t border-gray-200 pt-4 mb-4">
-        <Detail k="创作模式" v={MODE_LABEL[product.mode]} />
-        <Detail k="季节" v={product.seasons?.join(", ")} />
-        <Detail k="品类" v={product.category} />
-        <Detail k="面料" v={product.fabricComposition} />
-        <Detail k="目标价" v={typeof product.targetPriceNum === "number" ? `¥${product.targetPriceNum}` : "—"} />
-        <Detail k="版型" v={product.silhouette} />
-        <Detail k="工艺" v={product.stitchNotes} />
+        {editing ? (
+          <>
+            <div className="col-span-2">
+              <SectionLabel>产品名 *</SectionLabel>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如:春日雏菊连衣裙" className={inputCls} />
+            </div>
+            <div>
+              <SectionLabel>创作模式</SectionLabel>
+              <select value={mode} onChange={(e) => setMode(e.target.value as DesignMode)} className={inputCls}>
+                {ALL_MODES.map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
+              </select>
+            </div>
+            <div>
+              <SectionLabel>品类</SectionLabel>
+              <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如:裙装 / 外套" className={inputCls} />
+            </div>
+            <div>
+              <SectionLabel>面料成分</SectionLabel>
+              <input value={fabricComposition} onChange={(e) => setFabricComposition(e.target.value)} placeholder="如:60% 棉 · 40% 聚酯" className={inputCls} />
+            </div>
+            <div>
+              <SectionLabel>目标价 (¥)</SectionLabel>
+              <input value={targetPriceStr} onChange={(e) => setTargetPriceStr(e.target.value)} placeholder="如:399" inputMode="decimal" className={inputCls} />
+            </div>
+          </>
+        ) : (
+          <>
+            <Detail k="创作模式" v={MODE_LABEL[product.mode]} />
+            <Detail k="季节" v={product.seasons?.join(", ")} />
+            <Detail k="品类" v={product.category} />
+            <Detail k="面料" v={product.fabricComposition} />
+            <Detail k="目标价" v={typeof product.targetPriceNum === "number" ? `¥${product.targetPriceNum}` : "—"} />
+            <Detail k="版型" v={product.silhouette} />
+            <Detail k="工艺" v={product.stitchNotes} />
+          </>
+        )}
       </div>
 
-      {/* 颜色色板 */}
-      {colors.length > 0 && (
+      {/* 季节(编辑态) */}
+      {editing && (
         <div className="mb-4">
-          <SectionLabel>颜色</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {colors.map((c) => (
-              <div key={c} className="flex flex-col items-center gap-0.5" title={c}>
-                <div className="w-8 h-8 rounded-md border border-gray-200" style={{ background: c }} />
-                <span className="text-[9px] text-gray-500 font-mono">{c}</span>
-              </div>
-            ))}
+          <SectionLabel>季节</SectionLabel>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {SEASON_PRESETS.map((s) => {
+              const active = seasonList.includes(s);
+              return (
+                <button key={s} onClick={() => toggleSeason(s)}
+                  className={`px-2.5 py-1 rounded-full border text-[12px] transition-colors ${active ? "bg-primary-500 border-primary-500 text-white" : "border-gray-200 text-gray-600 hover:border-primary-300"}`}>
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+          <textarea value={seasons} onChange={(e) => setSeasons(e.target.value)} rows={2}
+            placeholder="自由补充,每行一条(预设已选入会同步到这里)" className={inputCls} />
+        </div>
+      )}
+
+      {/* 配色 */}
+      <div className="mb-4">
+        {editing ? (
+          <div>
+            <div className="flex items-baseline justify-between mb-1">
+              <SectionLabel>配色 ({colors.length}/5)</SectionLabel>
+              <button onClick={() => setColors((cs) => colorsCanAdd ? [...cs, "#cccccc"] : cs)} disabled={!colorsCanAdd}
+                className="text-[10px] text-primary-600 disabled:text-gray-300 hover:underline">+ 添加颜色</button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {colors.map((c, i) => (
+                <div key={i} className="flex items-center gap-1 border border-gray-200 rounded-lg px-1.5 py-1 bg-white">
+                  <input type="color" value={/^#?[0-9a-fA-F]{6}$/.test(c) ? c : "#cccccc"}
+                    onChange={(e) => setColors((cs) => cs.map((x, j) => j === i ? e.target.value : x))}
+                    className="w-7 h-7 rounded cursor-pointer border-0 p-0" />
+                  <input value={c} onChange={(e) => setColors((cs) => cs.map((x, j) => j === i ? e.target.value : x))}
+                    className="w-20 text-[11px] font-mono border-0 focus:outline-none" />
+                  <button onClick={() => setColors((cs) => colorsCanRemove ? cs.filter((_, j) => j !== i) : cs)}
+                    disabled={!colorsCanRemove} className="text-gray-400 hover:text-red-500 disabled:opacity-30 px-1">×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            <SectionLabel>颜色</SectionLabel>
+            <div className="flex flex-wrap gap-2">
+              {displayColors.map((c) => (
+                <div key={c} className="flex flex-col items-center gap-0.5" title={c}>
+                  <div className="w-8 h-8 rounded-md border border-gray-200" style={{ background: c }} />
+                  <span className="text-[9px] text-gray-500 font-mono">{c}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 版型 / 工艺(编辑态) */}
+      {editing && (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <SectionLabel>版型 / 结构</SectionLabel>
+            <textarea value={silhouette} onChange={(e) => setSilhouette(e.target.value)} rows={4} placeholder="宽松 A 字 · 收腰 …" className={inputCls} />
+          </div>
+          <div>
+            <SectionLabel>工艺 / 备注</SectionLabel>
+            <textarea value={stitchNotes} onChange={(e) => setStitchNotes(e.target.value)} rows={4} placeholder="来去缝 · 包边 …" className={inputCls} />
           </div>
         </div>
       )}
 
-      {product.description && (
+      {/* 描述 */}
+      {editing ? (
         <div className="mb-4">
-          <SectionLabel>描述</SectionLabel>
-          <div className="text-[12px] text-gray-700 whitespace-pre-wrap leading-relaxed">{product.description}</div>
+          <SectionLabel>描述 / 备注</SectionLabel>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="设计理念、场合、特别说明 …" className={inputCls} />
         </div>
+      ) : (
+        product.description && (
+          <div className="mb-4">
+            <SectionLabel>描述</SectionLabel>
+            <div className="text-[12px] text-gray-700 whitespace-pre-wrap leading-relaxed">{product.description}</div>
+          </div>
+        )
       )}
 
-      {/* 底部操作 */}
+      {/* ── 底部操作 ── */}
       <div className="flex items-center justify-end gap-2 mt-5 pt-3 border-t border-gray-100 sticky bottom-0 bg-white">
-        <button onClick={onClose} className="text-[12px] text-gray-600 hover:underline px-3 py-1.5">关闭</button>
-        <button onClick={onEdit}
-          className="text-[12px] bg-gray-800 hover:bg-gray-900 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">
-          编辑
-        </button>
+        {editing ? (
+          <>
+            <button onClick={cancelEdit} disabled={saving} className="text-[12px] text-gray-600 hover:underline px-3 py-1.5 disabled:opacity-50">取消</button>
+            <button onClick={submitEdit} disabled={saving || !title.trim()}
+              className="text-[12px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">
+              {saving ? "保存中…" : "保存"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={onClose} className="text-[12px] text-gray-600 hover:underline px-3 py-1.5">关闭</button>
+            <button onClick={() => setEditing(true)}
+              className="text-[12px] bg-gray-800 hover:bg-gray-900 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">
+              编辑
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// ── 编辑 / 新增 表单 ───────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// create 新增表单(独立)
+// ─────────────────────────────────────────────────────────────
 
 function ProductForm({ initial, onCancel, onSave }: {
   initial: Product | null;
@@ -328,7 +506,6 @@ function ProductForm({ initial, onCancel, onSave }: {
   const [silhouette, setSilhouette] = useState(initial?.silhouette ?? "");
   const [fabricComposition, setFabricComposition] = useState(initial?.fabricComposition ?? "");
   const [stitchNotes, setStitchNotes] = useState(initial?.stitchNotes ?? "");
-  // 主图预览:优先 imageUrl,兼容已迁移到 images[](slot=main)的数据
   const mainFromImages = (initial?.images ?? []).find((im) => im.slot === MAIN_SLOT)?.url;
   const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? mainFromImages ?? "");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -336,11 +513,9 @@ function ProductForm({ initial, onCancel, onSave }: {
 
   const canAddColor = colors.length < 5;
   const canRemoveColor = colors.length > 1;
-
-  // 季节 toggles:预设 + 自由文本(每行一条)
-  const seasonList = seasons.split("\n").map(s => s.trim()).filter(Boolean);
+  const seasonList = seasons.split("\n").map((s) => s.trim()).filter(Boolean);
   function toggleSeason(s: string) {
-    if (seasonList.includes(s)) setSeasons(seasonList.filter(x => x !== s).join("\n"));
+    if (seasonList.includes(s)) setSeasons(seasonList.filter((x) => x !== s).join("\n"));
     else setSeasons([...seasonList, s].join("\n"));
   }
 
@@ -436,8 +611,7 @@ function ProductForm({ initial, onCancel, onSave }: {
           })}
         </div>
         <textarea value={seasons} onChange={(e) => setSeasons(e.target.value)} rows={2}
-          placeholder="自由补充,每行一条(预设已选入会同步到这里)"
-          className={inputCls} />
+          placeholder="自由补充,每行一条(预设已选入会同步到这里)" className={inputCls} />
       </div>
 
       {/* 配色 */}
