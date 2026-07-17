@@ -36,6 +36,8 @@ const EXT_MIME = {
  * Maizi 的 images 只接受 URL 或 data URI,本地模式 public url 是相对路径,
  * 外部拉不到,必须回退成 base64 data URI 才能作为参考图使用。
  * 读取失败 / 非本地路径时返回 null。
+ * 依赖"保留本地副本做热缓存"决策 —— 切到 COS 后老图仍留在 backend/uploads/,
+ * 本函数 fs.existsSync 仍能读到,老参考图不会断。
  */
 function localUrlToDataUri(localUrl) {
   if (!localUrl || typeof localUrl !== 'string' || !localUrl.startsWith(LOCAL_UPLOAD_PREFIX)) return null;

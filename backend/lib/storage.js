@@ -16,11 +16,16 @@
  *   await saveUpload(absTmpPath, storage.createSavePath(folder, filename));
  *
  * 环境变量(s3 模式):
- *   S3_ENDPOINT        e.g. https://<account>.r2.cloudflarestorage.com   (R2) 或 https://oss-cn-beijing.aliyuncs.com (OSS)
+ *  *   S3_ENDPOINT        e.g. https://<account>.r2.cloudflarestorage.com   (R2) 或 https://oss-cn-beijing.aliyuncs.com (OSS)
+ *                                     或 https://cos.ap-beijing.myqcloud.com (腾讯云 COS)
  *   S3_BUCKET          bucket 名
  *   S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY
  *   S3_PUBLIC_BASE_URL e.g. https://cdn.example.com  或 https://<public>.r2.dev/<bucket>
+ *                      或 https://<bucket>.cos.ap-beijing.myqcloud.com (COS 默认域名)
  *   S3_FOLDER_PREFIX   optional, e.g. cute-cat
+ *   S3_REGION          optional, e.g. ap-beijing(COS 必填) / auto(R2 默认)
+ *   S3_FORCE_PATH_STYLE  optional, 'true' 启用路径样式(host=endpoint,bucket 在 URL path 里);
+ *                         默认虚拟主机样式(host=<bucket>.endpoint,与 COS 兼容)
  */
 
 'use strict';
@@ -102,27 +107,61 @@ function hmac(key, data) {
   return crypto.createHmac('sha256', key).update(data).digest();
 }
 function uriEncode(str, encodeSlash = true) {
-  return str.split('').map((c) => {
-    if (/[A-Za-z0-9_.~-]/.test(c)) return c;
-    if (c === '/' && !encodeSlash) return '/';
-    return '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0');
-  }).join('');
+  const out = [];
+  for (const c of str) {
+    if (/[A-Za-z0-9_.~-]/.test(c)) { out.push(c); continue; }
+    if (c === '/' && !encodeSlash) { out.push('/'); continue; }
+    // 非 ASCII(中文等):按 UTF-8 bytes 逐字节 %XX 编码,与 AWS SigV4 一致。
+    // ASCII 字符 UTF-8 = 单字节,行为与旧版 charCodeAt 完全一致。
+    for (const b of Buffer.from(c, 'utf8')) {
+      out.push('%' + b.toString(16).toUpperCase().padStart(2, '0'));
+    }
+  }
+  return out.join('');
 }
 function canonKey(key) {
   // 去掉前导 /,每个 segment 独立 encode(S3 惯例)
   return key.replace(/^\/+/, '').split('/').map((seg) => uriEncode(seg, false)).join('/');
 }
-async function s3PutObject({ key, body, contentType }) {
+/**
+ * 统一构造 S3 请求位置(host 用于签名,urlBase 用于发起请求)。
+ * 两种样式由 S3_FORCE_PATH_STYLE 控制,host 与 URL 始终保持一致:
+ *
+ *   虚拟主机样式 (默认,COS 推荐):
+ *     host   = <bucket>.cos.ap-beijing.myqcloud.com
+ *     urlBase = https://<bucket>.cos.ap-beijing.myqcloud.com
+ *     canonUri = /<key>(不含 bucket,放在 URL path)
+ *
+ *   路径样式 (S3_FORCE_PATH_STYLE=true,旧 S3 兼容):
+ *     host   = cos.ap-beijing.myqcloud.com
+ *     urlBase = https://cos.ap-beijing.myqcloud.com/<bucket>
+ *     canonUri = /<bucket>/<key>
+ */
+function buildS3Location() {
   const endpoint = (process.env.S3_ENDPOINT || '').replace(/\/+$/, '');
-  const bucket = process.env.S3_BUCKET;
+  const bucket = process.env.S3_BUCKET || '';
+  const forcePath = String(process.env.S3_FORCE_PATH_STYLE || '').toLowerCase() === 'true';
+  let u = null;
+  try { u = new URL(endpoint); } catch { /* 下面兜底 */ }
+  if (!u || forcePath) {
+    const host = u ? u.host : endpoint.replace(/^https?:\/\//, '');
+    const urlBase = bucket ? `${endpoint}/${bucket}` : endpoint;
+    return { host, urlBase, pathPrefix: bucket ? `/${bucket}` : '' };
+  }
+  // 虚拟主机:host 带 bucket 前缀
+  const host = bucket ? `${bucket}.${u.host}` : u.host;
+  const urlBase = bucket ? `${u.protocol}//${bucket}.${u.host}` : endpoint;
+  return { host, urlBase, pathPrefix: '' };
+}
+
+async function s3PutObject({ key, body, contentType }) {
   const region = process.env.S3_REGION || 'auto';
   const service = 's3';
   const now = new Date();
   const ymd = now.toISOString().slice(0, 10).replace(/-/g, '');
   const iso = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
-  const host = `${bucket}.${endpoint.replace(/^https?:\/\//, '')}`;
-  const queryStr = '';
-  const canonUri = '/' + canonKey(key);
+  const { host, urlBase, pathPrefix } = buildS3Location();
+  const canonUri = `${pathPrefix}/${canonKey(key)}`;
   const payloadHash = sha256Hex(body);
   const canonHeaders = [
     `host:${host}`,
@@ -133,7 +172,7 @@ async function s3PutObject({ key, body, contentType }) {
   const canonRequest = [
     'PUT',
     canonUri,
-    queryStr,
+    '',  // queryStr
     canonHeaders + '\n',
     signedHeaders,
     payloadHash,
@@ -147,7 +186,7 @@ async function s3PutObject({ key, body, contentType }) {
   const sig = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
   const auth = `AWS4-HMAC-SHA256 Credential=${process.env.S3_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
 
-  const url = `${endpoint}${canonUri}`;
+  const url = `${urlBase}/${canonKey(key)}`;
   const res = await fetch(url, {
     method: 'PUT',
     headers: {
@@ -166,9 +205,9 @@ async function s3PutObject({ key, body, contentType }) {
 function s3PublicUrl(key) {
   const base = (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
   if (base) return `${base}/${canonKey(key)}`;
-  // 无自定义域名:拼虚拟主机样式(仅路径-style 兼容用户需配 PUBLIC_BASE_URL)
-  const endpoint = (process.env.S3_ENDPOINT || '').replace(/\/+$/, '');
-  return `${endpoint}/${process.env.S3_BUCKET}/${canonKey(key)}`;
+  // 无自定义域名:与 s3PutObject 完全一致的虚拟/路径样式
+  const { urlBase } = buildS3Location();
+  return `${urlBase}/${canonKey(key)}`;
 }
 function createS3SavePath(folder, filename) {
   const prefix = (process.env.S3_FOLDER_PREFIX || '').replace(/^\/+|\/+$/g, '');
@@ -229,6 +268,21 @@ async function saveUpload(absTmpPath, savePath, contentType) {
 }
 
 /**
+ * 原样落盘(不压缩)—— 专用于存量迁移等「源文件已是最终形态」的场景。
+ * 路由逻辑与 saveUpload 一致(localSave / s3PutObject),只是跳过 compressImageBuffer。
+ * 返回写入后的大小(s3 模式为 body.length)。
+ */
+async function putBuffer({ absPath, savePath, contentType }) {
+  const buf = fs.readFileSync(absPath);
+  if (mode === 's3') {
+    await s3PutObject({ key: savePath, body: buf, contentType });
+  } else {
+    localSave(buf, savePath);
+  }
+  return buf.length;
+}
+
+/**
  * 保存 AI 生成图片的「原图 + 压缩图」两份。
  * 原图路径 = 在同目录下加 -orig 后缀(保留 .png 扩展名)。
  * 返回 { url, originalUrl } —— url 为压缩图(供前端展示),originalUrl 为原图(供下载)。
@@ -271,9 +325,8 @@ module.exports = {
   resolveUploadRoot,
   saveUpload,
   saveAIGeneratedImage,
+  putBuffer,
   getPublicUrl,
   createSavePath,
   compressImageBuffer,
-  // 旧代码迁移期间保留的直接读写(废弃中,新接入统一走 saveUpload)
-  _internal: { localSave, localPublicUrl },
 };
