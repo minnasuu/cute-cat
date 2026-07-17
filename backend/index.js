@@ -80,22 +80,49 @@ app.use((err, req, res, _next) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🐱 CuCaTopia V2.0 backend running on port ${PORT}`);
 
   // 启动定时工作流调度器
-  const { startScheduler } = require('./scheduler');
-  startScheduler();
+  try {
+    const { startScheduler } = require('./scheduler');
+    startScheduler();
+  } catch (e) {
+    console.error('[scheduler] start failed:', e.message);
+  }
 
   // 一次性迁移:把 env BETA_CODES 存量旧码写入 DB(若 DB 无未使用码)
   try {
     const beta = require('./lib/beta');
     beta.migrateLegacyEnvCodes().then((r) => {
       if (r.migrated > 0) {
-        `[beta] migrateLegacyEnvCodes: migrated ${r.migrated} code(s) from env`;
+        console.log(`[beta] migrateLegacyEnvCodes: migrated ${r.migrated} code(s) from env`);
       }
     }).catch((e) => console.error('[beta] migrateLegacyEnvCodes failed:', e));
   } catch (e) {
     console.error('[beta] beta module load failed:', e);
   }
 });
+
+// listen 失败时日志 + 不崩溃
+server.on('error', (err) => {
+  console.error(`🔥 [FATAL] app.listen failed: ${err.message}`);
+  // 端口占用等 → 不 exit,让容器保持运行(避免 nginx 502)
+});
+
+// 保活:防止进程意外退出
+server.on('close', () => {
+  console.warn('[WARN] HTTP server closed, keeping process alive...');
+});
+
+// 捕获未处理的 rejection/exception,不退出
+process.on('uncaughtException', (err) => {
+  console.error('🔥 [FATAL] uncaughtException:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('🔥 [FATAL] unhandledRejection:', reason);
+});
+
+// 忽略 SIGTERM/SIGINT,保持进程运行(让 docker 通过 stop 控制)
+process.on('SIGTERM', () => { console.log('[SIGTERM] ignored'); });
+process.on('SIGINT', () => { console.log('[SIGINT] ignored'); });
