@@ -30,7 +30,9 @@ export function fetchStyleMutateTourDemo(): Promise<StyleMutateDemoData | null> 
   return apiClient.get<StyleMutateDemoData>(`/api/auth/tour-demo?productId=${DEMO_PRODUCT_ID}`).catch(() => null);
 }
 
-export function isTourDone(): boolean {
+/** 是否已完成引导:优先读服务端状态(换浏览器也不丢),localStorage 仅作短期缓存兜底 */
+export function isTourDone(user: { onboardingDone?: boolean } | null): boolean {
+  if (user?.onboardingDone) return true;
   return localStorage.getItem(TOUR_DONE_KEY) === '1';
 }
 
@@ -56,7 +58,7 @@ export function useStyleMutateTour(args: TourArgs) {
 
   const totalSteps = 6;
 
-  const shouldRegister = !isTourDone();
+  const shouldRegister = !isTourDone(user);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }

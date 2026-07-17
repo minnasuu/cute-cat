@@ -18,7 +18,7 @@ import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateB
 import { useAuth } from "../../../contexts/AuthContext";
 import { useImageRetry } from "../../../hooks/useImageRetry";
 import { useStyleMutateTour } from "../controller/useStyleMutateTour";
-import MaterialComboTourOverlay from "../components/MaterialComboTourOverlay";
+import TourOverlay, { type TourStep } from "../components/TourOverlay";
 
 const MAX_MUTATIONS = 8;
 const POLL_MS = 3000;
@@ -465,6 +465,14 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  // 新用户自动触发引导(延迟一帧入场,让页面先渲染)
+  useEffect(() => {
+    if (tour.shouldRegister && !tour.tourActive) {
+      const t = setTimeout(() => tour.startTour(), 300);
+      return () => clearTimeout(t);
+    }
+  }, [tour.shouldRegister, tour.tourActive]);
+
   // 输入变化(母款/面料/品类/勾选/自定义)→ 清空旧批次,让底部按钮回到「生成」
   useEffect(() => {
     setBatch(null);
@@ -738,7 +746,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
         : "";
 
   // 引导步骤定义
-  const tourSteps = [
+  const tourSteps: TourStep[] = [
     { target: 'tour-name', title: '① 输入作品名称', description: '给你的款式裂变作品取个名字,比如「春日雏菊连衣裙·裂变」。' },
     { target: 'tour-category', title: '② 选择服装品类', description: '选择品类后系统展示对应的裂变维度选项(如袖型/领型仅上衣显示)。' },
     { target: 'tour-mother', title: '③ 添加母款', description: '上传母款图或从款式库选择,系统将基于母款裂变出多张子款。' },
@@ -751,7 +759,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     <>
       {/* 新手引导浮层 */}
       {tour.tourActive && (
-        <MaterialComboTourOverlay
+        <TourOverlay
           steps={tourSteps}
           stepIdx={tour.tourStep}
           onAdvance={tour.next}
@@ -766,7 +774,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
           <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
             <div className="flex items-center justify-between">
               <h1 className="text-[15px] font-medium text-gray-800 min-h-7 flex items-center gap-2">款式裂变
-                {tour.shouldRegister && !tour.tourActive && (
+                {!tour.tourActive && (
                   <button
                     type="button"
                     onClick={tour.startTour}

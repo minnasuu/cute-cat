@@ -40,6 +40,8 @@ interface Props {
   // 多轮细化(走原 send)
   onRefine: (text: string) => void;
   refineBusy: boolean;
+  // 新手引导
+  onStartTour?: () => void;
 }
 
 const inputCls = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500 bg-white";
@@ -48,7 +50,7 @@ const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1 block"
 export default function ComposerBrief({
   knowledge, brandLoading, knowledgeLoading,
   designName, setDesignName, references, setReferences, description, setDescription,
-  onGenerate, onNewSession, generating, onRefine, refineBusy,
+  onGenerate, onNewSession, generating, onRefine, refineBusy, onStartTour,
 }: Props) {
   const { teamId } = useCurrentTeam();
   const { draftPrompt, clearDraftPrompt } = useComposerPrompt();
@@ -107,8 +109,17 @@ export default function ComposerBrief({
       {/* 顶部 header */}
       <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
         <div className="flex items-center justify-between">
-          <h1 className="text-[15px] font-medium text-gray-800 min-h-7">
+          <h1 className="text-[15px] font-medium text-gray-800 min-h-7 flex items-center gap-2">
             灵感扩散
+            {onStartTour && (
+              <button
+                type="button"
+                onClick={onStartTour}
+                className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors font-normal"
+              >
+                ? 新手引导
+              </button>
+            )}
           </h1>
           <button
             onClick={onNewSession}

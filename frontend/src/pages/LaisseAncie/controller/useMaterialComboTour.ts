@@ -38,7 +38,9 @@ export function fetchMaterialComboTourDemo(mode: ComboMode): Promise<TourDemoDat
   return apiClient.get<TourDemoData>(`/api/auth/tour-demo?productId=${productId}`).catch(() => null);
 }
 
-export function isTourDone(): boolean {
+/** 是否已完成引导:优先读服务端状态(换浏览器也不丢),localStorage 仅作短期缓存兜底 */
+export function isTourDone(user: { onboardingDone?: boolean } | null): boolean {
+  if (user?.onboardingDone) return true;
   return localStorage.getItem(TOUR_DONE_KEY) === '1';
 }
 
@@ -60,7 +62,7 @@ export function useMaterialComboTour(args: {
   const [demoLoading, setDemoLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const shouldRegister = !isTourDone();
+  const shouldRegister = !isTourDone(user);
 
   // 叉乘 6 步;拼色 5 步
   const totalSteps = mode === 'color-mix' ? 5 : 6;

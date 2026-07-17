@@ -1405,6 +1405,7 @@ export default function ComposerPage({
               onRefine={(t) => void send(t)}
               onNewSession={resetSession}
               refineBusy={busy}
+              onStartTour={tour.startTour}
             />
           </div>
 

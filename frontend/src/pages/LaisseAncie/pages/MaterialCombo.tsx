@@ -27,7 +27,7 @@ import {
 } from "../../../components/GenerateButton";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useMaterialComboTour } from "../controller/useMaterialComboTour";
-import MaterialComboTourOverlay from "../components/MaterialComboTourOverlay";
+import TourOverlay, { type TourStep } from "../components/TourOverlay";
 import { useImageRetry } from "../../../hooks/useImageRetry";
 
 // ─── 上限约束(与后端同步) ─────────────────────────────────────
@@ -205,6 +205,14 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   }, [teamId, stopPolling, resetRetries, tryAutoRetry]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  // 新用户自动触发引导(延迟一帧入场,让页面先渲染)
+  useEffect(() => {
+    if (tour.shouldRegister && !tour.tourActive) {
+      const t = setTimeout(() => tour.startTour(), 300);
+      return () => clearTimeout(t);
+    }
+  }, [tour.shouldRegister, tour.tourActive]);
 
   // 槽位数量变化(用户增删面料/款式)→ 清空旧批次,让底部按钮回到「生成」而非「保存」
   useEffect(() => {
@@ -467,7 +475,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     : [];
 
   // 引导步骤定义
-  const tourSteps = mode === 'cross'
+  const tourSteps: TourStep[] = mode === 'cross'
     ? [
       { target: 'tour-name', title: '① 输入作品名称', description: '给你的材料组合取个名字,比如「春日雏菊连衣裙」。' },
       { target: 'tour-fabric', title: '② 添加面料', description: '上传面料图或从面料库选择。可添加多张面料进行叉乘组合。' },
@@ -486,7 +494,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     <>
       {/* 新手引导浮层 */}
       {tour.tourActive && (
-        <MaterialComboTourOverlay
+        <TourOverlay
           steps={tourSteps}
           stepIdx={tour.tourStep}
           onAdvance={tour.next}
@@ -501,7 +509,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
             <div className="flex items-center justify-between">
               <h1 className="text-[15px] font-medium text-gray-800 min-h-7 flex items-center gap-2">材料组合
-                {tour.shouldRegister && !tour.tourActive && (
+                {!tour.tourActive && (
                   <button
                     type="button"
                     onClick={tour.startTour}
