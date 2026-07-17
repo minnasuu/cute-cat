@@ -58,7 +58,8 @@ export function useStyleMutateTour(args: TourArgs) {
 
   const totalSteps = 6;
 
-  const shouldRegister = !isTourDone(user);
+  // TODO:重新启用新手引导时恢复为 !isTourDone(user)
+  const shouldRegister = false;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }

@@ -62,7 +62,8 @@ export function useMaterialComboTour(args: {
   const [demoLoading, setDemoLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const shouldRegister = !isTourDone(user);
+  // TODO:重新启用新手引导时恢复为 !isTourDone(user)
+  const shouldRegister = false;
 
   // 叉乘 6 步;拼色 5 步
   const totalSteps = mode === 'color-mix' ? 5 : 6;

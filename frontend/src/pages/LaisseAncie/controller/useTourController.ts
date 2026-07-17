@@ -76,7 +76,8 @@ export function useTourController(args: TourControllerArgs) {
   const [demoLoading, setDemoLoading] = useState(false);
 
   // 仅 single 模式 + 未完成过 → 注册自动触发候选
-  const shouldRegister = mode === "single" && !isTourDone(user);
+  // TODO:重新启用新手引导时恢复为 mode === "single" && !isTourDone(user)
+  const shouldRegister = false;
 
   const totalSteps = 7;
 

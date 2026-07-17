@@ -774,7 +774,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
           <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
             <div className="flex items-center justify-between">
               <h1 className="text-[15px] font-medium text-gray-800 min-h-7 flex items-center gap-2">款式裂变
-                {!tour.tourActive && (
+                {tour.shouldRegister && !tour.tourActive && (
                   <button
                     type="button"
                     onClick={tour.startTour}
