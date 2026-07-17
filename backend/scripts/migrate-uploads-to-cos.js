@@ -2,7 +2,7 @@
 /**
  * migrate-uploads-to-cos.js —— 存量本地文件一次性迁移到腾讯云 COS
  *
- * 前提:已在 .env 配齐 S3_* 系列 env,storage.mode === 's3'。
+ * 不判断 storage.mode,始终按 S3 处理(无论 local/s3 模式都可把 /uploads/... 存量改写为 COS URL)。
  *
  * 流程:
  *   1. 扫描所有表/列,收集含 /uploads/ 的条目(含 JSON 数组列里的 url)
@@ -20,7 +20,15 @@
  *
  * 用法:
  *   node scripts/migrate-uploads-to-cos.js          # 默认 DRY RUN
- *   node scripts/migrate-uploads-to-cos.js --exec   # 真正执行
+ *   node scripts/migrate-uploads-to-cos.js --exec   # 真正执行(需本地原文件存在,上传 COS 后改 DB)
+ *   node scripts/migrate-uploads-to-cos.js --exec --force-db-update
+ *     # 本地原文件已删除但 COS 已有时:跳过上传,直接按 relPath→cosKey 改写 DB
+ *
+ * 兼容多种本地 URL 形态:
+ *   /uploads/materials/x.jpg                 标准
+ *   https://host/uploads/materials/x.jpg     反向代理/绝对路径
+ *   http://host:8002/uploads/materials/x.jpg 带端口
+ * 统一归一化为 /uploads/... 后再做前缀匹配,避免带 host 前缀的行被静默跳过。
  */
 'use strict';
 
@@ -33,7 +41,23 @@ const storage = require('../lib/storage');
 const { putBuffer, getPublicUrl, createSavePath } = storage;
 
 const EXEC = process.argv.includes('--exec');
+const FORCE_DB = process.argv.includes('--force-db-update');
 const UPLOADS_PREFIX = '/uploads/';
+// 匹配 scheme://host[:port]/uploads/...,捕获 /uploads/... 部分
+const UPLOADS_PATH_RE = /^https?:\/\/[^/]+(\/uploads\/.+)$/;
+
+/**
+ * 把多种本地 URL 形态归一化为 /uploads/... 标准串。
+ * 已迁移的 COS url / data: / blob: / 非字符串 → 返回 null(跳过)。
+ */
+function normalizeLocalUrl(raw) {
+  if (typeof raw !== 'string') return null;
+  const t = raw.trim();
+  if (!t) return null;
+  if (t.startsWith(UPLOADS_PREFIX)) return t;
+  const m = UPLOADS_PATH_RE.exec(t);
+  return m ? m[1] : null;
+}
 
 // ─── 字段清单(schema 提取) ────────────────────────────────────
 // 直接 URL 列:String 类型,整列是 /uploads/... 路径
@@ -70,8 +94,10 @@ async function scanStringCols() {
     });
     for (const row of rows) {
       const v = row[col];
-      if (typeof v === 'string' && v.startsWith(UPLOADS_PREFIX)) {
-        items.push({ table, col, model, pk, id: row[pk], oldUrl: v });
+      const norm = normalizeLocalUrl(v);
+      if (norm) {
+        // 保留原始值用于日志;归一化值用于后续 relPath 推导
+        items.push({ table, col, model, pk, id: row[pk], norm, oldUrl: v });
       }
     }
   }
@@ -89,8 +115,9 @@ async function scanJsonCols() {
       if (!Array.isArray(arr)) continue;
       arr.forEach((el, idx) => {
         const v = el?.[urlKey];
-        if (typeof v === 'string' && v.startsWith(UPLOADS_PREFIX)) {
-          items.push({ table, col, model, pk, id: row[pk], oldUrl: v, jsonIdx: idx, jsonArr: arr, urlKey });
+        const norm = normalizeLocalUrl(v);
+        if (norm) {
+          items.push({ table, col, model, pk, id: row[pk], norm, oldUrl: v, jsonIdx: idx, jsonArr: arr, urlKey });
         }
       });
     }
@@ -99,9 +126,9 @@ async function scanJsonCols() {
 }
 
 // ─── 路径转换 ──────────────────────────────────────────────────
-function relPathFromUrl(url) {
-  // /uploads/<relPath> → <relPath>
-  return url.slice(UPLOADS_PREFIX.length);
+function relPathFromUrl(normUrl) {
+  // norm 已由 normalizeLocalUrl 保证以 /uploads/ 开头
+  return normUrl.slice(UPLOADS_PREFIX.length);
 }
 function absPathFromRel(relPath) {
   return path.join(storage.UPLOAD_ROOT, relPath);
@@ -132,23 +159,25 @@ async function updateJsonCol(item, newUrl) {
 // ─── 主流程 ────────────────────────────────────────────────────
 async function main() {
   console.log(`\n=== migrate-uploads-to-cos ===`);
-  console.log(`mode: ${storage.mode}`);
   console.log(`root: ${storage.UPLOAD_ROOT}`);
-  console.log(`exec: ${EXEC ? 'YES (uploading + updating DB)' : 'DRY RUN (preview only, add --exec)'}\n`);
+  console.log(`exec: ${EXEC ? 'YES (uploading + updating DB)' : 'DRY RUN (preview only, add --exec)'}`);
+  console.log(`force-db-update: ${FORCE_DB ? 'YES (skip upload, rewrite DB only)' : 'NO'}`);
+  console.log(`(不判断 storage.mode,始终按 S3 处理)\n`);
 
-  if (storage.mode !== 's3') {
-    console.log('❌ 当前不是 S3 模式(未配 S3_BUCKET 等 env),请先配齐后再跑。');
-    process.exit(1);
+  if (FORCE_DB && !EXEC) {
+    console.log('⚠️ --force-db-update 需要与 --exec 同时使用,已忽略。');
   }
 
   const stringItems = await scanStringCols();
   const jsonItems = await scanJsonCols();
   const allItems = [...stringItems, ...jsonItems];
+  // 归一化后 oldUrl !== norm → 说明原始值带 scheme/host 前缀(反向代理/旧备份等形态)
+  const hostPrefixed = allItems.filter((it) => it.oldUrl !== it.norm).length;
 
   // 去重(同一文件可能被多处引用)
   const fileMap = new Map(); // absPath → { relPath, cosKey, absPath, size, refs: [] }
   for (const it of allItems) {
-    const relPath = relPathFromUrl(it.oldUrl);
+    const relPath = relPathFromUrl(it.norm);
     const absPath = absPathFromRel(relPath);
     const cosKey = cosKeyFromRel(relPath);
     if (!fileMap.has(absPath)) {
@@ -165,12 +194,17 @@ async function main() {
 
   console.log(`扫描完成:`);
   console.log(`  受影响条目: ${allItems.length} 个 url`);
+  console.log(`  ├ 标准 /uploads/ 形态: ${allItems.length - hostPrefixed} 个`);
+  console.log(`  └ 带 host 前缀的形态:  ${hostPrefixed} 个(归一化后一并处理)`);
   console.log(`  去重后文件: ${files.length} 个`);
   console.log(`  文件存在:   ${ok.length} 个`);
   console.log(`  文件缺失:   ${missing.length} 个`);
   if (missing.length > 0) {
     console.log(`  缺失文件清单:`);
     for (const f of missing) console.log(`    - ${f.absPath}`);
+    if (FORCE_DB && EXEC) {
+      console.log(`  (--force-db-update: 缺失文件将跳过上传,直接按相同 cosKey 改写 DB)`);
+    }
   }
 
   if (files.length === 0) {
@@ -197,10 +231,11 @@ async function main() {
   let uploadFailed = 0;
   let updated = 0;
   let updateFailed = 0;
+  let forced = 0; // --force-db-update 跳过上传直接改写 DB 的次数
   const newUrlCache = new Map(); // absPath → newUrl
 
+  // 1) 本地文件存在的 → 上传 COS 后更新 DB(保持原逻辑)
   for (const f of ok) {
-    // 上传
     let newUrl = newUrlCache.get(f.absPath);
     if (!newUrl) {
       try {
@@ -216,7 +251,6 @@ async function main() {
         continue; // 上传失败 → 不更新 DB
       }
     }
-    // 更新所有引用
     for (const ref of f.refs) {
       try {
         if (ref.jsonIdx !== undefined) {
@@ -232,9 +266,34 @@ async function main() {
     }
   }
 
+  // 2) 本地文件缺失 + --force-db-update → 跳过上传,按相同 cosKey 推算新 URL 改写 DB
+  //    (本地热缓存已清理、但旧 DB 行仍写 /uploads/...;假设之前某次迁移已把同名文件传到 COS)
+  if (FORCE_DB) {
+    for (const f of missing) {
+      if (f.refs.length === 0) continue;
+      const newUrl = getPublicUrl(f.cosKey);
+      console.log(`  ≈ (force-db) ${f.relPath} → ${newUrl} (本地文件缺失,跳过上传)`);
+      forced += f.refs.length;
+      for (const ref of f.refs) {
+        try {
+          if (ref.jsonIdx !== undefined) {
+            await updateJsonCol(ref, newUrl);
+          } else {
+            await updateStringCol(ref, newUrl);
+          }
+          updated++;
+        } catch (e) {
+          updateFailed++;
+          console.error(`  ✗ 更新失败 ${ref.table}.${ref.col}#${ref.id}: ${e.message}`);
+        }
+      }
+    }
+  }
+
   console.log(`\n=== 结果 ===`);
   console.log(`  上传成功:   ${uploaded}`);
   console.log(`  上传失败:   ${uploadFailed}`);
+  if (FORCE_DB) console.log(`  强制改 DB:  ${forced}(本地文件缺失,跳过上传)`);
   console.log(`  DB 更新成功: ${updated}`);
   console.log(`  DB 更新失败: ${updateFailed}`);
   console.log(`  本地副本:   保留(未清空,可回退)`);
