@@ -161,11 +161,18 @@ router.post('/brand/logo', (req, res) => {
       const savePath = createSavePath(`brands/${req.team.id}`, req.file.filename);
       await saveUpload(req.file.path, savePath, req.file.mimetype);
       const url = getPublicUrl(savePath);
+      // upsert 前先取旧 logo,新 logo 写入成功后异步删旧对象,覆盖不留 COS 孤儿。
+      const before = await prisma.lABrandProfile.findUnique({ where: { teamId: req.team.id }, select: { logo: true } });
+      const oldLogo = before?.logo || null;
       const profile = await prisma.lABrandProfile.upsert({
         where: { teamId: req.team.id },
         update: { logo: url },
         create: { teamId: req.team.id, logo: url },
       });
+      if (oldLogo && oldLogo !== url) {
+        deleteImageByUrl(oldLogo).catch((e) =>
+          console.warn(`[team-workbench] brand ${req.team.id} old-logo COS cleanup failed: ${e?.message || e}`));
+      }
       res.json({ id: profile.id, url });
     } catch (e) {
       console.error('[team-workbench] upload brand logo failed:', e);
@@ -681,8 +688,15 @@ router.delete('/materials/:id/color-image', asyncHandler(async (req, res) => {
   if (!owned) return res.status(404).json({ error: 'not found' });
   const idx = Number.parseInt(req.body?.idx, 10);
   if (!Number.isInteger(idx) || idx < 0) return res.status(400).json({ error: 'invalid idx' });
-  const list = Array.isArray(owned.colorImages) ? owned.colorImages.filter((_, i) => i !== idx) : [];
-  const updated = await prisma.lAMaterial.update({ where: { id: owned.id }, data: { colorImages: list } });
+  const list = Array.isArray(owned.colorImages) ? owned.colorImages : [];
+  // 先取被删色卡的 url(在 filter 之前),再更新,最后异步清 COS。
+  const removedUrl = list[idx] && typeof list[idx] === 'object' ? list[idx].url : null;
+  const newList = list.filter((_, i) => i !== idx);
+  const updated = await prisma.lAMaterial.update({ where: { id: owned.id }, data: { colorImages: newList } });
+  if (removedUrl && typeof removedUrl === 'string') {
+    deleteImageByUrl(removedUrl).catch((e) =>
+      console.warn(`[team-workbench] material ${owned.id} color-image COS cleanup failed: ${e?.message || e}`));
+  }
   res.json({ ok: true, id: updated.id, colorImages: updated.colorImages });
 }));
 
@@ -703,7 +717,20 @@ router.patch('/materials/:id/share', asyncHandler(async (req, res) => {
 router.delete('/materials/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAMaterial, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
+  // 收集面料持有的图片(image + colorImages[].url),再删记录,最后异步清 COS(失败仅记日志,不阻塞/回退)。
+  // colorImages 里的 url 是面料专属色卡(上传时 createSavePath(materials/...)),可随面料一起删除。
+  const imageUrls = collectMaterialImageUrls(owned);
   await prisma.lAMaterial.delete({ where: { id: owned.id } });
+  if (imageUrls.length) {
+    Promise.allSettled(imageUrls.map((u) => deleteImageByUrl(u)))
+      .then((results) => {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn(`[team-workbench] material ${owned.id} COS cleanup failed: ${r.reason?.message || r.reason}`);
+          }
+        }
+      });
+  }
   res.json({ ok: true });
 }));
 
@@ -784,7 +811,19 @@ router.patch('/styles/:id/share', asyncHandler(async (req, res) => {
 router.delete('/styles/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAStyle, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
+  // 收集款式参考图(image),再删记录,最后异步清 COS(失败仅记日志,不阻塞/回退)。
+  const imageUrls = typeof owned.image === 'string' && owned.image ? [owned.image] : [];
   await prisma.lAStyle.delete({ where: { id: owned.id } });
+  if (imageUrls.length) {
+    Promise.allSettled(imageUrls.map((u) => deleteImageByUrl(u)))
+      .then((results) => {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn(`[team-workbench] style ${owned.id} COS cleanup failed: ${r.reason?.message || r.reason}`);
+          }
+        }
+      });
+  }
   res.json({ ok: true });
 }));
 
@@ -907,6 +946,18 @@ router.delete('/illustrations/:id', asyncHandler(async (req, res) => {
     throw eFind;
   }
   if (!owned) return res.status(404).json({ error: 'not found' });
+  // 收集插画图片(image),异步清 COS(失败仅记日志,不阻塞/回退),再删记录。
+  const imageUrls = typeof owned.image === 'string' && owned.image ? [owned.image] : [];
+  if (imageUrls.length) {
+    Promise.allSettled(imageUrls.map((u) => deleteImageByUrl(u)))
+      .then((results) => {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn(`[team-workbench] illustration ${owned.id} COS cleanup failed: ${r.reason?.message || r.reason}`);
+          }
+        }
+      });
+  }
   try {
     await prisma.lAIllustrationAsset.delete({ where: { id: owned.id } });
   } catch (eDelete) {
@@ -1016,6 +1067,23 @@ function collectProductImageUrls(p) {
     }
   }
   // 注意:跳过 sourceImages —— 它们是共享素材/款式资源的引用,不归本产品独享。
+  return urls;
+}
+
+// ─── 面料图片 URL 收集(用于删除面料 / 删除色卡时级联清 COS) ──
+// colorImages 是面料专属色卡(上传时 createSavePath(materials/{teamId}/...)),归面料持有,可随面料删除。
+// 注意:不收集 colorImages[].hex 等非 url 字段。
+function collectMaterialImageUrls(m) {
+  if (!m) return [];
+  const urls = [];
+  const maybePush = (v) => { if (typeof v === 'string' && v) urls.push(v); };
+  maybePush(m.image);
+  if (Array.isArray(m.colorImages)) {
+    for (const ci of m.colorImages) {
+      if (!ci || typeof ci !== 'object') continue;
+      maybePush(ci.url);
+    }
+  }
   return urls;
 }
 
