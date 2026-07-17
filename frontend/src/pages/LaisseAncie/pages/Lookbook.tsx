@@ -31,8 +31,8 @@ function useRowDelete() {
 }
 
 // 展示给用户的 Lookbook 创作模式 tab,与当前可用的设计工作台 tab 一致(系列已下线,仅「全部」中能看到历史系列数据)。
-const ALL_MODES = ["illustration", "single", "material-combo", "style-mutate", "occasion"] as const;
-type TabKey = "illustration" | "single" | "material-combo" | "style-mutate" | "occasion" | "all";
+const ALL_MODES = [ "material-combo", "style-mutate", "occasion"] as const;
+type TabKey = "material-combo" | "style-mutate" | "occasion" | "all";
 type ViewMode = "table" | "card";
 
 /**
@@ -90,7 +90,7 @@ function CardItem({ product, cover, onClick, onDownload }: { product: Product; c
 }
 
 export default function LookbookPage() {
-  const { teamId, navigateTab } = useCurrentTeam();
+  const { teamId } = useCurrentTeam();
   const store = useDesignStore();
   const [tab, setTab] = useState<TabKey>("all");
   const [view, setView] = useState<ViewMode>("card");
@@ -122,11 +122,10 @@ export default function LookbookPage() {
     }
   }
 
-  /** 编辑:把产品塞入编辑上下文 + 跳转单品设计工作台 */
+  /** 编辑:打开弹窗(弹窗内已含联内编辑态,不再跳转到单品设计工作台/灵感页) */
   function handleEdit(p: Product, e: React.MouseEvent) {
     e.stopPropagation();
-    setEditingProduct(p);
-    navigateTab("single");
+    setEditor({ mode: "view", product: p });
   }
 
   /** 取产品可用的第一张 AI 原图 URL(无则退回压缩主图) */
