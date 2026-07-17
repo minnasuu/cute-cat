@@ -49,8 +49,8 @@ router.post('/team/:teamId', async (req, res) => {
       return res.status(403).json({ error: '官方创作空间的角色由系统维护，不可新增' });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    const limits = PLAN_LIMITS[user.plan] || PLAN_LIMITS.free;
+    const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { id: true, plan: true } });
+    const limits = PLAN_LIMITS[user?.plan] || PLAN_LIMITS.free;
     const catCount = await prisma.teamCat.count({ where: { teamId: req.params.teamId } });
     if (catCount >= limits.maxCatsPerTeam) {
       return res.status(403).json({ error: `当前套餐每个团队最多 ${limits.maxCatsPerTeam} 只猫猫` });

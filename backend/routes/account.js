@@ -45,7 +45,11 @@ router.get('/me', async (req, res) => {
   try {
     const u = await prisma.user.findUnique({
       where: { id: req.userId },
-      include: { _count: { select: { coinTransactions: true } } },
+      select: {
+        id: true, email: true, nickname: true, avatar: true, role: true, coins: true,
+        inviteCode: true, invitedById: true, inviteCount: true, createdAt: true, updatedAt: true,
+        _count: { select: { coinTransactions: true } },
+      },
     });
     if (!u) return res.status(404).json({ error: '用户不存在' });
     // 系统喵币总量(全部用户余额之和),供前端判断充值库存:

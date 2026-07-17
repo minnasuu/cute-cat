@@ -16,8 +16,14 @@ function normalizeEmail(email) {
 
 /** 与历史大小写混存数据兼容 */
 function findUserByEmailInsensitive(normalizedEmail) {
+  // 显式 select 基础字段:避免 Prisma Client 自动 select 未迁移的新字段(如 onboardingDone)导致 P2022 报错
   return prisma.user.findFirst({
     where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+    select: {
+      id: true, email: true, password: true, nickname: true, avatar: true,
+      role: true, coins: true, inviteCode: true, invitedById: true,
+      inviteCount: true, createdAt: true, updatedAt: true,
+    },
   });
 }
 
@@ -548,8 +554,11 @@ router.post('/refresh-token', async (req, res) => {
     const decoded = verifyToken(refreshToken);
     if (decoded.type !== 'refresh') return res.status(401).json({ error: '无效的 refreshToken' });
 
-    // 校验用户是否仍然存在
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    // 校验用户是否仍然存在(显式 select 避免未迁移字段报错)
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true },
+    });
     if (!user) return res.status(401).json({ error: '用户不存在' });
 
     const tokens = generateTokens(decoded.userId);

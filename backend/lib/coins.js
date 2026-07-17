@@ -183,7 +183,14 @@ async function ensureInviteCode(userId) {
 
 async function findInviterByCode(code) {
   if (!code) return null;
-  return prisma.user.findUnique({ where: { inviteCode: String(code).trim().toUpperCase() } });
+  // 显式 select 基础字段:避免未迁移字段导致 P2022
+  return prisma.user.findUnique({
+    where: { inviteCode: String(code).trim().toUpperCase() },
+    select: {
+      id: true, email: true, nickname: true, avatar: true, role: true, coins: true,
+      inviteCode: true, invitedById: true, inviteCount: true, createdAt: true,
+    },
+  });
 }
 
 // ─── 充值兑换码 ───
