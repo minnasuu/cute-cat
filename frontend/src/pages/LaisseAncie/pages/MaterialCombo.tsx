@@ -36,7 +36,11 @@ const MAX_STYLE = 6;    // 款式上限
 const MAX_CELLS = MAX_FABRIC * MAX_STYLE; // 36 张上限
 const MAX_FABRIC_MIXED = 12; // 拼色模式面料软上限
 const POLL_MS = 3000;   // 轮询间隔
-const POLL_MAX_ATTEMPTS = 120; // 最长轮询 6 分钟
+// 轮询上限需覆盖后端批次真实生成时间:后端 MC_BATCH_TTL_MS = 15min,
+// 单图最长 180s、并发上限 MC_BATCH_CAP=4,正常批次(尤其多格)可能耗时数分钟。
+// 原先 120 次(6min)过短,会在生图仍在进行时误判「生成超时」,表现为一直「生成中…」。
+// 这里对齐到略小于后端 TTL(15min),避免与后端清理竞争,让正常批次能跑完。
+const POLL_MAX_ATTEMPTS = 290; // 最长轮询 ≈14.5 分钟
 
 type Mode = "cross" | "color-mix";
 
@@ -184,7 +188,14 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       try {
         const url = teamApi(teamId).materialComboBatchUrl(batchId);
         const res = await fetch(url, { credentials: "include" });
-        if (res.status === 404) { setError("批次已过期,请重新生成"); stopPolling(); return; }
+        // 批次已不存在(后端进程重启 / 超过 TTL 被清理):必须清掉 running 态,
+        // 否则 batchRunningOrAnalyzing 恒为 true,按钮永远显示「生成中…」、格子一直待处理。
+        if (res.status === 404) {
+          setError("批次已过期,请重新生成");
+          setBatch(null);
+          stopPolling();
+          return;
+        }
         if (!res.ok) return; // 网络抖动继续轮询
         const data: MaterialComboBatch = await res.json();
         // 回写分析文本到对应槽位(按位置对齐,含库位)

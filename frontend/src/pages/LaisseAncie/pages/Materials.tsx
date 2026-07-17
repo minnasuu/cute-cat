@@ -335,7 +335,7 @@ function MaterialModal({ editor, onClose, onSwitchEdit, onSave, onDelete, deleti
               <button
                 onClick={() => onDelete(mat)}
                 disabled={deleting === mat.id}
-                className="text-[12px] text-red-500 bg-red-500 hover:bg-red-600 hover:text-red-600 disabled:opacity-40 font-medium transition-colors"
+                className="text-[12px] bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
               >
                 {deleting === mat.id ? "删除中…" : "删除"}
               </button>
@@ -349,7 +349,7 @@ function MaterialModal({ editor, onClose, onSwitchEdit, onSave, onDelete, deleti
           </div>
         )}
       </div>
-    } maxWidth={mode === "create" ? "600px" : "max-w-5xl"}>
+    } maxWidth={mode === "create" ? "max-w-[600px]" : "max-w-5xl"}>
       {!isEditing ? <MaterialView mat={mat!} /> : <MaterialForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />}
     </Modal>
   );
@@ -362,7 +362,7 @@ function MaterialView({ mat }: { mat: MaterialRow }) {
   const hexs: string[] = mat.colors ?? [];
   const showCards = cards.length > 0;
   return (
-    <div className="flex flex-col w-full h-[60vh]">
+    <div className="flex flex-col w-full h-[60vh] gap-5">
        <article className="overflow-auto max-h-full text-xs space-y-5 pr-1 w-full">
         <div className="grid grid-cols-6 md:grid-cols-3 gap-4">
           {price ? (
@@ -451,9 +451,9 @@ function MaterialView({ mat }: { mat: MaterialRow }) {
       </article>
       <aside className="rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 overflow-y-auto max-h-full h-fit">
         {showCards ? (
-          <ul className="divide-y divide-gray-200 grid grid-cols-3 md:grid-cols-2 gap-2">
+          <ul className="divide-y divide-gray-200 grid grid-cols-3 gap-2">
             {cards.map((c, i) => (
-              <li key={i} className="w-80 flex items-center gap-3 p-3 border-b border-gray-200">
+              <li key={i} className="w-80 flex items-center gap-3 p-3">
                 {c.url ? (
                   <img
                     src={c.url}

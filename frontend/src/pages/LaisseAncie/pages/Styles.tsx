@@ -186,7 +186,7 @@ function StyleModal({ editor, onClose, onSave }: {
   const mat = editor.mat ?? null;
 
   return (
-    <Modal open onClose={onClose} title={title} maxWidth="600px">
+    <Modal open onClose={onClose} title={title} maxWidth="max-w-[600px]">
       <StyleForm
         key={mat?.id ?? "new"}
         initial={mat}
