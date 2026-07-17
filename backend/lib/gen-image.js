@@ -56,12 +56,40 @@ function localUrlToDataUri(localUrl) {
 }
 
 /**
- * 归一化参考图条目: URL / data URI 原样,本地 /uploads/... 路径转 data URI,
- * 其余值丢弃。保证下游 images 数组每项都合法。
+ * 把远程图片 URL(本服务 COS/S3 或任意 http(s))拉取后转成 base64 data URI。
+ * 用途:Maizi images 字段要求 URL 可被其服务器公网拉取;若 COS 配了防盗链/私有读取,
+ * Maizi 拉不到 → 请求 hang / 大模型后台收不到请求。改由本服务后端拉取并内嵌 base64,
+ * 保证 Maizi 一定能拿到参考图内容(COS 迁移前的本地模式正是靠 data URI 工作的)。
+ * 拉取失败返回 null(由调用方 filter 掉,退化为无参考图的纯文生图)。
  */
-function normalizeRefImage(url) {
+async function remoteUrlToDataUri(url) {
   if (!url || typeof url !== 'string') return null;
-  if (/^https?:\/\//.test(url) || /^data:/i.test(url)) return url;
+  try {
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) {
+      console.warn(`[gen-image] fetch ref image failed: HTTP ${res.status} ${url.slice(0, 80)}`);
+      return null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    const ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    const ext = path.extname(url.split('?')[0]).toLowerCase();
+    const mime = ct || EXT_MIME[ext] || 'image/png';
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch (e) {
+    console.warn(`[gen-image] fetch ref image error: ${url.slice(0, 80)} (${e?.message || e})`);
+    return null;
+  }
+}
+
+/**
+ * 归一化参考图条目: data URI 原样;本地 /uploads/... 路径同步转 data URI;
+ * http(s) URL(COS/S3 或外部)异步拉取后转 data URI,确保下游 provider 能直接消费
+ * (避免 Maizi 拉取受限导致参考图缺失 / 请求 hang)。
+ */
+async function normalizeRefImage(url) {
+  if (!url || typeof url !== 'string') return null;
+  if (/^data:/i.test(url)) return url;
+  if (/^https?:\/\//.test(url)) return remoteUrlToDataUri(url);
   return localUrlToDataUri(url);
 }
 
@@ -127,10 +155,10 @@ const PROVIDERS = {
     // buildBody: 多图原生参考 —— images 传 URL / data URI 数组(图1,图2, ...)。
     // Maizi 只接受 http(s) URL 或 data:image/...;base64,...;本地模式 public url
     // 为相对路径 /uploads/...,外部拉不到,须回退成 data URI 再传入。
+    // 注:referenceImages 在调用 buildBody 前已由 generateImage 归一化为 data URI 数组,
+    // 这里只做组装,不再调用 normalizeRefImage(保持 buildBody 同步)。
     buildBody: (model, prompt, size, referenceImages, cfg) => {
-      const images = (Array.isArray(referenceImages) ? referenceImages : [])
-        .map(normalizeRefImage)
-        .filter(Boolean);
+      const images = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean);
       return {
         model,
         prompt,
@@ -212,6 +240,17 @@ async function generateImage(prompt, opts) {
   const size = cfg.sizeMap[String(aspectRatio)] || cfg.fallbackSize;
   const source = `${provider}:${model}/${size}`;
 
+  // 归一化参考图(一次性,重试时复用):
+  //   - data URI 原样
+  //   - 本地 /uploads/... 同步转 data URI
+  //   - http(s) URL(COS/S3 等)后端拉取后转 data URI
+  //     切到 COS 后参考图是 https URL,若 Maizi 拉不到(防盗链/私有读)会 hang,
+  //     改由本服务拉取并内嵌 base64,恢复本地模式下的可靠行为。
+  //   imageRef:false 的 provider(纯文生图)会忽略 refs,这里仍归一化(开销小,保持一致)。
+  const normalizedRefs = cfg.imageRef
+    ? (await Promise.all(refs.map(normalizeRefImage))).filter(Boolean)
+    : refs;
+
   // 单张生成超时(默认 180s / 3 分钟)——gpt-image-2 大尺寸图生成常超 120s
   const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 180000;
 
@@ -227,14 +266,14 @@ async function generateImage(prompt, opts) {
     try {
       // 图生图 endpoint:默认 /images/generations,可通过 cfg.path()(env MAIZI_IMAGE_EDIT_PATH) 切到 /images/edits 等独立编辑端点
       const url = `${baseUrl}${cfg.path ? cfg.path() : '/images/generations'}`;
-      console.log(`[gen-image] attempt ${attempt}: POST ${url} model=${model}, size=${size}${refs.length ? `, refImages=${refs.length}×${refs[0].slice(0, 40)}…` : ''}, prompt=${effectivePrompt.slice(0, 60)}…`);
+      console.log(`[gen-image] attempt ${attempt}: POST ${url} model=${model}, size=${size}${normalizedRefs.length ? `, refImages=${normalizedRefs.length}×${String(normalizedRefs[0]).slice(0, 40)}…` : ''}, prompt=${effectivePrompt.slice(0, 60)}…`);
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, refs, cfg)),
+        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, normalizedRefs, cfg)),
         signal: controller.signal,
       });
 
