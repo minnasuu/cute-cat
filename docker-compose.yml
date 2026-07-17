@@ -80,6 +80,25 @@ services:
       IMAGE_TIMEOUT_MS: ${IMAGE_TIMEOUT_MS:-180000}
       # Ark 灵感视觉分析超时(默认 90s)
       INSPIRATION_AI_TIMEOUT_MS: ${INSPIRATION_AI_TIMEOUT_MS:-120000}
+      # ─── 对象存储(S3 兼容,COS/R2/OSS/MinIO/AWS S3) ───────────────────────
+      # 配齐下面 3 个必填项即切到 s3 模式;否则默认 local(存 backend/uploads/)。
+      # 腾讯云 COS 接入示例:
+      #   S3_ENDPOINT=https://cos.ap-beijing.myqcloud.com
+      #   S3_BUCKET=cute-cat-1300000000
+      #   S3_ACCESS_KEY_ID=子账号 SecretId(仅 PutObject 权限)
+      #   S3_SECRET_ACCESS_KEY=子账号 SecretKey
+      #   S3_REGION=ap-beijing
+      #   S3_PUBLIC_BASE_URL=https://<bucket>.cos.ap-beijing.myqcloud.com
+      #   S3_FOLDER_PREFIX=cute-cat(可选)
+      #   S3_FORCE_PATH_STYLE=(留空=虚拟主机样式;=true 启用路径样式)
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_REGION: ${S3_REGION:-ap-beijing}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      S3_FOLDER_PREFIX: ${S3_FOLDER_PREFIX:-cute-cat}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-}
     depends_on:
       db:
         condition: service_healthy
