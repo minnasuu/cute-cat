@@ -11,6 +11,7 @@ import { compressForUpload } from "../lib/images";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useResourceStore } from "../store/resource";
 import { Modal } from "../components/ui";
+import { ResourceCard } from "../components/ResourceCard";
 import type { IllustrationRow } from "../types/design";
 
 export default function IllustrationsPage() {
@@ -20,8 +21,8 @@ export default function IllustrationsPage() {
   const [rows, setRows] = useState<IllustrationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // editor: null = 关闭; { mode: 'view'|'edit'|'create', mat? }
-  const [editor, setEditor] = useState<null | { mode: "view" | "edit" | "create"; mat?: IllustrationRow }>(null);
+  // editor: null = 关闭; { mode: 'edit'|'create', mat? }
+  const [editor, setEditor] = useState<null | { mode: "edit" | "create"; mat?: IllustrationRow }>(null);
 
   const refresh = useCallback(async (tid: string) => {
     setLoading(true);
@@ -107,9 +108,14 @@ export default function IllustrationsPage() {
       ) : (
         <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
           {visible.map((m) => (
-            <button key={m.id} onClick={() => setEditor({ mode: "view", mat: m })} className="text-left">
-              <IllustrationCard mat={m} />
-            </button>
+            <ResourceCard
+              key={m.id}
+              image={m.image}
+              name={m.name}
+              tags={m.tags}
+              onEdit={() => setEditor({ mode: "edit", mat: m })}
+              onDelete={() => void handleDelete(m)}
+            />
           ))}
         </div>
       )}
@@ -117,117 +123,32 @@ export default function IllustrationsPage() {
       <IllustrationModal
         editor={editor}
         onClose={() => setEditor(null)}
-        onSwitchEdit={() => setEditor((e) => e ? { ...e, mode: "edit" } : e)}
         onSave={handleSave}
-        onDelete={handleDelete}
       />
     </div>
   );
 }
 
-function IllustrationCard({ mat }: { mat: IllustrationRow }) {
-  return (
-    <figure className="rounded-2xl border border-gray-200 bg-white overflow-hidden cursor-pointer">
-      <div className="relative aspect-square overflow-hidden bg-gray-50">
-        {mat.image ? (
-          <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="rounded-xl border-2 border-dashed border-gray-200 w-20 h-20" />
-          </div>
-        )}
-      </div>
-      <figcaption className="px-3 py-3 flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[13px] text-gray-800 font-medium truncate">{mat.name}</div>
-          {mat.tags && mat.tags.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {mat.tags.slice(0, 3).map((t) => (
-                <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{t}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      </figcaption>
-    </figure>
-  );
-}
-
-/** 三态弹窗：view(只读详情) / edit(编辑) / create(新增) */
-function IllustrationModal({ editor, onClose, onSwitchEdit, onSave, onDelete }: {
-  editor: null | { mode: "view" | "edit" | "create"; mat?: IllustrationRow };
+/** 双态弹窗：edit(编辑) / create(新增)。所有操作已上浮到卡片 hover 工具栏,不再需要 view 只读弹窗。 */
+function IllustrationModal({ editor, onClose, onSave }: {
+  editor: null | { mode: "edit" | "create"; mat?: IllustrationRow };
   onClose: () => void;
-  onSwitchEdit: () => void;
   onSave: (values: Partial<IllustrationRow> & { imageFile?: File | null }) => Promise<void>;
-  onDelete: (mat: IllustrationRow) => Promise<void>;
 }) {
   if (!editor) return null;
-  const { mode, mat } = editor;
-  const isEditing = mode === "edit" || mode === "create";
-  const title = mode === "create" ? "新增插画" : (mode === "edit" ? "编辑插画" : (mat?.name ?? "插画"));
+  const isEditing = editor.mode === "edit";
+  const title = isEditing ? "编辑插画" : "新增插画";
+  const mat = editor.mat ?? null;
 
   return (
     <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
-      {!isEditing ? (
-        <IllustrationView mat={mat!} onEdit={onSwitchEdit} onDelete={onDelete} />
-      ) : (
-        <IllustrationForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />
-      )}
+      <IllustrationForm
+        key={mat?.id ?? "new"}
+        initial={mat}
+        onCancel={onClose}
+        onSave={async (values) => { await onSave(values); onClose(); }}
+      />
     </Modal>
-  );
-}
-
-/** 只读详情 */
-function IllustrationView({ mat, onEdit, onDelete }: { mat: IllustrationRow; onEdit: () => void; onDelete: (mat: IllustrationRow) => Promise<void> }) {
-  const [deleting, setDeleting] = useState(false);
-  const onDel = async () => {
-    setDeleting(true);
-    try { await onDelete(mat); } finally { setDeleting(false); }
-  };
-  return (
-    <div className="grid grid-cols-[260px_1fr] gap-7 flex-1 min-h-0 h-[60vh]">
-      <aside className="rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 overflow-y-auto max-h-full h-fit">
-        {mat.image ? (
-          <div className="aspect-square overflow-hidden border-b border-gray-200">
-            <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />
-          </div>
-        ) : (
-          <div className="aspect-square flex items-center justify-center bg-gray-50">
-            <div className="rounded-xl border-2 border-dashed border-gray-200 w-24 h-24" />
-          </div>
-        )}
-      </aside>
-
-      <article className="overflow-auto max-h-full text-xs space-y-5 pr-1">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onEdit}
-              className="shrink-0 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
-            >
-              编辑
-            </button>
-            <button
-              onClick={onDel}
-              disabled={deleting}
-              className="shrink-0 text-[12px] bg-red-500 hover:bg-red-600 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
-            >
-              {deleting ? "删除中…" : "删除"}
-            </button>
-          </div>
-        </div>
-        {Section("名称", mat.name)}
-        {mat.tags && mat.tags.length > 0 && (
-          <Section label="标签">
-            <div className="flex flex-wrap gap-1.5">
-              {mat.tags.map((t) => (
-                <span key={t} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{t}</span>
-              ))}
-            </div>
-          </Section>
-        )}
-      </article>
-    </div>
   );
 }
 

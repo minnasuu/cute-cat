@@ -6,6 +6,7 @@ import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useResourceStore } from "../store/resource";
 import { Modal } from "../components/ui";
+import { ResourceCard } from "../components/ResourceCard";
 import type { StyleRow } from "../types/design";
 
 const STYLE_CATEGORIES = [
@@ -22,14 +23,15 @@ const STYLE_CATEGORIES = [
 
 export default function StylesPage() {
   const { teamId } = useCurrentTeam();
+  const { isAdmin } = useAuth();
   const { refreshStyles } = useResourceStore();
   const [cat, setCat] = useState("上装");
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<StyleRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // editor: null = 关闭; { mode: 'view'|'edit'|'create', mat? }
-  const [editor, setEditor] = useState<null | { mode: "view" | "edit" | "create"; mat?: StyleRow }>(null);
+  // editor: null = 关闭; { mode: 'edit'|'create', mat? }
+  const [editor, setEditor] = useState<null | { mode: "edit" | "create"; mat?: StyleRow }>(null);
 
   const refresh = useCallback(async (tid: string) => {
     setLoading(true);
@@ -91,6 +93,19 @@ export default function StylesPage() {
     await refreshStyles();
   }, [teamId, refresh, refreshStyles]);
 
+  // 共享开关(管理员):optimistic 更新角标,失败回滚。提升到页面级供卡片使用。
+  const handleToggleShare = useCallback(async (mat: StyleRow) => {
+    if (!teamId) return;
+    const next = !mat.shared;
+    setRows((rs) => rs.map((r) => r.id === mat.id ? { ...r, shared: next } : r));
+    try {
+      await teamApi(teamId).setStyleShared(mat.id, next);
+    } catch (e: any) {
+      setRows((rs) => rs.map((r) => r.id === mat.id ? { ...r, shared: mat.shared } : r));
+      alert(e?.message || "操作失败");
+    }
+  }, [teamId]);
+
   if (loading) return <div className="p-10 text-gray-500">加载中…</div>;
 
   return (
@@ -133,9 +148,18 @@ export default function StylesPage() {
         ) : (
           <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
             {visible.map((m) => (
-              <button key={m.id} onClick={() => setEditor({ mode: "view", mat: m })} className="text-left">
-                <StyleCard mat={m} />
-              </button>
+              <ResourceCard
+                key={m.id}
+                image={m.image}
+                name={m.name}
+                meta={m.category}
+                tags={m.tags}
+                shared={m.shared}
+                isAdmin={isAdmin}
+                onEdit={() => setEditor({ mode: "edit", mat: m })}
+                onDelete={() => void handleDelete(m)}
+                onShare={() => void handleToggleShare(m)}
+              />
             ))}
           </div>
         )}
@@ -144,161 +168,32 @@ export default function StylesPage() {
       <StyleModal
         editor={editor}
         onClose={() => setEditor(null)}
-        onSwitchEdit={() => setEditor((e) => e ? { ...e, mode: "edit" } : e)}
         onSave={handleSave}
-        onDelete={handleDelete}
       />
     </div>
   );
 }
 
-function StyleCard({ mat }: { mat: StyleRow }) {
-  return (
-    <figure className="rounded-2xl border border-gray-200 bg-white overflow-hidden cursor-pointer">
-      <div className="relative aspect-square overflow-hidden bg-gray-50">
-        {mat.shared && (
-          <span className="absolute top-2 left-2 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">系统</span>
-        )}
-        {mat.image ? (
-          <img src={mat.image} alt={mat.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="rounded-xl border-2 border-dashed border-gray-200 w-20 h-20" />
-          </div>
-        )}
-      </div>
-      <figcaption className="px-3 py-3 flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[13px] text-gray-800 font-medium truncate">{mat.name}</div>
-          {mat.tags && mat.tags.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {mat.tags.slice(0, 3).map((t) => (
-                <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{t}</span>
-              ))}
-            </div>
-          )}
-        </div>
-        <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 font-medium">{mat.category}</span>
-      </figcaption>
-    </figure>
-  );
-}
-
-/** 三态弹窗：view(只读详情) / edit(编辑) / create(新增) */
-function StyleModal({ editor, onClose, onSwitchEdit, onSave, onDelete }: {
-  editor: null | { mode: "view" | "edit" | "create"; mat?: StyleRow };
+/** 双态弹窗：edit(编辑) / create(新增)。所有操作已上浮到卡片 hover 工具栏,不再需要 view 只读弹窗。 */
+function StyleModal({ editor, onClose, onSave }: {
+  editor: null | { mode: "edit" | "create"; mat?: StyleRow };
   onClose: () => void;
-  onSwitchEdit: () => void;
   onSave: (values: Partial<StyleRow> & { imageFile?: File | null }) => Promise<void>;
-  onDelete: (mat: StyleRow) => Promise<void>;
 }) {
   if (!editor) return null;
-  const { mode, mat } = editor;
-  const isEditing = mode === "edit" || mode === "create";
-  const title = mode === "create" ? "新增款式" : (mode === "edit" ? "编辑款式" : (mat?.name ?? "款式"));
+  const isEditing = editor.mode === "edit";
+  const title = isEditing ? "编辑款式" : "新增款式";
+  const mat = editor.mat ?? null;
 
   return (
     <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
-      {!isEditing ? (
-        <StyleView mat={mat!} onEdit={onSwitchEdit} onDelete={onDelete} />
-      ) : (
-        <StyleForm key={mat?.id ?? "new"} initial={mat ?? null} onCancel={onClose} onSave={onSave} />
-      )}
+      <StyleForm
+        key={mat?.id ?? "new"}
+        initial={mat}
+        onCancel={onClose}
+        onSave={async (values) => { await onSave(values); onClose(); }}
+      />
     </Modal>
-  );
-}
-
-/** 只读详情 */
-function StyleView({ mat, onEdit, onDelete }: { mat: StyleRow; onEdit: () => void; onDelete: (mat: StyleRow) => Promise<void> }) {
-  const { teamId } = useCurrentTeam();
-  const { isAdmin } = useAuth();
-  const [shared, setShared] = useState(!!mat?.shared);
-  const [sharing, setSharing] = useState(false);
-  useEffect(() => { setShared(!!mat?.shared); }, [mat]);
-  const [deleting, setDeleting] = useState(false);
-  const onDel = async () => {
-    setDeleting(true);
-    try { await onDelete(mat); } finally { setDeleting(false); }
-  };
-  const toggleShare = async () => {
-    if (!teamId || sharing) return;
-    const next = !shared;
-    setSharing(true);
-    setShared(next);
-    try {
-      await teamApi(teamId).setStyleShared(mat.id, next);
-    } catch (e: any) {
-      setShared(!next);
-      alert(e?.message || "操作失败");
-    } finally {
-      setSharing(false);
-    }
-  };
-  return (
-    <div className="grid grid-cols-[260px_1fr] gap-7 flex-1 min-h-0 h-[60vh]">
-      <aside className="rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 overflow-y-auto max-h-full h-fit">
-        {mat.image ? (
-          <div className="aspect-square overflow-hidden border-b border-gray-200">
-            <img
-              src={mat.image}
-              alt={mat.name}
-              className="w-full h-full object-cover"
-            />
-          </div>
-        ) : (
-          <div className="aspect-square flex items-center justify-center bg-gray-50">
-            <div className="rounded-xl border-2 border-dashed border-gray-200 w-24 h-24" />
-          </div>
-        )}
-      </aside>
-
-      <article className="overflow-auto max-h-full text-xs space-y-5 pr-1">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] px-2.5 py-1 rounded-full bg-primary-50 text-primary-600 font-medium">
-            {mat.category}
-          </span>
-          <div className="flex items-center gap-2">
-            {isAdmin && (
-              <button
-                onClick={toggleShare}
-                disabled={sharing}
-                className={`text-[12px] px-3 py-1.5 rounded-lg font-medium transition-colors ${shared ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
-              >
-                {sharing ? "保存中…" : (shared ? "取消共享" : "设为共享")}
-              </button>
-            )}
-            <button
-              onClick={onEdit}
-              className="shrink-0 text-[12px] bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
-            >
-              编辑
-            </button>
-            <button
-              onClick={onDel}
-              disabled={deleting}
-              className="shrink-0 text-[12px] bg-red-500 hover:bg-red-600 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
-            >
-              {deleting ? "删除中…" : "删除"}
-            </button>
-          </div>
-        </div>
-        {Section("名称", mat.name)}
-        {mat.tags && mat.tags.length > 0 && (
-          <Section label="标签">
-            <div className="flex flex-wrap gap-1.5">
-              {mat.tags.map((t) => (
-                <span
-                  key={t}
-                  className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700"
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-          </Section>
-        )}
-      </article>
-    </div>
   );
 }
 

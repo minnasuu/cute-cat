@@ -553,11 +553,17 @@ export default function ComposerPage({
    * 构建「品牌风格灵感池」注入块 —— 按用户输入的「大品类」(mode)筛选灵感库,
    * 只把同品类的灵感作为参考;细品类精准命中的排在最前。
    * 每张灵感压缩为一行文本摘要(保留 #[id] 标记供 AI 自由引用)。
+   *
+   * opts.refs       —— 外部覆盖的引用集(text-only 灵感扩散传入 top-5 相关灵感)
+   * opts.diffusionBlock —— text-only 模式下的「设计思路+启发」结构化注入块,追加到灵感池末尾
    */
-  function buildReferencesBlock(raw: string): { block: string; refs: InspirationItem[]; intent: DesignIntent } {
+  function buildReferencesBlock(raw: string, opts?: { refs?: InspirationItem[]; diffusionBlock?: string }): {
+    block: string; refs: InspirationItem[]; intent: DesignIntent;
+  } {
     const intent = parseDesignIntent(raw);
     intentRef.current = intent; // 记录意图,供 startGeneration 取 top-2 参考灵感
-    const allRefs = knowledge?.inspirations ?? [];
+    // text-only 模式:直接使用外部 top-5 相关灵感,跳过 mode 聚类筛选
+    const allRefs = opts?.refs?.length ? opts.refs : (knowledge?.inspirations ?? []);
 
     // ── 按「大品类」筛选:只把与用户输入同 mode 的灵感作为参考 ──
     //   排序优先级:① 细品类精准命中(categoryCluster 相同) ② 同 mode 兜底 ③ 未分类放最后
@@ -572,10 +578,17 @@ export default function ComposerPage({
         if (!a.cluster && b.cluster) return 1;
         return (b.it.useCount ?? 0) - (a.it.useCount ?? 0);
       });
-    // 筛选出同 mode 的作为主池(若无命中则回退到全库,避免空白)
-    const sameMode = ranked.filter((x) => x.cluster && x.cluster.mode === intent.mode);
-    const pool = sameMode.length ? sameMode : ranked;
-    const refs = pool.map((x) => x.it);
+    // ── 决定本次「品牌风格灵感池」的候选集 ──
+    //   text-only 模式(opts.refs 已注入前端按名称匹配的 top-5 相关灵感):跳过 mode 聚类池,直接使用
+    //   常规模式:先按「大品类」(mode)筛选,命中优先
+    let refs: InspirationItem[];
+    if (opts?.refs?.length) {
+      refs = opts.refs;
+    } else {
+      const sameMode = ranked.filter((x) => x.cluster && x.cluster.mode === intent.mode);
+      const pool = sameMode.length ? sameMode : ranked;
+      refs = pool.map((x) => x.it);
+    }
     setReferences(refs);
     referencesRef.current = refs; // ref 镜像供 saveToLookbook 解析 #[id] 引用
 
@@ -589,7 +602,7 @@ export default function ComposerPage({
       : "";
 
     // ── 灵感池一行摘要: #[id] category · visualStyle · designApproach | 配色 | 特征 ──
-    const MAX_LIB = 60; // 上限 60 张(控制 token 预算)
+    const MAX_LIB = opts?.refs?.length ? opts.refs.length : 60; // text-only 模式不截断(top-5);常规上限 60 张(控制 token)
     const libLines = refs.slice(0, MAX_LIB).map((it) => {
       const head = `#[${it.id}] ${it.category ?? "general"}`;
       const styleBits = [it.visualStyle, it.designApproach].filter(Boolean).join(" · ").slice(0, 80);
@@ -599,13 +612,19 @@ export default function ComposerPage({
       return [head, styleBits, [colors, features].filter(Boolean).join(" | ")].filter(Boolean).join(" ");
     });
 
-    const poolLabel = sameMode.length
-      ? `已按「${intent.categoryCluster ?? intent.mode}」大品类筛选 ${refs.length} 张`
-      : `全库 ${refs.length} 张(未识别具体大品类)`;
+    const poolLabel = opts?.refs?.length
+      ? `已按名称「${intent.raw.trim()}」匹配最相关的 ${refs.length} 张灵感(灵感扩散)`
+      : (() => {
+        const sameModeCount = ranked.filter((x) => x.cluster && x.cluster.mode === intent.mode).length;
+        return sameModeCount
+          ? `已按「${intent.categoryCluster ?? intent.mode}」大品类筛选 ${refs.length} 张`
+          : `全库 ${refs.length} 张(未识别具体大品类)`;
+      })();
+    const diffusionSuffix = opts?.diffusionBlock ? `\n\n${opts.diffusionBlock}` : "";
     const block = [
       refs.length
         ? [
-          `## 品牌风格灵感池(${poolLabel},同品类作为品牌风格来源与设计思路参考,自由汲取,引用时用 #[ID] 标注)`,
+          `## 品牌风格灵感池(${poolLabel},${opts?.refs?.length ? "前端按名称匹配的 top-N 相关灵感,作为整合方案的核心来源,请充分汲取它们的设计思路与启发,自由汲取,引用时用 #[ID] 标注" : "同品类作为品牌风格来源与设计思路参考,自由汲取,引用时用 #[ID] 标注"})`,
           ...libLines,
         ].join("\n")
         : "## 品牌风格灵感池(灵感库为空,建议先到左侧上传灵感图,作为设计参考)",
@@ -616,9 +635,30 @@ export default function ComposerPage({
       intent.scene.length ? `- 场景/季节: ${intent.scene.join(", ")}` : null,
       intent.mode ? `- 大类: ${intent.mode}` : null,
       sloganElement,
-    ].filter(Boolean).join("\n\n");
+    ].filter(Boolean).join("\n\n") + diffusionSuffix;
 
     return { block, refs, intent };
+  }
+
+  /** text-only 灵感扩散模式:未上传图片且未从灵感库手选,仅凭名称+描述驱动方案 */
+  const textOnlyModeRef = useRef(false);
+  /** 构造灵感扩散的结构化「设计思路 + 设计启发」注入块,供 buildReferencesBlock 挂载 */
+  function buildDiffusionInspirationBlock(refs: InspirationItem[], name: string): string {
+    const head =
+      "## 灵感扩散 · 设计思路启发(必读:整合以下灵感的设计思路与启发,产出 1 个纯文字整合方案,本方案不需要生成设计图/线稿)";
+    const guide =
+      `用户的输入只包含名称/描述,没有上传参考图也没有手选灵感库。前端按名称「${name}」自动从灵感库匹配以下 ${refs.length} 条最相关灵感。` +
+      "请**整合它们的设计思路与启发**,汲取配色/构图/风格/设计手法/图形元素/肌理/氛围,自由组合成 1 个完整方案;在方案中明确写明从哪条灵感汲取了什么,用 #[ID] 标注。";
+    const lines = refs.map((it, i) => {
+      const head2 = `### 灵感 ${i + 1} #[${it.id}] ${it.category ?? "general"}`;
+      const idea = it.designApproach ? `- 设计思路:${it.designApproach}` : "- 设计思路:(暂无)";
+      const启发 = (it.inspiration ?? []).slice(0, 2);
+      const inspirations = 启发.length
+        ? `- 设计启发:\n${启发.map((s) => `  · ${s}`).join("\n")}`
+        : "- 设计启发:(暂无)";
+      return [head2, idea, inspirations].filter(Boolean).join("\n");
+    });
+    return [head, guide, ...lines].join("\n\n");
   }
 
   /** 从结构化简报生成:组合名称/描述/参考灵感为 prompt,清洗开场 greeting 后走 chat 企划流程 */
@@ -630,22 +670,40 @@ export default function ComposerPage({
       briefRefs.length ? `参考灵感:${briefRefs.map((r) => r.name || r.category || "灵感").join("、")}` : "",
     ].filter(Boolean);
     const composed = `请基于以下简报开始设计方案:\n${parts.join("\n")}`;
+
+    // text-only 灵感扩散:未上传图片 + 未从灵感库手选 → 用名称+描述自动匹配 top-5 灵感,注入「设计思路+设计启发」
+    const isTextOnly = briefRefs.length === 0;
+    textOnlyModeRef.current = isTextOnly;
+    let sendOpts: { refs?: InspirationItem[]; diffusionBlock?: string } | undefined;
+    if (isTextOnly) {
+      const briefText = [designName.trim(), briefDescription.trim()].filter(Boolean).join(" ");
+      const pool = knowledge?.inspirations ?? [];
+      const matched = matchInspirations(briefText, pool, 5);
+      setReferences(matched);
+      referencesRef.current = matched;
+      sendOpts = {
+        refs: matched,
+        diffusionBlock: buildDiffusionInspirationBlock(matched, designName.trim()),
+      };
+    } else {
+      // 档案化参考灵感到主 references(供系统 prompt 灵感池引用)
+      setReferences((prev) => [
+        ...prev,
+        ...briefRefs
+          .filter((b) => b.source === "library")
+          .map((b) => ({ id: b.id, url: b.url, category: b.category, visualStyle: b.visualStyle }) as any),
+      ]);
+    }
+
     // 清洗开场 greeting / 历史,从简报干净起步
     setMsgs([]);
     setStage("greeting");
     setPlanText("");
-    // 档案化参考灵感到主 references(供系统 prompt 灵感池引用)
-    setReferences((prev) => [
-      ...prev,
-      ...briefRefs
-        .filter((b) => b.source === "library")
-        .map((b) => ({ id: b.id, url: b.url, category: b.category, visualStyle: b.visualStyle }) as any),
-    ]);
-    await send(composed);
+    await send(composed, sendOpts);
   }
 
   /** 单品 / 系列:chat 主流程(设计顾问 + 灵感 + 知识 → 方案) */
-  async function send(raw: string) {
+  async function send(raw: string, opts?: { refs?: InspirationItem[]; diffusionBlock?: string }) {
     if (!raw.trim() || busy || knowledgeLoading) return;
     const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", text: raw.trim() };
     setMsgs((xs) => [...xs, userMsg]);
@@ -661,7 +719,7 @@ export default function ComposerPage({
     const t0 = Date.now();
     setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "", startedAt: t0 }]);
 
-    const { block: referencesBlock, refs: matchedRefs } = buildReferencesBlock(raw);
+    const { block: referencesBlock, refs: matchedRefs } = buildReferencesBlock(raw, opts);
     const history = [...msgs, userMsg].map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
     const knowledgeBlock = knowledge
       ? buildKnowledgeInjectors(knowledge).map((inj) => inj(raw, knowledge)).filter(Boolean).join("\n\n")
@@ -855,10 +913,81 @@ export default function ComposerPage({
     return 1;
   }
 
+  /**
+   * text-only 灵感扩散:用户输入仅名称/描述,无图无手选。
+   * 跳过「步骤3 generating」图片(/design/*)调用,改为把前端已匹配的 top-5 灵感(设计思路+启发)交给 AI 整合成 1 个纯文字方案,
+   * 落盘 planText 并以 <!--STAGE:proposal--> 收尾,前端视为"方案已产出"。不需要任何图片/线稿。
+   */
+  async function produceTextOnlyScheme() {
+    if (busy || knowledgeLoading) return;
+    const refs = referencesRef.current ?? [];
+    if (!refs.length) {
+      // 没有匹配到灵感 → 直接复用主流程中的 proposal(由 generateFromBrief 已规划)
+      return;
+    }
+    const composedPrompt =
+      `前端已根据用户的输入「${[designName.trim(), briefDescription.trim()].filter(Boolean).join(" / ")}」,自动从灵感库匹配到以下 ${refs.length} 条最相关灵感。\n\n` +
+      "请**汲取它们的设计思路(designApproach)与启发(inspiration)**,整合配色/构图/风格/设计手法/图形元素/肌理/氛围,产出 **1 个完整的纯文字设计方案**(不需要生成任何图/线稿)。\n" +
+      "方案要求:\n" +
+      "- 先一句话点明「本次整合的核心主线」——为什么这几条灵感能合成一体\n" +
+      "- 产品名 + 主题叙述(2-3 句讲清核心概念)\n" +
+      "- 「灵感借鉴」:从哪条灵感汲取什么(引用 #[ID]),讲清配色/构图/手法/图形元素来源\n" +
+      "- 材质与色彩方案(具体色值)、形态/结构/细节、目标价格带\n" +
+      "- 末尾加 <!--STAGE:proposal-->\n\n" +
+      "匹配灵感:\n" +
+      refs.map((it, i) => [
+        `### 灵感 ${i + 1} #[${it.id}] ${it.category ?? "general"}`,
+        it.designApproach ? `- 设计思路:${it.designApproach}` : "- 设计思路:(暂无)",
+        (it.inspiration ?? []).slice(0, 2).length
+          ? `- 设计启发:\n${(it.inspiration ?? []).slice(0, 2).map((s) => `  · ${s}`).join("\n")}`
+          : "- 设计启发:(暂无)",
+      ].filter(Boolean).join("\n")).join("\n\n");
+
+    const briefText = [designName.trim(), briefDescription.trim()].filter(Boolean).join(" ");
+    // 复用 buildReferencesBlock 顶部注入 + 追加「设计思路+启发」结构化块
+    const { block: referencesBlock } = buildReferencesBlock(briefText, {
+      refs,
+      diffusionBlock: buildDiffusionInspirationBlock(refs, designName.trim()),
+    });
+    const knowledgeBlock = knowledge
+      ? buildKnowledgeInjectors(knowledge).map((inj) => inj(briefText, knowledge)).filter(Boolean).join("\n\n")
+      : "";
+    const history = msgs.map((m) => `[${m.role}] ${m.text.replace(STAGE_MARKER, "").trim()}`).join("\n\n");
+    setBusy(true);
+    const t0 = Date.now();
+    const assistantId = crypto.randomUUID();
+    setMsgs((xs) => [...xs, { id: assistantId, role: "assistant", text: "", startedAt: t0 }]);
+    try {
+      await streamChat({
+        chatUrl: teamApi(teamId ?? "").chatUrl,
+        system: [DESIGNER_SYSTEM, referencesBlock, knowledgeBlock ? `## 团队知识库(自动注入)\n${knowledgeBlock}` : ""].filter(Boolean).join("\n\n"),
+        prompt: history + (history ? "\n\n" : "") + `[user] ${composedPrompt}`,
+        model,
+        assistantId,
+        onTick: (accumulated) => {
+          setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: stripStageMarker(accumulated) } : m));
+        },
+        onDone: (finalText, rawAccum) => {
+          const newStage = parseStage(rawAccum) || "proposal";
+          setMsgs((xs) => xs.map((m) => m.id === assistantId
+            ? { ...m, text: stripStageMarker(finalText), timingMs: Date.now() - t0, startedAt: undefined }
+            : m));
+          setStage(newStage);
+          if (newStage === "planning" || newStage === "proposal") setPlanText(finalText.replace(STAGE_MARKER, "").trim());
+        },
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** 用户确认企划 → 进入生成:
+   *  - text-only 模式(仅名称/描述):跳过图片,走 produceTextOnlyScheme 纯文字扩散;
    *  - 插画(illustration):按 illustOutputMode 分叉(图片/HTML),走原有路径;
    *  - 单品 / 系列(single/collection):走「线稿生成」(线稿 → 选材料 → 最终成图)。 */
   async function startGeneration() {
+    // 文字-only 灵感扩散(无上传图 / 无手选灵感):不生成图片,走纯文字整合方案
+    if (textOnlyModeRef.current) { await produceTextOnlyScheme(); return; }
     // 单品极速模式:跳线稿 & 选材料,直达效果图
     if (expressMode && mode === "single") { await expressGenerate(); return; }
     if (mode === "illustration") {
@@ -1327,8 +1456,17 @@ export default function ComposerPage({
         coins: 0,
       };
     }
-    // 方案就绪:确认方案 → 生成线稿(极速模式直接出图)
+    // 方案就绪:text-only 模式走纯文字扩散(不调图片);常规模式走线稿/出图
     if (stage === "planning" || stage === "proposal") {
+      if (textOnlyModeRef.current) {
+        return {
+          label: "生成灵感扩散方案",
+          onClick: () => void produceTextOnlyScheme(),
+          loading: busy,
+          disabled: false,
+          coins: 0,
+        };
+      }
       return {
         label: expressMode ? "确认方案,立即生成" : "确认方案,生成线稿",
         onClick: () => void startGeneration(),
