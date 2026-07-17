@@ -2,6 +2,8 @@
 set -e
 
 echo "🐱 CuCaTopia backend starting..."
+echo "🔍 Env check: NODE_ENV=${NODE_ENV} PORT=${PORT} DB_HOST=${DB_HOST:-unset} FRONTEND_URL=${FRONTEND_URL:-unset}"
+echo "🔍 DATABASE_URL prefix: $(echo "${DATABASE_URL:-EMPTY}" | cut -c1-30)..."
 
 # ---- 解析 DATABASE_URL 获取 host/port/dbname；密码优先用环境变量（与 docker-compose db 一致）----
 # DATABASE_URL 格式: postgresql://user:password@host:port/dbname[?params]
@@ -23,9 +25,10 @@ if [ -n "${POSTGRES_PASSWORD}" ]; then
 fi
 
 if [ -z "$DB_NAME" ] || [ -z "$DB_HOST" ] || [ -z "$DB_USER" ]; then
-  echo "❌ Invalid DATABASE_URL (could not parse host, user, or database name)."
-  echo "   Expected: postgresql://USER:PASSWORD@HOST:PORT/DBNAME"
-  exit 1
+  echo "⚠️  Invalid DATABASE_URL (could not parse host, user, or database name)."
+  echo "⚠️  将以降级模式启动服务 —— 依赖数据库的接口将返回 503"
+  echo "🚀 Starting server (degraded mode)..."
+  exec node index.js
 fi
 
 echo "📡 Database config: host=$DB_HOST port=$DB_PORT db=$DB_NAME user=$DB_USER (password len=${#DB_PASS})"
@@ -45,38 +48,47 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
 done
 
 if [ $RETRY -eq $MAX_RETRIES ]; then
-  echo "❌ PostgreSQL did not become ready in time"
-  exit 1
+  echo "⚠️  PostgreSQL did not become ready in time"
+  echo "⚠️  将以降级模式启动服务 —— 依赖数据库的接口将返回 503"
+  SKIP_MIGRATE=1
 fi
 
 # pg_isready 不校验密码；这里必须能连上 postgres 库，否则后面 createdb 会报 FATAL: password authentication failed
-echo "🔐 Verifying database password (same as DATABASE_URL)..."
-if ! PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -tAc 'SELECT 1' > /dev/null 2>&1; then
-  echo "❌ Password authentication failed for user \"$DB_USER\"."
-  echo "   Common causes:"
-  echo "   1) Postgres volume still old: list and remove the correct volume, then up again:"
-  echo "           docker volume ls | grep -i postgres"
-  echo "           docker compose down && docker volume rm <上面列出的卷名>"
-  echo "   2) .env 里 POSTGRES_PASSWORD 与之前初始化数据目录时不一致（改密码不会自动改卷内密码）。"
-  echo "   3) 密码含 @ 等：已优先读环境变量 POSTGRES_PASSWORD；请重建 backend 镜像并勿用 sed 易截断的 URL。"
-  echo "   4) .env 中行末空格、Windows 换行、或密码里的 #（被当成注释）— 检查 POSTGRES_PASSWORD 一行。"
-  exit 1
+if [ -z "$SKIP_MIGRATE" ]; then
+  echo "🔐 Verifying database password (same as DATABASE_URL)..."
+  if ! PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -tAc 'SELECT 1' > /dev/null 2>&1; then
+    echo "⚠️  Password authentication failed for user \"$DB_USER\"."
+    echo "⚠️  将以降级模式启动服务 —— 依赖数据库的接口将返回 503"
+    SKIP_MIGRATE=1
+  fi
 fi
 
-# ---- 确保目标数据库存在 ----
-echo "🔍 Checking if database '$DB_NAME' exists..."
-DB_EXISTS=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null || echo "")
+# ---- 确保目标数据库存在(可选,SKIP_MIGRATE 时跳过) ----
+if [ -z "$SKIP_MIGRATE" ]; then
+  echo "🔍 Checking if database '$DB_NAME' exists..."
+  DB_EXISTS=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null || echo "")
 
-if [ "$DB_EXISTS" != "1" ]; then
-  echo "📦 Database '$DB_NAME' does not exist, creating..."
-  # createdb 比手写 CREATE DATABASE 更不易被引号/转义坑到
-  if ! PGPASSWORD="$DB_PASS" createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME" 2>&1; then
-    echo "❌ Could not create database '$DB_NAME'. If you use managed Postgres, create the DB in the console first."
-    exit 1
+  if [ "$DB_EXISTS" != "1" ]; then
+    echo "📦 Database '$DB_NAME' does not exist, creating..."
+    # createdb 比手写 CREATE DATABASE 更不易被引号/转义坑到
+    if ! PGPASSWORD="$DB_PASS" createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME" 2>&1; then
+      echo "⚠️  Could not create database '$DB_NAME'. 将以降级模式启动。"
+      SKIP_MIGRATE=1
+    else
+      echo "✅ Database '$DB_NAME' created"
+    fi
+  else
+    echo "✅ Database '$DB_NAME' already exists"
   fi
-  echo "✅ Database '$DB_NAME' created"
 else
   echo "✅ Database '$DB_NAME' already exists"
+fi
+
+# ---- 跳过迁移时直接进入服务 ----
+if [ -n "$SKIP_MIGRATE" ]; then
+  echo "⚠️  跳过数据库校验/迁移,以降级模式启动服务"
+  echo "🚀 Starting server (degraded mode)..."
+  exec node index.js
 fi
 
 # ---- 运行 Prisma 迁移 ----
