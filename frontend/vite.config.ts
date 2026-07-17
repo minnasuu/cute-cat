@@ -5,10 +5,9 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: '/',
-  // 调试期保留 sourcemap + 禁用压缩(定位「Cannot access before initialization」TDZ 错误)
+  // 保留 sourcemap 便于线上定位运行时错误
   build: {
     sourcemap: true,
-    minify: false,
   },
   server: {
     proxy: {

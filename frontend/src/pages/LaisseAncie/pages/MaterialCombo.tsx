@@ -111,6 +111,11 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
   }
 
+  // ── 批次状态 ──(必须在 tour 之前声明,因为 tour.startTour 可能调用 setBatch)
+  const [batch, setBatch] = useState<MaterialComboBatch | null>(null);
+  const [submitting, setSubmitting] = useState(false); // POST 提交中
+  const [error, setError] = useState<string | null>(null);
+
   // ── 新手引导 ──
   const tour = useMaterialComboTour({
     mode,
@@ -121,11 +126,6 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     setBatch,
     switchMode,
   });
-
-  // ── 批次状态 ──
-  const [batch, setBatch] = useState<MaterialComboBatch | null>(null);
-  const [submitting, setSubmitting] = useState(false); // POST 提交中
-  const [error, setError] = useState<string | null>(null);
 
   const fabricRef = useRef<HTMLInputElement>(null);
   const styleRef = useRef<HTMLInputElement>(null);
