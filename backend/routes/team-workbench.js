@@ -514,7 +514,19 @@ router.post('/inspirations/:id/touch', asyncHandler(async (req, res) => {
 router.delete('/inspirations/:id', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAInspirationAsset, req.params.id, req.team.id);
   if (!owned) return res.status(404).json({ error: 'not found' });
+  // 收集本产品持有的图片(url + thumbUrl),再删记录,最后异步清 COS(失败仅记日志,不阻塞/回退)。
+  const imageUrls = [owned.url, owned.thumbUrl].filter((v) => typeof v === 'string' && v);
   await prisma.lAInspirationAsset.delete({ where: { id: owned.id } });
+  if (imageUrls.length) {
+    Promise.allSettled(imageUrls.map((u) => deleteImageByUrl(u)))
+      .then((results) => {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn(`[team-workbench] inspiration ${owned.id} COS cleanup failed: ${r.reason?.message || r.reason}`);
+          }
+        }
+      });
+  }
   res.json({ ok: true });
 }));
 
