@@ -231,27 +231,19 @@ async function computeRole(userId, email) {
 
 /** 对外暴露的用户对象(含喵币/角色/邀请) */
 async function publicUser(userId) {
-  // 兼容:新字段(onboardingDone 等)在迁移落地前可能不存在;查询失败时回退到基础字段
+  // 基础字段(所有环境必存在,不依赖未迁移的新字段)
   const baseSelect = {
     id: true, email: true, nickname: true, avatar: true, role: true, coins: true,
     inviteCode: true, inviteCount: true, invitedById: true, createdAt: true,
   };
   try {
-    const u = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { ...baseSelect, onboardingDone: true },
-    });
-    return u;
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: baseSelect });
+    if (u) return { ...u, onboardingDone: false };
+    return null;
   } catch (err) {
-    // 任何查询失败(新字段未就绪/表结构不匹配等)→ 回退到基础字段
-    console.warn('[auth] publicUser:查询失败,回退基础查询:', err.message);
-    try {
-      return await prisma.user.findUnique({ where: { id: userId }, select: baseSelect });
-    } catch (fallbackErr) {
-      // 基础字段也失败 → 返回最小可用对象(避免登录/接口 500)
-      console.error('[auth] publicUser:基础查询也失败:', fallbackErr.message);
-      return { id: userId, nickname: '', role: 'user', coins: 0 };
-    }
+    // 极端兜底:返回最小对象(绝不 throw)
+    console.error('[auth] publicUser:查询失败:', err.message);
+    return { id: userId, email: '', nickname: '', role: 'user', coins: 0, onboardingDone: false };
   }
 }
 
@@ -608,12 +600,13 @@ router.get('/me', authMiddleware, async (req, res) => {
     if (!u) return res.status(404).json({ error: '用户不存在' });
     // 兜底:管理员 email 但 role 未刷为 admin(存量数据)
     if (u.role !== 'admin' && isAdminEmail(u.email)) {
-      await prisma.user.update({ where: { id: req.userId }, data: { role: 'admin' } });
+      await prisma.user.update({ where: { id: req.userId }, data: { role: 'admin' } }).catch(() => {});
       u = await publicUser(req.userId);
     }
     res.json(u);
   } catch (err) {
-    res.status(500).json({ error: '获取用户信息失败' });
+    console.error('[auth] /me error:', err.message, '\n', err.stack);
+    res.status(500).json({ error: '获取用户信息失败', detail: err?.message });
   }
 });
 
