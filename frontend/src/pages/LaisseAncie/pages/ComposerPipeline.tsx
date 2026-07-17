@@ -79,7 +79,7 @@ export default function ComposerPipeline(props: Props) {
   return (
     <aside className="border-l border-gray-200 bg-gray-50 min-h-0 pb-5 space-y-5 overflow-y-auto">
       {/* 步骤指示 */}
-      <ol data-tour="tour-pipeline" className="w-full flex items-center gap-1 text-[10px] sticky top-0 z-10 bg-gray-50 p-5 mb-0 -ml-5 border-box">
+      <ol data-tour="tour-pipeline" className="w-full flex items-center gap-1 text-[10px] sticky top-0 z-10 bg-gray-50 p-5 mb-0 border-box">
         {STEPS.map((s, i) => {
           const done = currentStep > i;
           const active = currentStep === i;

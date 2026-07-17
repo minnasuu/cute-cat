@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import CatLogo from '../../components/CatLogo';
 import Navbar from '../../components/Navbar';
 import MeowCoin from '../../components/MeowCoin';
+import MeowCoinDisplay from '../../components/MeowCoinDisplay';
 
 const NAV_ITEMS = [
   { id: 'workspaces', label: '工作台', activeClass: 'text-primary-500' },
@@ -18,8 +19,6 @@ const WORKSPACES = [
   { icon: icon2, name: '编织工作台', desc: '即将开放', active: false },
   { icon: icon3, name: '串珠工作台', desc: '即将开放', active: false },
 ];
-
-const InlineCoin = () => <MeowCoin size={14} className="inline-block" />;
 
 const iconGift = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M41 44V20H7V44H41Z" fill="none" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M24 44V20" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M41 44H7" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><rect x="4" y="12" width="40" height="8" fill="none" stroke="#333" stroke-width="4" stroke-linejoin="round" /><path d="M16 4L24 12L32 4" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /></svg>
 const iconShare = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 40L36 28L32 32L28 36L24 40ZM24 40L4 20L16 8L24 16" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M17 23L32 8L44 20L36 28L28 20L22 26L17 23ZM17 23L24 16" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M28 36L25 33" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M32 32L29 29" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -252,7 +251,7 @@ const LandingPage: React.FC = () => {
             开始你的创作
           </h2>
           <p className="text-lg text-text-secondary max-w-xl mx-auto mb-10">
-            注册即送<InlineCoin /> 100 喵币，免费体验 AI 设计工作台的完整能力。
+            注册即送<MeowCoinDisplay size={14} amount={100} />，免费体验 AI 设计工作台的完整能力。
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link

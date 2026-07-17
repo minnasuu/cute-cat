@@ -628,7 +628,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                       <>
                         <button
                           onClick={() => fabricRef.current?.click()}
-                          className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                          className="w-28 h-28 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                         >
                           <span className="text-lg text-gray-400">+</span>
                           <span className="text-[10px] text-gray-400">
@@ -779,7 +779,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                     <>
                       <button
                         onClick={() => styleRef.current?.click()}
-                        className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                        className="w-28 h-28 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                       >
                         <span className="text-lg text-gray-400">+</span>
                         <span className="text-[10px] text-gray-400">

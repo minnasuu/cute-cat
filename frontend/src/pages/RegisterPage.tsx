@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../utils/apiClient';
 import CatLogo from '../components/CatLogo';
 import { showToast } from '../components/Toast';
-import MeowCoin from '../components/MeowCoin';
+import MeowCoinDisplay from '../components/MeowCoinDisplay';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -127,7 +127,7 @@ const RegisterPage: React.FC = () => {
                 placeholder="输入好友的邀请码，注册后双方均可获得喵币"
                 className="w-full px-4 py-3 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-secondary-400 focus:border-transparent transition-all outline-none font-mono tracking-widest text-center uppercase"
               />
-              <p className="text-xs text-text-tertiary mt-1.5 inline-flex items-center gap-1">使用邀请码注册，你和邀请人各得<MeowCoin size={14} /> 100 喵币。</p>
+              <p className="text-xs text-text-tertiary mt-1.5">使用邀请码注册，你和邀请人各得<MeowCoinDisplay size={14} amount={100} />。</p>
             </div>
 
             <div>

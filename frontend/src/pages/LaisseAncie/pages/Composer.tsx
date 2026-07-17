@@ -66,41 +66,41 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: "tour-name",
     title: "① 给你的作品起个名",
-    description: "输入你想要的单品名称,比如「春日雏菊连衣裙」。\n引导已帮你填好示例,可以直接下一步。",
+    description: "输入你想要的单品名称，比如「春日雏菊连衣裙」。",
   },
   {
     target: "tour-refs",
     title: "② 添加灵感参考",
-    description: "上传参考图或从灵感库选,AI 会自动分析品类·风格。\n引导已帮你跳过这步,直接下一步。",
+    description: "上传参考图或从灵感库选，AI 会自动分析品类·风格。",
   },
   {
     target: "tour-desc",
     title: "③ 描述设计需求",
-    description: "人群、场景、风格调性,可选填。\n引导已帮你填好示例。",
+    description: "人群、场景、风格调性，可选填。",
   },
   {
     target: "tour-generate-btn",
     title: "④ 生成设计方案",
-    description: "点击底部按钮,AI 会结合灵感库生成一份完整企划方案。\n点「下一步」查看效果。",
+    description: "AI 会结合名称 + 灵感库生成一份完整设计方案。",
     actionLabel: "生成方案 →",
   },
   {
     target: "tour-step-proposal",
-    title: "⑤ 方案已生成 — 进入线稿",
-    description: "企划方案已经就绪(右栏)。\n点「下一步」模拟生成线稿(约 3s),生成中会停留在本卡片。",
-    actionLabel: "生成线稿(3s) →",
+    title: "⑤ 生成线稿",
+    description: "根据设计方案生成服装线稿。",
+    actionLabel: "生成线稿 →",
   },
   {
     target: "tour-step-lineart",
-    title: "⑥ 选择材质与配色",
-    description: "线稿已生成(右栏),AI 会根据方案推荐材质+配色。\n点「下一步」查看推荐。",
+    title: "⑥ 生成材质与配色方案",
+    description: "AI 会根据方案推荐材质 + 配色方案。",
     actionLabel: "确认材质 →",
   },
   {
     target: "tour-step-material",
     title: "⑦ 生成终稿成图",
-    description: "确认材质后生成最终设计图。\n点「完成」模拟生成(约 3s)并结束引导。",
-    actionLabel: "生成终稿(3s) ✨",
+    description: "确认材质后生成最终设计图。",
+    actionLabel: "生成终稿 →",
   },
 ];
 

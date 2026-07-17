@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../utils/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
-import MeowCoin from "../../components/MeowCoin";
+import MeowCoinDisplay from '../../components/MeowCoinDisplay';
 import Navbar from "../../components/Navbar";
 import { AppIcon } from "../../components/icons/AppIcon";
 import BetaCodeManager from "./BetaCodeManager";
@@ -361,9 +361,7 @@ export default function AdminPage() {
                                   {/* 喵币余额:总额 + 三来源 */}
                                   <td className="px-4 py-3">
                                     <div className="flex flex-col gap-1">
-                                      <div className="font-bold text-text-primary inline-flex items-center gap-1">
-                                        <MeowCoin size={14} /> {u.coins ?? 0}
-                                      </div>
+                                      <div><MeowCoinDisplay size={14} amount={u.coins ?? 0} className="font-bold text-text-primary" /></div>
                                       <div className="flex items-center gap-1 text-[10px]">
                                         <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                                           赠+{summary.signupBonus}

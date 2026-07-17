@@ -113,7 +113,7 @@ export default function ComposerBrief({
           <button
             onClick={onNewSession}
             disabled={generating || refineBusy}
-            className="h-7 text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 hover:border-gray-800 disabled:opacity-40"
+            className="h-7 text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 hover:border-primary-500 disabled:opacity-40 transition-colors"
           >
             + 新会话
           </button>
@@ -186,7 +186,7 @@ export default function ComposerBrief({
               <>
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="w-20 h-20 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                  className="w-28 h-28 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                 >
                   <span className="text-lg text-gray-400">+</span>
                   <span className="text-[9px] text-gray-400 mt-0.5">

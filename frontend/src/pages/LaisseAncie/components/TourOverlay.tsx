@@ -206,7 +206,7 @@ export default function TourOverlay({ steps, stepIdx, onAdvance, onPrev, onSkip 
           className="absolute w-3 h-3 bg-white border-l border-t border-gray-200 rotate-45"
           style={placeBelow
             ? { top: -6, left: TOOLTIP_WIDTH / 2 - 6 }
-            : { bottom: -6, left: TOOLTIP_WIDTH / 2 - 6, transform: "rotate(-135deg)" }
+            : { bottom: -6, left: TOOLTIP_WIDTH / 2 - 6, transform: "rotate(-180deg)" }
           }
         />
       </div>

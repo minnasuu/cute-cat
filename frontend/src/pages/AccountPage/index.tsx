@@ -6,6 +6,7 @@ import { showToast } from '../../components/Toast';
 import Navbar from '../../components/Navbar';
 import { AppIcon } from '../../components/icons/AppIcon';
 import { useIsMobile } from '../../hooks/use-media-query';
+import MeowCoinDisplay from '../../components/MeowCoinDisplay';
 import MeowCoin from '../../components/MeowCoin';
 
 interface Tx {
@@ -86,12 +87,16 @@ const AccountPage: React.FC = () => {
   const [redeeming, setRedeeming] = useState(false);
   const [redeemMsg, setRedeemMsg] = useState<{ type: 'success' | 'error'; text: string; coins?: number } | null>(null);
 
-  // 密码显示 + 修改密码
-  const [showPassword, setShowPassword] = useState(false);
-  const [passwordDisplay] = useState('******');
+  // 密码管理
+  const [pwdModal, setPwdModal] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [pwdSaving, setPwdSaving] = useState(false);
   const [pwdError, setPwdError] = useState<string | null>(null);
+  const [showOldPw, setShowOldPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
   // 注销帐号弹窗
   const [deleteModal, setDeleteModal] = useState(false);
@@ -103,8 +108,8 @@ const AccountPage: React.FC = () => {
 
   // 加载兑换码档位 + 邀请信息
   useEffect(() => {
-    apiClient.get<{ tiers: Record<RedeemTierId, RedeemTier> }>('/api/account/redeem-tiers').then((d) => setTiers(d.tiers)).catch(() => {});
-    apiClient.get<InviteInfo>('/api/account/invite').then((d) => setInvite(d)).catch(() => {});
+    apiClient.get<{ tiers: Record<RedeemTierId, RedeemTier> }>('/api/account/redeem-tiers').then((d) => setTiers(d.tiers)).catch(() => { });
+    apiClient.get<InviteInfo>('/api/account/invite').then((d) => setInvite(d)).catch(() => { });
   }, []);
 
   const loadTx = useCallback(async () => {
@@ -134,7 +139,7 @@ const AccountPage: React.FC = () => {
       // 刷新 systemCoins 以判断库存
       apiClient.get<{ systemCoins: number }>('/api/account/me').then((d) => {
         setSystemCoins(d.systemCoins ?? 0);
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, [activeTab, loadTx, loadRechargeRecords]);
 
@@ -150,18 +155,27 @@ const AccountPage: React.FC = () => {
     }
   };
 
-  // 内联修改密码(无需弹窗)
-  const handleChangePasswordInline = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      showToast('请输入至少 6 位的新密码', 'warning');
-      return;
-    }
+  // 打开修改密码弹窗
+  const openPwdModal = () => {
+    setOldPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPwdError(null);
+    setPwdModal(true);
+  };
+
+  // 修改密码(弹窗)
+  const handleChangePassword = async () => {
+    if (!oldPassword) { setPwdError('请输入原密码'); return; }
+    if (!newPassword || newPassword.length < 6) { setPwdError('新密码至少 6 位'); return; }
+    if (newPassword !== confirmPassword) { setPwdError('两次输入的新密码不一致'); return; }
+    if (newPassword === oldPassword) { setPwdError('新密码不能与原密码相同'); return; }
     setPwdSaving(true);
     setPwdError(null);
     try {
-      await apiClient.put('/api/account/profile', { newPassword });
+      await apiClient.put('/api/account/profile', { oldPassword, newPassword });
       showToast('密码修改成功', 'success');
-      setNewPassword('');
+      setPwdModal(false);
     } catch (err: any) {
       setPwdError(err?.message || '修改失败');
     } finally {
@@ -237,7 +251,7 @@ const AccountPage: React.FC = () => {
           <span className="px-2 py-0.5 bg-primary-50 border border-primary-200 text-primary-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
             {ROLE_LABELS[user.role] || user.role}
           </span>
-          <span className="text-xs font-bold text-text-primary inline-flex items-center gap-1"><MeowCoin size={14} /> {user.coins}</span>
+          <MeowCoinDisplay size={14} amount={user.coins} className="text-xs font-bold text-text-primary" />
         </div>
       </div>
 
@@ -249,11 +263,10 @@ const AccountPage: React.FC = () => {
             <button
               key={t.id}
               onClick={() => switchTab(t.id)}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-2.5 ${
-                current
-                  ? 'bg-primary-500 text-white font-bold shadow-sm'
-                  : 'text-text-secondary hover:bg-surface-tertiary hover:text-text-primary'
-              }`}
+              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-2.5 ${current
+                ? 'bg-primary-500 text-white font-bold shadow-sm'
+                : 'text-text-secondary hover:bg-surface-tertiary hover:text-text-primary'
+                }`}
             >
               <AppIcon symbol={t.icon} size={16} className={current ? 'text-white' : 'text-text-tertiary'} />
               <span>{t.label}</span>
@@ -269,7 +282,7 @@ const AccountPage: React.FC = () => {
 
   /* ── 右侧内容区 ── */
   const renderActiveTab = () => (
-    <div className="p-6 md:p-8 max-w-3xl">
+    <div className="p-6 md:p-8">
       {/* 个人信息 */}
       {activeTab === 'profile' && (
         <div className="rounded-[20px] border border-border bg-surface p-6 space-y-5">
@@ -289,47 +302,23 @@ const AccountPage: React.FC = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">密码</label>
-            <div className="space-y-2 w-full max-w-md">
+            <div className="w-full max-w-md">
               <div className="relative">
                 <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={passwordDisplay}
+                  type="text"
+                  value="******"
                   readOnly
-                  className="w-full px-4 py-3 pr-10 rounded-xl border border-border bg-surface-secondary text-text-tertiary select-none outline-none"
+                  className="w-full px-4 py-3 pr-16 rounded-xl border border-border bg-surface-secondary text-text-tertiary select-none outline-none"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors"
-                  tabIndex={-1}
+                  onClick={openPwdModal}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-primary-600 hover:text-primary-700 text-[11px] font-medium"
                 >
-                  {showPassword ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  )}
+                  修改
                 </button>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="输入新密码(至少 6 位)"
-                  className="flex-1 px-4 py-3 rounded-xl border border-border bg-surface focus:bg-surface focus:ring-2 focus:ring-primary-100 focus:border-primary-400 outline-none text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={handleChangePasswordInline}
-                  disabled={!newPassword || newPassword.length < 6}
-                  className="px-4 py-2.5 rounded-xl border border-primary-200 bg-primary-50 text-primary-700 text-sm font-medium hover:bg-primary-100 transition-colors shrink-0 disabled:opacity-50"
-                >
-                  修改密码
-                </button>
-              </div>
-              {newPassword && newPassword.length < 6 && (
-                <p className="text-xs text-red-500">密码至少 6 位</p>
-              )}
+              <p className="text-xs text-text-tertiary mt-1.5">密码已加密存储,无法查看原密码。如需修改请点「修改」。</p>
             </div>
           </div>
           <button
@@ -358,7 +347,7 @@ const AccountPage: React.FC = () => {
           {/* 余额 */}
           <div className="rounded-[20px] border border-border bg-surface p-4 flex items-center justify-between">
             <span className="text-sm text-text-secondary">当前余额</span>
-            <span className="text-xl font-black text-text-primary inline-flex items-center gap-1.5"><MeowCoin size={22} /> {user.coins}</span>
+            <MeowCoinDisplay size={22} amount={user.coins} className="text-xl font-black text-text-primary" />
           </div>
 
           {stockOut && (
@@ -374,7 +363,7 @@ const AccountPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {(Object.entries(tiers) as [RedeemTierId, RedeemTier][]).map(([id, t]) => (
                   <div key={id} className={`rounded-[20px] border border-border bg-surface p-5 flex flex-col items-center text-center ${stockOut ? 'opacity-50' : ''}`}>
-                    <div className="text-2xl font-black text-primary-600 mb-1 inline-flex items-center gap-1.5"><MeowCoin size={22} /> {t.coins}</div>
+                    <div className="mb-1"><MeowCoinDisplay size={22} amount={t.coins} className="text-2xl font-black text-primary-600" /></div>
                     <div className="text-sm font-bold text-text-primary mb-1">{t.name}</div>
                     <div className="text-xs text-text-tertiary">≈ {Math.round(t.coins / 9)} 次生图</div>
                     <div className="text-xs text-text-tertiary mt-1">¥{t.yuan}</div>
@@ -408,7 +397,7 @@ const AccountPage: React.FC = () => {
             </div>
             {redeemMsg && (
               <p className={`text-sm inline-flex items-center gap-1 ${redeemMsg.type === 'success' ? 'text-primary-600' : 'text-red-500'}`}>
-                {redeemMsg.text}{redeemMsg.coins != null && <><MeowCoin size={14} /></>}
+                <MeowCoinDisplay size={14} amount={redeemMsg.coins || 0} className="text-sm" />
               </p>
             )}
           </div>
@@ -434,11 +423,10 @@ const AccountPage: React.FC = () => {
                   <li key={tx.id} className="px-5 py-3 flex items-center justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          tx.type === 'signup_bonus' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${tx.type === 'signup_bonus' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
                           tx.type === 'invite_reward' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                          'bg-sky-50 text-sky-700 border border-sky-200'
-                        }`}>
+                            'bg-sky-50 text-sky-700 border border-sky-200'
+                          }`}>
                           {TX_TYPE_LABELS[tx.type] || tx.type}
                         </span>
                         <span className="text-sm font-bold text-text-primary">{tx.note || '—'}</span>
@@ -447,7 +435,7 @@ const AccountPage: React.FC = () => {
                     </div>
                     <div className="text-right shrink-0 ml-4">
                       <div className="text-sm font-black text-primary-600 inline-flex items-center gap-1">
-                        +{tx.amount} <MeowCoin size={14} />
+                        + <MeowCoinDisplay size={12} amount={tx.amount} className="text-sm" />
                       </div>
                       <div className="text-[11px] text-text-tertiary">{before} → {tx.balanceAfter}</div>
                     </div>
@@ -477,7 +465,7 @@ const AccountPage: React.FC = () => {
                   </div>
                   <div className="text-right shrink-0 ml-4">
                     <div className={`text-sm font-black inline-flex items-center gap-1 ${tx.amount > 0 ? 'text-primary-600' : 'text-text-primary'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount} <MeowCoin size={14} />
+                      {tx.amount > 0 ? '+' : ''}<MeowCoinDisplay size={12} amount={tx.amount} className="text-sm" />
                     </div>
                     <div className="text-[11px] text-text-tertiary">余额 {tx.balanceAfter}</div>
                   </div>
@@ -492,7 +480,8 @@ const AccountPage: React.FC = () => {
       {activeTab === 'invite' && invite && (
         <div className="rounded-[20px] border border-border bg-surface p-6 space-y-5">
           <h2 className="text-base font-black text-text-primary">邀请好友</h2>
-          <p className="text-sm text-text-secondary">每邀请一位好友注册,你和好友各得 <span className="font-bold text-primary-600 inline-flex items-center gap-1">{invite.reward} <MeowCoin size={14} /></span>(上限 {invite.max} 人)。</p>
+          <p className="text-sm text-text-secondary">每邀请一位好友注册,你和好友各得
+            <MeowCoinDisplay size={14} amount={invite.reward} />(上限 {invite.max} 人)。</p>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">邀请链接</label>
             <div className="flex gap-2">
@@ -506,13 +495,14 @@ const AccountPage: React.FC = () => {
               <div className="text-xs text-text-tertiary">已邀请</div>
             </div>
             <div>
-              <div className="text-2xl font-black text-primary-600 inline-flex items-center gap-1.5">{invite.earned} <MeowCoin size={22} /></div>
+              <MeowCoinDisplay size={22} amount={invite.earned} className="text-2xl font-black text-primary-600" />
               <div className="text-xs text-text-tertiary">累计奖励</div>
             </div>
           </div>
         </div>
-      )}
-    </div>
+      )
+      }
+    </div >
   );
 
   return (
@@ -569,9 +559,8 @@ const AccountPage: React.FC = () => {
           )}
           {/* 抽屉 */}
           <aside
-            className={`fixed top-0 left-0 z-50 h-full w-72 bg-surface border-r border-border shadow-xl flex-col overflow-y-auto transition-transform duration-200 ${
-              drawerOpen ? 'translate-x-0' : '-translate-x-full'
-            } flex`}
+            className={`fixed top-0 left-0 z-50 h-full w-72 bg-surface border-r border-border shadow-xl flex-col overflow-y-auto transition-transform duration-200 ${drawerOpen ? 'translate-x-0' : '-translate-x-full'
+              } flex`}
           >
             {/* 抽屉顶部 Close */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -593,9 +582,67 @@ const AccountPage: React.FC = () => {
       )}
 
       {/* 修改密码弹窗 */}
-      {pwdError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 w-full max-w-md">
-          {pwdError}
+      {pwdModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setPwdModal(false)}>
+          <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-text-primary">修改密码</h3>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-text-tertiary mb-1 block">原密码 <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <input
+                  type={showOldPw ? 'text' : 'password'}
+                  value={oldPassword}
+                  onChange={(e) => { setOldPassword(e.target.value); setPwdError(null); }}
+                  placeholder="请输入原密码"
+                  className="w-full px-4 py-3 pr-10 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
+                  autoFocus
+                />
+                <button type="button" onClick={() => setShowOldPw(!showOldPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary" tabIndex={-1}>
+                  {showOldPw ? '隐藏' : '显示'}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-text-tertiary mb-1 block">新密码 <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <input
+                  type={showNewPw ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => { setNewPassword(e.target.value); setPwdError(null); }}
+                  placeholder="至少 6 位"
+                  className="w-full px-4 py-3 pr-10 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
+                />
+                <button type="button" onClick={() => setShowNewPw(!showNewPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary" tabIndex={-1}>
+                  {showNewPw ? '隐藏' : '显示'}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-text-tertiary mb-1 block">确认新密码 <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <input
+                  type={showConfirmPw ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setPwdError(null); }}
+                  placeholder="再次输入新密码"
+                  className="w-full px-4 py-3 pr-10 rounded-xl border border-border-strong bg-surface-secondary focus:bg-surface focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleChangePassword(); }}
+                />
+                <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary" tabIndex={-1}>
+                  {showConfirmPw ? '隐藏' : '显示'}
+                </button>
+              </div>
+            </div>
+            {pwdError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">{pwdError}</div>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setPwdModal(false)} className="px-4 py-2 rounded-lg text-[12px] border border-border text-text-secondary hover:bg-surface-secondary transition-colors">取消</button>
+              <button type="button" onClick={handleChangePassword} disabled={pwdSaving} className="px-4 py-2 rounded-lg text-[12px] bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors">
+                {pwdSaving ? '处理中…' : '确认修改'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -612,7 +659,7 @@ const AccountPage: React.FC = () => {
                 此操作<span className="font-bold text-danger-600">不可恢复</span>。您的帐号、喵币余额、作品、邀请关系等所有数据将被永久删除。
               </p>
               <p className="text-xs text-text-tertiary mt-2">
-                当前余额:<span className="font-bold text-text-primary ml-1">{user?.coins} 喵币</span>(一并清空)
+                当前余额:<MeowCoinDisplay size={16} amount={user?.coins ?? 0} className="font-bold text-text-primary ml-1" />(一并清空)
               </p>
             </div>
             <div className="flex justify-end gap-2 pt-1">

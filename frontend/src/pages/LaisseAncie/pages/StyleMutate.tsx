@@ -900,27 +900,32 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                       type="button"
                       onClick={() => switchMutateMode("batch")}
                       disabled={batchRunning}
-                      className={`px-2.5 py-1 rounded-md transition-colors ${mutateMode === "batch" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors ${mutateMode === "batch" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
                     >
                       批量生成
+                      <span className="relative group flex items-center">
+                        <span className="w-3.5 h-3.5 rounded-full bg-gray-300 text-white text-[10px] flex items-center justify-center cursor-help">?</span>
+                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-20 w-56 rounded-lg bg-gray-800 text-white text-[10.5px] leading-relaxed px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                          每个选项生成一张子款白底图(可多选,最多 8 张)
+                          <span className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-800" />
+                        </span>
+                      </span>
                     </button>
                     <button
                       type="button"
                       onClick={() => switchMutateMode("merge")}
                       disabled={batchRunning}
-                      className={`px-2.5 py-1 rounded-md transition-colors ${mutateMode === "merge" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors ${mutateMode === "merge" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
                     >
                       合并生成
-                    </button>
-                    <span className="relative group ml-0.5 flex items-center">
-                      <span className="w-4 h-4 rounded-full bg-gray-300 text-white text-[10px] flex items-center justify-center cursor-help">?</span>
-                      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-20 w-56 rounded-lg bg-gray-800 text-white text-[10.5px] leading-relaxed px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                        {mutateMode === "batch"
-                          ? "每个选项生成一张子款白底图(可多选,最多 8 张)"
-                          : "所选维度合并生成一张子款图(每个维度单选)"}
-                        <span className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-800" />
+                      <span className="relative group flex items-center">
+                        <span className="w-3.5 h-3.5 rounded-full bg-gray-300 text-white text-[10px] flex items-center justify-center cursor-help">?</span>
+                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-20 w-56 rounded-lg bg-gray-800 text-white text-[10.5px] leading-relaxed px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                          所选维度合并生成一张子款图(每个维度单选)
+                          <span className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-800" />
+                        </span>
                       </span>
-                    </span>
+                    </button>
                   </div>
                 </div>
 
@@ -1052,7 +1057,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                     <>
                       <button
                         onClick={() => fabricRef.current?.click()}
-                        className="w-24 h-24 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                        className="w-28 h-28 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                       >
                         <span className="text-lg text-gray-400">+</span>
                         <span className="text-[10px] text-gray-400">上传面料</span>

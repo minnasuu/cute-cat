@@ -17,6 +17,7 @@
  */
 
 import MeowCoin from './MeowCoin';
+import MeowCoinDisplay from './MeowCoinDisplay';
 
 /** AI 单图生成成本(喵币/张),与后端 AI_COSTS.image_generate 对齐 */
 export const AI_COST_PER_IMAGE = 9;
@@ -64,9 +65,8 @@ export function GenerateButton({
         data-tour="tour-generate-btn"
         onClick={onClick}
         disabled={isDisabled}
-        className={`relative overflow-hidden px-8 py-3 rounded-2xl text-white font-bold text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100 disabled:cursor-not-allowed ${
-          insufficient ? "ring-2 ring-red-300 ring-offset-1" : ""
-        }`}
+        className={`relative overflow-hidden px-8 py-3 rounded-2xl text-white font-bold text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:hover:scale-100 disabled:cursor-not-allowed ${insufficient ? "ring-2 ring-red-300 ring-offset-1" : ""
+          }`}
         style={{
           background: isDisabled
             ? insufficient
@@ -136,7 +136,7 @@ export function GenerateButton({
       {/* 余额不足具体差额提示 */}
       {insufficient && (
         <span className="text-[11px] text-red-500 inline-flex items-center gap-1">
-          还需 {(estimatedCoins ?? 0) - (userCoins ?? 0)} <MeowCoin size={12} />
+          还需 <MeowCoinDisplay size={12} amount={(estimatedCoins ?? 0) - (userCoins ?? 0)} />
           ,请
           <a href="/account" className="underline hover:text-red-600">
             充值
