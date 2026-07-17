@@ -5,6 +5,10 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: '/',
+  // 开发/调试期保留 sourcemap,定位「Cannot access before initialization」等运行时错误
+  build: {
+    sourcemap: true,
+  },
   server: {
     proxy: {
       '/api': {
