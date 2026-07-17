@@ -243,12 +243,15 @@ async function publicUser(userId) {
     });
     return u;
   } catch (err) {
-    // 新字段尚未迁移 → 回退到基础字段(onboardingDone 等返回 undefined)
-    if (String(err.message).includes('onboardingDone') || String(err.message).includes('column')) {
-      console.warn('[auth] publicUser:新字段未就绪,回退基础查询:', err.message);
-      return prisma.user.findUnique({ where: { id: userId }, select: baseSelect });
+    // 任何查询失败(新字段未就绪/表结构不匹配等)→ 回退到基础字段
+    console.warn('[auth] publicUser:查询失败,回退基础查询:', err.message);
+    try {
+      return await prisma.user.findUnique({ where: { id: userId }, select: baseSelect });
+    } catch (fallbackErr) {
+      // 基础字段也失败 → 返回最小可用对象(避免登录/接口 500)
+      console.error('[auth] publicUser:基础查询也失败:', fallbackErr.message);
+      return { id: userId, nickname: '', role: 'user', coins: 0 };
     }
-    throw err;
   }
 }
 
@@ -507,6 +510,9 @@ router.post('/login', async (req, res) => {
     res.json({ success: true, user: await publicUser(user.id) });
   } catch (err) {
     console.error('[auth] login error:', err);
+    res.status(500).json({ error: '登录失败' });
+  }
+});
     res.status(500).json({ error: '登录失败，请稍后重试' });
   }
 });
