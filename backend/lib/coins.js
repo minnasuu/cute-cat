@@ -3,7 +3,7 @@
 /**
  * coins —— 喵币核心：余额查询、收入、消费、流水、定价、套餐。
  *
- * 汇率: 7 元 = 1000 喵币。
+ * 汇率: 10 元 = 1000 喵币(基础包基准)。进阶/豪华包性价比更高。
  * 并发安全: consumeCoins 用 updateMany({ where: { id, coins: { gte: amount } } })
  *   原子扣减,失败即余额不足,避免超扣。
  */
@@ -11,8 +11,8 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// ─── 配置 ───
-const YUAN_RATE = 1000 / 7;                 // 1 元 = ? 喵币
+// ─── 配置(默认值,管理员可在后台通过 SystemConfig('coins_pricing') 覆盖) ───
+const YUAN_RATE = 1000 / 10;                // 1 元 = ? 喵币
 const SIGNUP_BONUS = 100;                    // 注册奖励
 const INVITE_REWARD = 100;                   // 邀请奖励/人
 const INVITE_MAX = 10;                      // 邀请上限
@@ -21,12 +21,12 @@ const INVITE_MAX = 10;                      // 邀请上限
 // 灵感分析按 5 喵币/千 tokens 计费;Ark 流式接口不返回 usage,按典型调用(~1600 tokens)估出固定单价 8 喵币。
 // 可通过环境变量 INSPIRATION_ANALYZE_COST 覆盖。
 const AI_COSTS = {
-  image_generate: 9,        // 文生图/线稿/成品图 单张
-  image_regenerate: 9,      // 重生成 单张
-  image_lineart: 9,         // 线稿 单张
-  material_combo_per_image: 9, // 材料组合 单张
-  style_mutate_per_image: 9,   // 款式裂变 单张
-  outfit_styling: 9,           // 穿搭效果(模特 + 单品) 单张
+  image_generate: 15,       // 文生图/线稿/成品图 单张
+  image_regenerate: 15,     // 重生成 单张
+  image_lineart: 15,        // 线稿 单张
+  material_combo_per_image: 15, // 材料组合 单张
+  style_mutate_per_image: 15,   // 款式裂变 单张
+  outfit_styling: 15,           // 穿搭效果(模特 + 单品) 单张
   chat_text: 1,             // 文本对话 次
   workflow_step: 1,         // 工作流步骤 次
   inspiration_analyze: Number.parseInt(process.env.INSPIRATION_ANALYZE_COST || '', 10) || 8,  // 灵感分析 次 ≈1600 tokens × 5/1000
@@ -34,18 +34,45 @@ const AI_COSTS = {
 
 // 充值套餐(灰测模拟支付,后续接真实网关)
 const PACKAGES = [
-  { id: 'pkg_a', name: '基础包', coins: 1000, yuan: 7 },
-  { id: 'pkg_b', name: '进阶包', coins: 3000, yuan: 19 },
-  { id: 'pkg_c', name: '豪华包', coins: 8000, yuan: 49 },
+  { id: 'pkg_a', name: '基础包', coins: 1000, yuan: 10 },
+  { id: 'pkg_b', name: '进阶包', coins: 3000, yuan: 28 },
+  { id: 'pkg_c', name: '豪华包', coins: 5000, yuan: 45 },
 ];
 
 // ─── 兑换码档位(与套餐对齐,用于前端展示 + 校验) ───
 const REDEEM_TIERS = {
-  basic: { name: '基础包', coins: 1000, yuan: 7 },
-  plus:  { name: '进阶包', coins: 3000, yuan: 19 },
-  pro:   { name: '豪华包', coins: 8000, yuan: 49 },
+  basic: { name: '基础包', coins: 1000, yuan: 10 },
+  plus:  { name: '进阶包', coins: 3000, yuan: 28 },
+  pro:   { name: '豪华包', coins: 5000, yuan: 45 },
 };
 const VALID_TIERS = Object.keys(REDEEM_TIERS);
+
+// ─── 运行时覆盖(SystemConfig key = 'coins_pricing') ───
+// 管理员在后台修改的定价,作为 JSON 字符串存于 SystemConfig.value。
+// 启动时加载一次,读取代价/套餐时合并覆盖到默认值之上。
+let _runtimePricing = null; // 已解析的覆盖对象(尚未合并默认值)
+let _runtimeLoaded = false;
+
+/** 从 DB 加载运行时定价覆盖(启动时调用;表未迁移或出错时保持 null → 使用默认值) */
+async function loadRuntimePricing({ force = false } = {}) {
+  if (_runtimeLoaded && !force) return _runtimePricing;
+  try {
+    const row = await prisma.systemConfig.findUnique({ where: { key: 'coins_pricing' } });
+    _runtimePricing = row?.value ? JSON.parse(row.value) : null;
+  } catch (err) {
+    // 表未迁移 / 解析失败 → 降级为默认值,不阻断启动
+    console.error('[coins] loadRuntimePricing 失败,使用默认定价:', err.message);
+    _runtimePricing = null;
+  }
+  _runtimeLoaded = true;
+  return _runtimePricing;
+}
+
+/** 合并: 默认值作为基底,_runtimePricing 有定义的字段覆盖上来 */
+function withRuntime(overrides) {
+  if (!overrides || typeof overrides !== 'object') return undefined;
+  return overrides;
+}
 
 // ─── 内部: 写流水 ───
 async function recordTx(userId, { amount, balanceAfter, type, refId, note }) {
@@ -136,27 +163,49 @@ async function listTransactions(userId, { type, take = 50, skip = 0 } = {}) {
 }
 
 // ─── 定价 & 套餐 ───
+/**
+ * 合并后的运行时定价覆盖。
+ * - costs / redeemTiers 做浅合并(管理员只填想改的项即可)
+ * - packages 为整体替换(数组)
+ * - 标量(yuanRate/signupBonus/inviteReward/inviteMax)按字段覆盖
+ */
+function getRuntime() {
+  const rt = (_runtimePricing && typeof _runtimePricing === 'object') ? _runtimePricing : {};
+  return {
+    yuanRate: rt.yuanRate ?? YUAN_RATE,
+    signupBonus: rt.signupBonus ?? SIGNUP_BONUS,
+    inviteReward: rt.inviteReward ?? INVITE_REWARD,
+    inviteMax: rt.inviteMax ?? INVITE_MAX,
+    costs: { ...AI_COSTS, ...(rt.costs || {}) },
+    packages: Array.isArray(rt.packages) && rt.packages.length ? rt.packages : PACKAGES,
+    redeemTiers: rt.redeemTiers && typeof rt.redeemTiers === 'object' && Object.keys(rt.redeemTiers).length
+      ? rt.redeemTiers
+      : REDEEM_TIERS,
+  };
+}
+
 function getCost(scenario) {
-  return AI_COSTS[scenario] ?? null;
+  return getRuntime().costs[scenario] ?? null;
 }
 
 function getPricing() {
+  const rt = getRuntime();
   return {
     currency: '喵币',
-    yuanRate: YUAN_RATE,
-    signupBonus: SIGNUP_BONUS,
-    inviteReward: INVITE_REWARD,
-    inviteMax: INVITE_MAX,
-    costs: AI_COSTS,
+    yuanRate: rt.yuanRate,
+    signupBonus: rt.signupBonus,
+    inviteReward: rt.inviteReward,
+    inviteMax: rt.inviteMax,
+    costs: rt.costs,
   };
 }
 
 function getPackages() {
-  return PACKAGES.map((p) => ({ ...p, yuanPrice: p.yuan }));
+  return getRuntime().packages.map((p) => ({ ...p, yuanPrice: p.yuan }));
 }
 
 function getPackage(packageId) {
-  return PACKAGES.find((p) => p.id === packageId) || null;
+  return getRuntime().packages.find((p) => p.id === packageId) || null;
 }
 
 // ─── 邀请码 ───
@@ -198,8 +247,14 @@ async function findInviterByCode(code) {
 
 /** 查看现有兑换码档位(前端展示用) */
 function getRedeemTiers() {
-  return REDEEM_TIERS;
+  return getRuntime().redeemTiers;
 }
+
+// ─── 标量取值(供直接读取常量的外部模块使用,对齐运行时覆盖) ───
+function getSignupBonus() { return getRuntime().signupBonus; }
+function getInviteReward() { return getRuntime().inviteReward; }
+function getInviteMax() { return getRuntime().inviteMax; }
+function getYuanRate() { return getRuntime().yuanRate; }
 
 /**
  * 管理员/脚本批量生成兑换码。
@@ -247,18 +302,19 @@ async function redeemCode(userId, rawCode) {
   if (locked.count === 0) throw new Error('CODE_ALREADY_USED');
 
   // 加币 + 流水
+  const tierName = getRuntime().redeemTiers[row.tier]?.name ?? row.tier;
   const balance = await addCoins(userId, row.coins, 'recharge', {
     refId: row.id,
-    note: `兑换码充值 ${REDEEM_TIERS[row.tier]?.name ?? row.tier}(${row.coins} 喵币)`,
+    note: `兑换码充值 ${tierName}(${row.coins} 喵币)`,
   });
 
   // 首次成功充值 → 升级会员
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
   if (u && u.role === 'user') {
     const updated = await prisma.user.update({ where: { id: userId }, data: { role: 'member' } });
-    return { coins: balance, tier: row.tier, name: REDEEM_TIERS[row.tier]?.name ?? row.tier, role: updated.role };
+    return { coins: balance, tier: row.tier, name: tierName, role: updated.role };
   }
-  return { coins: balance, tier: row.tier, name: REDEEM_TIERS[row.tier]?.name ?? row.tier, role: u?.role };
+  return { coins: balance, tier: row.tier, name: tierName, role: u?.role };
 }
 
 module.exports = {
@@ -285,4 +341,14 @@ module.exports = {
   getRedeemTiers,
   generateRedeemCodes,
   redeemCode,
+  // 运行时定价覆盖
+  loadRuntimePricing,
+  getRuntime,
+  getSignupBonus,
+  getInviteReward,
+  getInviteMax,
+  getYuanRate,
 };
+
+// ─── 启动时异步加载运行时定价(不阻塞模块导出) ───
+loadRuntimePricing().catch(() => {});

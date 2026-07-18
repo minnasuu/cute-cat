@@ -365,7 +365,7 @@ const AccountPage: React.FC = () => {
                   <div key={id} className={`rounded-[20px] border border-border bg-surface p-5 flex flex-col items-center text-center ${stockOut ? 'opacity-50' : ''}`}>
                     <div className="mb-1"><MeowCoinDisplay size={22} amount={t.coins} className="text-2xl font-black text-primary-600" /></div>
                     <div className="text-sm font-bold text-text-primary mb-1">{t.name}</div>
-                    <div className="text-xs text-text-tertiary">≈ {Math.round(t.coins / 9)} 次生图</div>
+                    <div className="text-xs text-text-tertiary">≈ {Math.round(t.coins / 15)} 次生图</div>
                     <div className="text-xs text-text-tertiary mt-1">¥{t.yuan}</div>
                   </div>
                 ))}

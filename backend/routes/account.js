@@ -155,9 +155,9 @@ router.get('/invite', async (req, res) => {
       code,
       url: `${FRONTEND_URL}/register?invite=${encodeURIComponent(code)}`,
       count: u.inviteCount,
-      max: coins.INVITE_MAX,
-      reward: coins.INVITE_REWARD,
-      earned: u.inviteCount * coins.INVITE_REWARD,
+      max: coins.getInviteMax(),
+      reward: coins.getInviteReward(),
+      earned: u.inviteCount * coins.getInviteReward(),
     });
   } catch (err) {
     console.error('[account] invite error:', err);

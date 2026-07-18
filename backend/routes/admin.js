@@ -339,5 +339,118 @@ router.put('/config/:key', async (req, res) => {
   }
 });
 
+// ======================== Admin: 定价规则 ========================
+
+// 定价规则合法的 AI 场景键(用于校验 & 前端展示)
+const PRICING_cost_KEYS = [
+  'image_generate', 'image_regenerate', 'image_lineart',
+  'material_combo_per_image', 'style_mutate_per_image', 'outfit_styling',
+  'chat_text', 'workflow_step', 'inspiration_analyze',
+];
+const PRICING_TIER_KEYS = ['basic', 'plus', 'pro'];
+
+function validatePricingInput(value) {
+  const errors = [];
+  if (value == null) return errors;
+  if (typeof value !== 'object') { errors.push('pricing 必须为对象'); return errors; }
+  if (value.yuanRate != null && (typeof value.yuanRate !== 'number' || value.yuanRate <= 0)) errors.push('yuanRate 必须为正数');
+  if (value.signupBonus != null && (!Number.isInteger(value.signupBonus) || value.signupBonus < 0)) errors.push('signupBonus 必须为非负整数');
+  if (value.inviteReward != null && (!Number.isInteger(value.inviteReward) || value.inviteReward < 0)) errors.push('inviteReward 必须为非负整数');
+  if (value.inviteMax != null && (!Number.isInteger(value.inviteMax) || value.inviteMax < 0)) errors.push('inviteMax 必须为非负整数');
+  if (value.costs != null) {
+    if (typeof value.costs !== 'object') errors.push('costs 必须为对象');
+    else for (const [k, v] of Object.entries(value.costs)) {
+      if (!PRICING_cost_KEYS.includes(k)) errors.push(`costs 未知场景: ${k}`);
+      else if (!Number.isInteger(v) || v < 0) errors.push(`costs.${k} 必须为非负整数`);
+    }
+  }
+  if (value.packages != null) {
+    if (!Array.isArray(value.packages)) errors.push('packages 必须为数组');
+    else value.packages.forEach((p, i) => {
+      if (!p || typeof p !== 'object') { errors.push(`packages[${i}] 必须为对象`); return; }
+      if (typeof p.id !== 'string') errors.push(`packages[${i}].id 必须为字符串`);
+      if (typeof p.name !== 'string') errors.push(`packages[${i}].name 必须为字符串`);
+      if (!Number.isInteger(p.coins) || p.coins <= 0) errors.push(`packages[${i}].coins 必须为正整数`);
+      if (!Number.isInteger(p.yuan) || p.yuan <= 0) errors.push(`packages[${i}].yuan 必须为正整数`);
+    });
+  }
+  if (value.redeemTiers != null) {
+    if (typeof value.redeemTiers !== 'object') errors.push('redeemTiers 必须为对象');
+    else for (const [k, v] of Object.entries(value.redeemTiers)) {
+      if (!PRICING_TIER_KEYS.includes(k)) errors.push(`redeemTiers 未知档位: ${k}`);
+      else if (!v || typeof v !== 'object' || typeof v.name !== 'string'
+        || !Number.isInteger(v.coins) || v.coins <= 0 || !Number.isInteger(v.yuan) || v.yuan <= 0) {
+        errors.push(`redeemTiers.${k} 需要 name(string)/coins(正整数)/yuan(正整数)`);
+      }
+    }
+  }
+  return errors;
+}
+
+// 获取当前生效的定价(合并后) + 原始存储值
+router.get('/pricing', requireAdmin, async (req, res) => {
+  try {
+    // 确保加载最新(后台低频操作,直接强制刷新)
+    await coins.loadRuntimePricing({ force: true });
+    const raw = await prisma.systemConfig.findUnique({ where: { key: 'coins_pricing' } });
+    const effective = coins.getRuntime();
+    res.json({
+      key: 'coins_pricing',
+      stored: raw?.value ? JSON.parse(raw.value) : null,
+      effective,
+      defaults: {
+        yuanRate: coins.YUAN_RATE,
+        signupBonus: coins.SIGNUP_BONUS,
+        inviteReward: coins.INVITE_REWARD,
+        inviteMax: coins.INVITE_MAX,
+        costs: coins.AI_COSTS,
+        packages: coins.PACKAGES,
+        redeemTiers: coins.REDEEM_TIERS,
+      },
+      costKeys: PRICING_cost_KEYS,
+      tierKeys: PRICING_TIER_KEYS,
+      updatedBy: raw?.updatedBy ?? null,
+      updatedAt: raw?.updatedAt ?? null,
+    });
+  } catch (err) {
+    console.error('[admin] get pricing error:', err);
+    res.status(500).json({ error: '获取定价失败' });
+  }
+});
+
+// 更新定价规则
+router.put('/pricing', requireAdmin, async (req, res) => {
+  try {
+    const { value } = req.body;
+    if (value == null) return res.status(400).json({ error: '缺少 value' });
+    const errors = validatePricingInput(value);
+    if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+
+    const adminUser = await prisma.user.findUnique({ where: { id: req.userId }, select: { email: true } });
+    const json = JSON.stringify(value);
+    const updated = await prisma.systemConfig.upsert({
+      where: { key: 'coins_pricing' },
+      create: { key: 'coins_pricing', value: json, note: '喵币定价规则(管理员可调整)', updatedBy: adminUser?.email || null },
+      update: { value: json, note: '喵币定价规则(管理员可调整)', updatedBy: adminUser?.email || null },
+    });
+    // 刷新内存缓存,立即生效
+    await coins.loadRuntimePricing({ force: true });
+
+    res.json({
+      success: true,
+      key: updated.key,
+      effective: coins.getRuntime(),
+      updatedBy: updated.updatedBy,
+      updatedAt: updated.updatedAt,
+    });
+  } catch (err) {
+    console.error('[admin] update pricing error:', err);
+    if (String(err.message).includes('system_config') || String(err.message).includes('does not exist') || String(err.message).includes('table')) {
+      return res.status(400).json({ error: '请先执行数据库迁移(npx prisma migrate dev)后再使用此功能' });
+    }
+    res.status(500).json({ error: '更新定价失败' });
+  }
+});
+
 module.exports = router;
 

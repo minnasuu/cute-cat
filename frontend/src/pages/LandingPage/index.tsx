@@ -23,7 +23,7 @@ const WORKSPACES = [
 const iconGift = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M41 44V20H7V44H41Z" fill="none" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M24 44V20" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M41 44H7" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><rect x="4" y="12" width="40" height="8" fill="none" stroke="#333" stroke-width="4" stroke-linejoin="round" /><path d="M16 4L24 12L32 4" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /></svg>
 const iconShare = <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 40L36 28L32 32L28 36L24 40ZM24 40L4 20L16 8L24 16" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M17 23L32 8L44 20L36 28L28 20L22 26L17 23ZM17 23L24 16" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M28 36L25 33" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /><path d="M32 32L29 29" stroke="#333" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" /></svg>
 const PRICING = [
-  { emoji: '🐾', title: <>按次计费</>, desc: <>充值喵币(7 元 = 1000 喵币)，GPT-Image-2 生图 9 喵币/张，生成失败退还。</> },
+  { emoji: '🐾', title: <>按次计费</>, desc: <>充值喵币(10 元 = 1000 喵币)，GPT-Image-2 生图 15 喵币/张，生成失败退还。</> },
   { emoji: iconGift, title: <>新用户送 100 喵币</>, desc: <>注册即赠体验金，先试后买，满意再充值。</> },
   { emoji: iconShare, title: <>邀请好友各得 100 喵币</>, desc: <>分享邀请链接，邀请好友注册双方各得奖励，上限 5 人。</> },
 ];
@@ -131,8 +131,8 @@ const LandingPage: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
               { label: "生图模型", val: "GPT-Image-2" },
-              { label: "喵币计费", val: "7元=1000喵币" },
-              { label: "生图单价", val: "9 喵币 /张" },
+              { label: "喵币计费", val: "10元=1000喵币" },
+              { label: "生图单价", val: "15 喵币 /张" },
               { label: "新人礼包/邀请奖励", val: "100 喵币" },
             ].map((s, i) => (
               <div key={i} className="text-center">

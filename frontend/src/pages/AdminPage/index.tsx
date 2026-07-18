@@ -13,6 +13,7 @@ import MeowCoinDisplay from '../../components/MeowCoinDisplay';
 import Navbar from "../../components/Navbar";
 import { AppIcon } from "../../components/icons/AppIcon";
 import BetaCodeManager from "./BetaCodeManager";
+import PricingRules from "./PricingRules";
 
 type CoinsSummary = {
   signupBonus: number;
@@ -264,6 +265,9 @@ export default function AdminPage() {
               </div>
             </div>
           )}
+
+          {/* 定价规则 */}
+          <PricingRules />
 
           {/* 工具栏 */}
           <div className="flex items-center gap-3">

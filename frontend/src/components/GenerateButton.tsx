@@ -20,7 +20,7 @@ import MeowCoin from './MeowCoin';
 import MeowCoinDisplay from './MeowCoinDisplay';
 
 /** AI 单图生成成本(喵币/张),与后端 AI_COSTS.image_generate 对齐 */
-export const AI_COST_PER_IMAGE = 9;
+export const AI_COST_PER_IMAGE = 15;
 
 interface Props {
   /** 是否正在进行(提交 / 生成中) */

@@ -431,14 +431,14 @@ router.post('/register', async (req, res) => {
     // 生成邀请码
     await coins.ensureInviteCode(user.id);
 
-    // 注册奖励 100 喵币
-    await coins.addCoins(user.id, coins.SIGNUP_BONUS, 'signup_bonus', { note: '新用户注册奖励' });
+    // 注册奖励(默认 100,可在后台调整)
+    await coins.addCoins(user.id, coins.getSignupBonus(), 'signup_bonus', { note: '新用户注册奖励' });
 
-    // 邀请奖励(邀请人 +100,上限 INVITE_MAX)
+    // 邀请奖励(默认 +100/人,上限可在后台调整)
     if (inviter) {
       const freshInviter = await prisma.user.findUnique({ where: { id: inviter.id }, select: { inviteCount: true } });
-      if (freshInviter && freshInviter.inviteCount < coins.INVITE_MAX) {
-        await coins.addCoins(inviter.id, coins.INVITE_REWARD, 'invite_reward', { refId: user.id, note: `邀请奖励: ${email}` });
+      if (freshInviter && freshInviter.inviteCount < coins.getInviteMax()) {
+        await coins.addCoins(inviter.id, coins.getInviteReward(), 'invite_reward', { refId: user.id, note: `邀请奖励: ${email}` });
         await prisma.user.update({ where: { id: inviter.id }, data: { inviteCount: { increment: 1 } } });
       }
     }

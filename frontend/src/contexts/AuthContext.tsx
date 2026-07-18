@@ -14,7 +14,7 @@ export interface User {
   aiUsed?: number;    // legacy
   /** 用户角色: admin / member(会员/充值用户) / user(普通用户) */
   role: 'admin' | 'member' | 'user';
-  /** 喵币余额(7 元 = 1000 喵币) */
+  /** 喵币余额(10 元 = 1000 喵币,基础包基准) */
   coins: number;
   /** 个人邀请码 */
   inviteCode?: string;
