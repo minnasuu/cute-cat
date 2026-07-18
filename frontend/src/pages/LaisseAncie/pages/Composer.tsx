@@ -51,7 +51,7 @@ export type DesignStage =
   | "material-recommend"   // AI 推荐材质+配色(用户确认/编辑中)
   | "generating-final";
 
-const STAGE_MARKER = /<!--STAGE:(\w+)-->/;
+const STAGE_MARKER = /<!--\s*STAGE:\s*(\w+)\s*-->/;
 
 /**
  * 灵感扩散新手引导步骤定义(7 步)。
@@ -736,7 +736,13 @@ export default function ComposerPage({
         setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: stripStageMarker(accumulated) } : m));
       },
       onDone: (finalText, rawAccum, elapsedMs) => {
-        const newStage = parseStage(rawAccum) || stage;
+        const parsed = parseStage(rawAccum);
+        const fromPrePlan = stage === "greeting" || stage === "brainstorming" || stage === "references";
+        // 第 1 步(简报→方案):只要模型返回了有效方案(非错误),就强制推进到 proposal,
+        // 避免模型偶发漏标 / 误标 <!--STAGE:--> 时回退到 greeting 而卡在第 1 步无法继续。
+        const newStage = fromPrePlan && !!finalText && !finalText.startsWith("⚠")
+          ? "proposal"
+          : (parsed ?? stage);
         const withRefs = newStage === "proposal" || newStage === "references" || stage === "greeting"
           ? { text: finalText, references: matchedRefs, timingMs: elapsedMs, startedAt: undefined }
           : { text: finalText, timingMs: elapsedMs, startedAt: undefined };

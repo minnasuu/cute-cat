@@ -26,6 +26,7 @@ const AI_COSTS = {
   image_lineart: 9,         // 线稿 单张
   material_combo_per_image: 9, // 材料组合 单张
   style_mutate_per_image: 9,   // 款式裂变 单张
+  outfit_styling: 9,           // 穿搭效果(模特 + 单品) 单张
   chat_text: 1,             // 文本对话 次
   workflow_step: 1,         // 工作流步骤 次
   inspiration_analyze: Number.parseInt(process.env.INSPIRATION_ANALYZE_COST || '', 10) || 8,  // 灵感分析 次 ≈1600 tokens × 5/1000

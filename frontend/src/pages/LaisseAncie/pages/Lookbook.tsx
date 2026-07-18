@@ -11,6 +11,7 @@ import { useEditingProduct } from "../contexts/editing-product";
 import { teamApi } from "../lib/api";
 import { ProductFormModal } from "../components/ProductFormModal";
 import { MODE_LABEL, STATUS_LABEL, type Product, type ProductStatus } from "../types/design";
+import { pickProductCover } from "../lib/product-cover";
 import { MAIN_SLOT, slotRole } from "../lib/imageRole";
 import { StatusPicker, StatusConfigModal, useStatusConfig, type StatusDef } from "../components/StatusPicker";
 import { showToast } from "../../../components/Toast";
@@ -31,29 +32,18 @@ function useRowDelete() {
 }
 
 // 展示给用户的 Lookbook 创作模式 tab,与当前可用的设计工作台 tab 一致(系列已下线,仅「全部」中能看到历史系列数据)。
-const ALL_MODES = [ "illustration","material-combo", "style-mutate"] as const;
-type TabKey = "material-combo" | "style-mutate" | "illustration" | "all";
+const ALL_MODES = [ "illustration","material-combo", "style-mutate", "outfit-styling"] as const;
+type TabKey = "material-combo" | "style-mutate" | "illustration" | "outfit-styling" | "all";
 type ViewMode = "table" | "card";
 
 /**
  * 选卡片封面:主图 > 效果图(优先 editorial/flat/material-combo 等,跳过线稿) > 第一张 > null。
  * 合并 images[] + 遗留 imageUrl(兼容未迁移数据)。
+ *
+ * 实现已抽到 lib/product-cover.ts,此处保留为薄封装以兼容既有调用方。
  */
-function pickCover(product: Product): string | null {
-  const imgs = (product?.images ?? []).filter((im) => im.url);
-  const legacyMain = !imgs.some((im) => im.slot === MAIN_SLOT) && product.imageUrl
-    ? [{ slot: MAIN_SLOT, label: "主图", url: product?.imageUrl }, ...imgs]
-    : imgs;
-  const main = legacyMain.find((im) => im.slot === MAIN_SLOT);
-  if (main) return main.url;
-  const render = legacyMain
-    .filter((im) => slotRole(im.slot) === "render")
-    .sort((a, b) => {
-      const order = ["editorial", "flat", "single", "material-combo", "style-mutate", "collection", "illustration", "hero-editorial", "detail", "final"];
-      return order.indexOf(a.slot) - order.indexOf(b.slot);
-    })[0];
-  if (render) return render.url;
-  return legacyMain[0]?.url ?? null;
+export function pickCover(product: Product): string | null {
+  return pickProductCover(product);
 }
 
 /** 卡片视图的单张卡片:封面 + 标题 + 价格 + 右上角 hover 操作栏(编辑/下载原图/删除),点击卡片主体打开详情弹窗 */

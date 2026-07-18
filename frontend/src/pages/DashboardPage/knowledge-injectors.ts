@@ -12,7 +12,7 @@ import { skillHintsFor } from "../LaisseAncie/lib/skill-hints";
 import type { VisualAsset } from "../LaisseAncie/types/visual-asset";
 import type { InspirationItem } from "../LaisseAncie/store/resource";
 import type { SkillArticle } from "../LaisseAncie/types/skill";
-import type { StyleRow, IllustrationRow } from "../LaisseAncie/types/design";
+import type { StyleRow, IllustrationRow, ModelRow } from "../LaisseAncie/types/design";
 
 export interface BrandProfile {
   logo?: string | null;
@@ -38,6 +38,8 @@ export interface KnowledgeDeps {
   styles: StyleRow[];
   illustrations?: IllustrationRow[];
   products: any[];
+  /** 品牌模特 + 系统模特(shared=true) —— 穿搭效果模式用于选择模特图 */
+  models: ModelRow[];
   brand?: BrandProfile;
 }
 

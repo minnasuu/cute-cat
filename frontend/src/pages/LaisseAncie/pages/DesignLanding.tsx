@@ -3,7 +3,7 @@ import { MODE_HINT, MODE_LABEL, type DesignMode } from "../types/design";
 import { Card } from "../components/ui";
 
 const ICONS: Record<DesignMode, string> = {
-  illustration: "✎", single: "✦", "material-combo": "◫", "style-mutate": "◈", occasion: "✺",
+  illustration: "✎", single: "✦", "material-combo": "◫", "style-mutate": "◈", "outfit-styling": "✧", occasion: "✺",
 };
 
 const SUMMARIES: Record<DesignMode, string> = {
@@ -11,6 +11,7 @@ const SUMMARIES: Record<DesignMode, string> = {
   single: "围绕单件产品的灵感扩散：chat 汲取灵感库 → 方案 → 线稿 → 选材料 → 成图。",
   "material-combo": "名称 + 面料图 + 款式参考 + 描述，AI 结合品牌信息自动出白底效果图。",
   "style-mutate": "钉死母款，沿廓形 / 领型 / 袖长 / 长短 / 细节裂变多张同系列子款。",
+  "outfit-styling": "从 Lookbook 选 1-5 款单品 + 模特图，生成模特穿搭效果图，直观呈现搭配效果。",
   occasion: "重要节日（春节、情人节、圣诞…）驱动的主题系列 — 节日、主题、色系、走秀节奏对齐。",
 };
 
@@ -19,6 +20,7 @@ const CTAS: Record<DesignMode, string> = {
   single: "开始灵感扩散",
   "material-combo": "开始材料组合",
   "style-mutate": "开始款式裂变",
+  "outfit-styling": "开始穿搭效果",
   occasion: "开始专题系列",
 };
 

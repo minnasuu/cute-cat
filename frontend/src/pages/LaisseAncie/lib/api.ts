@@ -26,6 +26,26 @@ export interface MaterialComboBatch {
   updatedAt: number;
 }
 
+/** 穿搭效果批次视图:Loobook 单品 + 模特图 → 1 张穿搭效果图 */
+export interface OutfitStylingBatch {
+  batchId: string;
+  teamId: string;
+  status: 'running' | 'done' | 'error';
+  error?: string;
+  name: string;
+  /** 选中的单品(来自 Lookbook) */
+  products: { id: string; title: string; url: string }[];
+  /** 选中的模特(来自品牌/系统模特库) */
+  model: { id: string; name: string; url: string } | null;
+  /** 结果单图 */
+  items: { status: 'pending' | 'done' | 'error'; url?: string; error?: string; prompt?: string }[];
+  total: number;
+  completed: number;
+  failed: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** 款式裂变批次视图 */
 export interface StyleMutateBatch {
   batchId: string;
@@ -167,6 +187,10 @@ export function teamApi(teamId: string) {
     // 管理员共享开关(共享进系统模特库,仅 admin 可调)
     setModelShared: (id: string, shared: boolean) =>
       _apiClient.patch(pre(`/models/${id}/share`), { shared }),
+    // 穿搭效果:Lookbook 选 1-5 款单品 + 品牌/系统模特库选 1 张模特图 → 1 张穿搭效果图(直接用库图 URL,无需上传)
+    outfitStylingUrl: pre('/design/outfit-styling'),
+    outfitStylingBatchUrl: (batchId: string) => pre(`/design/outfit-styling/batch/${encodeURIComponent(batchId)}`),
+    outfitStylingRegenerateUrl: (batchId: string) => pre(`/design/outfit-styling/batch/${encodeURIComponent(batchId)}/regenerate`),
 
     // skills
     listSkills: (category?: string) =>

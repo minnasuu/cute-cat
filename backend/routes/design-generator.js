@@ -1480,4 +1480,262 @@ router.post('/style-mutate/batch/:batchId/regenerate', async (req, res) => {
   }
 });
 
+// ── outfit-styling 守卫常量 ──────────────────────────────────
+const MAX_PRODUCTS = 5;
+const OUTFIT_STYLING_PROVIDER = process.env.OUTFIT_STYLING_PROVIDER || 'maizi-image-edit'; // 多图参考(模特 + 单品)
+const OS_BATCH_TTL_MS = 15 * 60 * 1000;
+// 穿搭效果生图比例:3:4 竖版更适合全身穿搭展示
+const OUTFIT_STYLING_ASPECT = process.env.OUTFIT_STYLING_ASPECT || '3:4';
+
+// ─── outfit-styling 批次 store (进程内,带 TTL 清理) ────────────
+/** @type {Map<string, {teamId:string,name:string,description:string,products:Array,model:Object,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
+const osBatches = new Map();
+
+function osBatchPublicView(b) {
+  return {
+    batchId: b.batchId,
+    teamId: b.teamId,
+    status: b.status,
+    error: b.error,
+    name: b.name,
+    products: (b.products || []).map((p) => ({ id: p.id, title: p.title, url: p.url })),
+    model: b.model ? { id: b.model.id, name: b.model.name, url: b.model.url } : null,
+    items: (b.items || []).map((it) => ({ status: it.status, url: it.url, error: it.error, prompt: it.prompt })),
+    total: b.items?.length || 0,
+    completed: (b.items || []).filter((it) => it.status === 'done').length,
+    failed: (b.items || []).filter((it) => it.status === 'error').length,
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt,
+  };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, b] of osBatches) {
+    if (now - b.updatedAt > OS_BATCH_TTL_MS) {
+      for (const it of b.items) {
+        if (it.status === 'pending' || it.status === 'running') { it.status = 'error'; it.error = '生成超时,请重试'; }
+      }
+      b.status = 'done';
+      b.updatedAt = now;
+      osBatches.delete(id);
+    }
+  }
+}, 30000).unref();
+
+/**
+ * 穿搭效果 prompt:图1 = 模特,图2..图N = 单品。
+ * 指示 AI 让模特穿上所有单品,保持模特身材/面容/姿态,自然垂坠。
+ */
+function buildOutfitStylingPrompt({ name, description, products, model }) {
+  const lines = [];
+  lines.push('Outfit styling composite. Image 1 is a full-body photo of a fashion model');
+  if (model) {
+    const stats = [];
+    if (model.height != null) stats.push(`height ${model.height}cm`);
+    if (model.bust != null) stats.push(`bust ${model.bust}cm`);
+    if (model.waist != null) stats.push(`waist ${model.waist}cm`);
+    if (model.hip != null) stats.push(`hip ${model.hip}cm`);
+    if (model.shoes != null) stats.push(`shoe size ${model.shoes}`);
+    if (stats.length) lines.push(`(${stats.join(', ')})`);
+  }
+  lines.push('.');
+  products.forEach((p, i) => {
+    lines.push(`Image ${i + 2} is a ${p.title || 'clothing item'}.`);
+  });
+  lines.push(
+    `Dress the model (Image 1) in ALL the clothing items (Images 2-${products.length + 1}) together as a complete, cohesive outfit. ` +
+    `Preserve the model's body proportions, posture, face, and skin tone. ` +
+    `Each garment should drape naturally and fit the figure. ` +
+    `Keep each item's original color, material, and design faithful to its photo. ` +
+    `Professional fashion photography, clean studio background, soft even lighting, photorealistic.`
+  );
+  if (name) lines.push(`Outfit theme: ${name}.`);
+  if (description) lines.push(`Style notes: ${description}.`);
+  return lines.join(' ');
+}
+
+async function runOutfitStylingBatch(batchId) {
+  const b = osBatches.get(batchId);
+  if (!b) return;
+  console.log(`[design-generator] runOutfitStylingBatch START batchId=${batchId} products=${b.products?.length} provider=${OUTFIT_STYLING_PROVIDER}`);
+  try {
+    b.status = 'running';
+    b.updatedAt = Date.now();
+    const cell = b.items[0];
+    const prompt = buildOutfitStylingPrompt({
+      name: b.name, description: b.description, products: b.products || [], model: b.model,
+    });
+    cell.prompt = prompt;
+    // 参考图顺序=图序号:[模特, 单品1, 单品2, ...]
+    const referenceImages = [b.model?.url, ...(b.products || []).map((p) => p?.url)].filter(Boolean);
+    try {
+      const img = await generateImage(prompt, {
+        teamId: b.teamId,
+        aspectRatio: OUTFIT_STYLING_ASPECT,
+        safeName: 'outfit-styling',
+        provider: OUTFIT_STYLING_PROVIDER,
+        referenceImages,
+      });
+      if (img?.url) {
+        cell.url = img.url;
+        cell.originalUrl = img.originalUrl ?? null;
+        cell.status = 'done';
+        console.log(`[design-generator] runOutfitStylingBatch DONE batchId=${batchId}`);
+      } else {
+        cell.error = img?.error || '生成失败';
+        cell.status = 'error';
+        console.warn(`[design-generator] runOutfitStylingBatch ERROR batchId=${batchId} error=${cell.error}`);
+      }
+    } catch (cellErr) {
+      cell.error = cellErr?.message || '生成本图异常';
+      cell.status = 'error';
+      console.error(`[design-generator] runOutfitStylingBatch THROW batchId=${batchId} error=${cellErr?.message}`);
+    }
+    b.updatedAt = Date.now();
+    b.status = b.items.every((it) => it.status === 'done') ? 'done'
+      : b.items.some((it) => it.status === 'done') ? 'done' : 'error';
+  } catch (e) {
+    console.error(`[design-generator] runOutfitStylingBatch ${batchId} error:`, e?.message || String(e));
+    b.status = 'error';
+    b.error = e?.message || '批次生成异常';
+    b.updatedAt = Date.now();
+    for (const it of b.items) {
+      if (it.status === 'pending') { it.status = 'error'; it.error = b.error; }
+    }
+  }
+}
+
+// POST /api/teams/:teamId/design/outfit-styling
+// 穿搭效果:JSON body { name, description, products:[{id,title,url}], model:{id,name,url,height,...} }
+// 模特图 + 1-5 张单品图作为多图参考 → 1 张模特穿搭效果图(无需文件上传,直接用库图 URL)
+router.post('/outfit-styling', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const { name = '', description = '' } = body;
+    const products = Array.isArray(body.products) ? body.products : [];
+    const model = body.model && typeof body.model === 'object' ? body.model : null;
+
+    if (!name.trim()) return res.status(400).json({ error: '请填写名称' });
+    if (products.length < 1 || products.length > MAX_PRODUCTS) {
+      return res.status(400).json({ error: `单品数量需在 1-${MAX_PRODUCTS} 款之间` });
+    }
+    if (!model || !model.url) {
+      return res.status(400).json({ error: '请选择一张模特图片' });
+    }
+    // 守卫每条单品必须有图片 URL
+    for (const [i, p] of products.entries()) {
+      if (!p || !p.url) return res.status(400).json({ error: `单品 ${i + 1} 缺少图片` });
+    }
+
+    // 穿搭效果按 1 张预扣喵币(余额不足 402)
+    try {
+      await chargeImages(req, 1, 'outfit_styling', 'outfit-styling');
+    } catch (err) {
+      if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+      throw err;
+    }
+
+    // 构建批次(单图)
+    const batchId = `os-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const batch = {
+      batchId,
+      teamId: req.team.id,
+      name: name.trim(),
+      description: description.trim(),
+      products: products.map((p) => ({ id: p.id, title: p.title || '单品', url: p.url })),
+      model: { id: model.id, name: model.name || '模特', url: model.url, height: model.height ?? null, bust: model.bust ?? null, waist: model.waist ?? null, hip: model.hip ?? null, shoes: model.shoes ?? null },
+      items: [{ status: 'pending' }],
+      status: 'running',
+      createdAt: now,
+      updatedAt: now,
+    };
+    osBatches.set(batchId, batch);
+    console.log(`[design-generator] outfit-styling ready ${batchId} products=${products.length} → 202`);
+
+    // 202 立即返回,fire-and-forget 后台生成
+    res.status(202).json(osBatchPublicView(batch));
+    runOutfitStylingBatch(batchId).catch((err) => {
+      console.error(`[design-generator] runOutfitStylingBatch ${batchId} unhandled:`, err?.message || String(err));
+      const b = osBatches.get(batchId);
+      if (b) {
+        b.status = 'error';
+        b.error = err?.message || '批次异常';
+        for (const it of b.items) {
+          if (it.status === 'pending' || it.status === 'running') { it.status = 'error'; it.error = b.error; }
+        }
+        b.updatedAt = Date.now();
+      }
+    });
+  } catch (fatal) {
+    console.error('[design-generator] outfit-styling fatal:', fatal?.stack || fatal?.message || String(fatal));
+    if (!res.headersSent) res.status(500).json({ error: fatal?.message || '穿搭效果内部异常' });
+  }
+});
+
+// GET /api/teams/:teamId/design/outfit-styling/batch/:batchId —— 轮询进度
+router.get('/outfit-styling/batch/:batchId', (req, res) => {
+  const batch = osBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+  res.json(osBatchPublicView(batch));
+});
+
+// POST /api/teams/:teamId/design/outfit-styling/batch/:batchId/regenerate —— 重试生成
+router.post('/outfit-styling/batch/:batchId/regenerate', async (req, res) => {
+  const batch = osBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+
+  try {
+    await chargeImages(req, 1, 'image_regenerate', 'outfit-styling:regenerate');
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') {
+      return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    }
+    throw err;
+  }
+
+  const cell = batch.items[0];
+  cell.status = 'pending';
+  cell.error = undefined;
+  cell.url = undefined;
+  batch.status = 'running';
+  batch.updatedAt = Date.now();
+
+  res.json({ status: cell.status, url: cell.url, error: cell.error, prompt: cell.prompt });
+
+  try {
+    const prompt = buildOutfitStylingPrompt({
+      name: batch.name, description: batch.description, products: batch.products || [], model: batch.model,
+    });
+    cell.prompt = prompt;
+    const referenceImages = [batch.model?.url, ...(batch.products || []).map((p) => p?.url)].filter(Boolean);
+    const img = await generateImage(prompt, {
+      teamId: batch.teamId,
+      aspectRatio: OUTFIT_STYLING_ASPECT,
+      safeName: 'outfit-styling',
+      provider: OUTFIT_STYLING_PROVIDER,
+      referenceImages,
+    });
+    if (img?.url) {
+      cell.url = img.url;
+      cell.originalUrl = img.originalUrl ?? null;
+      cell.status = 'done';
+    } else {
+      cell.error = img?.error || '生成失败';
+      cell.status = 'error';
+    }
+  } catch (e) {
+    console.error(`[design-generator] outfit-styling regenerate ${batch.batchId} error:`, e?.message || String(e));
+    cell.error = e?.message || '生成异常';
+    cell.status = 'error';
+  } finally {
+    batch.status = batch.items.some((it) => it.status === 'done') ? 'done'
+      : batch.items.every((it) => it.status === 'error') ? 'error' : 'done';
+    batch.updatedAt = Date.now();
+  }
+});
+
 module.exports = router;

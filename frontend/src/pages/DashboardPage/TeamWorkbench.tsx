@@ -34,6 +34,9 @@ import MaterialComboPage from '../LaisseAncie/pages/MaterialCombo';
 /** 款式裂变 —— 母款 + 裂变轴 → N 张子款白底图。 */
 import StyleMutatePage from '../LaisseAncie/pages/StyleMutate';
 
+/** 穿搭效果 —— Lookbook 选 1-5 款单品 + 模特图 → 模特穿搭效果图。 */
+import OutfitStylingPage from '../LaisseAncie/pages/OutfitStyling';
+
 /** 数据 tab 懒加载(避免首屏过大)。 */
 const InspirationsPage = lazy(() => import('../LaisseAncie/pages/Inspirations'));
 const LookbookPage = lazy(() => import('../LaisseAncie/pages/Lookbook'));
@@ -148,6 +151,22 @@ export default function TeamWorkbench() {
                   styles: resourceStore.styles,
                   illustrations: resourceStore.illustrations,
                   products: designStore.products,
+                  brand,
+                }}
+              />
+            ) : t.id === "outfit-styling" ? (
+              <OutfitStylingPage
+                brandLoading={brandLoading}
+                knowledgeLoading={knowledgeLoading}
+                knowledge={{
+                  skills: skillStore.articles,
+                  assets: visualAssetStore.assets,
+                  inspirations: resourceStore.inspirations,
+                  materials: resourceStore.materials,
+                  styles: resourceStore.styles,
+                  illustrations: resourceStore.illustrations,
+                  products: designStore.products,
+                  models: resourceStore.models,
                   brand,
                 }}
               />
