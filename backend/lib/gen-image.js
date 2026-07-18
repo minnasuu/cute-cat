@@ -55,17 +55,28 @@ function localUrlToDataUri(localUrl) {
   }
 }
 
+// 拉参考图的超时(默认 20s)。必须有超时:线上曾出现 fetch COS URL 无响应
+// 导致 normalizeRefImage 永远 pending → generateImage 卡在参考图归一化阶段,
+// 大模型请求根本不发出 → 前端「一直待处理,无成功无失败」。
+const REF_FETCH_TIMEOUT_MS = Number.parseInt(process.env.REF_FETCH_TIMEOUT_MS || '', 10) || 20000;
+
 /**
  * 把远程图片 URL(本服务 COS/S3 或任意 http(s))拉取后转成 base64 data URI。
  * 用途:Maizi images 字段要求 URL 可被其服务器公网拉取;若 COS 配了防盗链/私有读取,
  * Maizi 拉不到 → 请求 hang / 大模型后台收不到请求。改由本服务后端拉取并内嵌 base64,
  * 保证 Maizi 一定能拿到参考图内容(COS 迁移前的本地模式正是靠 data URI 工作的)。
- * 拉取失败返回 null(由调用方 filter 掉,退化为无参考图的纯文生图)。
+ *
+ * 关键:必须带超时。历史 bug —— 无超时的 fetch 遇到 COS 不响应时会永远 pending,
+ * normalizeRefImage → generateImage → runBatch cell 全部卡死,cell 永远 pending,
+ * 前端表现为「一直待处理,无成功无失败」(watchdog 15min 后才兜底)。
+ * 拉取失败/超时返回 null(由调用方 filter 掉,退化为无参考图,让请求至少能发出去)。
  */
 async function remoteUrlToDataUri(url) {
   if (!url || typeof url !== 'string') return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REF_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { redirect: 'follow' });
+    const res = await fetch(url, { redirect: 'follow', signal: controller.signal });
     if (!res.ok) {
       console.warn(`[gen-image] fetch ref image failed: HTTP ${res.status} ${url.slice(0, 80)}`);
       return null;
@@ -76,8 +87,12 @@ async function remoteUrlToDataUri(url) {
     const mime = ct || EXT_MIME[ext] || 'image/png';
     return `data:${mime};base64,${buf.toString('base64')}`;
   } catch (e) {
-    console.warn(`[gen-image] fetch ref image error: ${url.slice(0, 80)} (${e?.message || e})`);
+    const isTimeout = e?.name === 'AbortError';
+    const msg = isTimeout ? `timeout ${REF_FETCH_TIMEOUT_MS}ms` : (e?.message || String(e));
+    console.warn(`[gen-image] fetch ref image error: ${url.slice(0, 80)} (${msg})`);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -243,13 +258,20 @@ async function generateImage(prompt, opts) {
   // 归一化参考图(一次性,重试时复用):
   //   - data URI 原样
   //   - 本地 /uploads/... 同步转 data URI
-  //   - http(s) URL(COS/S3 等)后端拉取后转 data URI
+  //   - http(s) URL(COS/S3 等)后端拉取后转 data URI(自带 REF_FETCH_TIMEOUT_MS 超时)
   //     切到 COS 后参考图是 https URL,若 Maizi 拉不到(防盗链/私有读)会 hang,
   //     改由本服务拉取并内嵌 base64,恢复本地模式下的可靠行为。
   //   imageRef:false 的 provider(纯文生图)会忽略 refs,这里仍归一化(开销小,保持一致)。
-  const normalizedRefs = cfg.imageRef
-    ? (await Promise.all(refs.map(normalizeRefImage))).filter(Boolean)
-    : refs;
+  let normalizedRefs = refs;
+  if (cfg.imageRef && refs.length) {
+    // 落一条起始/完成日志:便于线上定位「卡在参考图归一化」的情况(此步无超时保护时曾导致永远 pending)
+    console.log(`[gen-image] normalize ${refs.length} ref images (safeName=${safeName})…`);
+    const t0 = Date.now();
+    const resolved = await Promise.all(refs.map(normalizeRefImage));
+    normalizedRefs = resolved.filter(Boolean);
+    const missing = refs.length - normalizedRefs.length;
+    console.log(`[gen-image] normalize done in ${Date.now() - t0}ms: ok=${normalizedRefs.length}${missing ? ` dropped=${missing}` : ''}`);
+  }
 
   // 单张生成超时(默认 180s / 3 分钟)——gpt-image-2 大尺寸图生成常超 120s
   const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 180000;

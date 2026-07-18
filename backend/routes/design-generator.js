@@ -857,7 +857,23 @@ router.post('/material-combo', (req, res) => {
 
       // 4) 202 立即返回,fire-and-forget 后台生成
       res.status(202).json(batchPublicView(batch));
-      runBatch(batchId);
+      // 兜底捕获:runBatch 内已 try/catch,但 fire-and-forget 需要给顶层 promise 一层
+      // 保护,避免任何遗漏路径变成 unhandledRejection、cells 永远 pending。
+      runBatch(batchId).catch((err) => {
+        console.error(`[design-generator] runBatch ${batchId} unhandled:`, err?.message || String(err));
+        const b = mcBatches.get(batchId);
+        if (b) {
+          b.status = 'error';
+          b.error = err?.message || '批次异常';
+          for (const it of b.items) {
+            if (it.status === 'pending' || it.status === 'running') {
+              it.status = 'error';
+              it.error = b.error;
+            }
+          }
+          b.updatedAt = Date.now();
+        }
+      });
     } catch (e) {
       console.error('[design-generator] material-combo error:', e?.message || String(e));
       res.status(500).json({ error: e?.message || '生成失败' });
@@ -1338,7 +1354,21 @@ router.post('/style-mutate', (req, res) => {
       };
       smBatches.set(batchId, batch);
       res.status(202).json(smBatchPublicView(batch));
-      runStyleMutateBatch(batchId);
+      runStyleMutateBatch(batchId).catch((err) => {
+        console.error(`[design-generator] runStyleMutateBatch ${batchId} unhandled:`, err?.message || String(err));
+        const b = smBatches.get(batchId);
+        if (b) {
+          b.status = 'error';
+          b.error = err?.message || '批次异常';
+          for (const it of b.items) {
+            if (it.status === 'pending' || it.status === 'running') {
+              it.status = 'error';
+              it.error = b.error;
+            }
+          }
+          b.updatedAt = Date.now();
+        }
+      });
     } catch (e) {
       console.error('[design-generator] style-mutate error:', e?.message || String(e));
       res.status(500).json({ error: e?.message || '生成失败' });
