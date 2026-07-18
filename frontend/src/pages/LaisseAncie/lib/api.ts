@@ -147,6 +147,26 @@ export function teamApi(teamId: string) {
         if (!r.ok) throw new Error(`API ${r.status}`);
         return r.json();
       }),
+    // 模特 CRUD + 多图上传(1-5 张)+ 管理员共享进系统模特库
+    listModels: (silent?: boolean) => _apiClient.get(pre('/models'), { silent }),
+    createModel: (body: Record<string, unknown>) => _apiClient.post(pre('/models'), body, { silent: true }),
+    updateModel: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/models/${id}`), body, { silent: true }),
+    deleteModel: (id: string) => _apiClient.delete(pre(`/models/${id}`), { silent: true }),
+    // 上传单张模特图(追加到 images,上限 5) —— 返回 { id, url, images }
+    uploadModelImage: (id: string, formData: FormData) =>
+      fetch(pre(`/models/${id}/image`), { method: 'POST', body: formData, credentials: 'include' }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      }),
+    // 删除模特某张图(body.url) —— 返回 { ok, images }
+    removeModelImage: (id: string, url: string) =>
+      fetch(pre(`/models/${id}/image`), {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ url }),
+      }).then((r) => { if (!r.ok) throw new Error(`API ${r.status}`); return r.json(); }),
+    // 管理员共享开关(共享进系统模特库,仅 admin 可调)
+    setModelShared: (id: string, shared: boolean) =>
+      _apiClient.patch(pre(`/models/${id}/share`), { shared }),
 
     // skills
     listSkills: (category?: string) =>

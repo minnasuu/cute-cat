@@ -40,6 +40,7 @@ const LookbookPage = lazy(() => import('../LaisseAncie/pages/Lookbook'));
 const MaterialsPage = lazy(() => import('../LaisseAncie/pages/Materials'));
 const StylesPage = lazy(() => import('../LaisseAncie/pages/Styles'));
 const IllustrationsPage = lazy(() => import('../LaisseAncie/pages/Illustrations'));
+const ModelsPage = lazy(() => import('../LaisseAncie/pages/Models'));
 const SkillsPage = lazy(() => import('../LaisseAncie/pages/Skills'));
 const AssetsPage = lazy(() => import('../LaisseAncie/pages/Assets'));
 
@@ -49,6 +50,7 @@ const DATA_COMPONENTS: Record<string, React.LazyExoticComponent<ComponentType<an
   materials: MaterialsPage,
   styles: StylesPage,
   illustrations: IllustrationsPage,
+  models: ModelsPage,
   skills: SkillsPage,
   assets: AssetsPage,
 };

@@ -970,6 +970,144 @@ router.delete('/illustrations/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/* ─── models(服装模特) ─────────────────────────────────────────
+ * 用户上传自己品牌的模特,每个模特 1-5 张图 + 形体数据(身高/三围/体重等);
+ * 管理员可共享进系统模特库(shared=true → 所有 team 可见可用)。 */
+
+const MAX_MODEL_IMAGES = 5;
+
+// 收集模特的所有图片 URL(images[]),供删除时级联清 COS。
+function collectModelImageUrls(m) {
+  return Array.isArray(m?.images) ? m.images.filter((u) => typeof u === 'string') : [];
+}
+
+router.get('/models', asyncHandler(async (req, res) => {
+  const teamId = req.team.id;
+  // 合并「本 team」+「管理员共享(shared=true)」,让所有用户可用系统模特库
+  const rows = await prisma.lAModel.findMany({
+    where: { OR: [{ teamId }, { shared: true }] },
+    orderBy: [{ createdAt: 'desc' }],
+  });
+  res.json(rows);
+}));
+
+router.post('/models', asyncHandler(async (req, res) => {
+  const data = pickDefined(req.body ?? {}, [
+    'slug', 'name', 'height', 'weight', 'bust', 'waist', 'hip', 'shoes', 'tags', 'images',
+  ]);
+  if (!data.name) return res.status(400).json({ error: 'name required' });
+  if (!data.slug) data.slug = `${slugify(data.name)}-${crypto.randomUUID().slice(0, 6)}`;
+  // images 必为字符串数组且不超过上限
+  let images = [];
+  if (Array.isArray(data.images)) {
+    images = data.images.filter((u) => typeof u === 'string').slice(0, MAX_MODEL_IMAGES);
+  }
+  const model = await prisma.lAModel.create({
+    data: {
+      teamId: req.team.id,
+      slug: String(data.slug),
+      name: String(data.name),
+      height: data.height != null ? Number(data.height) : null,
+      weight: data.weight != null ? Number(data.weight) : null,
+      bust: data.bust != null ? Number(data.bust) : null,
+      waist: data.waist != null ? Number(data.waist) : null,
+      hip: data.hip != null ? Number(data.hip) : null,
+      shoes: data.shoes != null ? Number(data.shoes) : null,
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      images,
+    },
+  });
+  res.status(201).json(model);
+}));
+
+router.patch('/models/:id', asyncHandler(async (req, res) => {
+  const owned = await findOwned(prisma.lAModel, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const data = pickDefined(req.body ?? {}, [
+    'slug', 'name', 'height', 'weight', 'bust', 'waist', 'hip', 'shoes', 'tags', 'images',
+  ]);
+  if (data.tags !== undefined) data.tags = Array.isArray(data.tags) ? data.tags : [];
+  for (const k of ['height', 'weight', 'bust', 'waist', 'hip', 'shoes']) {
+    if (data[k] !== undefined) data[k] = data[k] != null ? Number(data[k]) : null;
+  }
+  if (data.images !== undefined) {
+    data.images = Array.isArray(data.images) ? data.images.filter((u) => typeof u === 'string').slice(0, MAX_MODEL_IMAGES) : [];
+  }
+  const model = await prisma.lAModel.update({ where: { id: owned.id }, data });
+  res.json(model);
+}));
+
+// POST /api/teams/:teamId/models/:id/image —— 上传单张模特图(追加到 images,上限 5)
+router.post('/models/:id/image', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) return multerError(res, err);
+    if (!req.file) return res.status(400).json({ error: 'no file' });
+    const owned = await findOwned(prisma.lAModel, req.params.id, req.team.id);
+    if (!owned) return res.status(404).json({ error: 'not found' });
+    const current = Array.isArray(owned.images) ? owned.images.filter((u) => typeof u === 'string') : [];
+    if (current.length >= MAX_MODEL_IMAGES) {
+      return res.status(400).json({ error: `每个模特最多 ${MAX_MODEL_IMAGES} 张图片` });
+    }
+    try {
+      const savePath = createSavePath(`models/${req.team.id}`, req.file.filename);
+      await saveUpload(req.file.path, savePath, req.file.mimetype);
+      const url = getPublicUrl(savePath);
+      const images = [...current, url];
+      const updated = await prisma.lAModel.update({ where: { id: owned.id }, data: { images } });
+      res.json({ id: updated.id, url, images });
+    } catch (e) {
+      console.error('[team-workbench] upload model image failed:', e);
+      res.status(500).json({ error: `上传失败: ${e.message}` });
+    }
+  });
+});
+
+// DELETE /api/teams/:teamId/models/:id/image —— 删除模特某张图(body.url),级联清 COS
+router.delete('/models/:id/image', asyncHandler(async (req, res) => {
+  const owned = await findOwned(prisma.lAModel, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const url = req.body?.url;
+  if (typeof url !== 'string') return res.status(400).json({ error: 'url required' });
+  const current = Array.isArray(owned.images) ? owned.images.filter((u) => typeof u === 'string') : [];
+  const images = current.filter((u) => u !== url);
+  const updated = await prisma.lAModel.update({ where: { id: owned.id }, data: { images } });
+  // 异步清 COS(失败仅记日志,不阻塞/回退)
+  deleteImageByUrl(url).catch((e) =>
+    console.warn(`[team-workbench] model ${owned.id} COS cleanup failed: ${e?.message || e}`));
+  res.json({ ok: true, images: updated.images });
+}));
+
+// PATCH /api/teams/:teamId/models/:id/share —— 管理员开关 shared(共享进系统模特库)
+router.patch('/models/:id/share', asyncHandler(async (req, res) => {
+  if (!await isAdminUserId(req.userId)) return res.status(403).json({ error: '仅管理员可共享' });
+  const owned = await findOwned(prisma.lAModel, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const shared = !!req.body?.shared;
+  const updated = await prisma.lAModel.update({
+    where: { id: owned.id },
+    data: { shared, sharedById: shared ? req.userId : null },
+  });
+  res.json(updated);
+}));
+
+router.delete('/models/:id', asyncHandler(async (req, res) => {
+  const owned = await findOwned(prisma.lAModel, req.params.id, req.team.id);
+  if (!owned) return res.status(404).json({ error: 'not found' });
+  const imageUrls = collectModelImageUrls(owned);
+  await prisma.lAModel.delete({ where: { id: owned.id } });
+  if (imageUrls.length) {
+    Promise.allSettled(imageUrls.map((u) => deleteImageByUrl(u)))
+      .then((results) => {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn(`[team-workbench] model ${owned.id} COS cleanup failed: ${r.reason?.message || r.reason}`);
+          }
+        }
+      });
+  }
+  res.json({ ok: true });
+}));
+
 /* ─── skills 知识库(团队级通用) ──────────────────────────────── */
 /* 引入 10 phase taxonomy 的校验 + 旧 6 key 兼容 */
 const {

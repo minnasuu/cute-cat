@@ -104,6 +104,33 @@ export interface IllustrationRow {
   updatedAt: string;
 }
 
+/** 服装模特资源行(品牌模特,管理员可共享进系统模特库) */
+export interface ModelRow {
+  id: string;
+  slug?: string;
+  name: string;
+  /** 身高(cm) */
+  height?: number | null;
+  /** 体重(kg) */
+  weight?: number | null;
+  /** 胸围(cm) */
+  bust?: number | null;
+  /** 腰围(cm) */
+  waist?: number | null;
+  /** 臀围(cm) */
+  hip?: number | null;
+  /** 鞋码 */
+  shoes?: number | null;
+  /** 模特图片列表(URL 数组,1-5 张) */
+  images?: string[];
+  tags?: string[];
+  /** 管理员设为共享 → 所有用户可见可用(跨 teamId) */
+  shared?: boolean;
+  sharedById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** AI 推荐的材质+配色方案(线稿→推荐→成图流程写入 Lookbook) */
 export interface MaterialRecommendation {
   name: string;

@@ -357,6 +357,36 @@ model LAIllustrationAsset {
   @@index([teamId])
 }
 
+model LAModel {
+  id        String   @id @default(uuid())
+  teamId    String
+  slug      String
+  name      String
+  /** 身高(cm) */
+  height    Float?
+  /** 体重(kg) */
+  weight    Float?
+  /** 胸围(cm) */
+  bust      Float?
+  /** 腰围(cm) */
+  waist     Float?
+  /** 臀围(cm) */
+  hip       Float?
+  /** 鞋码 */
+  shoes     Float?
+  /** 模特图片列表(URL 数组,1-5 张;上传接口 /models/:id/image 逐张追加) */
+  images    Json     @default("[]")
+  tags      Json     @default("[]")
+  /** 管理员设为共享 → 所有用户可见可用(系统模特库,跨 teamId) */
+  shared     Boolean  @default(false)
+  /** 哪个管理员共享的(可审计) */
+  sharedById String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([teamId])
+  @@index([shared])
+}
+
 model LASkillArticle {
   id               String   @id @default(uuid())
   teamId           String
