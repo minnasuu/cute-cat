@@ -57,7 +57,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'recharge', label: '充值', icon: 'Wallet' },
   { id: 'recharge-records', label: '充值明细', icon: 'ArrowDownCircle' },
   { id: 'tx', label: '用量明细', icon: 'ClipboardList' },
-  { id: 'invite', label: '邀请好友', icon: 'Gift' },
+  // { id: 'invite', label: '邀请好友', icon: 'Gift' },  // 暂时隐藏邀请 tab
 ];
 
 /**
