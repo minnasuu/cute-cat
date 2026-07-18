@@ -328,8 +328,10 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const [mutateMode, setMutateMode] = useState<"batch" | "merge">("batch");
   /** 非必填项(自定义款式 / 锁定面料 / 其他描述)默认折叠为「更多配置」 */
   const [showMore, setShowMore] = useState(false);
-  /** 裂变轴填写方式:tag=标签勾选 / custom=自定义输入(两种必填其中一种) */
-  const [axisInputMode, setAxisInputMode] = useState<"tag" | "custom">("tag");
+  /** 裂变轴填写方式:tag=标签勾选 / custom=自定义输入 / free=自由裂变(三种必填其中一种) */
+  const [axisInputMode, setAxisInputMode] = useState<"tag" | "custom" | "free">("tag");
+  /** 自由裂变张数(NumberInput 控制,1~MAX_MUTATIONS) */
+  const [freeCount, setFreeCount] = useState(4);
 
   const styleRef = useRef<HTMLInputElement>(null);
   const fabricRef = useRef<HTMLInputElement>(null);
@@ -406,14 +408,24 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     })),
   ];
 
+  /** 自由裂变:按张数生成 N 个「自动裂变」mutation,由模型基于款式与名称自由发挥 */
+  const freeMutations = Array.from({ length: freeCount }, (_, i) => ({
+    axisId: "free",
+    optionId: `free_${i + 1}`,
+    label: `自由裂变 ${i + 1}`,
+    promptHint: `根据款式和名称自动裂变生成指定张数的结果(第 ${i + 1} 张 / 共 ${freeCount} 张,请保证每张设计方向各不相同)`,
+  }));
+
   const batchRunning = !!batch && batch.status === "running";
   const visibleItems = batch ? batch.items.filter((it) => !removedMis.has(it.mi)) : [];
   const visibleCompleted = visibleItems.filter((it) => it.status === "done" && it.url).length;
   const canSubmit =
     !!name.trim() &&
     !!mother &&
-    (selectedMutations.length > 0 || customMutations.length > 0) &&
-    (mutateMode === "merge" || selectedMutations.length + customMutations.length <= MAX_MUTATIONS) &&
+    (axisInputMode === "free"
+      ? freeCount > 0
+      : selectedMutations.length > 0) &&
+    (axisInputMode === "free" || mutateMode === "merge" || selectedMutations.length <= MAX_MUTATIONS) &&
     !batchRunning &&
     !submitting &&
     !brandLoading &&
@@ -602,15 +614,18 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
       fd.append("name", name.trim());
       fd.append("description", description.trim());
       fd.append("styleMeta", JSON.stringify(styleMeta));
-      // 合并模式:把所有选中项的 promptHint 合并成单个 mutation → 后端生成 1 张
-      const submitMutations = mutateMode === "merge" && selectedMutations.length > 0
-        ? [{
-          axisId: "merge",
-          optionId: "merge",
-          label: selectedMutations.map((m) => m.label).join(" + "),
-          promptHint: `Apply all of the following modifications to the mother style, keeping the overall design DNA and all other design elements unchanged:\n${selectedMutations.map((m, i) => `${i + 1}. ${m.promptHint}`).join("\n")}`,
-        }]
-        : selectedMutations;
+      // 自由裂变:按张数提交 N 个自动裂变项 → 后端生成 N 张
+      const submitMutations = axisInputMode === "free"
+        ? freeMutations
+        // 合并模式:把所有选中项的 promptHint 合并成单个 mutation → 后端生成 1 张
+        : mutateMode === "merge" && selectedMutations.length > 0
+          ? [{
+            axisId: "merge",
+            optionId: "merge",
+            label: selectedMutations.map((m) => m.label).join(" + "),
+            promptHint: `Apply all of the following modifications to the mother style, keeping the overall design DNA and all other design elements unchanged:\n${selectedMutations.map((m, i) => `${i + 1}. ${m.promptHint}`).join("\n")}`,
+          }]
+          : selectedMutations;
       fd.append("mutations", JSON.stringify(submitMutations));
       if (fabricMeta) fd.append("fabricMeta", JSON.stringify(fabricMeta));
       if (mother.kind === "upload") fd.append("style", mother.file);
@@ -779,7 +794,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
       )}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] h-[calc(100vh-64px)] min-h-0">
         {/* 左:表单(上中下布局) */}
-        <div className="flex flex-col bg-white min-h-0">
+        <div className="flex flex-col bg-white min-h-0 min-w-0">
           {/* 顶部:固定 header */}
           <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
             <div className="flex items-center justify-between">
@@ -794,10 +809,46 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   </button>
                 )}
               </h1>
+                {axisInputMode !== "free" && (
+                <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => switchMutateMode("batch")}
+                      disabled={batchRunning}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors ${mutateMode === "batch" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
+                    >
+                      批量生成
+                      <span className="relative group flex items-center">
+                        <span className="w-3.5 h-3.5 rounded-full bg-gray-300 text-white text-[10px] flex items-center justify-center cursor-help">?</span>
+                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-20 w-56 rounded-lg bg-gray-800 text-white text-[10.5px] leading-relaxed px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                          每个选项生成一张子款白底图(可多选,最多 8 张)
+                          <span className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-800" />
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => switchMutateMode("merge")}
+                      disabled={batchRunning}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors ${mutateMode === "merge" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
+                    >
+                      合并生成
+                      <span className="relative group flex items-center">
+                        <span className="w-3.5 h-3.5 rounded-full bg-gray-300 text-white text-[10px] flex items-center justify-center cursor-help">?</span>
+                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-20 w-56 rounded-lg bg-gray-800 text-white text-[10.5px] leading-relaxed px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                          所选维度合并生成一张子款图(每个维度单选)
+                          <span className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-800" />
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                )}
             </div>
+            {axisInputMode !== "free" && (
             <span className="text-[10px] text-gray-500">
               1 母款 × 裂变轴选项 → N 张子款白底图(≤{MAX_MUTATIONS})
             </span>
+            )}
           </header>
 
           {/* 中间:可滚动内容 */}
@@ -873,64 +924,33 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   onChange={(e) => addMotherUpload(e.target.files)}
                 />
               </div>
-
-
               {/* 裂变轴:大分类(裂变方式 + 填写方式 + 裂变维度) */}
               <div data-tour="tour-mutations">
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-[13px] font-semibold text-gray-800">裂变轴</h3>
+                  <h3 className="font-medium text-gray-500">裂变轴 <span className="text-red-500">*</span></h3>
                   <span className="text-[10px] text-gray-400">必填其中一种方式</span>
                 </div>
-                {/* 裂变方式切换 */}
-                <div className="mb-3">
-                  <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => switchMutateMode("batch")}
-                      disabled={batchRunning}
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors ${mutateMode === "batch" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
-                    >
-                      批量生成
-                      <span className="relative group flex items-center">
-                        <span className="w-3.5 h-3.5 rounded-full bg-gray-300 text-white text-[10px] flex items-center justify-center cursor-help">?</span>
-                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-20 w-56 rounded-lg bg-gray-800 text-white text-[10.5px] leading-relaxed px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                          每个选项生成一张子款白底图(可多选,最多 8 张)
-                          <span className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-800" />
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => switchMutateMode("merge")}
-                      disabled={batchRunning}
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors ${mutateMode === "merge" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
-                    >
-                      合并生成
-                      <span className="relative group flex items-center">
-                        <span className="w-3.5 h-3.5 rounded-full bg-gray-300 text-white text-[10px] flex items-center justify-center cursor-help">?</span>
-                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-20 w-56 rounded-lg bg-gray-800 text-white text-[10.5px] leading-relaxed px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                          所选维度合并生成一张子款图(每个维度单选)
-                          <span className="absolute -top-1 left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-800" />
-                        </span>
-                      </span>
-                    </button>
-                  </div>
-                </div>
 
-                {/* 填写方式:标签勾选 / 自定义输入(必填其中一种) */}
+                {/* 填写方式:标签勾选 / 自定义输入 / 自由裂变(必填其中一种) */}
                 <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px] mb-3">
                   <button
                     type="button"
                     onClick={() => setAxisInputMode("tag")}
                     disabled={batchRunning}
                     className={`px-2.5 py-1 rounded-md transition-colors ${axisInputMode === "tag" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
-                  >标签</button>
+                  >选择标签</button>
                   <button
                     type="button"
                     onClick={() => setAxisInputMode("custom")}
                     disabled={batchRunning}
                     className={`px-2.5 py-1 rounded-md transition-colors ${axisInputMode === "custom" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
                   >自定义输入</button>
+                  <button
+                    type="button"
+                    onClick={() => setAxisInputMode("free")}
+                    disabled={batchRunning}
+                    className={`px-2.5 py-1 rounded-md transition-colors ${axisInputMode === "free" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
+                  >自由裂变</button>
                 </div>
 
                 {axisInputMode === "tag" ? (
@@ -1025,7 +1045,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                       </div>
                     )}
                   </>
-                ) : (
+                ) : axisInputMode === "custom" ? (
                   <>
                     {/* 自定义裂变款式(Tag Input) */}
                     <label className={labelCls}>自定义裂变款式</label>
@@ -1057,6 +1077,40 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                     </div>
                     <p className="text-[10px] text-gray-400 mt-1">单次有效,不会保存到库。将作为额外裂变维度生成子款白底图。</p>
                   </>
+                ) : (
+                  <>
+                    {/* 自由裂变:NumberInput 控制张数 */}
+                    <label className={labelCls}>裂变张数</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFreeCount((v) => Math.max(1, v - 1))}
+                        disabled={batchRunning || freeCount <= 1}
+                        className="w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 text-[15px] leading-none hover:border-gray-400 disabled:opacity-40"
+                      >−</button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={MAX_MUTATIONS}
+                        value={freeCount}
+                        onChange={(e) => {
+                          const n = parseInt(e.target.value, 10);
+                          if (Number.isNaN(n)) return;
+                          setFreeCount(Math.min(MAX_MUTATIONS, Math.max(1, n)));
+                        }}
+                        disabled={batchRunning}
+                        className="w-16 h-8 text-center rounded-lg border border-gray-200 bg-white text-[13px] font-medium outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-100 disabled:opacity-50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFreeCount((v) => Math.min(MAX_MUTATIONS, v + 1))}
+                        disabled={batchRunning || freeCount >= MAX_MUTATIONS}
+                        className="w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 text-[15px] leading-none hover:border-gray-400 disabled:opacity-40"
+                      >+</button>
+                      <span className="text-[11px] text-gray-400">张(上限 {MAX_MUTATIONS})</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">根据款式和名称自动裂变生成指定张数的结果,由模型自由发挥不同设计方向。</p>
+                  </>
                 )}
               </div>
 
@@ -1068,7 +1122,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                 className="flex items-center justify-between w-full text-[11px] py-1 mb-1 hover:text-primary-600 transition-colors"
               >
                 <span className="font-medium text-gray-500">更多配置</span>
-                <span className={`text-gray-400 transition-transform ${showMore ? "rotate-180" : ""}`}>▾</span>
+                <span className={`text-gray-400 transition-transform ${showMore ? "rotate-180" : ""}`}>
+                  <svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 18L24 30L12 18" stroke="#4a4a4a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </span>
               </button>
               {showMore && (
               <>
@@ -1167,9 +1223,18 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
               </>
               )}
 
-              {(selectedMutations.length > 0 || customMutations.length > 0) && (
+              {(axisInputMode === "free"
+                ? freeCount > 0
+                : selectedMutations.length > 0) && (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-                  {mutateMode === "merge" ? (
+                  {axisInputMode === "free" ? (
+                    <>将生成{" "}
+                      <span className="font-medium text-primary-600">{freeCount}</span>{" "}
+                      张自由裂变图
+                      {freeCount > MAX_MUTATIONS && (
+                        <span className="text-red-500 ml-2">超过上限 {MAX_MUTATIONS}</span>
+                      )}</>
+                  ) : mutateMode === "merge" ? (
                     <>将生成 <span className="font-medium text-primary-600">1</span> 张合并裂变图(合并 {selectedMutations.length + customMutations.length} 个维度)</>
                   ) : (
                     <>将生成{" "}
@@ -1205,7 +1270,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                 label="立即生成"
                 loading={submitting || batchRunning}
                 disabled={!canSubmit}
-                estimatedCoins={(mutateMode === "merge" ? 1 : selectedMutations.length) * AI_COST_PER_IMAGE}
+                estimatedCoins={(axisInputMode === "free" ? freeCount : mutateMode === "merge" ? 1 : selectedMutations.length) * AI_COST_PER_IMAGE}
                 userCoins={user?.coins}
                 onClick={submit}
               />
