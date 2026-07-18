@@ -46,32 +46,55 @@ export function pickCover(product: Product): string | null {
   return pickProductCover(product);
 }
 
-/** 卡片视图的单张卡片:封面 + 标题 + 价格 + 右上角 hover 操作栏(编辑/下载原图/删除),点击卡片主体打开详情弹窗 */
+/** 卡片视图的单张卡片:封面 + 标题 + 价格 + 右上角 hover 操作栏(编辑/下载原图/删除),点击卡片主体打开详情弹窗。
+ *  删除操作内置二次确认:点删除 → 浮现「确认/取消」,确认后才真正执行删除。 */
 function CardItem({ product, cover, onClick, onEdit, onDownload, onDelete }: {
   product: Product; cover: string | null; onClick: () => void;
-  onEdit?: (e: React.MouseEvent) => void; onDownload?: () => void; onDelete?: (e: React.MouseEvent) => void;
+  onEdit?: (e: React.MouseEvent) => void; onDownload?: () => void; onDelete?: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
+  const [pending, setPending] = useState(false);
   const hasActions = !!(onEdit || onDownload || onDelete);
+
+  const handleDeleteClick = async () => {
+    if (!onDelete) return;
+    if (!confirming) { setConfirming(true); return; }
+    // 二次确认:执行删除
+    setPending(true);
+    try { onDelete(); } finally { setPending(false); }
+  };
+
   return (
     <div onClick={onClick} className="group cursor-pointer rounded-2xl border border-gray-200 bg-white overflow-hidden hover:shadow-lg hover:border-primary-300 transition-all">
       <div className="relative aspect-[1/1] bg-gray-100 overflow-hidden">
         {cover
           ? <img src={cover} alt={product.title} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
           : <div className="w-full h-full flex items-center justify-center text-[12px] text-gray-400">暂无图片</div>}
-        {/* 右上角 hover 浮现操作工具栏 */}
+        {/* 右上角操作工具栏:未确认时 hover 浮现;确认态常驻 */}
         {hasActions && (
-          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            {onEdit && (
-              <button type="button" title="编辑" onClick={(e) => { e.stopPropagation(); onEdit(e); }}
-                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[11px] font-medium">编辑</button>
-            )}
-            {onDownload && (
-              <button type="button" title="下载原图" onClick={(e) => { e.stopPropagation(); onDownload(); }}
-                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-amber-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[11px] font-medium">↓</button>
-            )}
-            {onDelete && (
-              <button type="button" title="删除" onClick={(e) => { e.stopPropagation(); onDelete(e); }}
-                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-red-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[10px] font-bold">×</button>
+          <div className={`absolute top-2 right-2 z-10 flex items-center gap-1 transition-opacity duration-150 ${confirming ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+            {confirming ? (
+              <div className="flex items-center gap-1">
+                <button type="button" title="取消" onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+                  className="h-7 px-2 rounded-full flex items-center justify-center bg-white/90 hover:bg-gray-100 text-gray-600 ring-1 ring-black/5 shadow-sm transition-colors text-[10px] font-medium">取消</button>
+                <button type="button" title="确认删除" disabled={pending} onClick={(e) => { e.stopPropagation(); void handleDeleteClick(); }}
+                  className="h-7 px-2 rounded-full flex items-center justify-center bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white ring-1 ring-black/5 shadow-sm transition-colors text-[10px] font-medium">{pending ? "删除中" : "确认"}</button>
+              </div>
+            ) : (
+              <>
+                {onEdit && (
+                  <button type="button" title="编辑" onClick={(e) => { e.stopPropagation(); onEdit(e); }}
+                    className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[11px] font-medium">编辑</button>
+                )}
+                {onDownload && (
+                  <button type="button" title="下载原图" onClick={(e) => { e.stopPropagation(); onDownload(); }}
+                    className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-amber-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[11px] font-medium">↓</button>
+                )}
+                {onDelete && (
+                  <button type="button" title="删除" onClick={(e) => { e.stopPropagation(); void handleDeleteClick(); }}
+                    className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-red-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[10px] font-bold">×</button>
+                )}
+              </>
             )}
           </div>
         )}
@@ -110,6 +133,18 @@ export default function LookbookPage() {
     if (statusFilter !== "all") r = r.filter((p) => p.status === statusFilter);
     return r;
   }, [store.products, tab, statusFilter]);
+
+  // 详情弹窗内切换上一个/下一个产品(基于当前筛选列表 items)
+  const editorProductId = editor && "product" in editor ? editor.product.id : null;
+  const editorIndex = editorProductId ? items.findIndex((p) => p.id === editorProductId) : -1;
+  const navigateProduct = (delta: number) => {
+    if (editorIndex < 0) return;
+    const nextIdx = editorIndex + delta;
+    if (nextIdx < 0 || nextIdx >= items.length) return;
+    setEditor({ mode: "view", product: items[nextIdx] });
+  };
+  const hasPrev = editorIndex > 0;
+  const hasNext = editorIndex >= 0 && editorIndex < items.length - 1;
 
   // 行内切换状态(自由切换到任意工序),成功后刷新列表并同步弹窗
   async function changeStatus(p: Product, status: ProductStatus) {
@@ -202,7 +237,7 @@ export default function LookbookPage() {
             <CardItem key={p.id} product={p} cover={pickCover(p)}
               onClick={() => setEditor({ mode: "view", product: p })}
               onEdit={(e) => handleEdit(p, e)} onDownload={() => handleDownload(p)}
-              onDelete={() => setConfirming(p.id)} />
+              onDelete={() => void doDelete(p.id)} />
           ))}
         </div>
       ) : (
@@ -284,6 +319,8 @@ export default function LookbookPage() {
         onClose={() => setEditor(null)}
         onSaved={async () => { await store.refresh(); setEditor(null); }}
         onRequestEdit={(p) => setEditor({ mode: "edit", product: p })}
+        onPrev={hasPrev ? () => navigateProduct(-1) : undefined}
+        onNext={hasNext ? () => navigateProduct(1) : undefined}
       />
 
       {/* 状态配置弹窗 */}

@@ -33,9 +33,13 @@ interface Props {
   onSaved: () => void;
   /** 兼容旧调用方;view→edit 已内联切换,不再走外部接力 */
   onRequestEdit?: (p: Product) => void;
+  /** 上一个产品(view 模式可用,用于详情弹窗内切换) */
+  onPrev?: () => void;
+  /** 下一个产品(view 模式可用) */
+  onNext?: () => void;
 }
 
-export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Props) {
+export function ProductFormModal({ state, onClose, onSaved, onRequestEdit, onPrev, onNext }: Props) {
   const { teamId } = useCurrentTeam();
 
   if (!state) return null;
@@ -73,9 +77,9 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Pro
           <span className="bg-gray-800 text-white px-2 py-1 rounded-full text-[11px]">{statusLabel}</span>
         )}
       </div>
-    } maxWidth={isEditing ? "max-w-3xl" : "max-w-6xl"}>
+    } maxWidth={isEditing ? "max-w-3xl" : "max-w-[96vw]"}>
       {!isEditing ? (
-        <ProductView product={product!} onClose={onClose} onSaved={onSaved} />
+        <ProductView product={product!} onClose={onClose} onSaved={onSaved} onPrev={onPrev} onNext={onNext} />
       ) : (
         <ProductForm
           key={state.mode === "edit" ? product!.id : "new"}
@@ -92,7 +96,7 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit }: Pro
 // view + 内联 edit 详情(左图右信息布局)
 // ─────────────────────────────────────────────────────────────
 
-function ProductView({ product, onClose, onSaved }: { product: Product; onClose: () => void; onSaved: () => void }) {
+function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: Product; onClose: () => void; onSaved: () => void; onPrev?: () => void; onNext?: () => void }) {
   const { teamId } = useCurrentTeam();
   const store = useDesignStore();
   const target = nextStatus(product.status);
@@ -316,9 +320,18 @@ function ProductView({ product, onClose, onSaved }: { product: Product; onClose:
   };
 
   return (
-    <div className="flex flex-col h-[65vh]">
-      {/* ── 主体:左图 / 右信息 双栏 ── */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[460px_1fr] gap-5">
+    <div className="flex flex-col h-[85vh]">
+      {/* ── 主体:左图(更宽) / 右信息 双栏 ── */}
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[600px_1fr] gap-5 relative">
+        {/* 上一个/下一个产品切换按钮(view 模式,固定在右侧 16px,垂直居中) */}
+        {!editing && (onPrev || onNext) && (
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+            <button type="button" title="上一个产品" disabled={!onPrev} onClick={onPrev}
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold">‹</button>
+            <button type="button" title="下一个产品" disabled={!onNext} onClick={onNext}
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold">›</button>
+          </div>
+        )}
         {/* 左侧:图片面板(粘性顶栏 + 滚动内容) */}
         <aside className="min-h-0 flex flex-col border-r border-gray-100 pr-3">
           <div className="flex items-center justify-between mb-2 shrink-0">
