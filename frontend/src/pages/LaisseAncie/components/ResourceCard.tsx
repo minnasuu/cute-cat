@@ -55,7 +55,7 @@ export function ResourceCard(props: Props) {
 
         {/* 主体图片 / 虚线占位 */}
         {image ? (
-          <img src={image} alt={name} className="w-full h-full object-cover" />
+          <img src={image} alt={name} className="w-full h-full object-contain" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <div className="rounded-xl border-2 border-dashed border-gray-200 w-20 h-20" />

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import CatLogo from './CatLogo';
 import ThemeToggle from './ThemeToggle';
+import MeowCoinDisplay from './MeowCoinDisplay';
 
 /* ── Shared Navbar ── */
 
@@ -98,6 +99,7 @@ const Navbar: React.FC<NavbarProps> = ({
   const defaultRight = user ? (
     <div className="flex items-center gap-2">
       <ThemeToggle />
+      <MeowCoinDisplay amount={user.coins} size={14} gradient />
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((o) => !o)}

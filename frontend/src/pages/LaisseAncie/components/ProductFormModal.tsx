@@ -77,7 +77,7 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit, onPre
           <span className="bg-gray-800 text-white px-2 py-1 rounded-full text-[11px]">{statusLabel}</span>
         )}
       </div>
-    } maxWidth={isEditing ? "max-w-3xl" : "max-w-[96vw]"}>
+    } maxWidth={isEditing ? "max-w-3xl" : "max-w-[1200px]"}>
       {!isEditing ? (
         <ProductView product={product!} onClose={onClose} onSaved={onSaved} onPrev={onPrev} onNext={onNext} />
       ) : (
@@ -271,7 +271,7 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
     const hasSrc = !!(srcContext?.style || srcContext?.fabric);
     return (
       <figure className="h-full rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group relative">
-        <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-cover" /></div>
+        <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-contain" /></div>
         {/* 主图角标 */}
         {im.slot === MAIN_SLOT && (
           <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">主图</span>
@@ -320,7 +320,7 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
   };
 
   return (
-    <div className="flex flex-col h-[85vh]">
+    <div className="flex-1 min-h-0 flex flex-col h-[85vh]">
       {/* ── 主体:左图(更宽) / 右信息 双栏 ── */}
       <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[600px_1fr] gap-5 relative">
         {/* 上一个/下一个产品切换按钮(view 模式,固定在右侧 16px,垂直居中) */}
@@ -334,7 +334,7 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
         )}
         {/* 左侧:图片面板(粘性顶栏 + 滚动内容) */}
         <aside className="min-h-0 flex flex-col border-r border-gray-100 pr-3">
-          <div className="flex items-center justify-between mb-2 shrink-0">
+          {/* <div className="flex items-center justify-between mb-2 shrink-0">
             <SectionLabel>图片 ({displayImages.length})</SectionLabel>
             {editing && !hasHtml && (
               <label className="text-[11px] text-primary-600 hover:underline cursor-pointer font-medium">
@@ -349,8 +349,8 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
                   }} />
               </label>
             )}
-          </div>
-          <div className="flex-1 min-h-0 overflow-auto">
+          </div> */}
+          <div className="flex-1 min-h-0 overflow-auto pt-5">
             {hasHtml ? (
               <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
                 <iframe srcDoc={product.html!} sandbox="allow-scripts" title="插画 HTML 画布" className="w-full bg-white"
@@ -376,29 +376,29 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
                 {mainImages.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">主图</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{mainImages.map((im) => <div key={(im as any).clientKey || im.slot}>{renderImageCard(im, { showSource: false })}</div>)}</div>
+                    <div className="grid grid-cols-2 gap-2">{mainImages.map((im) => <div key={(im as any).clientKey || im.slot}>{renderImageCard(im, { showSource: false })}</div>)}</div>
                   </div>
                 )}
                 {lineartImages.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">线稿</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{lineartImages.map((im) => <div key={(im as any).clientKey || im.slot}>{renderImageCard(im, { showSource: false })}</div>)}</div>
+                    <div className="grid grid-cols-2 gap-2">{lineartImages.map((im) => <div key={(im as any).clientKey || im.slot}>{renderImageCard(im, { showSource: false })}</div>)}</div>
                   </div>
                 )}
                 {renderImages.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">效果图</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{renderImages.map((im) => <div key={(im as any).clientKey || im.slot}>{renderImageCard(im, { showSource: true })}</div>)}</div>
+                    <div className="grid grid-cols-2 gap-2">{renderImages.map((im) => <div key={(im as any).clientKey || im.slot}>{renderImageCard(im, { showSource: true })}</div>)}</div>
                   </div>
                 )}
                 {outfitImages.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">穿搭效果图 ({outfitImages.length})</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       {outfitImages.map((o) => (
                         <figure key={o.id} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group">
                           <div className="aspect-[3/4] bg-gray-100 overflow-hidden relative">
-                            {o.url ? <img src={o.url} alt="穿搭效果" className="w-full h-full object-cover" /> : null}
+                            {o.url ? <img src={o.url} alt="穿搭效果" className="w-full h-full object-contain" /> : null}
                             {/* 模特角标 */}
                             {o.model?.url && (
                               <span className="absolute top-1 left-1 z-10 flex items-center gap-1 text-[8px] px-1 py-0.5 rounded-sm bg-primary-500/90 text-white font-medium max-w-[80%]">
@@ -423,7 +423,7 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
         </aside>
 
         {/* 右侧:信息面板 */}
-        <section className="min-h-0 overflow-auto pl-1 space-y-5">
+        <section className="min-h-0 overflow-auto pl-1 space-y-5 pt-5">
           {/* 工序时间线 + 推进(编辑态也保留,便于边改边推进) */}
           <div>
             <SectionLabel>工序时间线</SectionLabel>
@@ -574,7 +574,7 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
       </div>
 
       {/* ── 底部固定操作栏(不随内容滚动) ── */}
-      <div className="shrink-0 flex items-center justify-between gap-2 mt-4 pt-3 border-t border-gray-100 bg-white">
+      <div className="shrink-0 flex items-center justify-between gap-2 pt-3 border-t border-gray-100 bg-white">
         <div className="text-[11px] text-gray-500 truncate min-w-0">
           {mainImageUrl && editing ? "提示: 悬停图片可替换/调整主图/删除 · 可点击「+ 添加图片」追加" : ""}
         </div>

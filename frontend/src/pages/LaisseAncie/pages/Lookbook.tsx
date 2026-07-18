@@ -68,7 +68,7 @@ function CardItem({ product, cover, onClick, onEdit, onDownload, onDelete }: {
     <div onClick={onClick} className="group cursor-pointer rounded-2xl border border-gray-200 bg-white overflow-hidden hover:shadow-lg hover:border-primary-300 transition-all">
       <div className="relative aspect-[1/1] bg-gray-100 overflow-hidden">
         {cover
-          ? <img src={cover} alt={product.title} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
+          ? <img src={cover} alt={product.title} className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
           : <div className="w-full h-full flex items-center justify-center text-[12px] text-gray-400">暂无图片</div>}
         {/* 右上角操作工具栏:未确认时 hover 浮现;确认态常驻 */}
         {hasActions && (

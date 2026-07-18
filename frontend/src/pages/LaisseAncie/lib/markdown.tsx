@@ -84,7 +84,7 @@ function renderBlocks(nodes: Node[], acc: React.ReactNode[] = []): React.ReactNo
     switch (n.type) {
       case "paragraph": acc.push(<p key={acc.length} className="mb-2">{renderInline(n.children ?? [])}</p>); break;
       case "blockquote": acc.push(<blockquote key={acc.length} className="border-l-2 border-gray-300 pl-3 italic text-gray-600">{renderInline(n.children ?? [])}</blockquote>); break;
-      case "heading": acc.push(createElement(`h${n.level ?? 2}` as "h2", { key: acc.length, className: "font-semibold mt-3 mb-1" }, renderInline(n.children ?? []))); break;
+      case "heading": acc.push(createElement(`h${n.level ?? 2}` as "h2", { key: acc.length, className: "text-lg font-semibold mt-3 mb-1" }, renderInline(n.children ?? []))); break;
       case "ul": acc.push(<ul key={acc.length} className="list-disc pl-6 mb-2">{(n.children ?? []).map((li, i) => <li key={i}>{renderInline(li.children ?? [])}</li>)}</ul>); break;
       case "ol": acc.push(<ol key={acc.length} className="list-decimal pl-6 mb-2">{(n.children ?? []).map((li, i) => <li key={i}>{renderInline(li.children ?? [])}</li>)}</ol>); break;
     }
@@ -93,5 +93,5 @@ function renderBlocks(nodes: Node[], acc: React.ReactNode[] = []): React.ReactNo
 }
 
 export function Markdown({ source }: { source: string }) {
-  return <div className="prose-sm">{renderBlocks(tokenize(source))}</div>;
+  return <div className="prose-sm text-sm">{renderBlocks(tokenize(source))}</div>;
 }
