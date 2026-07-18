@@ -174,18 +174,19 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
     const brandColors = (knowledge?.brand?.colors || []).map((c: any) => c?.bg || c).filter(Boolean);
     const productTitles = (batch.products || []).map((p) => p.title).filter(Boolean).join(" + ");
     const product = {
-      mode: "outfit-styling",
+      id: crypto.randomUUID(),
+      mode: "outfit-styling" as const,
       title: name || "未命名穿搭",
       description: description.trim() || "",
+      seasons: [],
+      category: "穿搭",
       colors: brandColors,
-      images: [{ slot: "outfit-styling", label: productTitles ? `穿搭（${productTitles}）` : "穿搭效果", url: doneItem.url }],
-      sourceImages: [{
-        products: (batch.products || []).map((p) => ({ url: p.url, name: p.title })),
-        model: batch.model ? { url: batch.model.url, name: batch.model.name } : undefined,
-      }],
+      images: [{ slot: "outfit-styling", label: productTitles ? `穿搭（${productTitles}）` : "穿搭效果", url: doneItem.url ?? "" }],
       aiDraftRaw: JSON.stringify({ batchId: batch.batchId, name, description, products: batch.products, model: batch.model }),
-      status: "draft",
-      statusHistory: [{ id: crypto.randomUUID(), status: "draft", at: now, actor: "atelier" }],
+      status: "draft" as const,
+      statusHistory: [{ id: crypto.randomUUID(), status: "draft" as const, at: now, actor: "atelier" }],
+      createdAt: now,
+      updatedAt: now,
     };
     try {
       await store.upsertProduct(product);

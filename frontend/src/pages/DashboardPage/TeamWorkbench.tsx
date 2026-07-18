@@ -136,6 +136,7 @@ export default function TeamWorkbench() {
                   styles: resourceStore.styles,
                   illustrations: resourceStore.illustrations,
                   products: designStore.products,
+                  models: resourceStore.models,
                   brand,
                 }}
               />
@@ -151,6 +152,7 @@ export default function TeamWorkbench() {
                   styles: resourceStore.styles,
                   illustrations: resourceStore.illustrations,
                   products: designStore.products,
+                  models: resourceStore.models,
                   brand,
                 }}
               />
@@ -183,6 +185,7 @@ export default function TeamWorkbench() {
                   styles: resourceStore.styles,
                   illustrations: resourceStore.illustrations,
                   products: designStore.products,
+                  models: resourceStore.models,
                   brand,
                 }}
               />
