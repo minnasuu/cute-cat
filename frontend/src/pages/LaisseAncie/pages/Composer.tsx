@@ -970,12 +970,15 @@ export default function ComposerPage({
           setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, text: stripStageMarker(accumulated) } : m));
         },
         onDone: (finalText, rawAccum) => {
-          const newStage = parseStage(rawAccum) || "proposal";
+          // text-only 灵感扩散:纯文字方案产出后直接进入 presenting(终态展示),
+          // 让 stageAction 切换为「保存到 Lookbook」,避免永远停留在 proposal 反复生成。
+          const parsed = parseStage(rawAccum);
+          const newStage = parsed && parsed !== "proposal" ? parsed : "presenting";
           setMsgs((xs) => xs.map((m) => m.id === assistantId
             ? { ...m, text: stripStageMarker(finalText), timingMs: Date.now() - t0, startedAt: undefined }
             : m));
           setStage(newStage);
-          if (newStage === "planning" || newStage === "proposal") setPlanText(finalText.replace(STAGE_MARKER, "").trim());
+          setPlanText(finalText.replace(STAGE_MARKER, "").trim());
         },
       });
     } finally {
@@ -1185,7 +1188,9 @@ export default function ComposerPage({
   async function saveToLookbook() {
     const hasImage = images.length > 0;
     const hasHtml = !!(mode === "illustration" && illustOutputMode === "html" && illustHtml);
-    if (!hasImage && !hasHtml) return;
+    // text-only 灵感扩散:纯文字方案,无图片/HTML,只要有方案文本即可保存
+    const hasTextOnlyPlan = textOnlyModeRef.current && !!planText.trim();
+    if (!hasImage && !hasHtml && !hasTextOnlyPlan) return;
     const now = new Date().toISOString();
     const mainImage = images.find((im) => im.url);
     // 收集所有可访问的图片(结构化数组,供 Lookbook 直接展示缩略图)
@@ -1532,12 +1537,13 @@ export default function ComposerPage({
       return { label: "生成中", onClick: () => { }, loading: true, disabled: true, coins: 0 };
     }
     // 终稿就绪:保存到 Lookbook
+    // text-only 灵感扩散:纯文字方案无图片,落到 presenting 后也可保存
     if (stage === "presenting") {
       return {
         label: "保存到 Lookbook",
         onClick: () => void saveToLookbook(),
         loading: busy,
-        disabled: !images.some((im) => im.url),
+        disabled: textOnlyModeRef.current ? !planText.trim() : !images.some((im) => im.url),
         coins: 0,
       };
     }
