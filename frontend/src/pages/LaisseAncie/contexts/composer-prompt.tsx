@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ComposerPromptContext —— 跨 tab 传递「制作相似」的初始文案草稿 + 新会话信号。
  *

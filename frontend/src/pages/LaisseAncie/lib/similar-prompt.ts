@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * similar-prompt —— 把一张灵感的信息整理为「制作相似」的设计提示。
  *

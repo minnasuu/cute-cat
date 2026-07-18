@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * rec-form —— AI 材质+配色推荐编辑表单(从 Composer 抽出,供 ComposerPipeline 复用)。
  *

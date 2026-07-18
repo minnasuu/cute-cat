@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * HTTP-backed DesignStore — 团队作用域。
  * 路径:/api/teams/:teamId/products & /collections,teamId 来自 CurrentTeamContext。
@@ -27,10 +26,11 @@ export function DesignStoreProvider({ children }: { children: ReactNode }) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async (tid: string) => {
+  const refresh = useCallback(async () => {
+    if (!teamId) return;
     setLoading(true);
     try {
-      const api = teamApi(tid);
+      const api = teamApi(teamId);
       const [p, c] = await Promise.all([api.listProducts(), api.listCollections()]);
       setProducts(p);
       setCollections(c);
@@ -39,9 +39,9 @@ export function DesignStoreProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [teamId]);
 
-  useEffect(() => { if (teamId) void refresh(teamId); }, [refresh, teamId]);
+  useEffect(() => { void refresh(); }, [refresh, teamId]);
 
   const upsertProduct = useCallback(async (p: Product) => {
     if (!teamId) return;
@@ -51,13 +51,13 @@ export function DesignStoreProvider({ children }: { children: ReactNode }) {
     } else {
       await api.createProduct(p);
     }
-    await refresh(teamId);
+    await refresh();
   }, [teamId, products, refresh]);
 
   const removeProduct = useCallback(async (id: string) => {
     if (!teamId) return;
     await teamApi(teamId).deleteProduct(id);
-    await refresh(teamId);
+    await refresh();
   }, [teamId, refresh]);
 
   const upsertCollection = useCallback(async (c: Collection) => {
@@ -68,13 +68,13 @@ export function DesignStoreProvider({ children }: { children: ReactNode }) {
     } else {
       await api.createCollection(c);
     }
-    await refresh(teamId);
+    await refresh();
   }, [teamId, collections, refresh]);
 
   const removeCollection = useCallback(async (id: string) => {
     if (!teamId) return;
     await teamApi(teamId).deleteCollection(id);
-    await refresh(teamId);
+    await refresh();
   }, [teamId, refresh]);
 
   const value = useMemo<ContextValue>(() => ({

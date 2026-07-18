@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Fragment, createElement } from "react";
 
 interface Node {

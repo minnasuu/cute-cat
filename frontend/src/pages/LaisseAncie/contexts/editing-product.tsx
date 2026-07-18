@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * EditingProductContext —— 跨 tab 传递"正在编辑的产品"信号。
  *

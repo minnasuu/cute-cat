@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * useMaterialComboTour —— 材料组合新手引导流程控制器。
  *

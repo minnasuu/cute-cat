@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ComposerBrief —— 灵感扩散左栏「设计简报」。
  *
@@ -8,7 +7,7 @@
  *
  * 数据/管线仍由 ComposerPage 控制器提供;本组件只负责渲染 + 收集输入。
  */
-import { useEffect, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { useComposerPrompt } from "../contexts/composer-prompt";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { teamApi } from "../lib/api";
@@ -28,11 +27,11 @@ interface Props {
   knowledgeLoading?: boolean;
   // 简报状态
   designName: string;
-  setDesignName: (v: string) => void;
+  setDesignName: Dispatch<SetStateAction<string>>;
   references: RefImage[];
   setReferences: (upsert: (prev: RefImage[]) => RefImage[]) => void;
   description: string;
-  setDescription: (v: string) => void;
+  setDescription: Dispatch<SetStateAction<string>>;
   // 动作
   onGenerate: () => void;
   onNewSession: () => void;
@@ -245,14 +244,14 @@ export default function ComposerBrief({
         </div>
 
         {/* ④ 品牌色 / 调性(自动注入) */}
-        {knowledge?.brand?.colors?.length > 0 && (
+        {(knowledge?.brand?.colors?.length ?? 0) > 0 && (
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-[11px] text-gray-600">
             <div className="flex items-center justify-between">
               <span className="text-gray-500">品牌色 · 调性</span>
               <span className="text-gray-400">(自动注入 AI prompt)</span>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {(knowledge.brand.colors || []).map((c: any, i: number) => (
+              {(knowledge?.brand?.colors || []).map((c: any, i: number) => (
                 <span key={i} className="inline-flex items-center gap-1">
                   <span
                     className="w-3.5 h-3.5 rounded border border-gray-300"
@@ -263,7 +262,7 @@ export default function ComposerBrief({
                   </span>
                 </span>
               ))}
-              {(knowledge.brand.voice || []).map((v: string) => (
+              {(knowledge?.brand?.voice || []).map((v: string) => (
                 <span
                   key={v}
                   className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary-50 text-primary-700"

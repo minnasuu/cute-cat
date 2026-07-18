@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ComposerPipeline —— 灵感扩散右栏「生成流程」。
  *
@@ -67,8 +66,8 @@ export default function ComposerPipeline(props: Props) {
   const hasFinal = finals.length > 0;
 
   /** 修图:走预览模式,返回新图 URL */
-  const handleRegeneratePreview = (slot: string, label: string) => (instruction: string, onResult: (url: string) => void) => {
-    props.onRegeneratePreview(slot, label, instruction, onResult);
+  const handleRegeneratePreview = (slot: string, label: string) => (instruction: string, onResult?: (url: string) => void) => {
+    props.onRegeneratePreview(slot, label, instruction, onResult ?? (() => {}));
   };
 
   /** 预览模式下用户确认替换 */

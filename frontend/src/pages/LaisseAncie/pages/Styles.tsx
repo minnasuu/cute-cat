@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { teamApi } from "../lib/api";
 import { compressForUpload } from "../lib/images";

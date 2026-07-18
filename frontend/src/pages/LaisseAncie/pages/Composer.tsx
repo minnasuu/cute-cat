@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Composer —— Laisse Ancie 时尚设计主工作台(多阶段工作流)。
  *
@@ -19,11 +18,8 @@ import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useIsMobile } from "../../../hooks/use-media-query";
 import { teamApi } from "../lib/api";
 import { PromptBar } from "../components/PromptBar";
-import { apiClient } from "../lib/api";
 import { MODE_LABEL, type DesignMode, type Product, type MaterialRecommendation } from "../types/design";
-import type { VisualAsset } from "../types/visual-asset";
 import type { InspirationItem } from "../store/resource";
-import type { SkillArticle } from "../types/skill";
 import { buildKnowledgeInjectors, type KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { Markdown } from "../lib/markdown";
 import { parseDesignIntent, hasLetteringElement, categorizeCategory, type DesignIntent } from "../lib/design-intent";
@@ -40,7 +36,7 @@ import ComposerPipeline from "./ComposerPipeline";
 import TourOverlay, { type TourStep } from "../components/TourOverlay";
 import { useTourController } from "../controller/useTourController";
 
-type DesignStage =
+export type DesignStage =
   | "greeting"
   | "references"
   | "proposal"
@@ -343,7 +339,7 @@ export default function ComposerPage({
   knowledgeLoading?: boolean;
 }) {
   const params = useParams<{ mode: DesignMode }>();
-  const mode = modeProp ?? params.mode ?? "single";
+  const mode: DesignMode = (modeProp ?? params.mode ?? "single") as DesignMode;
   const store = useDesignStore();
   const skillStore = useSkillStore();
   const { teamId, navigateTab } = useCurrentTeam();
@@ -652,9 +648,9 @@ export default function ComposerPage({
     const lines = refs.map((it, i) => {
       const head2 = `### 灵感 ${i + 1} #[${it.id}] ${it.category ?? "general"}`;
       const idea = it.designApproach ? `- 设计思路:${it.designApproach}` : "- 设计思路:(暂无)";
-      const启发 = (it.inspiration ?? []).slice(0, 2);
+      const 启发 = (it.inspiration ?? []).slice(0, 2);
       const inspirations = 启发.length
-        ? `- 设计启发:\n${启发.map((s) => `  · ${s}`).join("\n")}`
+        ? `- 设计启发:\n${启发.map((s: string) => `  · ${s}`).join("\n")}`
         : "- 设计启发:(暂无)";
       return [head2, idea, inspirations].filter(Boolean).join("\n");
     });
@@ -890,7 +886,7 @@ export default function ComposerPage({
         throw new Error(`服务暂不可用 (HTTP ${res.status})${errText.slice(0, 80) ? `: ${errText.slice(0, 80)}` : ''}`);
       }
       const data = await res.json();
-      setImages((data.images || []).map((im) => ({ ...im, originalUrl: im.originalUrl ?? null })));
+      setImages((data.images || []).map((im: GeneratedImage) => ({ ...im, originalUrl: im.originalUrl ?? null })));
       setStage("presenting");
       const elapsed = Date.now() - t0;
       setMsgs((xs) => [...xs, {
@@ -1039,7 +1035,7 @@ export default function ComposerPage({
         throw new Error(`服务暂不可用 (HTTP ${res.status})${errText.slice(0, 80) ? `: ${errText.slice(0, 80)}` : ''}`);
       }
       const data = await res.json();
-      setImages((data.images || []).map((im) => ({ ...im, originalUrl: im.originalUrl ?? null })));
+      setImages((data.images || []).map((im: GeneratedImage) => ({ ...im, originalUrl: im.originalUrl ?? null })));
       setStage(isLineart ? "presenting-lineart" : "presenting");
       const elapsed = Date.now() - t0;
       const refHint = isLineart && topRefs.length
@@ -1109,7 +1105,7 @@ export default function ComposerPage({
       }
       const data = await res.json();
       // 线稿保留,最终图追加(final 槽)
-      setImages((prev) => [...prev.filter((im) => im.slot === "lineart"), ...(data.images || []).map((im) => ({ ...im, originalUrl: im.originalUrl ?? null }))]);
+      setImages((prev) => [...prev.filter((im) => im.slot === "lineart"), ...(data.images || []).map((im: GeneratedImage) => ({ ...im, originalUrl: im.originalUrl ?? null }))]);
       setStage("presenting");
       const elapsed = Date.now() - t0;
       setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `✨ 最终设计图已生成(${formatDuration(elapsed)})! 看看这套作品,有需要调整的地方随时告诉我。`, timingMs: elapsed }]);
@@ -1445,7 +1441,7 @@ export default function ComposerPage({
   // 左:设计简报(固定 header + 可滚动内容) 右:生成流程(企划→线稿→材质→终稿,纯展示)
   // 所有推进按钮统一收纳到左栏底部 GenerateButton,按 stage 切换动作,避免多按钮同时出现
   const stageAction = (() => {
-    if (mode === "illustration") return null;
+    if ((mode as DesignMode) === "illustration") return null;
     // 无方案:生成设计方案
     if (!planText && (stage === "greeting" || stage === "brainstorming" || stage === "references")) {
       return {
@@ -1535,6 +1531,7 @@ export default function ComposerPage({
           {/* 中间:可滚动内容 */}
           <div className="flex-1 overflow-y-auto min-h-0">
             <ComposerBrief
+              onGenerate={() => void generateFromBrief()}
               designName={designName} setDesignName={setDesignName}
               description={briefDescription} setDescription={setBriefDescription}
               references={briefRefs as any} setReferences={setBriefRefs as any}

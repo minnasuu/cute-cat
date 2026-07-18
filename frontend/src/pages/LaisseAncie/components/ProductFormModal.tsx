@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Lookbook 产品弹窗 —— 详情(view) + 内联编辑(edit) + 新建(create)。
  *
@@ -16,12 +15,12 @@
  * 其余字段经 /products (POST/PATCH) 持久化。工序状态由时间线/推进按钮单独管理,
  * 不纳入本表单(与表格行内 StatusSelect / 推进按钮的既有职责保持一致)。
  */
-import { useState, useMemo, useCallback } from "react";
+import { useState,  useCallback } from "react";
 import { Modal } from "./ui";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useDesignStore } from "../store/design";
 import { teamApi } from "../lib/api";
-import { MODE_LABEL, STATUS_LABEL, type DesignMode, type Product, type ProductStatus } from "../types/design";
+import { MODE_LABEL, STATUS_LABEL, STATUS_FLOW, type DesignMode, type Product, type ProductStatus } from "../types/design";
 import { MAIN_SLOT, LINEART_SLOT, RENDER_SLOT, slotRole } from "../lib/imageRole";
 
 const ALL_MODES: DesignMode[] = ["illustration", "single", "material-combo", "style-mutate", "occasion"];
@@ -565,7 +564,8 @@ function ProductView({ product, onClose, onSaved }: { product: Product; onClose:
 function collectImages(p: Product) {
   const imgs = Array.isArray(p.images) ? p.images.filter((im) => im && im.url).map((im) => ({ slot: im.slot, label: im.label, url: im.url, originalUrl: im.originalUrl })) : [];
   if (!imgs.some((im) => im.slot === MAIN_SLOT) && p.imageUrl) {
-    imgs.unshift({ slot: MAIN_SLOT, label: "主图", url: p.imageUrl });
+    // originalUrl 需与上面 map 结果保持一致的字段形态,遗留 imageUrl 无原图,置 null。
+    imgs.unshift({ slot: MAIN_SLOT, label: "主图", url: p.imageUrl, originalUrl: null });
   }
   const order = (s: string) => (s === MAIN_SLOT ? 0 : s === LINEART_SLOT ? 1 : 2);
   return [...imgs].sort((a, b) => order(a.slot) - order(b.slot));
@@ -758,8 +758,8 @@ function ProductForm({ initial, onCancel, onSave }: {
 
 // ── 共享小组件 ─────────────────────────────────────────────────
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">{children}</div>;
+function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={`text-[10px] uppercase tracking-wider text-gray-500 mb-1.5 ${className || ""}`.trim()}>{children}</div>;
 }
 
 function Detail({ k, v }: { k: string; v?: string }) {

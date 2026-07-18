@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * HTTP-backed SkillStore — 团队作用域技能知识库。
  * 路径:/api/teams/:teamId/skills,teamId 来自 CurrentTeamContext。
@@ -35,11 +34,12 @@ export function SkillStoreProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   let didInit = false;
 
-  const refresh = useCallback(async (tid: string) => {
+  const refresh = useCallback(async () => {
+    if (!teamId) return;
     setLoading(true);
     try {
-      const api = teamApi(tid);
-      let rows = await api.listSkills();
+      const api = teamApi(teamId);
+      let rows: SkillArticle[] = await api.listSkills();
       // 自愈式迁移：清除残留的旧 seed 行（skill-seed-1 … skill-seed-8），仅删除这些 id，不动用户自建文章。
       const stale = rows.filter((r) => LEGACY_SEED_IDS.has(r.id));
       if (stale.length > 0) {
@@ -62,10 +62,10 @@ export function SkillStoreProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [teamId]);
 
   useEffect(() => {
-    if (!didInit && teamId) { didInit = true; void refresh(teamId); }
+    if (!didInit && teamId) { didInit = true; void refresh(); }
   }, [refresh, teamId]);
 
   const upsert = useCallback(async (a: SkillArticle) => {
@@ -76,13 +76,13 @@ export function SkillStoreProvider({ children }: { children: ReactNode }) {
     } else {
       await api.createSkill(a);
     }
-    await refresh(teamId);
+    await refresh();
   }, [teamId, articles, refresh]);
 
   const remove = useCallback(async (id: string) => {
     if (!teamId) return;
     await teamApi(teamId).deleteSkill(id);
-    await refresh(teamId);
+    await refresh();
   }, [teamId, refresh]);
 
   const value = useMemo<ContextValue>(() => ({ articles, upsert, remove, refresh, loading }), [articles, upsert, remove, refresh, loading]);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * design-proposal —— 把 AI 生成的完整设计提案文本,解析为结构化 DesignSections。
  *

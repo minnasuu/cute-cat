@@ -1,4 +1,3 @@
-// @ts-nocheck
 import imageCompression from "browser-image-compression";
 
 export async function compressForUpload(

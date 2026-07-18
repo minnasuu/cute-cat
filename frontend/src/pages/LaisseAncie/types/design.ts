@@ -1,10 +1,11 @@
-// @ts-nocheck
 export type DesignMode = "illustration" | "single" | "material-combo" | "style-mutate" | "occasion";
 
 export const MODE_LABEL: Record<DesignMode, string> = {
+  illustration:  "插画作品",
   single:        "灵感扩散",
   "material-combo": "材料组合",
   "style-mutate": "款式裂变",
+  occasion:      "节日系列",
 };
 export const MODE_HINT: Record<DesignMode, string> = {
   illustration:  "为 Lookbook / 印花 / 主视觉 / 包装等输出的原创图形作品。可同步存入视觉资产库。",

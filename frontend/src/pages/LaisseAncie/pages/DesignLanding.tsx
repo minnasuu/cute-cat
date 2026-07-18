@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useNavigate } from "react-router-dom";
 import { MODE_HINT, MODE_LABEL, type DesignMode } from "../types/design";
 import { Card } from "../components/ui";

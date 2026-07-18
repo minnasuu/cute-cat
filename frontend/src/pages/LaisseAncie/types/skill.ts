@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Fashion AI Studio · 技能知识库 taxonomy（服装设计 4 阶段）。
  *
@@ -18,6 +17,8 @@ export interface SkillPhaseMeta {
   labelEn: string;
   hint: string;
   icon: string;
+  /** 阶段是否即将上线(暂不可新建/编辑) */
+  comingSoon?: boolean;
 }
 
 export const SKILL_PHASE_META: Record<SkillPhaseId, SkillPhaseMeta> = {

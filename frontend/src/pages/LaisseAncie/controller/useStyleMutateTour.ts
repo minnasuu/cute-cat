@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * useStyleMutateTour —— 款式裂变新手引导流程控制器。
  *

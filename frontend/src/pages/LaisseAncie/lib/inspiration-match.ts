@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * inspiration-match —— 根据用户输入,从灵感库中模糊匹配最相关的 Top-N 张灵感。
  *
@@ -10,7 +9,7 @@
  *      designApproach / inspiration / designHighlights / styleFeatures
  *   3. 场景命中(+4): 输入场景(夏日/春日/节日…)命中灵感 colors / inspiration
  *   4. 精确 token 命中(+1): 旧逻辑保留(评分>1 时每个命中小写 token +1)
- *   5. pinned 加权(+3) + useCount 同分排序: 保留
+ *   5. useCount 同分排序: 保留(见下方 .sort 降序)
  *
  * 输入可传原始字符串或已解析的 DesignIntent(避免重复 parse)。
  *
@@ -155,8 +154,7 @@ export function matchInspirations(
         }
       }
 
-      // ── 5. pinned 加权 ──
-      if (it.pinned) score += 3;
+      // ── 5. useCount 同分排序(见下方 .sort) ──
 
       return { ...it, score, matchDims: score > 0 ? dims : undefined };
     })

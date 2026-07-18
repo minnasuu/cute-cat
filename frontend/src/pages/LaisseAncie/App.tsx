@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * /laisse-ancie 子应用入口 —— 已合并到通用团队工作台(/dashboard)。
  *

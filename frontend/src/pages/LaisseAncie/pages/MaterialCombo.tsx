@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MaterialCombo ——「材料组合」工作台(矩阵扩展版)。
  *
@@ -64,7 +63,7 @@ type FabricRow =
     hex?: string;
     analysisText?: string;
   }
-  | { kind: "text"; id: string; description: string; analysisText?: string };
+  | { kind: "text"; id: string; name: string; description: string; url?: string; analysisText?: string };
 
 type StyleRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string; analysisText?: string }
@@ -91,6 +90,14 @@ interface FlatFabricCard {
 interface FabricPick { kind: "fabric"; matId: string; colorIdx: number; url: string; name: string; hex?: string }
 interface StylePick { kind: "style"; styleId: string; url: string; name: string }
 type Pick = FabricPick | StylePick;
+
+// 轮询/提交返回中,服务端会把每张面料/款式的分析文本回填到 fabrics[i].text / styles[i].text
+// (见文件头注释:上传/库面料 → {url,name,text})。MaterialComboBatch 基础类型未含该字段,
+// 这里派生一个带 text? 的视图类型,供回写分析文本到槽位时安全访问。
+type BatchWithText = Omit<MaterialComboBatch, "fabrics" | "styles"> & {
+  fabrics: (MaterialComboBatch["fabrics"][number] & { text?: string })[];
+  styles: (MaterialComboBatch["styles"][number] & { text?: string })[];
+};
 
 export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLoading }: Props) {
   const { teamId, navigateTab } = useCurrentTeam();
@@ -170,6 +177,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   }, []);
 
   const startPolling = useCallback((batchId: string) => {
+    if (!teamId) return;
     stopPolling();
     pollAttempts.current = 0;
     resetRetries();
@@ -197,7 +205,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           return;
         }
         if (!res.ok) return; // 网络抖动继续轮询
-        const data: MaterialComboBatch = await res.json();
+        const data: BatchWithText = await res.json();
         // 回写分析文本到对应槽位(按位置对齐,含库位)
         setFabricRows((prev) => prev.map((r, i) => data.fabrics[i]?.text != null ? { ...r, analysisText: data.fabrics[i].text } : r));
         setStyleRows((prev) => prev.map((r, i) => data.styles[i]?.text != null ? { ...r, analysisText: data.styles[i].text } : r));
@@ -242,8 +250,8 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   ) {
     if (!list || !list.length) return;
     const incoming = Array.from(list);
-    const setter =
-      which === "fabric" ? setFabricRows : setStyleRows;
+    const setter = (which === "fabric" ? setFabricRows : setStyleRows) as unknown as
+      (updater: (prev: FabricRow[] | StyleRow[]) => (FabricRow | StyleRow)[]) => void;
     const limit =
       which === "fabric" ? fabricsLimit : stylesLimit;
     const label = which === "fabric" ? "面料" : "款式";
@@ -291,8 +299,8 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   }
 
   function removeRow(which: "fabric" | "style", id: string) {
-    const setter =
-      which === "fabric" ? setFabricRows : setStyleRows;
+    const setter = (which === "fabric" ? setFabricRows : setStyleRows) as unknown as
+      (updater: (prev: FabricRow[] | StyleRow[]) => (FabricRow | StyleRow)[]) => void;
     setter((prev) => {
       const item = prev.find((r) => r.id === id);
       if (item?.kind === "upload") URL.revokeObjectURL(item.preview);
@@ -353,7 +361,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           `请求失败 (HTTP ${res.status})${t ? `: ${t.slice(0, 120)}` : ""}`,
         );
       }
-      const data: MaterialComboBatch = await res.json();
+      const data: BatchWithText = await res.json();
       setBatch(data);
       if (data.fabrics?.length) {
         setFabricRows((prev) =>
@@ -387,7 +395,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   // 重试计数清零 → 形成「轮询发现 error → 自动重试 → 重启轮询+清零重试 → 再发现 error…」
   // 的无限循环,表现为格子一直「生成中…/待处理」且大模型后台收不到稳定请求。
   async function retryCell(fi: number, si: number, isAutoRetry = false) {
-    if (!batch) return;
+    if (!batch || !teamId) return;
     // optimistic:本格打回 pending,批次回到 running
     setBatch((b) => {
       if (!b) return b;
@@ -486,7 +494,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
   const hasSuccess = !!batch && batch.completed > 0;
   // 叉乘模式扁平化:按 款式(si) 分组、再按 面料(fi) 展开,每行 = 款式 × 面料 = 结果
-  const sortedCrossItems = batch && batch.mode !== "color-mix"
+  const sortedCrossItems = batch && mode !== "color-mix"
     ? batch.items.slice().sort((a, b) => a.si - b.si || a.fi - b.fi)
     : [];
 
@@ -728,6 +736,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                           .map((d) => ({
                             kind: "text" as const,
                             id: crypto.randomUUID(),
+                            name: d,
                             description: d,
                           }));
                         setFabricRows((prev) => [...prev, ...newRows]);
@@ -886,6 +895,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
               {hasSuccess && !batchRunningOrAnalyzing && !submitting ? (
                 <GenerateButton
                   label={`保存到 Lookbook (${batch!.completed}/${batch!.total})`}
+                  loading={false}
                   estimatedCoins={0}
                   userCoins={user?.coins}
                   onClick={saveToLookbook}
@@ -936,7 +946,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           {batch &&
             batch.fabrics.length > 0 &&
             batch.styles.length > 0 &&
-            (batch.mode === "color-mix" ? (
+            (mode === "color-mix" ? (
               // 拼色模式:单张大图 + 底部面料缩略条(不标「拼色」标签)
               <ColorMixResult
                 batch={batch}

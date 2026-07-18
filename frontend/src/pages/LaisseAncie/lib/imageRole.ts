@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Lookbook 图片角色(slot)定义与辅助函数。
  *

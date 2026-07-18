@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * HTTP-backed visual asset registry — 团队作用域。
  * 路径:/api/teams/:teamId/assets,teamId 来自 CurrentTeamContext。
@@ -25,10 +24,11 @@ export function VisualAssetStoreProvider({ children }: { children: ReactNode }) 
   const [loading, setLoading] = useState(true);
   let didInit = false;
 
-  const refresh = useCallback(async (tid: string) => {
+  const refresh = useCallback(async () => {
+    if (!teamId) return;
     setLoading(true);
     try {
-      const rows = await teamApi(tid).listAssets();
+      const rows = await teamApi(teamId).listAssets();
       // normalize old schema: {title, description, src, kind, tags?, seasons?, pinned?, created_at}
       const normalized = rows.map((r: any) => ({
         id: r.id,
@@ -49,10 +49,10 @@ export function VisualAssetStoreProvider({ children }: { children: ReactNode }) 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [teamId]);
 
   useEffect(() => {
-    if (!didInit && teamId) { didInit = true; void refresh(teamId); }
+    if (!didInit && teamId) { didInit = true; void refresh(); }
   }, [refresh, teamId]);
 
   const upsert = useCallback(async (a: VisualAsset) => {
@@ -63,13 +63,13 @@ export function VisualAssetStoreProvider({ children }: { children: ReactNode }) 
     } else {
       await api.createAsset(a);
     }
-    await refresh(teamId);
+    await refresh();
   }, [teamId, assets, refresh]);
 
   const remove = useCallback(async (id: string) => {
     if (!teamId) return;
     await teamApi(teamId).deleteAsset(id);
-    await refresh(teamId);
+    await refresh();
   }, [teamId, refresh]);
 
   const value = useMemo<ContextValue>(() => ({ assets, upsert, remove, refresh, loading }), [assets, upsert, remove, refresh, loading]);

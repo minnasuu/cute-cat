@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * StyleMutate ——「款式裂变」工作台。
  *
@@ -288,7 +287,7 @@ type StyleRow =
 type FabricRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string }
   | { kind: "library-fabric"; id: string; matId: string; colorIdx: number; name: string; url: string; hex?: string }
-  | { kind: "text"; id: string; description: string }
+  | { kind: "text"; id: string; description: string; name: string }
   | null;
 
 type MutationKey = string; // `${axisId}::${optionId}`
@@ -343,6 +342,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     setSelected,
     setCustomMutations,
     setBatch,
+    // TourArgs 声明了 setSelectedMutations,但本页 selectedMutations 为派生值(无对应 setter);
+    // 控制器内部从未使用它,这里传 no-op 以满足接口契约。
+    setSelectedMutations: () => {},
   });
 
   const { resetRetries, tryAutoRetry } = useImageRetry({
@@ -1101,7 +1103,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   <textarea
                     value={fabricTextInput}
                     onChange={(e) => setFabricTextInput(e.target.value)}
-                    onBlur={() => { if (fabricTextInput.trim()) setFabric({ kind: "text", id: crypto.randomUUID(), description: fabricTextInput.trim() }); }}
+                    onBlur={() => { const d = fabricTextInput.trim(); if (d) setFabric({ kind: "text", id: crypto.randomUUID(), description: d, name: d }); }}
                     placeholder="或描述面料文字,如:纯白色纯棉面料、真丝双绉、藏青色斜纹棉…"
                     rows={2}
                     className="w-full mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] placeholder:text-gray-400 focus:outline-none focus:border-primary-400 resize-none"
@@ -1151,6 +1153,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
             {hasSuccess && !batchRunning && !submitting ? (
               <GenerateButton
                 label={`保存到 Lookbook (${visibleCompleted}/${visibleItems.length})`}
+                loading={false}
                 estimatedCoins={0}
                 userCoins={user?.coins}
                 onClick={saveToLookbook}

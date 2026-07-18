@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * useTourController —— 灵感扩散新手引导流程控制器。
  *
@@ -52,7 +51,7 @@ interface TourControllerArgs {
   setStage: (s: DesignStage | ((cur: DesignStage) => DesignStage)) => void;
   setPlanText: (s: string) => void;
   setImages: (fn: (prev: GeneratedImage[]) => GeneratedImage[]) => void;
-  setRecommendation: (r: MaterialRecommendation) => void;
+  setRecommendation: (r: MaterialRecommendation | null) => void;
   setDesignName: (v: string) => void;
   setDescription: (v: string) => void;
 }
@@ -61,10 +60,10 @@ type DesignModeLike = string;
 
 export function useTourController(args: TourControllerArgs) {
   const {
-    mode, setStage, setPlanText, setImages, setRecommendation,
+    setStage, setPlanText, setImages, setRecommendation,
     setDesignName, setDescription,
   } = args;
-  const { user, updateUser } = useAuth();
+  const { updateUser } = useAuth();
 
   const [tourActive, setTourActive] = useState(false);
   const [tourStep, setTourStep] = useState(0);

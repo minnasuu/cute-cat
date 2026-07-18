@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ResourceStore —— 团队作用域「资源」(灵感 + 材料)。
  * 路径:/api/teams/:teamId/inspirations 与 /api/teams/:teamId/materials,

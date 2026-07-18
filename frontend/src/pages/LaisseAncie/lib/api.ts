@@ -78,8 +78,8 @@ export function teamApi(teamId: string) {
     // assets(通用资产)
     listAssets: (kind?: string) =>
       _apiClient.get(pre(kind && kind !== 'all' ? `/assets?kind=${encodeURIComponent(kind)}` : '/assets')),
-    createAsset: (body: Record<string, unknown>) => _apiClient.post(pre('/assets'), body),
-    updateAsset: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/assets/${id}`), body),
+    createAsset: (body: object) => _apiClient.post(pre('/assets'), body),
+    updateAsset: (id: string, body: object) => _apiClient.patch(pre(`/assets/${id}`), body),
     deleteAsset: (id: string) => _apiClient.delete(pre(`/assets/${id}`)),
 
     // inspirations
@@ -151,8 +151,8 @@ export function teamApi(teamId: string) {
     // skills
     listSkills: (category?: string) =>
       _apiClient.get(pre(category && category !== 'all' ? `/skills?category=${encodeURIComponent(category)}` : '/skills')),
-    createSkill: (body: Record<string, unknown>) => _apiClient.post(pre('/skills'), body),
-    updateSkill: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/skills/${id}`), body),
+    createSkill: (body: object) => _apiClient.post(pre('/skills'), body),
+    updateSkill: (id: string, body: object) => _apiClient.patch(pre(`/skills/${id}`), body),
     deleteSkill: (id: string) => _apiClient.delete(pre(`/skills/${id}`)),
 
     // products(设计作品)
@@ -171,15 +171,15 @@ export function teamApi(teamId: string) {
       }),
     // 自由切换到任意合法状态,返回更新后的产品
     setProductStatus: (id: string, body: any) => _apiClient.post(pre(`/products/${id}/status`), body),
-    createProduct: (body: Record<string, unknown>) => _apiClient.post(pre('/products'), body),
-    updateProduct: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/products/${id}`), body),
-    advanceProduct: (id: string, body: Record<string, unknown>) => _apiClient.post(pre(`/products/${id}/advance`), body),
+    createProduct: (body: object) => _apiClient.post(pre('/products'), body),
+    updateProduct: (id: string, body: object) => _apiClient.patch(pre(`/products/${id}`), body),
+    advanceProduct: (id: string, body: object) => _apiClient.post(pre(`/products/${id}/advance`), body),
     deleteProduct: (id: string) => _apiClient.delete(pre(`/products/${id}`)),
 
     // collections
     listCollections: () => _apiClient.get(pre('/collections')),
-    createCollection: (body: Record<string, unknown>) => _apiClient.post(pre('/collections'), body),
-    updateCollection: (id: string, body: Record<string, unknown>) => _apiClient.patch(pre(`/collections/${id}`), body),
+    createCollection: (body: object) => _apiClient.post(pre('/collections'), body),
+    updateCollection: (id: string, body: object) => _apiClient.patch(pre(`/collections/${id}`), body),
     deleteCollection: (id: string) => _apiClient.delete(pre(`/collections/${id}`)),
 
     // 材料组合批次(m×n 矩阵白底效果图)

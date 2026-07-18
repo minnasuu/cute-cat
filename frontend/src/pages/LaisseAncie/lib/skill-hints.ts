@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { SkillArticle } from "../types/skill";
 import { SKILL_PHASE_META } from "../types/skill";
 

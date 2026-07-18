@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect } from "react";
 import { Textarea, Button } from "./ui";
 import { useComposerPrompt } from "../contexts/composer-prompt";

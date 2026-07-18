@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * StatusPicker —— 自定义状态选择器(彩色药丸 + 弹出列表),替代原生 <select>。
  *

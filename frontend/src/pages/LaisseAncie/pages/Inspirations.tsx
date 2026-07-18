@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compressForUpload } from "../lib/images";
 import { buildSimilarPrompt } from "../lib/similar-prompt";
@@ -188,7 +187,7 @@ export default function InspinationsPage() {
         setTotal(data.total);
       } catch { /* 轮询失败静默 */ }
       // 还有 pending 就继续
-      const stillPending = (data?.items ?? []).some((it) => it.analysisStatus === 'pending');
+      const stillPending = (data?.items ?? []).some((it: InspirationItem) => it.analysisStatus === 'pending');
       if (stillPending && !cancelled && attempts < maxAttempts) {
         setTimeout(tick, 3000);
       }

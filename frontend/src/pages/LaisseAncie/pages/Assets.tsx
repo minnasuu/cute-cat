@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AssetsPage —— 品牌信息(原「品牌资产」)。
  *

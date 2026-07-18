@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * TourOverlay —— 新手引导 spotlight + tooltip 浮层。
  *

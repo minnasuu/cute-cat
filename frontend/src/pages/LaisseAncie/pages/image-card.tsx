@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * image-card —— 设计图稿渲染原语(从 Composer 抽出,供设计简报/生成流程双栏复用)。
  *

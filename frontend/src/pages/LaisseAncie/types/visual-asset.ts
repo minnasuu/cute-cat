@@ -1,4 +1,3 @@
-// @ts-nocheck
 export type VisualAssetKind =
   | "print" | "illustration" | "keyvisual" | "template" | "lookbook" | "packaging";
 

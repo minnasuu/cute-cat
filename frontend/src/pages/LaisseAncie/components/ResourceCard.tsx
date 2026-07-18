@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ResourceCard —— 款式 / 插画 / 面料等「单图资源」的统一卡片。
  *
