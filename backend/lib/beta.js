@@ -48,8 +48,13 @@ async function createBetaCodes(n, note = '', createdBy = '') {
         saved = true;
         break;
       } catch (err) {
-        // 唯一冲突 → 再试一次
-        if (!String(err.message).includes('Unique') && !String(err.message).includes('code')) throw err;
+        // 真正唯一冲突(PostgreSQL P2002 / 表级 Unique 约束)才重试;
+        // 其余错误(表不存在、字段缺失等)必须抛出,避免静默返回 0 个码
+        const msg = String(err.message);
+        const isUnique = err.code === 'P2002'
+          || /Unique constraint/i.test(msg)
+          || /duplicate key/i.test(msg);
+        if (!isUnique) throw err;
       }
     }
     if (!saved) {
