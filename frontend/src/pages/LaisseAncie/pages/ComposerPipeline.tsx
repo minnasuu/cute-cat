@@ -8,7 +8,7 @@
  * 修改功能绑定到右侧对应步骤,步骤生成成功后即可修改;步骤确认后隐藏该步骤修改 UI。
  * 修图走预览模式:先生成预览图,用户确认后再替换。
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Markdown } from "../lib/markdown";
 import { ImageCell, LiveElapsed, type GeneratedImage } from "./image-card";
 import { RecForm } from "./rec-form";
@@ -27,6 +27,9 @@ interface Props {
   recommendation: MaterialRecommendation | null;
   generating: boolean;
   expressMode: boolean;
+  // 多轮细化(通用 send,按当前 stage 路由到对应步骤)
+  onRefine: (text: string) => void;
+  refineBusy: boolean;
   // 修图:走预览模式(返回新图 URL 待用户确认后替换)
   onRegeneratePreview: (slot: string, label: string, instruction: string, onResult: (url: string) => void) => void;
   // 确认替换预览图
@@ -59,6 +62,9 @@ export default function ComposerPipeline(props: Props) {
   const { stage, planText, images, recommendation, generating, expressMode } = props;
   const currentStep = activeStep(stage);
   const [, setTick] = useState(0);
+  // 记录当前正在发送细化请求的步骤,用于在该步骤内体现加载态
+  const [refiningKey, setRefiningKey] = useState<string | null>(null);
+  useEffect(() => { if (!props.refineBusy) setRefiningKey(null); }, [props.refineBusy]);
 
   const lineart = images.filter((im) => im.slot === "lineart" && im.url && !im.error);
   const finals = images.filter((im) => im.slot === "final" && im.url && !im.error);
@@ -120,6 +126,16 @@ export default function ComposerPipeline(props: Props) {
             ) : generating && currentStep === 0 ? (
               <StepSpinner label="正在生成企划方案" />
             ) : null}
+            {planText && (
+              <StepRefine
+                stepKey="proposal"
+                onRefine={props.onRefine}
+                refineBusy={props.refineBusy}
+                refiningKey={refiningKey}
+                setRefiningKey={setRefiningKey}
+                placeholder="对方案提出修改(回车发送)…"
+              />
+            )}
           </StepCard>
         )}
 
@@ -143,6 +159,16 @@ export default function ComposerPipeline(props: Props) {
             ) : (
               <div className="text-[12px] text-gray-500">线稿生成后在此预览</div>
             )}
+            {hasLineart && (
+              <StepRefine
+                stepKey="lineart"
+                onRefine={props.onRefine}
+                refineBusy={props.refineBusy}
+                refiningKey={refiningKey}
+                setRefiningKey={setRefiningKey}
+                placeholder="对线稿提出修改(回车发送)…"
+              />
+            )}
           </StepCard>
         )}
 
@@ -156,6 +182,14 @@ export default function ComposerPipeline(props: Props) {
               loading={!recommendation}
               disabled={generating}
               readOnly={currentStep > 2}
+            />
+            <StepRefine
+              stepKey="material"
+              onRefine={props.onRefine}
+              refineBusy={props.refineBusy}
+              refiningKey={refiningKey}
+              setRefiningKey={setRefiningKey}
+              placeholder="对材质提出修改(回车发送)…"
             />
           </StepCard>
         )}
@@ -181,6 +215,16 @@ export default function ComposerPipeline(props: Props) {
               <div className="text-[12px] text-gray-500">极速模式成图生成中…</div>
             ) : (
               <div className="text-[12px] text-gray-500">确认材质后在此预览终稿</div>
+            )}
+            {hasFinal && (
+              <StepRefine
+                stepKey="final"
+                onRefine={props.onRefine}
+                refineBusy={props.refineBusy}
+                refiningKey={refiningKey}
+                setRefiningKey={setRefiningKey}
+                placeholder="对成图提出修改(回车发送)…"
+              />
             )}
           </StepCard>
         )}
@@ -210,6 +254,56 @@ function StepSpinner({ label }: { label: string }) {
     <div className="flex items-center gap-3 text-[12px] text-gray-500 py-4 justify-center">
       <div className="w-6 h-6 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
       <span>{label}…</span>
+    </div>
+  );
+}
+
+/** 步骤内联修改输入:把细化请求收进对应步骤,并在该步骤内体现加载态 */
+function StepRefine({
+  stepKey, onRefine, refineBusy, refiningKey, setRefiningKey, placeholder,
+}: {
+  stepKey: string;
+  onRefine: (text: string) => void;
+  refineBusy: boolean;
+  refiningKey: string | null;
+  setRefiningKey: (k: string | null) => void;
+  placeholder: string;
+}) {
+  const [text, setText] = useState("");
+  const busy = refineBusy && refiningKey === stepKey;
+
+  function submit() {
+    const v = text.trim();
+    if (!v || refineBusy) return;
+    setRefiningKey(stepKey);
+    onRefine(v);
+    setText("");
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+      <div className="flex gap-2 items-end">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={1}
+          placeholder={placeholder}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          className="w-full text-[11px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500 bg-white resize-none flex-1"
+        />
+        <button
+          onClick={submit}
+          disabled={busy || !text.trim()}
+          className="text-[11px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg font-medium shrink-0"
+        >
+          {busy ? "发送中…" : "发送"}
+        </button>
+      </div>
     </div>
   );
 }

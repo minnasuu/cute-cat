@@ -1537,9 +1537,7 @@ export default function ComposerPage({
               references={briefRefs as any} setReferences={setBriefRefs as any}
               knowledge={knowledge} brandLoading={brandLoading} knowledgeLoading={knowledgeLoading}
               generating={generating}
-              onRefine={(t) => void send(t)}
               onNewSession={resetSession}
-              refineBusy={busy}
               onStartTour={tour.startTour}
             />
           </div>
@@ -1567,6 +1565,8 @@ export default function ComposerPage({
           recommendation={recommendation}
           generating={generating}
           expressMode={expressMode}
+          onRefine={(t) => void send(t)}
+          refineBusy={busy}
           onRegeneratePreview={(slot, label, inst, onResult) => void regenerateOne(slot, label, inst, onResult)}
           onConfirmReplace={(slot, url) => confirmReplace(slot, url)}
           onRecommendationChange={setRecommendation}

@@ -36,9 +36,6 @@ interface Props {
   onGenerate: () => void;
   onNewSession: () => void;
   generating: boolean;
-  // 多轮细化(走原 send)
-  onRefine: (text: string) => void;
-  refineBusy: boolean;
   // 新手引导
   onStartTour?: () => void;
 }
@@ -49,21 +46,13 @@ const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1 block"
 export default function ComposerBrief({
   knowledge, brandLoading, knowledgeLoading,
   designName, setDesignName, references, setReferences, description, setDescription,
-  onGenerate, onNewSession, generating, onRefine, refineBusy, onStartTour,
+  onGenerate, onNewSession, generating, onStartTour,
 }: Props) {
   const { teamId } = useCurrentTeam();
   const { draftPrompt, clearDraftPrompt } = useComposerPrompt();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [draftRefine, setDraftRefine] = useState("");
-
-  function sendRefine() {
-    const v = draftRefine.trim();
-    if (!v || refineBusy) return;
-    onRefine(v);
-    setDraftRefine("");
-  }
 
   // 「制作相似」草稿 → 填入描述(仅首次)
   useEffect(() => {
@@ -122,7 +111,7 @@ export default function ComposerBrief({
           </h1>
           <button
             onClick={onNewSession}
-            disabled={generating || refineBusy}
+            disabled={generating}
             className="h-7 text-[11px] font-mono border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 hover:border-primary-500 disabled:opacity-40 transition-colors"
           >
             + 新会话
@@ -275,32 +264,6 @@ export default function ComposerBrief({
         )}
 
 
-      </div>
-
-      {/* 多轮细化(保留对话入口,但收起在简报下方) */}
-      <div className="shrink-0 border-t border-gray-200 bg-white/90 backdrop-blur p-3">
-        <div className="flex gap-2 items-end max-w-2xl">
-          <textarea
-            value={draftRefine}
-            onChange={(e) => setDraftRefine(e.target.value)}
-            rows={1}
-            placeholder="对方案/线稿/成图提出修改(回车发送)"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendRefine();
-              }
-            }}
-            className={`${inputCls} resize-none flex-1`}
-          />
-          <button
-            onClick={sendRefine}
-            disabled={refineBusy || !draftRefine.trim()}
-            className="text-[12px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg font-medium shrink-0"
-          >
-            {refineBusy ? "…" : "发送"}
-          </button>
-        </div>
       </div>
 
       {/* 灵感库选择弹窗 */}

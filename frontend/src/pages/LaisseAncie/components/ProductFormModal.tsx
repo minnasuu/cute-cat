@@ -263,7 +263,7 @@ function ProductView({ product, onClose, onSaved }: { product: Product; onClose:
       : undefined;
     const hasSrc = !!(srcContext?.style || srcContext?.fabric);
     return (
-      <figure className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group relative">
+      <figure className="h-full rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group relative">
         <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-cover" /></div>
         {/* 主图角标 */}
         {im.slot === MAIN_SLOT && (
@@ -271,7 +271,7 @@ function ProductView({ product, onClose, onSaved }: { product: Product; onClose:
         )}
         {/* 编辑态:操作按钮叠加层 */}
         {editing && (
-          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/60 to-transparent px-2 pt-3 pb-1 flex flex-wrap items-center justify-between gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/60 to-transparent px-2 pt-3 pb-2 flex flex-wrap items-center justify-between gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <span className="text-[10px] text-white font-medium truncate min-w-0 drop-shadow">{im.label}</span>
             <span className="flex items-center gap-1">
               {canPromote && (
@@ -315,7 +315,7 @@ function ProductView({ product, onClose, onSaved }: { product: Product; onClose:
   return (
     <div className="flex flex-col h-[65vh]">
       {/* ── 主体:左图 / 右信息 双栏 ── */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[260px_1fr] gap-5">
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[460px_1fr] gap-5">
         {/* 左侧:图片面板(粘性顶栏 + 滚动内容) */}
         <aside className="min-h-0 flex flex-col border-r border-gray-100 pr-3">
           <div className="flex items-center justify-between mb-2 shrink-0">
