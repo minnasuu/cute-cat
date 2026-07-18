@@ -18,6 +18,7 @@ import { useResourceStore } from "../store/resource";
 import { useAuth } from "../../../contexts/AuthContext";
 import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateButton";
 import { Modal } from "../components/ui";
+import { showToast } from "../../../components/Toast";
 import { pickProductCover } from "../lib/product-cover";
 import type { KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import type { Product } from "../types/design";
@@ -165,35 +166,36 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
     }
   }
 
-  // ── 保存到 Lookbook ──
-  async function saveToLookbook() {
+  // ── 保存穿搭图到参与单品的 outfits 字段 ──
+  async function saveToProductOutfits() {
     if (!batch) return;
     const doneItem = batch.items.find((it) => it.status === "done" && it.url);
     if (!doneItem) { setError("暂无成功生成的图片"); return; }
+    const productIds = selectedProducts.map((p) => p.id);
+    if (!productIds.length) { setError("未选择单品"); return; }
     const now = new Date().toISOString();
-    const brandColors = (knowledge?.brand?.colors || []).map((c: any) => c?.bg || c).filter(Boolean);
-    const productTitles = (batch.products || []).map((p) => p.title).filter(Boolean).join(" + ");
-    const product = {
+    const outfit = {
       id: crypto.randomUUID(),
-      mode: "outfit-styling" as const,
-      title: name || "未命名穿搭",
-      description: description.trim() || "",
-      seasons: [],
-      category: "穿搭",
-      colors: brandColors,
-      images: [{ slot: "outfit-styling", label: productTitles ? `穿搭（${productTitles}）` : "穿搭效果", url: doneItem.url ?? "" }],
-      aiDraftRaw: JSON.stringify({ batchId: batch.batchId, name, description, products: batch.products, model: batch.model }),
-      status: "draft" as const,
-      statusHistory: [{ id: crypto.randomUUID(), status: "draft" as const, at: now, actor: "atelier" }],
+      url: doneItem.url ?? "",
+      originalUrl: doneItem.originalUrl ?? null,
+      model: batch.model ? { id: batch.model.id, name: batch.model.name, url: batch.model.url } : { id: "", name: "模特", url: selectedModel?.imageUrl ?? "" },
+      products: selectedProducts.map((p) => ({ id: p.id, title: p.title || "单品", url: pickProductCover(p) || p.imageUrl || "" })),
+      note: description.trim() || undefined,
       createdAt: now,
-      updatedAt: now,
     };
     try {
-      await store.upsertProduct(product);
+      // 将同一个穿搭图追加到每一个参与单品的 outfits 字段
+      await store.addOutfitToProducts(productIds, outfit);
       stopPolling();
       setBatch(null);
       setSubmitting(false);
-      navigateTab("lookbook");
+      // 清空工作台,回到新一轮可填写状态
+      setSelectedProducts([]);
+      setSelectedModel(null);
+      setName("");
+      setDescription("");
+      setError(null);
+      showToast(`已保存到 ${productIds.length} 个单品的穿搭图`, "success");
     } catch (e: any) {
       setError(`保存失败: ${e?.message || ""}`);
     }
@@ -303,7 +305,7 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
         {/* 底部行动按钮 */}
         <div className="shrink-0 border-t border-gray-200 bg-white px-5 pt-3 pb-4">
           {hasSuccess && !batchRunningOrAnalyzing && !submitting ? (
-            <GenerateButton label={`保存到 Lookbook`} loading={false} estimatedCoins={0} userCoins={user?.coins} onClick={saveToLookbook} />
+            <GenerateButton label={`保存到单品(${selectedProducts.length})`} loading={false} estimatedCoins={0} userCoins={user?.coins} onClick={saveToProductOutfits} />
           ) : (
             <GenerateButton label="立即生成" loading={submitting || batchRunningOrAnalyzing} disabled={!canSubmit}
               estimatedCoins={AI_COST_PER_IMAGE} userCoins={user?.coins} onClick={submit} />

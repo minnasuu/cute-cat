@@ -430,14 +430,15 @@ export default function ComposerPage({
     }
   }, []);
 
-  // 新手引导自动触发:仅 single 模式 + 未完成过 + 开场白已渲染
-  useEffect(() => {
-    if (tour.shouldRegister && msgs.length > 0 && stage === "greeting" && !busy) {
-      // 等一帧入场,让开场白先渲染
-      const t = setTimeout(() => tour.startTour(), 300);
-      return () => clearTimeout(t);
-    }
-  }, [tour.shouldRegister, msgs.length, stage, busy]);
+  // 新手引导已隐藏(不自动触发);如需恢复可取消下方注释并重新传入 onStartTour
+  // // 新手引导自动触发:仅 single 模式 + 未完成过 + 开场白已渲染
+  // useEffect(() => {
+  //   if (tour.shouldRegister && msgs.length > 0 && stage === "greeting" && !busy) {
+  //     // 等一帧入场,让开场白先渲染
+  //     const t = setTimeout(() => tour.startTour(), 300);
+  //     return () => clearTimeout(t);
+  //   }
+  // }, [tour.shouldRegister, msgs.length, stage, busy]);
 
   // ── 编辑模式:从 Lookbook 跳转过来时,回填产品方案到 chat 上下文 ──
   const editInitializedRef = useRef(false);
@@ -1591,7 +1592,6 @@ export default function ComposerPage({
               knowledge={knowledge} brandLoading={brandLoading} knowledgeLoading={knowledgeLoading}
               generating={generating}
               onNewSession={resetSession}
-              onStartTour={tour.startTour}
             />
           </div>
 

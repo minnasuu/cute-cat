@@ -75,6 +75,20 @@ export interface SourceRef {
  *  style/fabric 缺省 = 该项为上传(非库),弹窗里不展示。 */
 export type ImageSourceImages = { style?: SourceRef; fabric?: SourceRef };
 
+/** 产品穿搭效果图一项:「穿搭效果」生成后追加到参与单品的 outfits 字段 */
+export interface ProductOutfitEntry {
+  id: string;
+  url: string;
+  originalUrl?: string | null;
+  /** 选中的模特(品牌/系统模特库) */
+  model: { id: string; name: string; url: string };
+  /** 参与该穿搭的单品列表(含自身) */
+  products: { id: string; title: string; url: string }[];
+  /** 备注(生成时用户填写的描述) */
+  note?: string;
+  createdAt: string;
+}
+
 /** 面料色卡条目(colorImages 一项);同一面料多个颜色各一张图 */
 export interface ColorImageEntry {
   hex?: string;
@@ -176,6 +190,8 @@ export interface Product {
   /** 生成图来源(与 images 按索引对齐):每张效果图的款式图 / 面料图(仅库来源有值)。
    *  材料组合模式专用,用于详情弹窗回溯参考图。 */
   sourceImages?: ImageSourceImages[];
+  /** 穿搭效果图列表:「穿搭效果」生成后,结果图追加到每个参与单品的 outfits 中 */
+  outfits?: ProductOutfitEntry[];
   /** 插画 HTML 模式:生成的自包含 HTML 文档,可在 iframe 画布渲染 */
   html?: string;
   aiDraftRaw?: string;

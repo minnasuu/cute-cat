@@ -1297,6 +1297,28 @@ router.patch('/products/:id', asyncHandler(async (req, res) => {
   res.json(p);
 }));
 
+// POST /api/teams/:teamId/products/outfits —— 将一条穿搭效果图追加到多个参与单品的 outfits 字段
+// body:{ productIds:string[], outfit:{ id, url, originalUrl?, model, products, note?, createdAt } }
+// 仅 team 自己拥有的单品可被写入;返回写入成功的产品 id 列表。
+router.post('/products/outfits', asyncHandler(async (req, res) => {
+  const productIds = Array.isArray(req.body?.productIds) ? req.body.productIds : [];
+  const outfit = req.body?.outfit;
+  if (!productIds.length || !outfit || !outfit.url) {
+    return res.status(400).json({ error: 'productIds 与 outfit.url 必填' });
+  }
+  const teamId = req.team.id;
+  const updatedIds = [];
+  for (const pid of productIds) {
+    const owned = await findOwned(prisma.lAProduct, pid, teamId);
+    if (!owned) continue; // 跳过不存在或不属于本 team 的
+    const outfits = Array.isArray(owned.outfits) ? owned.outfits : [];
+    outfits.push(outfit);
+    await prisma.lAProduct.update({ where: { id: owned.id }, data: { outfits } });
+    updatedIds.push(owned.id);
+  }
+  res.json({ ok: true, updatedIds });
+}));
+
 // POST /api/teams/:teamId/products/:id/advance
 router.post('/products/:id/advance', asyncHandler(async (req, res) => {
   const owned = await findOwned(prisma.lAProduct, req.params.id, req.team.id);

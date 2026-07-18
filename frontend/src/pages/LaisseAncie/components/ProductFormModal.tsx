@@ -129,6 +129,8 @@ function ProductView({ product, onClose, onSaved }: { product: Product; onClose:
   const mainImages = displayImages.filter((im) => im.slot === MAIN_SLOT);
   const renderImages = displayImages.filter((im) => slotRole(im.slot) === "render" && im.slot !== MAIN_SLOT);
   const lineartImages = displayImages.filter((im) => im.slot === LINEART_SLOT);
+  // 穿搭效果图(product.outfits):每项含结果图 + 所用模特 + 参与单品列表
+  const outfitImages: Product["outfits"] = Array.isArray(product.outfits) ? product.outfits : [];
   const hasHtml = !!product.html;
   const displayColors = product.colors ?? [];
   const mainImageUrl = displayImages.find((im) => im.slot === MAIN_SLOT)?.url || product.imageUrl || "";
@@ -374,6 +376,32 @@ function ProductView({ product, onClose, onSaved }: { product: Product; onClose:
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">效果图</div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{renderImages.map((im) => <div key={(im as any).clientKey || im.slot}>{renderImageCard(im, { showSource: true })}</div>)}</div>
+                  </div>
+                )}
+                {outfitImages.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">穿搭效果图 ({outfitImages.length})</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {outfitImages.map((o) => (
+                        <figure key={o.id} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group">
+                          <div className="aspect-[3/4] bg-gray-100 overflow-hidden relative">
+                            {o.url ? <img src={o.url} alt="穿搭效果" className="w-full h-full object-cover" /> : null}
+                            {/* 模特角标 */}
+                            {o.model?.url && (
+                              <span className="absolute top-1 left-1 z-10 flex items-center gap-1 text-[8px] px-1 py-0.5 rounded-sm bg-primary-500/90 text-white font-medium max-w-[80%]">
+                                <img src={o.model.url} alt="" className="w-3 h-3 rounded-full object-cover shrink-0" />
+                                <span className="truncate">{o.model.name}</span>
+                              </span>
+                            )}
+                          </div>
+                          <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
+                            <span className="text-[10px] text-gray-600 font-medium truncate" title={(o.products || []).map((p) => p.title).join(" + ") || o.note}>
+                              {(o.products || []).length > 1 ? `${o.products.length} 款搭配` : (o.note || "穿搭效果")}
+                            </span>
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

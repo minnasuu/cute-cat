@@ -455,6 +455,9 @@ model LAProduct {
   barcode           String?
   whLocation        String?
   imageUrl          String?
+  /** 穿搭效果图列表:每次「穿搭效果」生成后,将结果图追加到参与单品的 outfits 中。
+   *  每项 = { id, url, originalUrl?, model:{id,name,url}, products:[{id,title,url}], createdAt, note? } */
+  outfits           Json     @default("[]")
   /** 是否公开到社区 */
   isPublic          Boolean  @default(false)
   /** 社区中该作品的公开帖子(反向关系) */

@@ -38,7 +38,7 @@ export interface OutfitStylingBatch {
   /** 选中的模特(来自品牌/系统模特库) */
   model: { id: string; name: string; url: string } | null;
   /** 结果单图 */
-  items: { status: 'pending' | 'done' | 'error'; url?: string; error?: string; prompt?: string }[];
+  items: { status: 'pending' | 'done' | 'error'; url?: string; originalUrl?: string | null; error?: string; prompt?: string }[];
   total: number;
   completed: number;
   failed: number;
@@ -219,6 +219,9 @@ export function teamApi(teamId: string) {
     updateProduct: (id: string, body: object) => _apiClient.patch(pre(`/products/${id}`), body),
     advanceProduct: (id: string, body: object) => _apiClient.post(pre(`/products/${id}/advance`), body),
     deleteProduct: (id: string) => _apiClient.delete(pre(`/products/${id}`)),
+    // 将一条穿搭效果图追加到多个参与单品的 outfits 字段(后端按 teamId 校验所有权)
+    addOutfits: (productIds: string[], outfit: object) =>
+      _apiClient.post(pre('/products/outfits'), { productIds, outfit }),
 
     // collections
     listCollections: () => _apiClient.get(pre('/collections')),

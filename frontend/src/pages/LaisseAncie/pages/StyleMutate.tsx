@@ -707,6 +707,32 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     });
   }
 
+  /** 清空整个工作台填写内容(含上传预览的对象 URL 释放),回到全新可填写状态。 */
+  function resetWorkspace() {
+    // 释放上传预览的对象 URL,避免内存泄漏
+    if (mother?.kind === "upload" && mother.preview) URL.revokeObjectURL(mother.preview);
+    if (fabric?.kind === "upload" && fabric.preview) URL.revokeObjectURL(fabric.preview);
+    setMother(null);
+    setFabric(null);
+    setFabricTextInput("");
+    setSelected(new Set());
+    setName("");
+    setDescription("");
+    setCustomMutations([]);
+    setCustomInput("");
+    setRemovedMis(new Set());
+    setMutateMode("batch");
+    setAxisInputMode("tag");
+    setFreeCount(4);
+    setCategory("");
+    setShowMore(false);
+    setPicker(null);
+    setBatch(null);
+    setSubmitting(false);
+    setError(null);
+    stopPolling();
+  }
+
   async function saveToLookbook() {
     if (!batch) return;
     const doneItems = visibleItems.filter((it) => it.status === "done" && it.url);
@@ -747,10 +773,8 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     };
     try {
       await store.upsertProduct(product);
-      // 清空本次任务:停止轮询 + 清空批次,保留母款/面料/裂变项配置,让页面回到「可重新生成」的新一轮状态
-      stopPolling();
-      setBatch(null);
-      setSubmitting(false);
+      // 保存成功后清空整个工作台填写内容,回到全新可填写状态
+      resetWorkspace();
       navigateTab("lookbook");
     } catch (e: any) {
       setError(`保存失败: ${e?.message || ""}`);
