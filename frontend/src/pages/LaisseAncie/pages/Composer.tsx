@@ -350,7 +350,17 @@ export default function ComposerPage({
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Product | null>(null);
-  const [stage, setStage] = useState<DesignStage>("greeting");
+  const [stage, setStageState] = useState<DesignStage>("greeting");
+  // stage 的 ref 镜像:供 send/produceTextOnlyScheme 等异步回调读取最新值,
+  // 避免闭包捕获旧 stage 导致 fromPrePlan 判断失败、阶段推进卡住。
+  const stageRef = useRef<DesignStage>("greeting");
+  const setStage = useCallback((s: DesignStage | ((prev: DesignStage) => DesignStage)) => {
+    setStageState((prev) => {
+      const next = typeof s === "function" ? s(prev) : s;
+      stageRef.current = next;
+      return next;
+    });
+  }, []);
   const [planText, setPlanText] = useState("");
   const [, setTick] = useState(0); // 触发实时计时器重渲染
   const [images, setImages] = useState<GeneratedImage[]>([]);
@@ -667,13 +677,16 @@ export default function ComposerPage({
     ].filter(Boolean);
     const composed = `请基于以下简报开始设计方案:\n${parts.join("\n")}`;
 
-    // text-only 灵感扩散:未上传图片 + 未从灵感库手选 → 用名称+描述自动匹配 top-5 灵感,注入「设计思路+设计启发」
-    const isTextOnly = briefRefs.length === 0;
+    // 未手选参考灵感:用名称+描述自动从灵感库匹配 top-5 注入方案 prompt,
+    // 但仍走正常的图片生成流程(线稿→选材料→成图),不启用 text-only 纯文字模式。
+    // text-only 模式仅在灵感库为空且无手选参考时启用(无法匹配,只能纯文字扩散)。
+    const pool = knowledge?.inspirations ?? [];
+    const noBriefRefs = briefRefs.length === 0;
+    const isTextOnly = noBriefRefs && pool.length === 0;
     textOnlyModeRef.current = isTextOnly;
     let sendOpts: { refs?: InspirationItem[]; diffusionBlock?: string } | undefined;
-    if (isTextOnly) {
+    if (noBriefRefs && pool.length > 0) {
       const briefText = [designName.trim(), briefDescription.trim()].filter(Boolean).join(" ");
-      const pool = knowledge?.inspirations ?? [];
       const matched = matchInspirations(briefText, pool, 5);
       setReferences(matched);
       referencesRef.current = matched;
@@ -681,7 +694,7 @@ export default function ComposerPage({
         refs: matched,
         diffusionBlock: buildDiffusionInspirationBlock(matched, designName.trim()),
       };
-    } else {
+    } else if (!noBriefRefs) {
       // 档案化参考灵感到主 references(供系统 prompt 灵感池引用)
       setReferences((prev) => [
         ...prev,
@@ -737,13 +750,15 @@ export default function ComposerPage({
       },
       onDone: (finalText, rawAccum, elapsedMs) => {
         const parsed = parseStage(rawAccum);
-        const fromPrePlan = stage === "greeting" || stage === "brainstorming" || stage === "references";
+        // 用 ref 读取最新的 stage,避免闭包捕获旧值导致 fromPrePlan 误判、阶段推进卡住
+        const curStage = stageRef.current;
+        const fromPrePlan = curStage === "greeting" || curStage === "brainstorming" || curStage === "references";
         // 第 1 步(简报→方案):只要模型返回了有效方案(非错误),就强制推进到 proposal,
         // 避免模型偶发漏标 / 误标 <!--STAGE:--> 时回退到 greeting 而卡在第 1 步无法继续。
         const newStage = fromPrePlan && !!finalText && !finalText.startsWith("⚠")
           ? "proposal"
-          : (parsed ?? stage);
-        const withRefs = newStage === "proposal" || newStage === "references" || stage === "greeting"
+          : (parsed ?? curStage);
+        const withRefs = newStage === "proposal" || newStage === "references" || curStage === "greeting"
           ? { text: finalText, references: matchedRefs, timingMs: elapsedMs, startedAt: undefined }
           : { text: finalText, timingMs: elapsedMs, startedAt: undefined };
         setMsgs((xs) => xs.map((m) => m.id === assistantId ? { ...m, ...withRefs } : m));
