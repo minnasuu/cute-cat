@@ -844,11 +844,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   </div>
                 )}
             </div>
-            {axisInputMode !== "free" && (
             <span className="text-[10px] text-gray-500">
               1 母款 × 裂变轴选项 → N 张子款白底图(≤{MAX_MUTATIONS})
             </span>
-            )}
           </header>
 
           {/* 中间:可滚动内容 */}

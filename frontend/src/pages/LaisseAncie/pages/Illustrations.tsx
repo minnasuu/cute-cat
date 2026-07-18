@@ -102,7 +102,7 @@ export default function IllustrationsPage() {
 
       {visible.length === 0 ? (
         <div className="py-16 text-center text-gray-500 text-sm">
-          {rows.length === 0 ? "还没有插画,点击右上角「+ 新增插画」开始上传" : "没有符合搜索的插画"}
+          {rows.length === 0 ? "还没有插画，点击右上角「+ 新增插画」开始上传" : "没有符合搜索的插画"}
         </div>
       ) : (
         <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
@@ -140,7 +140,7 @@ function IllustrationModal({ editor, onClose, onSave }: {
   const mat = editor.mat ?? null;
 
   return (
-    <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
+    <Modal open onClose={onClose} title={title} maxWidth="max-w-[600px]">
       <IllustrationForm
         key={mat?.id ?? "new"}
         initial={mat}
@@ -186,7 +186,8 @@ function IllustrationForm({ initial, onCancel, onSave }: {
   const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1";
 
   return (
-    <div className="flex-1 min-h-0 h-[60vh] overflow-auto pr-1 text-xs space-y-5">
+    <div className="flex flex-col max-h-[68vh]">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1 text-xs space-y-5">
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-[12px] text-red-600">⚠ {error}</div>}
 
       {/* 图片上传 */}
@@ -230,7 +231,8 @@ function IllustrationForm({ initial, onCancel, onSave }: {
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 sticky bottom-0 bg-white">
+      </div>
+      <div className="shrink-0 flex items-center justify-end gap-2 pt-3 mt-4 border-t border-gray-100 bg-white">
         <button onClick={onCancel} className="text-[12px] text-gray-600 hover:underline px-3 py-1.5">取消</button>
         <button onClick={submit} disabled={saving || !name.trim()}
           className="text-[12px] bg-primary-500 hover:bg-primary-600 disabled:opacity-40 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">

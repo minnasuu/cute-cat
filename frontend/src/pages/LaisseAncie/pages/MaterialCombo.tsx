@@ -592,6 +592,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                   <span className="text-gray-400 normal-case tracking-normal">
                     ({fabricRows.length}/{fabricsLimit})
                   </span>
+                  <span className="text-red-500">*</span>
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {fabricRows.map((row) => (
@@ -767,6 +768,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                   <span className="text-gray-400 normal-case tracking-normal">
                     ({styleRows.length}/{stylesLimit})
                   </span>
+                  <span className="text-red-500">*</span>
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {styleRows.map((row) => (
