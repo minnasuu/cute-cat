@@ -52,13 +52,25 @@ router.get('/me', async (req, res) => {
       },
     });
     if (!u) return res.status(404).json({ error: '用户不存在' });
-    // 系统喵币总量(全部用户余额之和),供前端判断充值库存:
-    // 若 user.coins > systemCoins * 0.95 则充值入口置灰
-    const agg = await prisma.user.aggregate({ _sum: { coins: true } });
+    // 系统可用喵币:优先取管理员后台配置(available_coins),供前端判断充值库存
+    // (user.coins > systemCoins * 0.95 则充值入口置灰)。
+    // 未配置 / 表尚未迁移时,回退到全部用户余额之和(即真实系统总量)。
+    let systemCoins = null;
+    try {
+      const cfg = await prisma.systemConfig.findUnique({ where: { key: 'available_coins' }, select: { value: true } });
+      if (cfg?.value != null) {
+        const n = Number(cfg.value);
+        if (Number.isInteger(n) && n >= 0) systemCoins = n;
+      }
+    } catch { /* 表未迁移 → 回退 */ }
+    if (systemCoins == null) {
+      const agg = await prisma.user.aggregate({ _sum: { coins: true } });
+      systemCoins = agg._sum.coins ?? 0;
+    }
     res.json({
       ...publicUser(u),
       txCount: u._count.coinTransactions,
-      systemCoins: agg._sum.coins ?? 0,
+      systemCoins,
     });
   } catch (err) {
     console.error('[account] me error:', err);
