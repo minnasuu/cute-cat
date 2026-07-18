@@ -670,6 +670,11 @@ router.post('/generate-final', async (req, res) => {
  */
 router.post('/material-combo', (req, res) => {
   mcUpload(req, res, async (uploadErr) => {
+    // ── 顶层兜底:async 回调里任何未捕获异常(如作用域错误、DB/COS 瞬时故障)
+    // 都会以 unhandledRejection 收尾,request 就 hang 到网关 60s 超时报 504、
+    // 服务端也不会打出任何日志 —— 曾经因此排查困难。这里把整个 async 用
+    // try/catch 包住,确保任何异常都会返回一个响应,并留下服务端错误日志。
+    try {
     if (uploadErr) {
       console.error('[design-generator] material-combo upload error:', uploadErr.message);
       return res.status(400).json({ error: `上传失败: ${uploadErr.message}` });
@@ -713,6 +718,9 @@ router.post('/material-combo', (req, res) => {
       return res.status(400).json({ error: `插画文件数不匹配,期望 ${uploadIllustrationCount},收到 ${illustrationFiles.length}` });
     }
 
+    // 需要提到 if/else 外层作用域:后面的 chargeImages 依赖它(不能用 else 内 const,
+    // 否则出 else 块就是 ReferenceError,直接导致 async 顶层 unhandledRejection、hang 60s → 504)
+    let totalCells = 1;
     if (mode === 'color-mix') {
       // 拼色:恰好 1 项款式 + 1~N 项面料(软上限 MAX_FABRIC_MIXED 仅提示)
       if (stylesMeta.length !== 1) {
@@ -724,22 +732,29 @@ router.post('/material-combo', (req, res) => {
       if (fabricsMeta.length < 2) {
         // 仅 1 面料也可以用拼色(视为单料出图),放宽但给提示;仍允许执行
       }
+      totalCells = 1;
     } else {
       // 叉乘
       if (fabricsMeta.length > MAX_FABRIC) return res.status(400).json({ error: `面料最多 ${MAX_FABRIC} 项` });
       if (stylesMeta.length > MAX_STYLE) return res.status(400).json({ error: `款式最多 ${MAX_STYLE} 项` });
-      const totalCells = fabricsMeta.length * stylesMeta.length;
+      totalCells = fabricsMeta.length * stylesMeta.length;
       if (totalCells > MAX_CELLS) return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
     }
 
     // material-combo 按总张数预扣喵币(余额不足 402)
     try {
-      await chargeImages(req, mode === 'color-mix' ? 1 : totalCells, 'material_combo_per_image', `material-combo:${mode}`);
+      await chargeImages(req, totalCells, 'material_combo_per_image', `material-combo:${mode}`);
     } catch (err) {
       if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
       throw err;
     }
 
+    // 用于线上定位「material-combo 504」的时序日志:
+    // handler 内三个循环里的 persistTempFile(COS 上传) 和 findOwned(DB 查询) 都是 await,
+    // 任何一次卡 >网关超时(60~120s) 都会导致前端收到 504、大模型请求根本没发出去。
+    // 此处打点让运维一眼看出「卡在哪一步、每步多长」。
+    const t_handler0 = Date.now();
+    console.log(`[design-generator] material-combo start batch: fabrics=${fabricsMeta.length} styles=${stylesMeta.length} illustrations=${illustrationsMeta.length} mode=${mode}`);
     try {
       // 按 fabricsMeta 顺序构建面料行,上传文件逐条消耗(kind==='upload' 才取下一个)
       let fIdx = 0;
@@ -854,6 +869,7 @@ router.post('/material-combo', (req, res) => {
         updatedAt: now,
       };
       mcBatches.set(batchId, batch);
+      console.log(`[design-generator] material-combo ready ${batchId} in ${Date.now() - t_handler0}ms, ${items.length} cells → 202`);
 
       // 4) 202 立即返回,fire-and-forget 后台生成
       res.status(202).json(batchPublicView(batch));
@@ -877,6 +893,15 @@ router.post('/material-combo', (req, res) => {
     } catch (e) {
       console.error('[design-generator] material-combo error:', e?.message || String(e));
       res.status(500).json({ error: e?.message || '生成失败' });
+    }
+    } catch (fatal) {
+      // 顶层兜底:即便前面所有 try/catch 都漏掉(例如 ReferenceError、语法性问题、
+      // 未 await 就抛出的同步异常),也保证有响应返回,避免请求 hang 到网关超时。
+      console.error('[design-generator] material-combo fatal (unhandled):',
+        fatal?.stack || fatal?.message || String(fatal));
+      if (!res.headersSent) {
+        res.status(500).json({ error: fatal?.message || 'material-combo 内部异常' });
+      }
     }
   });
 });

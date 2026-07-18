@@ -154,6 +154,34 @@ function buildS3Location() {
   return { host, urlBase, pathPrefix: '' };
 }
 
+// COS/S3 单次 HTTP 请求超时(默认 60s)。
+// 必须有超时:线上曾出现 PUT 请求无响应导致 saveUpload → persistTempFile → material-combo
+// handler 卡在 await 上永远不返回,前端最终被网关切成 504,大模型请求根本没发出去。
+// 上传的是 sharp 压缩后的图,一般 KB~几 MB,内网 COS 应在秒级内完成,60s 已足够宽松。
+// 支持 env S3_REQUEST_TIMEOUT_MS 覆盖。
+const S3_REQUEST_TIMEOUT_MS = Number.parseInt(process.env.S3_REQUEST_TIMEOUT_MS || '', 10) || 60000;
+
+/**
+ * 包一层带超时的 fetch —— COS/S3 出网请求必须有超时,否则一次网络异常就会
+ * 无限 pending 拖挂上游 handler。超时时抛出可辨识的错误(name=AbortError → 转成明确文案)。
+ */
+async function fetchWithTimeout(url, init, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      const err = new Error(`S3 request timeout ${timeoutMs}ms: ${init?.method || 'GET'} ${url}`);
+      err.code = 'S3_TIMEOUT';
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function s3PutObject({ key, body, contentType }) {
   const region = process.env.S3_REGION || 'auto';
   const service = 's3';
@@ -187,7 +215,8 @@ async function s3PutObject({ key, body, contentType }) {
   const auth = `AWS4-HMAC-SHA256 Credential=${process.env.S3_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
 
   const url = `${urlBase}/${canonKey(key)}`;
-  const res = await fetch(url, {
+  const t0 = Date.now();
+  const res = await fetchWithTimeout(url, {
     method: 'PUT',
     headers: {
       'Content-Type': contentType || TE['Content-Type'],
@@ -196,11 +225,14 @@ async function s3PutObject({ key, body, contentType }) {
       Authorization: auth,
     },
     body,
-  });
+  }, S3_REQUEST_TIMEOUT_MS);
   if (!res.ok) {
     const t = await res.text().then((s) => s.slice(0, 300));
     throw new Error(`S3 PUT ${canonUri} → HTTP ${res.status}: ${t}`);
   }
+  const cost = Date.now() - t0;
+  // 慢请求告警:超过 5s 打日志,便于线上定位 COS 上传耗时异常(前置排查 504 根因)
+  if (cost > 5000) console.warn(`[storage] slow S3 PUT ${canonUri} cost=${cost}ms size=${body?.length || 0}B`);
 }
 /**
  * SigV4 签名删除 COS 对象 —— 与 s3PutObject 共享同一签名流水线,
@@ -240,14 +272,14 @@ async function s3DeleteObject(key) {
   const auth = `AWS4-HMAC-SHA256 Credential=${process.env.S3_ACCESS_KEY_ID}/${scope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
 
   const url = `${urlBase}/${canonKey(key)}`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'DELETE',
     headers: {
       'x-amz-content-sha256': payloadHash,
       'x-amz-date': iso,
       Authorization: auth,
     },
-  });
+  }, S3_REQUEST_TIMEOUT_MS);
   // 204 No Content = 已删;404 Not Found = 已不存在 → 都视为成功(幂等)
   if (res.ok || res.status === 404) return;
   const t = await res.text().then((s) => s.slice(0, 300));
