@@ -22,6 +22,7 @@ import { useDesignStore } from "../store/design";
 import { teamApi } from "../lib/api";
 import { MODE_LABEL, STATUS_LABEL, STATUS_FLOW, type DesignMode, type Product, type ProductStatus } from "../types/design";
 import { MAIN_SLOT, LINEART_SLOT, RENDER_SLOT, slotRole } from "../lib/imageRole";
+import { Markdown } from "../lib/markdown";
 
 const ALL_MODES: DesignMode[] = ["illustration", "single", "material-combo", "style-mutate", "occasion"];
 const SEASON_PRESETS = ["春", "夏", "秋", "冬", "春秋", "秋冬", "春夏", "四季"];
@@ -524,7 +525,7 @@ function ProductView({ product, onClose, onSaved }: { product: Product; onClose:
             product.description && (
               <div className="mb-4">
                 <SectionLabel>描述</SectionLabel>
-                <div className="text-[12px] text-gray-700 whitespace-pre-wrap leading-relaxed">{product.description}</div>
+                <Markdown source={product.description} />
               </div>
             )
           )}

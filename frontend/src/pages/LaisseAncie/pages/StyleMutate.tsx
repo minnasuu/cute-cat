@@ -326,6 +326,10 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const [removedMis, setRemovedMis] = useState<Set<number>>(() => new Set());
   /** 裂变方式:batch=批量(每项一张,多选≤8) / merge=合并(所有维度合并一张,每轴单选) */
   const [mutateMode, setMutateMode] = useState<"batch" | "merge">("batch");
+  /** 非必填项(自定义款式 / 锁定面料 / 其他描述)默认折叠为「更多配置」 */
+  const [showMore, setShowMore] = useState(false);
+  /** 裂变轴填写方式:tag=标签勾选 / custom=自定义输入(两种必填其中一种) */
+  const [axisInputMode, setAxisInputMode] = useState<"tag" | "custom">("tag");
 
   const styleRef = useRef<HTMLInputElement>(null);
   const fabricRef = useRef<HTMLInputElement>(null);
@@ -408,8 +412,8 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const canSubmit =
     !!name.trim() &&
     !!mother &&
-    selectedMutations.length > 0 &&
-    (mutateMode === "merge" || selectedMutations.length <= MAX_MUTATIONS) &&
+    (selectedMutations.length > 0 || customMutations.length > 0) &&
+    (mutateMode === "merge" || selectedMutations.length + customMutations.length <= MAX_MUTATIONS) &&
     !batchRunning &&
     !submitting &&
     !brandLoading &&
@@ -728,6 +732,10 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
     };
     try {
       await store.upsertProduct(product);
+      // 清空本次任务:停止轮询 + 清空批次,保留母款/面料/裂变项配置,让页面回到「可重新生成」的新一轮状态
+      stopPolling();
+      setBatch(null);
+      setSubmitting(false);
       navigateTab("lookbook");
     } catch (e: any) {
       setError(`保存失败: ${e?.message || ""}`);
@@ -866,45 +874,15 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                 />
               </div>
 
-              {/* 服装品类筛选 */}
-              <div data-tour="tour-category">
-                <label className={labelCls}>服装品类</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {GARMENT_CATEGORIES.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      disabled={batchRunning}
-                      onClick={() => {
-                        if (category === c.id) return;
-                        // 切换品类:清理会被新品类专属轴覆盖的通用轴勾选(如上衣→半身裙时,清除通用「衣长」勾选)
-                        setSelected((prev) => {
-                          const next = new Set(prev);
-                          for (const [universalId, coverMap] of Object.entries(UNIVERSAL_AXIS_COVERED_BY)) {
-                            if (coverMap[c.id]) {
-                              const axis = MUTATION_AXES.find((a) => a.id === universalId);
-                              axis?.options.forEach((o) => next.delete(mutKey(universalId, o.id)));
-                            }
-                          }
-                          return next;
-                        });
-                        setCategory(c.id);
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${category === c.id
-                        ? "bg-primary-50 border-primary-400 text-primary-700"
-                        : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
-                        } disabled:opacity-50`}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              {/* 裂变方式 + 裂变轴(手风琴:逐轴折叠,降低平铺认知负荷) */}
+              {/* 裂变轴:大分类(裂变方式 + 填写方式 + 裂变维度) */}
               <div data-tour="tour-mutations">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="text-[13px] font-semibold text-gray-800">裂变轴</h3>
+                  <span className="text-[10px] text-gray-400">必填其中一种方式</span>
+                </div>
                 {/* 裂变方式切换 */}
-                <div className="mb-2">
+                <div className="mb-3">
                   <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px]">
                     <button
                       type="button"
@@ -939,99 +917,161 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   </div>
                 </div>
 
-                <label className={labelCls}>
-                  裂变轴{" "}
-                  <span className="text-gray-400 normal-case tracking-normal">
-                    (已选 {selectedMutations.length}{mutateMode === "batch" ? `/${MAX_MUTATIONS}` : ""})
-                    {category && <span className="ml-1 text-primary-500">· {GARMENT_CATEGORIES.find((c) => c.id === category)?.label}</span>}
-                  </span>
-                </label>
-                {!category && (
-                  <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
-                    请先选择服装品类,系统将展示对应的裂变维度选项
-                  </div>
-                )}
-                {category && visibleAxes.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
-                    该品类暂无预置裂变轴,请使用下方自定义款式输入
-                  </div>
-                )}
-
-                {/* 裂变轴:每轴一行,标签横向铺开,溢出滚动 */}
-                {category && (
-                  <div className="space-y-2">
-                    {visibleAxes.map((axis) => {
-                      const disabledByFabric = axis.id === "fabric" && fabric != null;
-                      return (
-                        <div
-                          key={axis.id}
-                          className={`flex items-center gap-1 ${disabledByFabric ? "opacity-40 pointer-events-none" : ""}`}
-                        >
-                          {/* 左:轴标题 */}
-                          <span className="shrink-0 text-[11px] font-medium text-gray-700 w-14 text-right">{axis.label}</span>
-                          {/* 中:分割线(占满剩余空间) */}
-                          <div className="flex-1 mx-1.5 border-t border-dashed border-gray-200" />
-                          {/* 右:选项横向滚动 */}
-                          <div className="shrink-0 overflow-x-auto max-w-[75%] scrollbar-none">
-                            <div className="flex gap-1.5 w-max">
-                              {axis.options.map((opt) => {
-                                const key = mutKey(axis.id, opt.id);
-                                const on = selected.has(key);
-                                return (
-                                  <button
-                                    key={opt.id}
-                                    type="button"
-                                    disabled={batchRunning || disabledByFabric}
-                                    onClick={() => toggleOption(axis.id, opt.id)}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors whitespace-nowrap ${on
-                                      ? "bg-primary-500 text-white border-primary-500"
-                                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
-                                      } disabled:opacity-50`}
-                                  >
-                                    {opt.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* 自定义裂变款式(Tag Input) */}
-              <div>
-                <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 min-h-[32px] focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-100">
-                  {customMutations.map((t) => (
-                    <span
-                      key={t}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
-                    >
-                      {t}
-                      {!batchRunning && (
-                        <button
-                          type="button"
-                          onClick={() => setCustomMutations((prev) => prev.filter((x) => x !== t))}
-                          className="text-primary-400 hover:text-red-500 leading-none"
-                        >×</button>
-                      )}
-                    </span>
-                  ))}
-                  <input
-                    value={customInput}
-                    onChange={(e) => { setCustomInput(e.target.value); setError(null); }}
-                    onKeyDown={handleCustomKeyDown}
-                    onBlur={() => { if (customInput.trim()) addCustomMutation(customInput); }}
-                    placeholder={customMutations.length ? "继续输入…" : "自定义款式，输入后回车添加，如: 不对称领口…"}
+                {/* 填写方式:标签勾选 / 自定义输入(必填其中一种) */}
+                <div className="inline-flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 text-[11px] mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setAxisInputMode("tag")}
                     disabled={batchRunning}
-                    className="flex-1 min-w-[100px] outline-none text-[12px] bg-transparent placeholder:text-gray-400 py-0.5"
-                  />
+                    className={`px-2.5 py-1 rounded-md transition-colors ${axisInputMode === "tag" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
+                  >标签</button>
+                  <button
+                    type="button"
+                    onClick={() => setAxisInputMode("custom")}
+                    disabled={batchRunning}
+                    className={`px-2.5 py-1 rounded-md transition-colors ${axisInputMode === "custom" ? "bg-white text-primary-600 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"} disabled:opacity-50`}
+                  >自定义输入</button>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">单次有效,不会保存到库。将作为额外裂变维度生成子款白底图。</p>
+
+                {axisInputMode === "tag" ? (
+                  <>
+                    {/* 服装品类:标签方式下的子 tab */}
+                    <div data-tour="tour-category" className="mb-3">
+                      <label className={labelCls}>服装品类</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {GARMENT_CATEGORIES.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            disabled={batchRunning}
+                            onClick={() => {
+                              if (category === c.id) return;
+                              setSelected((prev) => {
+                                const next = new Set(prev);
+                                for (const [universalId, coverMap] of Object.entries(UNIVERSAL_AXIS_COVERED_BY)) {
+                                  if (coverMap[c.id]) {
+                                    const axis = MUTATION_AXES.find((a) => a.id === universalId);
+                                    axis?.options.forEach((o) => next.delete(mutKey(universalId, o.id)));
+                                  }
+                                }
+                                return next;
+                              });
+                              setCategory(c.id);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${category === c.id
+                              ? "bg-primary-50 border-primary-400 text-primary-700"
+                              : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
+                              } disabled:opacity-50`}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className={labelCls}>
+                      裂变维度{" "}
+                      <span className="text-gray-400 normal-case tracking-normal">
+                        (已选 {selectedMutations.length}{mutateMode === "batch" ? `/${MAX_MUTATIONS}` : ""})
+                        {category && <span className="ml-1 text-primary-500">· {GARMENT_CATEGORIES.find((c) => c.id === category)?.label}</span>}
+                      </span>
+                    </label>
+                    {!category && (
+                      <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
+                        请先选择服装品类,系统将展示对应的裂变维度选项
+                      </div>
+                    )}
+                    {category && visibleAxes.length === 0 && (
+                      <div className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 text-[12px] text-gray-400 mb-3">
+                        该品类暂无预置裂变轴,请使用下方自定义款式输入
+                      </div>
+                    )}
+                    {category && (
+                      <div className="space-y-2">
+                        {visibleAxes.map((axis) => {
+                          const disabledByFabric = axis.id === "fabric" && fabric != null;
+                          return (
+                            <div
+                              key={axis.id}
+                              className={`flex items-center gap-1 ${disabledByFabric ? "opacity-40 pointer-events-none" : ""}`}
+                            >
+                              <span className="shrink-0 text-[11px] font-medium text-gray-700 w-14 text-right">{axis.label}</span>
+                              <div className="flex-1 mx-1.5 border-t border-dashed border-gray-200" />
+                              <div className="shrink-0 overflow-x-auto max-w-[75%] scrollbar-none">
+                                <div className="flex gap-1.5 w-max">
+                                  {axis.options.map((opt) => {
+                                    const key = mutKey(axis.id, opt.id);
+                                    const on = selected.has(key);
+                                    return (
+                                      <button
+                                        key={opt.id}
+                                        type="button"
+                                        disabled={batchRunning || disabledByFabric}
+                                        onClick={() => toggleOption(axis.id, opt.id)}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] border transition-colors whitespace-nowrap ${on
+                                          ? "bg-primary-500 text-white border-primary-500"
+                                          : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
+                                          } disabled:opacity-50`}
+                                      >
+                                        {opt.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* 自定义裂变款式(Tag Input) */}
+                    <label className={labelCls}>自定义裂变款式</label>
+                    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 min-h-[32px] focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-100">
+                      {customMutations.map((t) => (
+                        <span
+                          key={t}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 border border-primary-200 text-primary-700 text-[11px]"
+                        >
+                          {t}
+                          {!batchRunning && (
+                            <button
+                              type="button"
+                              onClick={() => setCustomMutations((prev) => prev.filter((x) => x !== t))}
+                              className="text-primary-400 hover:text-red-500 leading-none"
+                            >×</button>
+                          )}
+                        </span>
+                      ))}
+                      <input
+                        value={customInput}
+                        onChange={(e) => { setCustomInput(e.target.value); setError(null); }}
+                        onKeyDown={handleCustomKeyDown}
+                        onBlur={() => { if (customInput.trim()) addCustomMutation(customInput); }}
+                        placeholder={customMutations.length ? "继续输入…" : "自定义款式，输入后回车添加，如: 不对称领口…"}
+                        disabled={batchRunning}
+                        className="flex-1 min-w-[100px] outline-none text-[12px] bg-transparent placeholder:text-gray-400 py-0.5"
+                      />
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">单次有效,不会保存到库。将作为额外裂变维度生成子款白底图。</p>
+                  </>
+                )}
               </div>
 
+
+              {/* 更多配置:非必填项,默认折叠 */}
+              <button
+                type="button"
+                onClick={() => setShowMore((v) => !v)}
+                className="flex items-center justify-between w-full text-[11px] py-1 mb-1 hover:text-primary-600 transition-colors"
+              >
+                <span className="font-medium text-gray-500">更多配置</span>
+                <span className={`text-gray-400 transition-transform ${showMore ? "rotate-180" : ""}`}>▾</span>
+              </button>
+              {showMore && (
+              <>
               {/* 可选锁定面料 */}
               <div>
                 <label className={labelCls}>
@@ -1124,16 +1164,18 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                   disabled={batchRunning}
                 />
               </div>
+              </>
+              )}
 
-              {selectedMutations.length > 0 && (
+              {(selectedMutations.length > 0 || customMutations.length > 0) && (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
                   {mutateMode === "merge" ? (
-                    <>将生成 <span className="font-medium text-primary-600">1</span> 张合并裂变图(合并 {selectedMutations.length} 个维度)</>
+                    <>将生成 <span className="font-medium text-primary-600">1</span> 张合并裂变图(合并 {selectedMutations.length + customMutations.length} 个维度)</>
                   ) : (
                     <>将生成{" "}
-                      <span className="font-medium text-primary-600">{selectedMutations.length}</span>{" "}
+                      <span className="font-medium text-primary-600">{selectedMutations.length + customMutations.length}</span>{" "}
                       张子款白底图
-                      {selectedMutations.length > MAX_MUTATIONS && (
+                      {(selectedMutations.length + customMutations.length) > MAX_MUTATIONS && (
                         <span className="text-red-500 ml-2">超过上限 {MAX_MUTATIONS}</span>
                       )}</>
                   )}

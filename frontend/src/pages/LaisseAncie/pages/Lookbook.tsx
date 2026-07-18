@@ -31,8 +31,8 @@ function useRowDelete() {
 }
 
 // 展示给用户的 Lookbook 创作模式 tab,与当前可用的设计工作台 tab 一致(系列已下线,仅「全部」中能看到历史系列数据)。
-const ALL_MODES = [ "material-combo", "style-mutate", "occasion"] as const;
-type TabKey = "material-combo" | "style-mutate" | "occasion" | "all";
+const ALL_MODES = [ "illustration","material-combo", "style-mutate"] as const;
+type TabKey = "material-combo" | "style-mutate" | "illustration" | "all";
 type ViewMode = "table" | "card";
 
 /**
@@ -56,32 +56,44 @@ function pickCover(product: Product): string | null {
   return legacyMain[0]?.url ?? null;
 }
 
-/** 卡片视图的单张卡片:效果图作封面 + 标题文字 + 点击打开详情弹窗 + 下载原图 */
-function CardItem({ product, cover, onClick, onDownload }: { product: Product; cover: string | null; onClick: () => void; onDownload?: () => void }) {
+/** 卡片视图的单张卡片:封面 + 标题 + 价格 + 右上角 hover 操作栏(编辑/下载原图/删除),点击卡片主体打开详情弹窗 */
+function CardItem({ product, cover, onClick, onEdit, onDownload, onDelete }: {
+  product: Product; cover: string | null; onClick: () => void;
+  onEdit?: (e: React.MouseEvent) => void; onDownload?: () => void; onDelete?: (e: React.MouseEvent) => void;
+}) {
+  const hasActions = !!(onEdit || onDownload || onDelete);
   return (
     <div onClick={onClick} className="group cursor-pointer rounded-2xl border border-gray-200 bg-white overflow-hidden hover:shadow-lg hover:border-primary-300 transition-all">
       <div className="relative aspect-[1/1] bg-gray-100 overflow-hidden">
         {cover
           ? <img src={cover} alt={product.title} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
           : <div className="w-full h-full flex items-center justify-center text-[12px] text-gray-400">暂无图片</div>}
+        {/* 右上角 hover 浮现操作工具栏 */}
+        {hasActions && (
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            {onEdit && (
+              <button type="button" title="编辑" onClick={(e) => { e.stopPropagation(); onEdit(e); }}
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[11px] font-medium">编辑</button>
+            )}
+            {onDownload && (
+              <button type="button" title="下载原图" onClick={(e) => { e.stopPropagation(); onDownload(); }}
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-amber-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[11px] font-medium">↓</button>
+            )}
+            {onDelete && (
+              <button type="button" title="删除" onClick={(e) => { e.stopPropagation(); onDelete(e); }}
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-white/90 hover:bg-red-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-sm transition-colors text-[10px] font-bold">×</button>
+            )}
+          </div>
+        )}
       </div>
       <div className="relative flex-1">
         <div className="px-3 py-2.5">
           <div className="text-[13px] font-medium text-gray-900 truncate">{product.title || "（未命名）"}</div>
           {product.category && <div className="text-[11px] text-gray-500 truncate mt-0.5">{product.category}</div>}
         </div>
-        {/* 卡片底部右侧:红色价格 + 下载原图 */}
-        <div className="flex items-center justify-end gap-2 px-3 pb-2">
+        <div className="flex items-center justify-end px-3 pb-2">
           {typeof product.targetPriceNum === "number" && (
             <span className="text-[13px] font-bold text-red-500">¥{product.targetPriceNum}</span>
-          )}
-          {onDownload && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onDownload(); }}
-              className="text-[11px] text-primary-600 hover:text-primary-700 hover:underline"
-              title="下载 AI 生成的原图"
-            >下载原图</button>
           )}
         </div>
       </div>
@@ -199,7 +211,8 @@ export default function LookbookPage() {
           {items.map((p) => (
             <CardItem key={p.id} product={p} cover={pickCover(p)}
               onClick={() => setEditor({ mode: "view", product: p })}
-              onDownload={() => handleDownload(p)} />
+              onEdit={(e) => handleEdit(p, e)} onDownload={() => handleDownload(p)}
+              onDelete={() => setConfirming(p.id)} />
           ))}
         </div>
       ) : (

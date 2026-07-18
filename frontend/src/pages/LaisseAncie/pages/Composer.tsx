@@ -1085,6 +1085,14 @@ export default function ComposerPage({
     await fetchRecommendation();
   }
 
+  /** 跳过线稿 → 直接进入材质推荐阶段(仅 single / collection,非极速) */
+  async function skipToMaterial() {
+    setStage("material-recommend");
+    setRecommendation(null);
+    setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: "已跳过线稿。正在根据设计方案推荐材质与配色…" }]);
+    await fetchRecommendation();
+  }
+
   /** 确认材质方案 → 生成最终设计图(带材质+配色) */
   async function generateFinal() {
     if (!recommendation || !recommendation.name.trim() || generating) return;
@@ -1233,10 +1241,9 @@ export default function ComposerPage({
     };
     try {
       await store.upsertProduct(product);
-      // 记录为当前产品:后续 chat / 再次录入继续编辑同一产品
-      setCurrentProductId(product.id);
-      savedProductRef.current = product;
-      // 录入成功 → 跳转到 Lookbook
+      // 录入成功 → 清空本次任务(相当于新会话/新聊天),回到开场白重新出发,避免旧任务残留在工作台
+      forceResetSession();
+      // 跳转到 Lookbook 查看刚保存的产品
       navigateTab("lookbook");
     } catch (e: any) {
       setMsgs((xs) => [...xs, { id: crypto.randomUUID(), role: "assistant", text: `⚠ 录入失败: ${e.message}` }]);
@@ -1440,7 +1447,17 @@ export default function ComposerPage({
   // ── 单品 / 系列:结构化双栏 ──
   // 左:设计简报(固定 header + 可滚动内容) 右:生成流程(企划→线稿→材质→终稿,纯展示)
   // 所有推进按钮统一收纳到左栏底部 GenerateButton,按 stage 切换动作,避免多按钮同时出现
-  const stageAction = (() => {
+  type StageAction = {
+    label: string;
+    onClick: () => void;
+    loading: boolean;
+    disabled?: boolean;
+    coins: number;
+    secondaryLabel?: string;
+    secondaryLoading?: boolean;
+    secondaryOnClick?: () => void;
+  };
+  const stageAction: StageAction | null = (() => {
     if ((mode as DesignMode) === "illustration") return null;
     // 无方案:生成设计方案
     if (!planText && (stage === "greeting" || stage === "brainstorming" || stage === "references")) {
@@ -1463,12 +1480,21 @@ export default function ComposerPage({
           coins: 0,
         };
       }
+      // 单品 / 系列(非极速)模式:支持「跳过线稿,直接选材质」
+      const canSkipLineart = !expressMode;
       return {
         label: expressMode ? "确认方案,立即生成" : "确认方案,生成线稿",
         onClick: () => void startGeneration(),
         loading: generating,
         disabled: false,
         coins: getGenerateCount() * AI_COST_PER_IMAGE,
+        ...(canSkipLineart
+          ? {
+              secondaryLabel: "跳过线稿,直接选材质",
+              secondaryOnClick: () => void skipToMaterial(),
+              secondaryLoading: busy,
+            }
+          : {}),
       };
     }
     // 生成线稿 / 图片中
@@ -1552,6 +1578,9 @@ export default function ComposerPage({
                 estimatedCoins={stageAction.coins}
                 userCoins={user?.coins}
                 onClick={stageAction.onClick}
+                secondaryLabel={stageAction.secondaryLabel}
+                secondaryLoading={stageAction.secondaryLoading}
+                secondaryOnClick={stageAction.secondaryOnClick}
               />
             </div>
           )}

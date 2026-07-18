@@ -35,6 +35,11 @@ interface Props {
   className?: string;
   disabled?: boolean;
   onClick?: () => void;
+  /** 次要按钮(如「跳过某步」),渲染在主按钮下方,弱化的幽灵样式 */
+  secondaryLabel?: string;
+  secondaryLoading?: boolean;
+  secondaryDisabled?: boolean;
+  secondaryOnClick?: () => void;
 }
 
 export function GenerateButton({
@@ -45,6 +50,10 @@ export function GenerateButton({
   className = "",
   disabled,
   onClick,
+  secondaryLabel,
+  secondaryLoading,
+  secondaryDisabled,
+  secondaryOnClick,
 }: Props) {
   // 花费文案
   const costText =
@@ -142,6 +151,18 @@ export function GenerateButton({
             充值
           </a>
         </span>
+      )}
+
+      {/* 次要按钮(跳过步骤等):弱化的幽灵样式 */}
+      {secondaryLabel && (
+        <button
+          type="button"
+          onClick={secondaryOnClick}
+          disabled={secondaryLoading || secondaryDisabled || loading}
+          className="mt-1 text-[11px] text-gray-500 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {secondaryLoading ? "处理中…" : secondaryLabel}
+        </button>
       )}
     </div>
   );

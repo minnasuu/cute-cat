@@ -480,8 +480,6 @@ function AssetCard({
               <button onClick={(e) => { e.stopPropagation(); onRetry(asset.id); }}
                 className="w-7 h-7 rounded-full bg-amber-500/90 hover:bg-amber-500 text-white text-xs flex items-center justify-center shadow-sm" title="重试分析">⟳</button>
             )}
-            <button onClick={(e) => { e.stopPropagation(); onEdit(asset); }}
-              className="w-7 h-7 rounded-full bg-white/90 hover:bg-white text-gray-700 text-xs flex items-center justify-center shadow-sm" title="编辑">✎</button>
             <button onClick={(e) => { e.stopPropagation(); if (confirm("删除这张灵感图？")) onDelete(asset.id); }}
               className="w-7 h-7 rounded-full bg-white/90 hover:bg-red-50 text-red-500 text-xs flex items-center justify-center shadow-sm" title="删除">✕</button>
           </div>
@@ -490,10 +488,10 @@ function AssetCard({
         {!selectMode && (
           <button
             onClick={handleMakeSimilar}
-            className="absolute inset-x-3 bottom-16 z-20 opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-full bg-primary-500 hover:bg-primary-600 text-white text-[12px] font-medium shadow-lg flex items-center justify-center gap-1.5"
+            className="absolute inset-x-3 bottom-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-full bg-primary-500 hover:bg-primary-600 text-white text-[12px] font-medium shadow-lg flex items-center justify-center gap-1.5"
             title="把这张灵感的品类·风格·思路整理后填入单品设计工作台"
           >
-            ✨ 制作相似
+            灵感扩散
           </button>
         )}
         {/* 卡片底部(category + uses) */}
@@ -676,7 +674,7 @@ function UploadButton({ onFiles }: { onFiles: (f: FileList | File[]) => void }) 
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button onClick={() => ref.current?.click()} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-sm">+ 上传</button>
+      <button onClick={() => ref.current?.click()} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium">+ 上传</button>
       <input ref={ref} type="file" accept="image/*" multiple className="hidden"
         onChange={(e) => { if (e.target.files?.length) onFiles(e.target.files); e.target.value = ""; }} />
     </>

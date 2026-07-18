@@ -8,7 +8,7 @@
  * 修改功能绑定到右侧对应步骤,步骤生成成功后即可修改;步骤确认后隐藏该步骤修改 UI。
  * 修图走预览模式:先生成预览图,用户确认后再替换。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Markdown } from "../lib/markdown";
 import { ImageCell, LiveElapsed, type GeneratedImage } from "./image-card";
 import { RecForm } from "./rec-form";
@@ -52,8 +52,8 @@ function activeStep(stage: Stage): number {
     case "greeting": case "references": case "brainstorming": case "planning": return -1;
     case "proposal": return 0;
     case "generating-lineart": case "presenting-lineart": return 1;
-    case "material-recommend": case "generating-final": return 2;
-    case "presenting": case "presenting-html": case "generating": return 3;
+    case "material-recommend": return 2;
+    case "generating-final": case "presenting": case "presenting-html": case "generating": return 3;
     default: return -1;
   }
 }
@@ -65,6 +65,20 @@ export default function ComposerPipeline(props: Props) {
   // 记录当前正在发送细化请求的步骤,用于在该步骤内体现加载态
   const [refiningKey, setRefiningKey] = useState<string | null>(null);
   useEffect(() => { if (!props.refineBusy) setRefiningKey(null); }, [props.refineBusy]);
+
+  // 正在生成/细化的步骤 key:优先细化步骤,其次流程生成中步骤
+  const activeScrollKey = props.refineBusy
+    ? refiningKey
+    : generating
+      ? (STEPS[currentStep]?.key ?? null)
+      : null;
+  // 自动把正在处理的步骤滚动到视区中央
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (activeScrollKey && scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [activeScrollKey]);
 
   const lineart = images.filter((im) => im.slot === "lineart" && im.url && !im.error);
   const finals = images.filter((im) => im.slot === "final" && im.url && !im.error);
@@ -110,7 +124,7 @@ export default function ComposerPipeline(props: Props) {
 
         {/* Step 1: 企划方案 */}
         {(currentStep >= 0 || generating) && (
-          <StepCard data-tour="tour-step-proposal" title="企划方案" done={currentStep > 0} active={currentStep === 0}>
+          <StepCard data-tour="tour-step-proposal" title="企划方案" done={currentStep > 0} active={currentStep === 0} innerRef={activeScrollKey === "proposal" ? scrollRef : undefined}>
             {currentStep === 0 && !planText && !generating ? (
               <div className="text-[12px] text-gray-500">等待方案生成…</div>
             ) : planText ? (
@@ -126,7 +140,7 @@ export default function ComposerPipeline(props: Props) {
             ) : generating && currentStep === 0 ? (
               <StepSpinner label="正在生成企划方案" />
             ) : null}
-            {planText && (
+            {planText && currentStep === 0 && (
               <StepRefine
                 stepKey="proposal"
                 onRefine={props.onRefine}
@@ -141,7 +155,7 @@ export default function ComposerPipeline(props: Props) {
 
         {/* Step 2: 设计线稿(绑修改功能,确认后隐藏) */}
         {currentStep >= 1 && (
-          <StepCard data-tour="tour-step-lineart" title="设计线稿" done={currentStep > 1} active={currentStep === 1}>
+          <StepCard data-tour="tour-step-lineart" title="设计线稿" done={currentStep > 1} active={currentStep === 1} innerRef={activeScrollKey === "lineart" ? scrollRef : undefined}>
             {hasLineart ? (
               <div className={lineart.length === 1 ? "max-w-xs mx-auto" : "grid grid-cols-2 gap-2"}>
                 {lineart.map((im) => (
@@ -156,10 +170,12 @@ export default function ComposerPipeline(props: Props) {
               </div>
             ) : currentStep === 1 && generating ? (
               <StepSpinner label="正在生成线稿" />
+            ) : currentStep > 1 && !hasLineart ? (
+              <div className="text-[12px] text-gray-400 italic">已跳过线稿,直接进入材质推荐。</div>
             ) : (
               <div className="text-[12px] text-gray-500">线稿生成后在此预览</div>
             )}
-            {hasLineart && (
+            {hasLineart && currentStep === 1 && (
               <StepRefine
                 stepKey="lineart"
                 onRefine={props.onRefine}
@@ -174,7 +190,7 @@ export default function ComposerPipeline(props: Props) {
 
         {/* Step 3: 材质推荐(绑修改功能,确认后隐藏) */}
         {currentStep >= 2 && (
-          <StepCard data-tour="tour-step-material" title="材质推荐" done={currentStep > 2} active={currentStep === 2}>
+          <StepCard data-tour="tour-step-material" title="材质推荐" done={currentStep > 2} active={currentStep === 2} innerRef={activeScrollKey === "material" ? scrollRef : undefined}>
             <RecForm
               recommendation={recommendation}
               onChange={props.onRecommendationChange}
@@ -183,20 +199,22 @@ export default function ComposerPipeline(props: Props) {
               disabled={generating}
               readOnly={currentStep > 2}
             />
-            <StepRefine
-              stepKey="material"
-              onRefine={props.onRefine}
-              refineBusy={props.refineBusy}
-              refiningKey={refiningKey}
-              setRefiningKey={setRefiningKey}
-              placeholder="对材质提出修改(回车发送)…"
-            />
+            {currentStep === 2 && (
+              <StepRefine
+                stepKey="material"
+                onRefine={props.onRefine}
+                refineBusy={props.refineBusy}
+                refiningKey={refiningKey}
+                setRefiningKey={setRefiningKey}
+                placeholder="对材质提出修改(回车发送)…"
+              />
+            )}
           </StepCard>
         )}
 
         {/* Step 4: 终稿成图(绑修改功能,确认后隐藏) */}
         {currentStep >= 3 && (
-          <StepCard data-tour="tour-step-final" title="终稿成图" done={false} active={currentStep === 3}>
+          <StepCard data-tour="tour-step-final" title="终稿成图" done={false} active={currentStep === 3} innerRef={activeScrollKey === "final" ? scrollRef : undefined}>
             {hasFinal ? (
               <div className={finals.length === 1 ? "max-w-xs mx-auto" : "grid grid-cols-2 gap-2"}>
                 {finals.map((im) => (
@@ -216,7 +234,7 @@ export default function ComposerPipeline(props: Props) {
             ) : (
               <div className="text-[12px] text-gray-500">确认材质后在此预览终稿</div>
             )}
-            {hasFinal && (
+            {hasFinal && currentStep === 3 && (
               <StepRefine
                 stepKey="final"
                 onRefine={props.onRefine}
@@ -234,9 +252,9 @@ export default function ComposerPipeline(props: Props) {
 }
 
 /** 步骤卡片容器 */
-function StepCard({ title, done, active, children, "data-tour": dataTour }: { title: string; done: boolean; active: boolean; children: React.ReactNode; "data-tour"?: string }) {
+function StepCard({ title, done, active, children, "data-tour": dataTour, innerRef }: { title: string; done: boolean; active: boolean; children: React.ReactNode; "data-tour"?: string; innerRef?: React.Ref<HTMLDivElement> }) {
   return (
-    <div data-tour={dataTour} className={`rounded-2xl border bg-white overflow-hidden ${active ? "border-primary-300 shadow-sm" : done ? "border-gray-200" : "border-gray-200"}`}>
+    <div ref={innerRef} data-tour={dataTour} className={`rounded-2xl border bg-white overflow-hidden ${active ? "border-primary-300 shadow-sm" : done ? "border-gray-200" : "border-gray-200"}`}>
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50/60">
         <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] ${done ? "bg-primary-500 text-white" : active ? "bg-primary-100 text-primary-700" : "bg-gray-200 text-gray-400"}`}>
           {done ? "✓" : ""}

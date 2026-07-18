@@ -466,6 +466,10 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     };
     try {
       await store.upsertProduct(product);
+      // 清空本次任务:停止轮询 + 清空批次,保留面料/款式槽位配置,让页面回到「可重新生成」的新一轮状态
+      stopPolling();
+      setBatch(null);
+      setSubmitting(false);
       navigateTab("lookbook");
     } catch (e: any) {
       setError(`保存失败: ${e?.message || ""}`);
@@ -1056,7 +1060,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
                         {/* 结果 */}
                         <div className="flex-1 min-w-0 flex justify-end">
-                          <div className="w-28 h-28 rounded-lg border border-gray-200 bg-white overflow-hidden flex flex-col shrink-0">
+                          <div className="w-40 h-40 rounded-lg border border-gray-200 bg-white overflow-hidden flex flex-col shrink-0">
                             <div className="flex-1 relative bg-white">
                               {cell.status === "pending" && (
                                 <div className="w-full h-full flex items-center justify-center flex-col gap-1">
