@@ -36,6 +36,12 @@ interface PresetStyle {
 }
 const PRESET_STYLES: PresetStyle[] = [
   {
+    id: "modern-watercolor",
+    label: "现代水彩",
+    description: "柔和水彩晕染与半透明色块,低饱和自然色系,极简留白,现代编辑插画质感。",
+    thumb: "◌ 水彩 · 高级",
+  },
+  {
     id: "hand-drawn-color",
     label: "手绘彩色线条",
     description: "将照片转成「现实 vs 记忆」对照海报:上方原图,下方极简手绘草图。",

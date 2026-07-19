@@ -1572,6 +1572,30 @@ const OUTFIT_STYLING_ASPECT = process.env.OUTFIT_STYLING_ASPECT || '3:4';
 // ─── illustration-create:系统预置风格 ─────────────────────────
 // 预置风格 prompt 中的图片由调用方以 referenceImages:[refUrl] 传入(即用户上传的参考图)。
 const ILLUSTRATION_PRESET_STYLES = {
+  'modern-watercolor': {
+    label: '现代水彩',
+    prompt: `Analyze the user's uploaded photo and convert it into a Modern Editorial Illustration style, fully preserving the subject's content, shape, posture, composition, and recognizable features — ONLY the visual representation style changes.
+
+Overall minimal whitespace design: plain white or warm-white background, no complex scenes, making the subject the visual center.
+
+The subject is rendered with soft watercolor bleeding and translucent color blocks: natural edge diffusion with paper seepage effect, moderate grain and paper texture. Rich color layers but without over-realism; an overall hand-crafted artistic quality.
+
+The subject outline does NOT need to be fully closed — combine free-flowing hand-drawn lines, abstract brushwork, doodle line art, and geometric color blocks for artistic expression. Some lines may cross through the subject to create a visually rhythmic, design-forward feel.
+
+Color palette: low-saturation, premium natural tones — blue-grey, misty blue, sage green, cream white, light khaki, terracotta red, coral orange, light grey, pale green, etc. Soft transitions between colors; avoid high-saturation clashes.
+
+Add subtle abstract decorative elements around the subject: free curves, color blocks, dots, handwritten strokes, botanical line art, watercolor washes, small collage shapes — enhancing the modern artistic feel WITHOUT harming subject recognition.
+
+A small amount of handwritten English text, hand-drawn symbols, simple marks, or designer-note-style elements may be added as visual design elements. The text serves as graphic decoration and need not carry real meaning; it must not overpower the subject.
+
+Overall composition follows modern graphic design principles: emphasis on whitespace, visual balance, layered relationships, and a sense of breathing room. The result should match the visual quality of art posters, magazine illustrations, brand packaging illustrations, and lifestyle magazine spreads.
+
+Overall mood: gentle, natural, literary, healing, premium, design-forward — combining watercolor illustration, collage art, modern editorial illustration, and handcrafted art.
+
+STRICTLY AVOID: photographic style, realistic rendering, 3D, CG, complex backgrounds, realistic lighting, heavy shadows, specular highlights, metallic texture, glass texture, anime/manga style, game concept art, cyberpunk, AI-over-sharpening, complex textures, over-decoration, large blocks of text, logos, watermarks, frames.
+
+The final output must be a premium modern-art illustration combining watercolor texture, abstract brushwork, collage design, hand-drawn line art, and minimal whitespace — suitable as art posters, brand packaging, lifestyle magazine illustrations, or cultural/creative product visuals.`,
+  },
   'hand-drawn-color': {
     label: '手绘彩色线条',
     prompt: `请分析用户上传的图片，并将其转换为极简治愈系儿童手绘插画风格，同时完整保留原图主体的外形、姿态、比例、构图和可识别特征，仅改变表现形式，不改变主体内容。
