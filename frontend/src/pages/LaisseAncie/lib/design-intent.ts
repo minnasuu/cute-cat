@@ -62,13 +62,11 @@ export interface ElementToken {
 
 export const ELEMENT_TOKENS: ElementToken[] = [
   { id: "lettering",  label: "字母/文字/标语", match: /字|字母|文字|标语|logo|slogan|typography|letter|calligraphy|hand.?lettered|script/i },
-  { id: "cat",        label: "猫咪",            match: /猫|猫咪|kitty|kitten|pussy/i },
   { id: "floral",     label: "花卉/植物",      match: /花|玫瑰|花卉|floral|flower|rose|植物|leaf|叶| botanical|peony|牡丹/i },
   { id: "print",      label: "印花/图案",      match: /印花|图案|print|graphic|满铺|all.?over|满地|满地印|扎染|tie.?dye|迷彩|camo/i },
   { id: "embroidery", label: "刺绣/工艺",      match: /刺绣|绣花|embroider|贴布|patch|手工|手缝|钩针|编织|knit/i },
   { id: "minimal",    label: "极简/纯色",      match: /极简|纯色|minimal|plain|条纹|stripe|格纹|check|波点|dot/i },
   { id: "vintage",    label: "复古/怀旧",      match: /复古|怀旧|vintage|retro|港式|法式|港风|做旧|水洗|washed/i },
-  { id: "cat-motif",  label: "Laisse 猫咪",    match: /来兮|安兮|laisse|品牌猫|logo.?cat|immo|miu/i },
   { id: "abstract",   label: "抽象/几何",      match: /抽象|几何|线条|abstract|geometric|线条|线描|dotwork/i },
   { id: "animal",     label: "动物纹样",        match: /动物|豹纹|蛇纹|斑马|animal|leopard|zebra| snake/i },
 ];

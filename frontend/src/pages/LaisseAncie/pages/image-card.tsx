@@ -35,6 +35,7 @@ export function ImageCell({
   onRegenerate,
   confirmed = false,
   onConfirmReplace,
+  onPreview,
 }: {
   image: GeneratedImage;
   /** 修图:无回调=直接替换,有回调=预览模式(返回新图 URL 待用户确认) */
@@ -43,7 +44,10 @@ export function ImageCell({
   confirmed?: boolean;
   /** 预览模式下用户确认替换(父组件执行实际替换) */
   onConfirmReplace?: (slot: string, url: string) => void;
+  /** 点击图片放大预览(传入后图片显示可点击手势) */
+  onPreview?: () => void;
 }) {
+  const cursorClass = onPreview ? "cursor-zoom-in" : "";
   const [inst, setInst] = useState("");
   const [open, setOpen] = useState(false);
   /** 预览 URL(修图返回的新图,待用户确认) */
@@ -83,7 +87,7 @@ export function ImageCell({
       <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
         <div className="bg-gray-100 overflow-hidden">
           {image.url ? (
-            <img src={image.url} alt={image.label} className="w-full h-full object-cover" />
+            <img src={image.url} alt={image.label} onClick={onPreview} className={`w-full h-full object-cover ${cursorClass}`} />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">{image.error || "生成失败"}</div>
           )}
@@ -101,7 +105,7 @@ export function ImageCell({
     <div className={`rounded-xl border overflow-hidden bg-gray-50 ${preview ? "border-amber-300" : "border-gray-200"}`}>
       <div className="bg-gray-100 overflow-hidden relative">
         {displayUrl ? (
-          <img src={displayUrl} alt={image.label} className="w-full h-full object-cover" />
+          <img src={displayUrl} alt={image.label} onClick={onPreview} className={`w-full h-full object-cover ${cursorClass}`} />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">{image.error || "生成失败"}</div>
         )}

@@ -321,8 +321,8 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
 
   // 非编辑态:把分组图片(主图/线稿/效果图/穿搭)打平成一维数组,交给 swiper 左右切换
   const renderOutfitFigure = (o: ProductOutfitEntry) => (
-    <figure className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group">
-      <div className="aspect-[3/4] bg-gray-100 overflow-hidden relative">
+    <figure className="overflow-hidden bg-gray-50 group">
+      <div className="h-full bg-gray-100 overflow-hidden relative">
         {o.url ? <img src={o.url} alt="穿搭效果" className="w-full h-full object-contain" /> : null}
         {o.model?.url && (
           <span className="absolute top-1 left-1 z-10 flex items-center gap-1 text-[8px] px-1 py-0.5 rounded-sm bg-primary-500/90 text-white font-medium max-w-[80%]">
@@ -343,7 +343,7 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
     ...mainImages.map((im, i) => <div key={`v-main-${i}`} className="h-full">{renderImageCard(im, { showSource: false })}</div>),
     ...lineartImages.map((im, i) => <div key={`v-line-${i}`} className="h-full">{renderImageCard(im, { showSource: false })}</div>),
     ...renderImages.map((im, i) => <div key={`v-render-${i}`} className="h-full">{renderImageCard(im, { showSource: true })}</div>),
-    ...outfitImages.map((o, i) => <div key={`v-outfit-${i}`}>{renderOutfitFigure(o)}</div>),
+    ...outfitImages.map((o, i) => <div key={`v-outfit-${i}`} className="h-full">{renderOutfitFigure(o)}</div>),
   ];
 
   return (

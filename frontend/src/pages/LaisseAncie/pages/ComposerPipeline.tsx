@@ -27,6 +27,8 @@ interface Props {
   recommendation: MaterialRecommendation | null;
   generating: boolean;
   expressMode: boolean;
+  /** 大图预览 hook(openFromMixed 会自动过滤无 URL 的图并校正索引) */
+  preview: ReturnType<typeof import("../../../components/ImagePreviewModal").useImagePreview>;
   // 多轮细化(通用 send,按当前 stage 路由到对应步骤)
   onRefine: (text: string) => void;
   refineBusy: boolean;
@@ -165,6 +167,7 @@ export default function ComposerPipeline(props: Props) {
                     onRegenerate={handleRegeneratePreview(im.slot, im.label)}
                     confirmed={currentStep > 1}
                     onConfirmReplace={handleConfirmReplace(im.slot)}
+                    onPreview={() => props.preview.openFromMixed(images, images.indexOf(im))}
                   />
                 ))}
               </div>
@@ -224,6 +227,7 @@ export default function ComposerPipeline(props: Props) {
                     onRegenerate={handleRegeneratePreview(im.slot, im.label)}
                     confirmed={false}
                     onConfirmReplace={handleConfirmReplace(im.slot)}
+                    onPreview={() => props.preview.openFromMixed(images, images.indexOf(im))}
                   />
                 ))}
               </div>

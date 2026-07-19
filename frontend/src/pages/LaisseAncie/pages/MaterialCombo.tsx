@@ -28,6 +28,7 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useMaterialComboTour } from "../controller/useMaterialComboTour";
 import TourOverlay, { type TourStep } from "../components/TourOverlay";
 import { useImageRetry } from "../../../hooks/useImageRetry";
+import { useImagePreview } from "../../../components/ImagePreviewModal";
 
 // ─── 上限约束(与后端同步) ─────────────────────────────────────
 const MAX_FABRIC = 6;   // 面料上限
@@ -224,6 +225,9 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   }, [teamId, stopPolling, resetRetries, tryAutoRetry]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  // 大图预览(单点声明,页面内多处复用)
+  const preview = useImagePreview();
 
   // 新用户自动触发引导(延迟一帧入场,让页面先渲染)
   useEffect(() => {
@@ -957,6 +961,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
               <ColorMixResult
                 batch={batch}
                 retryCell={retryCell}
+                preview={preview}
               />
             ) : (
               // 叉乘模式:纵向列表,每行 = 款式 × 面料 = 结果
@@ -1072,11 +1077,15 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                                   </span>
                                 </div>
                               )}
-                              {cell.status === "done" && (
+                              {cell.status === "done" && cell.url && (
                                 <img
                                   src={cell.url}
                                   alt={`面料${cell.fi + 1} × 款式${cell.si + 1}`}
-                                  className="w-full h-full object-contain"
+                                  className="w-full h-full object-contain cursor-zoom-in"
+                                  onClick={() => preview.openFromMixed(
+                                    sortedCrossItems.filter((c) => c.url).map((c) => ({ url: c.url, label: `面${c.fi + 1} × 款${c.si + 1}` })),
+                                    sortedCrossItems.findIndex((c) => c === cell),
+                                  )}
                                 />
                               )}
                               {cell.status === "error" && (
@@ -1116,6 +1125,9 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           onFabric={addLibraryFabric}
           onStyle={(p) => addLibraryStyle(p)}
         />
+
+        {/* 全屏大图预览(页面级单点渲染) */}
+        {preview.modal}
       </div>
     </>
   );
@@ -1125,7 +1137,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
  * 拼色模式结果面板:单张大图 + 底部面料缩略条。
  * 严格不出现「拼色」文案,让用户感知与叉乘单图一致。
  */
-function ColorMixResult({ batch, retryCell }: { batch: MaterialComboBatch; retryCell: (fi: number, si: number) => void }) {
+function ColorMixResult({ batch, retryCell, preview }: { batch: MaterialComboBatch; retryCell: (fi: number, si: number) => void; preview: ReturnType<typeof useImagePreview>; }) {
   const cell = batch.items?.[0];
   const styleRow = batch.styles?.[0];
   const showingFabrics = batch.fabrics || [];
@@ -1150,7 +1162,9 @@ function ColorMixResult({ batch, retryCell }: { batch: MaterialComboBatch; retry
             <span className="text-[12px] text-gray-400">生成中…</span>
           </div>
         )}
-        {cell?.status === "done" && <img src={cell.url} alt="拼色结果" className="w-full h-full object-contain" />}
+        {cell?.status === "done" && cell.url && (
+          <img src={cell.url} alt="拼色结果" className="w-full h-full object-contain cursor-zoom-in" onClick={() => preview.open([{ url: cell.url, label: "拼色结果" }], 0)} />
+        )}
         {cell?.status === "error" && (
           <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-4 text-center">
             <span className="text-[12px] text-red-500">{cell.error || "生成失败"}</span>

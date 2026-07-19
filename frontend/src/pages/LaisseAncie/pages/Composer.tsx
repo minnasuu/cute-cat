@@ -32,6 +32,7 @@ import { ImageCell, LiveElapsed, Field, type GeneratedImage } from "./image-card
 import { RecForm } from "./rec-form";
 import ComposerBrief from "./ComposerBrief";
 import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateButton";
+import { useImagePreview } from "../../../components/ImagePreviewModal";
 import ComposerPipeline from "./ComposerPipeline";
 import TourOverlay, { type TourStep } from "../components/TourOverlay";
 import { useTourController } from "../controller/useTourController";
@@ -1303,6 +1304,9 @@ export default function ComposerPage({
   // 线稿确认按钮(仅 presenting-lineart)
   const canConfirmLineart = mode !== "illustration" && stage === "presenting-lineart";
 
+  // 大图预览(单点声明,pipeline / 侧栏 / 模态共享同一实例,支持跨图左右切换)
+  const preview = useImagePreview();
+
   // 插画模式沿用原 chat + 画布/侧栏布局(保持不动);单品/系列走结构化双栏(设计简报 + 生成流程)
   if (mode === "illustration") {
     return (
@@ -1465,13 +1469,13 @@ export default function ComposerPage({
           {/* 桌面端侧栏:单品/系列/插画+图片=设计方案·材料选择 / 插画+HTML=画布预览 + 修图输入 */}
           {mode === "illustration" && illustOutputMode === "html"
             ? <IllustrationCanvas html={illustHtml} generating={illustBusy} stage={stage} illustHtml={illustHtml} onModify={regenerateHtml} onSaveToLookbook={saveToLookbook} />
-            : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
+            : <PlanSideBar planText={planText} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} preview={preview} />
           }
         </div>
         {/* 移动端抽屉(<md,跟主内容同级渲染) */}
         {isMobile && (mode === "illustration" && illustOutputMode === "html")
           ? <IllustrationCanvasDrawer html={illustHtml} generating={illustBusy} open={canvasOpen} onClose={() => setCanvasOpen(false)} onModify={regenerateHtml} stage={stage} onSaveToLookbook={saveToLookbook} />
-          : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
+          : isMobile && <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} preview={preview} />
         }
       </>
     );
@@ -1513,19 +1517,29 @@ export default function ComposerPage({
           coins: 0,
         };
       }
-      // 单品 / 系列(非极速)模式:支持「跳过线稿,直接选材质」
+      // 单品 / 系列(非极速)模式:主按钮「生成材质与配色方案」,次要按钮「生成线稿(付费)」
       const canSkipLineart = !expressMode;
+      if (expressMode) {
+        return {
+          label: "确认方案,立即生成",
+          onClick: () => void startGeneration(),
+          loading: generating,
+          disabled: false,
+          coins: getGenerateCount() * AI_COST_PER_IMAGE,
+        };
+      }
       return {
-        label: expressMode ? "确认方案,立即生成" : "确认方案,生成线稿",
-        onClick: () => void startGeneration(),
-        loading: generating,
+        label: "生成材质与配色方案",
+        onClick: () => void skipToMaterial(),
+        loading: busy,
         disabled: false,
-        coins: getGenerateCount() * AI_COST_PER_IMAGE,
+        coins: 0,
         ...(canSkipLineart
           ? {
-              secondaryLabel: "跳过线稿,直接选材质",
-              secondaryOnClick: () => void skipToMaterial(),
-              secondaryLoading: busy,
+              secondaryLabel: "生成线稿",
+              secondaryCoins: getGenerateCount() * AI_COST_PER_IMAGE,
+              secondaryOnClick: () => void startGeneration(),
+              secondaryLoading: generating,
             }
           : {}),
       };
@@ -1627,6 +1641,7 @@ export default function ComposerPage({
           recommendation={recommendation}
           generating={generating}
           expressMode={expressMode}
+          preview={preview}
           onRefine={(t) => void send(t)}
           refineBusy={busy}
           onRegeneratePreview={(slot, label, inst, onResult) => void regenerateOne(slot, label, inst, onResult)}
@@ -1638,8 +1653,11 @@ export default function ComposerPage({
 
       {/* 移动端抽屉(<md):单品走结构化方案/材质/成图抽屉 */}
       {isMobile && (
-        <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} />
+        <ComposerPlanDrawer planText={planText} open={planOpen} onClose={() => setPlanOpen(false)} stage={stage} images={images} onSaveToLookbook={saveToLookbook} recommendation={recommendation} onRecommendationChange={setRecommendation} onRefreshRecommendation={fetchRecommendation} onGenerateFinal={generateFinal} generating={generating} expressMode={expressMode} preview={preview} />
       )}
+
+      {/* 全屏大图预览模态(单点渲染) */}
+      {preview.modal}
     </>
   );
 }
@@ -1695,7 +1713,7 @@ function IllustrationCanvas({ html, generating, stage, onModify, onSaveToLookboo
 }
 
 /** 桌面端「设计方案 / 材质推荐 / 设计图稿」侧栏(单品 / 系列 / 插画+图片 共用) */
-function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating, expressMode }: {
+function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating, expressMode, preview }: {
   planText: string; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void;
   recommendation: MaterialRecommendation | null;
   onRecommendationChange: (r: MaterialRecommendation) => void;
@@ -1703,6 +1721,7 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation
   onGenerateFinal: () => void;
   generating: boolean;
   expressMode: boolean;
+  preview: ReturnType<typeof useImagePreview>;
 }) {
   const canSave = (stage === "presenting" || stage === "presenting-lineart" || stage === "material-recommend") && images.some((im) => im.url);
   const isRecForm = stage === "material-recommend" || stage === "generating-final";
@@ -1716,10 +1735,10 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation
         <div className="shrink-0 p-4 pb-2 border-b border-gray-200">
           <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">设计图稿</div>
           <div className="flex gap-2 overflow-x-auto">
-            {images.filter((im) => (im.slot === "lineart" || im.slot === "final" || (expressMode && im.slot === "single")) && im.url && !im.error).map((im) => (
+            {images.filter((im) => (im.slot === "lineart" || im.slot === "final" || (expressMode && im.slot === "single")) && im.url && !im.error).map((im, i, arr) => (
               <div key={im.slot} className="shrink-0 w-20">
-                <div className="aspect-square rounded-lg border border-gray-200 overflow-hidden bg-white">
-                  <img src={im.url} alt={im.label} className="w-full h-full object-cover" />
+                <div className="aspect-square rounded-lg border border-gray-200 overflow-hidden bg-white cursor-zoom-in">
+                  <img src={im.url} alt={im.label} className="w-full h-full object-cover" onClick={() => preview.open(arr, i)} />
                 </div>
                 <div className="text-[9px] text-gray-500 mt-1 text-center truncate">{im.label}</div>
               </div>
@@ -1782,7 +1801,7 @@ function PlanSideBar({ planText, stage, images, onSaveToLookbook, recommendation
 }
 
 /** 移动端企划抽屉(<md 才渲染),挂在 Composer 外层由父组件组合。 */
-export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating, expressMode }: {
+export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onSaveToLookbook, recommendation, onRecommendationChange, onRefreshRecommendation, onGenerateFinal, generating, expressMode, preview }: {
   planText: string; open: boolean; onClose: () => void; stage: string; images: GeneratedImage[]; onSaveToLookbook: () => void;
   recommendation: MaterialRecommendation | null;
   onRecommendationChange: (r: MaterialRecommendation) => void;
@@ -1790,6 +1809,7 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
   onGenerateFinal: () => void;
   generating: boolean;
   expressMode: boolean;
+  preview: ReturnType<typeof useImagePreview>;
 }) {
   const canSave = (stage === "presenting" || stage === "presenting-lineart" || stage === "material-recommend") && images.some((im) => im.url);
   const isRecForm = stage === "material-recommend" || stage === "generating-final";
@@ -1816,10 +1836,10 @@ export function ComposerPlanDrawer({ planText, open, onClose, stage, images, onS
         {/* 图稿缩略 */}
         {(hasLineart || hasFinal || hasExpress) && (
           <div className="shrink-0 px-4 py-2 border-b border-gray-100 flex gap-2 overflow-x-auto">
-            {images.filter((im) => (im.slot === "lineart" || im.slot === "final" || (expressMode && im.slot === "single")) && im.url && !im.error).map((im) => (
+            {images.filter((im) => (im.slot === "lineart" || im.slot === "final" || (expressMode && im.slot === "single")) && im.url && !im.error).map((im, i, arr) => (
               <div key={im.slot} className="shrink-0 w-14">
-                <div className="aspect-square rounded border border-gray-200 overflow-hidden bg-white">
-                  <img src={im.url} alt={im.label} className="w-full h-full object-cover" />
+                <div className="aspect-square rounded border border-gray-200 overflow-hidden bg-white cursor-zoom-in">
+                  <img src={im.url} alt={im.label} className="w-full h-full object-cover" onClick={() => preview.open(arr, i)} />
                 </div>
                 <div className="text-[8px] text-gray-500 mt-0.5 text-center truncate">{im.label}</div>
               </div>

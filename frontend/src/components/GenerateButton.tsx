@@ -37,6 +37,8 @@ interface Props {
   onClick?: () => void;
   /** 次要按钮(如「跳过某步」),渲染在主按钮下方,弱化的幽灵样式 */
   secondaryLabel?: string;
+  /** 次要按钮预计花费喵币/张,传入后在该按钮文案后显示「(预计花费 X 喵币/张)」 */
+  secondaryCoins?: number;
   secondaryLoading?: boolean;
   secondaryDisabled?: boolean;
   secondaryOnClick?: () => void;
@@ -51,6 +53,7 @@ export function GenerateButton({
   disabled,
   onClick,
   secondaryLabel,
+  secondaryCoins,
   secondaryLoading,
   secondaryDisabled,
   secondaryOnClick,
@@ -162,6 +165,9 @@ export function GenerateButton({
           className="mt-1 text-[11px] text-gray-500 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {secondaryLoading ? "处理中…" : secondaryLabel}
+          {secondaryCoins != null && secondaryCoins > 0 && (
+            <span className="ml-0.5 text-gray-400">(预计花费 {secondaryCoins} 喵币/张)</span>
+          )}
         </button>
       )}
     </div>

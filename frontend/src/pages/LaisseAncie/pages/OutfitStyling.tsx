@@ -17,6 +17,7 @@ import { useDesignStore } from "../store/design";
 import { useResourceStore } from "../store/resource";
 import { useAuth } from "../../../contexts/AuthContext";
 import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateButton";
+import { useImagePreview } from "../../../components/ImagePreviewModal";
 import { Modal } from "../components/ui";
 import { showToast } from "../../../components/Toast";
 import { pickProductCover } from "../lib/product-cover";
@@ -40,6 +41,9 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
   const { user } = useAuth();
   const store = useDesignStore();
   const resourceStore = useResourceStore();
+
+  // 大图预览(单点声明)
+  const preview = useImagePreview();
 
   // ── 输入状态 ──
   const [name, setName] = useState("");
@@ -344,7 +348,7 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
                 </div>
               )}
               {cell.status === "done" && cell.url && (
-                <img src={cell.url} alt="穿搭效果" className="w-full h-full object-contain" />
+                <img src={cell.url} alt="穿搭效果" className="w-full h-full object-contain cursor-zoom-in" onClick={() => preview.open([{ url: cell.url, label: "穿搭效果" }], 0)} />
               )}
               {cell.status === "error" && (
                 <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-4 text-center">
@@ -403,6 +407,9 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
           onConfirm={(model, imageUrl) => { setSelectedModel({ model, imageUrl }); setModelPickerOpen(false); }}
         />
       )}
+
+      {/* 全屏大图预览(页面级单点渲染) */}
+      {preview.modal}
     </div>
   );
 }

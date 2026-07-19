@@ -16,6 +16,7 @@ import { Modal } from "../components/ui";
 import { GenerateButton, AI_COST_PER_IMAGE } from "../../../components/GenerateButton";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useImageRetry } from "../../../hooks/useImageRetry";
+import { useImagePreview } from "../../../components/ImagePreviewModal";
 import { useStyleMutateTour } from "../controller/useStyleMutateTour";
 import TourOverlay, { type TourStep } from "../components/TourOverlay";
 
@@ -306,6 +307,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const { teamId, navigateTab } = useCurrentTeam();
   const { user } = useAuth();
   const store = useDesignStore();
+
+  // 大图预览(单点声明,结果网格复用)
+  const preview = useImagePreview();
 
   const [mother, setMother] = useState<StyleRow | null>(null);
   const [fabric, setFabric] = useState<FabricRow>(null);
@@ -1376,8 +1380,16 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                             <span className="text-[9px] text-gray-400">生成中…</span>
                           </div>
                         )}
-                        {cell.status === "done" && (
-                          <img src={cell.url} alt={cell.label} className="w-full h-full object-contain" />
+                        {cell.status === "done" && cell.url && (
+                          <img
+                            src={cell.url}
+                            alt={cell.label}
+                            className="w-full h-full object-contain cursor-zoom-in"
+                            onClick={() => preview.openFromMixed(
+                              visibleItems.filter((c) => c.url).map((c) => ({ url: c.url, label: c.label })),
+                              visibleItems.findIndex((c) => c === cell),
+                            )}
+                          />
                         )}
                         {cell.status === "error" && (
                           <div className="w-full h-full flex items-center justify-center flex-col gap-1 px-2 text-center">
@@ -1442,6 +1454,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
             setPicker(null);
           }}
         />
+
+        {/* 全屏大图预览(页面级单点渲染) */}
+        {preview.modal}
       </div>
     </>
   );
