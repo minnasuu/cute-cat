@@ -65,6 +65,8 @@ export interface StyleMutateBatch {
     url?: string;
     error?: string;
     prompt?: string;
+    /** 该格 COS 失败已保留 buffer,下次重试为重传而非重新生图(不重复扣币) */
+    needsReupload?: boolean;
   }[];
   total: number;
   completed: number;

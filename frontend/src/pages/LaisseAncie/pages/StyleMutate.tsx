@@ -1397,8 +1397,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                             <button
                               onClick={() => retryCell(cell.mi)}
                               className="text-[10px] text-primary-600 underline hover:text-primary-700"
+                              title={cell.needsReupload ? "已生图,重试仅重新上传(不重复扣币)" : "重新生成"}
                             >
-                              重试
+                              {cell.needsReupload ? "重试 · 重传" : "重试"}
                             </button>
                           </div>
                         )}

@@ -388,4 +388,151 @@ async function generateImage(prompt, opts) {
   }
 }
 
-module.exports = { generateImage, PROVIDERS, resolveProvider };
+/**
+ * 仅生图(调模型 + 下载),返回图片 buffer 而不上传。
+ * 与 uploadImageBuffer 配合,便于调用方在 COS 上传失败时保留 buffer 做重传,避免重新生图。
+ * @returns {Promise<{ buffer: Buffer, prompt: string, model: string } | { error: string }>}
+ */
+async function generateImageBuffer(prompt, opts) {
+  const { teamId, aspectRatio = '1:1', model: modelOverride, referenceImageUrl, referenceImages } = opts || {};
+  if (!prompt || !prompt.trim()) {
+    return { error: 'empty prompt' };
+  }
+  const refs = (Array.isArray(referenceImages) && referenceImages.length)
+    ? referenceImages.filter(Boolean)
+    : (referenceImageUrl ? [referenceImageUrl] : []);
+  if (!teamId) {
+    return { error: 'teamId required' };
+  }
+
+  const provider = resolveProvider(opts);
+  const cfg = PROVIDERS[provider];
+
+  const apiKey = cfg.apiKey();
+  if (!apiKey) {
+    return { error: cfg.missingKeyError };
+  }
+
+  const effectivePrompt = prompt;
+  const baseUrl = cfg.baseUrl();
+  const model = modelOverride || cfg.defaultModel();
+  const size = cfg.sizeMap[String(aspectRatio)] || cfg.fallbackSize;
+  const source = `${provider}:${model}/${size}`;
+
+  let normalizedRefs = refs;
+  if (cfg.imageRef && refs.length) {
+    console.log(`[gen-image] normalize ${refs.length} ref images (safeName=generateImageBuffer)…`);
+    const t0 = Date.now();
+    const resolved = await Promise.all(refs.map(normalizeRefImage));
+    normalizedRefs = resolved.filter(Boolean);
+    const missing = refs.length - normalizedRefs.length;
+    console.log(`[gen-image] normalize done in ${Date.now() - t0}ms: ok=${normalizedRefs.length}${missing ? ` dropped=${missing }` : ''}`);
+  }
+
+  const IMAGE_TIMEOUT_MS = Number.parseInt(process.env.IMAGE_TIMEOUT_MS || '', 10) || 180000;
+  const MAX_RETRIES = 1;
+  let lastError = null;
+  let _imageUrl = null;
+  let _imageBuffer = null;
+  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+    try {
+      const url = `${baseUrl}${cfg.path ? cfg.path() : '/images/generations'}`;
+      console.log(`[gen-image] generateImageBuffer attempt ${attempt}: POST ${url} model=${model}, size=${size}${normalizedRefs.length ? `, refImages=${normalizedRefs.length}×${String(normalizedRefs[0]).slice(0, 40)}…` : ''}, prompt=${effectivePrompt.slice(0, 60)}…`);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify(cfg.buildBody(model, effectivePrompt, size, normalizedRefs, cfg)),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[gen-image] ${cfg.label} API ${res.status} (attempt ${attempt}, ${source}): ${errText.slice(0, 300)}`);
+        if (attempt < MAX_RETRIES + 1 && (res.status >= 500 || res.status === 429)) {
+          lastError = `${cfg.label} HTTP ${res.status}: ${errText.slice(0, 200)}`;
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        return { error: `${cfg.label} HTTP ${res.status}: ${errText.slice(0, 200)}` };
+      }
+      const data = await res.json();
+      const extracted = cfg.extractImage(data);
+      if (!extracted) {
+        console.error(`[gen-image] ${cfg.label} returned no image (attempt ${attempt}):`, JSON.stringify(data).slice(0, 200));
+        if (attempt < MAX_RETRIES + 1) {
+          lastError = '返回无图片数据';
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        return { error: `${cfg.label} 返回无图片数据: ${JSON.stringify(data).slice(0, 120)}` };
+      }
+      _imageUrl = extracted.url || null;
+      _imageBuffer = extracted.buffer || null;
+      break;
+    } catch (e) {
+      const isTimeout = e?.name === 'AbortError';
+      const msg = isTimeout ? `生成超时(${IMAGE_TIMEOUT_MS}ms)` : (e?.message || String(e));
+      console.error(`[gen-image] ${cfg.label} call failed (attempt ${attempt}):`, msg);
+      if (attempt < MAX_RETRIES + 1 && (isTimeout || e?.name === 'TypeError' || /network|ECONN|socket/i.test(msg))) {
+        lastError = msg;
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        continue;
+      }
+      return { error: msg };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  let buf = _imageBuffer || null;
+  if (!buf) {
+    const imageUrl = _imageUrl;
+    if (!imageUrl) {
+      return { error: lastError || `${cfg.label} 生成失败(已重试 ${MAX_RETRIES} 次)` };
+    }
+    try {
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) {
+        console.error(`[gen-image] download image failed: HTTP ${imgRes.status}`);
+        return { error: `下载图片失败(HTTP ${imgRes.status})` };
+      }
+      buf = Buffer.from(await imgRes.arrayBuffer());
+    } catch (e) {
+      console.error('[gen-image] download image error:', e?.message || e);
+      return { error: `下载图片失败: ${e?.message || e}` };
+    }
+  }
+
+  if (!buf) {
+    return { error: lastError || `${cfg.label} 生成失败(已重试 ${MAX_RETRIES} 次)` };
+  }
+  return { buffer: buf, prompt, model };
+}
+
+/**
+ * 把已生成的图片 buffer 持久化到存储(本地/COS),返回访问 URL。
+ * 与 generateImageBuffer 配合,便于调用方在 COS 上传失败时保留 buffer 做重传,避免重新生图。
+ * @param {Buffer} buf 图片 buffer
+ * @param {string} teamId
+ * @param {string} safeName 文件名安全前缀
+ * @returns {Promise<{ url: string, originalUrl: string } | { error: string }>}
+ */
+async function uploadImageBuffer(buf, teamId, safeName) {
+  const cleanSafe = String(safeName || 'image').replace(/[^a-zA-Z0-9一-龥_-]+/g, '-').slice(0, 60) || 'image';
+  const filename = `${Date.now()}-${cleanSafe}-${crypto.randomBytes(6).toString('hex')}.png`;
+  const tmpPath = path.join(storage.TMP_DIR, filename);
+  try {
+    fs.mkdirSync(storage.TMP_DIR, { recursive: true });
+    fs.writeFileSync(tmpPath, buf);
+    const savePath = storage.createSavePath(`design/${String(teamId)}`, filename);
+    // 同时保存原图(-orig 后缀) + 压缩图,前端展示压缩图,下载按钮取原图
+    const { url, originalUrl } = await storage.saveAIGeneratedImage(tmpPath, savePath, 'image/png');
+    return { url, originalUrl };
+  } catch (e) {
+    console.error('[gen-image] uploadImageBuffer failed:', e?.message || String(e));
+    return { error: `保存图片失败: ${e?.message || e}` };
+  }
+}
+
+module.exports = { generateImage, generateImageBuffer, uploadImageBuffer, PROVIDERS, resolveProvider };

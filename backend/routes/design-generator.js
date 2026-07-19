@@ -1173,6 +1173,8 @@ function smBatchPublicView(b) {
       url: it.url,
       error: it.error,
       prompt: it.prompt,
+      // 标记该格已保留 buffer、下次重试为重传而非重新生图
+      needsReupload: !!it._imgBuf,
     })),
     total: b.items.length,
     completed,
@@ -1238,6 +1240,25 @@ async function runStyleMutateBatch(batchId) {
         cell.error = '母款或裂变项缺失';
         return cell;
       }
+      // 已有 buffer(此前 COS 上传失败保留)→ 直接重传,不再调模型生图
+      if (cell._imgBuf) {
+        console.log(`[design-generator] style-mutate cell RE-UPLOAD batchId=${batchId} mi=${cell.mi}`);
+        cell.status = 'running';
+        const upload = await uploadImageBuffer(cell._imgBuf, b.teamId, `style-mutate-${cell.mi}`);
+        if (upload?.url) {
+          cell.url = upload.url;
+          cell.originalUrl = upload.originalUrl ?? null;
+          cell.status = 'done';
+          cell.error = undefined;
+          cell._imgBuf = undefined;
+          console.log(`[design-generator] style-mutate cell RE-UPLOAD DONE batchId=${batchId} mi=${cell.mi}`);
+        } else {
+          cell.error = upload?.error || '保存图片失败';
+          cell.status = 'error';
+          console.warn(`[design-generator] style-mutate cell RE-UPLOAD ERROR batchId=${batchId} mi=${cell.mi} error=${cell.error}`);
+        }
+        return cell;
+      }
       const prompt = buildStyleMutatePrompt({
         name: b.name,
         description: b.description,
@@ -1248,21 +1269,32 @@ async function runStyleMutateBatch(batchId) {
       cell.prompt = prompt;
       const referenceImages = [b.mother.url, b.fabric?.url].filter(Boolean);
       try {
-        const img = await generateImage(prompt, {
+        // 拆分为「生图」+「上传」两步,便于 COS 上传失败时保留 buffer 重传
+        const gen = await generateImageBuffer(prompt, {
           teamId: b.teamId,
           aspectRatio: '1:1',
           safeName: `style-mutate-${cell.mi}`,
           provider: STYLE_MUTATE_PROVIDER,
           referenceImages,
         });
-        if (img?.url) {
-          cell.url = img.url;
+        if (!gen?.buffer) {
+          cell.error = gen?.error || '生成失败';
+          cell.status = 'error';
+          console.warn(`[design-generator] style-mutate cell GEN ERROR batchId=${batchId} mi=${cell.mi} error=${cell.error}`);
+          return cell;
+        }
+        const upload = await uploadImageBuffer(gen.buffer, b.teamId, `style-mutate-${cell.mi}`);
+        if (upload?.url) {
+          cell.url = upload.url;
+          cell.originalUrl = upload.originalUrl ?? null;
           cell.status = 'done';
           console.log(`[design-generator] style-mutate cell DONE batchId=${batchId} mi=${cell.mi}`);
         } else {
-          cell.error = img?.error || '生成失败';
+          // COS 上传失败:保留 buffer 供重试(重传而非重新生图)
+          cell._imgBuf = gen.buffer;
+          cell.error = upload?.error || '保存图片失败';
           cell.status = 'error';
-          console.warn(`[design-generator] style-mutate cell ERROR batchId=${batchId} mi=${cell.mi} error=${cell.error}`);
+          console.warn(`[design-generator] style-mutate cell UPLOAD ERROR batchId=${batchId} mi=${cell.mi} error=${cell.error}(buffer retained for retry)`);
         }
       } catch (cellErr) {
         cell.error = cellErr?.message || '生成本格异常';
@@ -1441,18 +1473,23 @@ router.post('/style-mutate/batch/:batchId/regenerate', async (req, res) => {
   const mi = Number.parseInt(req.body?.mi, 10);
   if (!Number.isInteger(mi)) return res.status(400).json({ error: 'mi 必须为整数' });
 
-  try {
-    await chargeImages(req, 1, 'image_regenerate', `style-mutate:regenerate:${mi}`);
-  } catch (err) {
-    if (err.code === 'INSUFFICIENT_COINS') {
-      return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
-    }
-    throw err;
-  }
-
   const cell = batch.items.find((it) => it.mi === mi);
   const mutation = batch.mutations[mi];
   if (!cell || !mutation) return res.status(400).json({ error: '无效的 mi' });
+
+  // 已有 buffer(COS 上传失败保留)→ 重传模式:直接上传,不重新生图,不扣币
+  const isReupload = !!cell._imgBuf;
+
+  if (!isReupload) {
+    try {
+      await chargeImages(req, 1, 'image_regenerate', `style-mutate:regenerate:${mi}`);
+    } catch (err) {
+      if (err.code === 'INSUFFICIENT_COINS') {
+        return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+      }
+      throw err;
+    }
+  }
 
   cell.status = 'pending';
   cell.error = undefined;
@@ -1467,31 +1504,51 @@ router.post('/style-mutate/batch/:batchId/regenerate', async (req, res) => {
     url: cell.url,
     error: cell.error,
     prompt: cell.prompt,
+    ...(isReupload ? { reupload: true } : {}),
   });
 
   try {
-    const prompt = buildStyleMutatePrompt({
-      name: batch.name,
-      description: batch.description,
-      mutation,
-      hasFabric: !!batch.fabric?.url,
-      fabricText: batch.fabric?.text || '',
-    });
-    cell.prompt = prompt;
-    const referenceImages = [batch.mother?.url, batch.fabric?.url].filter(Boolean);
-    const img = await generateImage(prompt, {
-      teamId: batch.teamId,
-      aspectRatio: '1:1',
-      safeName: `style-mutate-${mi}`,
-      provider: STYLE_MUTATE_PROVIDER,
-      referenceImages,
-    });
-    if (img?.url) {
-      cell.url = img.url;
-      cell.originalUrl = img.originalUrl ?? null;
-      cell.status = 'done';
+    let uploadResult;
+    if (isReupload) {
+      // 重传:直接上传保留的 buffer
+      console.log(`[design-generator] style-mutate cell RE-UPLOAD (regenerate) batchId=${batch.batchId} mi=${mi}`);
+      uploadResult = await uploadImageBuffer(cell._imgBuf, batch.teamId, `style-mutate-${mi}`);
     } else {
-      cell.error = img?.error || '生成失败';
+      // 重新生图
+      const prompt = buildStyleMutatePrompt({
+        name: batch.name,
+        description: batch.description,
+        mutation,
+        hasFabric: !!batch.fabric?.url,
+        fabricText: batch.fabric?.text || '',
+      });
+      cell.prompt = prompt;
+      const referenceImages = [batch.mother?.url, batch.fabric?.url].filter(Boolean);
+      const gen = await generateImageBuffer(prompt, {
+        teamId: batch.teamId,
+        aspectRatio: '1:1',
+        safeName: `style-mutate-${mi}`,
+        provider: STYLE_MUTATE_PROVIDER,
+        referenceImages,
+      });
+      if (!gen?.buffer) {
+        cell.error = gen?.error || '生成失败';
+        cell.status = 'error';
+        return;
+      }
+      uploadResult = await uploadImageBuffer(gen.buffer, batch.teamId, `style-mutate-${mi}`);
+      if (!uploadResult?.url) {
+        // COS 上传失败:保留 buffer 供下次重试
+        cell._imgBuf = gen.buffer;
+      }
+    }
+    if (uploadResult?.url) {
+      cell.url = uploadResult.url;
+      cell.originalUrl = uploadResult.originalUrl ?? null;
+      cell.status = 'done';
+      cell._imgBuf = undefined;
+    } else {
+      cell.error = uploadResult?.error || '保存图片失败';
       cell.status = 'error';
     }
   } catch (e) {

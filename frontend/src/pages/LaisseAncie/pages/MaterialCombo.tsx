@@ -1067,7 +1067,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
                         {/* 结果 */}
                         <div className="flex-1 min-w-0 flex justify-end">
-                          <div className="w-40 h-40 rounded-lg border border-gray-200 bg-white overflow-hidden flex flex-col shrink-0">
+                          <div className="w-60 h-60 rounded-lg border border-gray-200 bg-white overflow-hidden flex flex-col shrink-0">
                             <div className="flex-1 relative bg-white">
                               {cell.status === "pending" && (
                                 <div className="w-full h-full flex items-center justify-center flex-col gap-1">
