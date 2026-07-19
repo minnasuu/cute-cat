@@ -270,8 +270,8 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
       : undefined;
     const hasSrc = !!(srcContext?.style || srcContext?.fabric);
     return (
-      <figure className="h-full rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group relative">
-        <div className="aspect-[1/1] bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-contain" /></div>
+      <figure className="h-full rounded-xl overflow-hidden bg-gray-50 group relative">
+        <div className="h-full bg-gray-100 overflow-hidden"><img src={im.url} alt={im.label} className="w-full h-full object-contain" /></div>
         {/* 主图角标 */}
         {im.slot === MAIN_SLOT && (
           <span className="absolute top-1 left-1 z-10 text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-500/95 text-white font-medium">主图</span>
@@ -340,9 +340,9 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
   );
 
   const viewSlides: ReactNode[] = [
-    ...mainImages.map((im, i) => <div key={`v-main-${i}`}>{renderImageCard(im, { showSource: false })}</div>),
-    ...lineartImages.map((im, i) => <div key={`v-line-${i}`}>{renderImageCard(im, { showSource: false })}</div>),
-    ...renderImages.map((im, i) => <div key={`v-render-${i}`}>{renderImageCard(im, { showSource: true })}</div>),
+    ...mainImages.map((im, i) => <div key={`v-main-${i}`} className="h-full">{renderImageCard(im, { showSource: false })}</div>),
+    ...lineartImages.map((im, i) => <div key={`v-line-${i}`} className="h-full">{renderImageCard(im, { showSource: false })}</div>),
+    ...renderImages.map((im, i) => <div key={`v-render-${i}`} className="h-full">{renderImageCard(im, { showSource: true })}</div>),
     ...outfitImages.map((o, i) => <div key={`v-outfit-${i}`}>{renderOutfitFigure(o)}</div>),
   ];
 
@@ -660,7 +660,7 @@ function ImageSwiper({ slides }: { slides: ReactNode[] }) {
     <div>
       <div
         className="relative overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 select-none"
-        style={{ aspectRatio: "1 / 1", maxHeight: "78vh" }}
+        style={{  height: "570px" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -675,7 +675,7 @@ function ImageSwiper({ slides }: { slides: ReactNode[] }) {
           }}
         >
           {slides.map((s, i) => (
-            <div key={i} className="h-full w-full shrink-0 flex items-center justify-center p-2">{s}</div>
+            <div key={i} className="h-full w-full shrink-0 flex items-center justify-center">{s}</div>
           ))}
         </div>
         {total > 1 && (

@@ -105,7 +105,7 @@ export default function IllustrationsPage() {
           {rows.length === 0 ? "还没有插画，点击右上角「+ 新增插画」开始上传" : "没有符合搜索的插画"}
         </div>
       ) : (
-        <div className="p-6 grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
+        <div className="p-6 grid grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
           {visible.map((m) => (
             <ResourceCard
               key={m.id}

@@ -231,7 +231,7 @@ function ModelView({ mat }: { mat: ModelRow }) {
         <div className="grid grid-cols-3 gap-3">
           {images.map((u) => (
             <div key={u} className="aspect-[3/4] rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
-              <img src={u} alt={mat.name} className="w-full h-full object-cover" />
+              <img src={u} alt={mat.name} className="w-full h-full object-contain" />
             </div>
           ))}
         </div>
