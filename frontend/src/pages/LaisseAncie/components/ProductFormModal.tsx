@@ -15,12 +15,12 @@
  * 其余字段经 /products (POST/PATCH) 持久化。工序状态由时间线/推进按钮单独管理,
  * 不纳入本表单(与表格行内 StatusSelect / 推进按钮的既有职责保持一致)。
  */
-import { useState,  useCallback } from "react";
+import { useState, useCallback, useRef, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { Modal } from "./ui";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useDesignStore } from "../store/design";
 import { teamApi } from "../lib/api";
-import { MODE_LABEL, STATUS_LABEL, STATUS_FLOW, type DesignMode, type Product, type ProductStatus } from "../types/design";
+import { MODE_LABEL, STATUS_LABEL, STATUS_FLOW, type DesignMode, type Product, type ProductStatus, type ProductOutfitEntry } from "../types/design";
 import { MAIN_SLOT, LINEART_SLOT, RENDER_SLOT, slotRole } from "../lib/imageRole";
 import { Markdown } from "../lib/markdown";
 
@@ -319,17 +319,48 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
     );
   };
 
+  // 非编辑态:把分组图片(主图/线稿/效果图/穿搭)打平成一维数组,交给 swiper 左右切换
+  const renderOutfitFigure = (o: ProductOutfitEntry) => (
+    <figure className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group">
+      <div className="aspect-[3/4] bg-gray-100 overflow-hidden relative">
+        {o.url ? <img src={o.url} alt="穿搭效果" className="w-full h-full object-contain" /> : null}
+        {o.model?.url && (
+          <span className="absolute top-1 left-1 z-10 flex items-center gap-1 text-[8px] px-1 py-0.5 rounded-sm bg-primary-500/90 text-white font-medium max-w-[80%]">
+            <img src={o.model.url} alt="" className="w-3 h-3 rounded-full object-cover shrink-0" />
+            <span className="truncate">{o.model.name}</span>
+          </span>
+        )}
+      </div>
+      <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
+        <span className="text-[10px] text-gray-600 font-medium truncate" title={(o.products || []).map((p) => p.title).join(" + ") || o.note}>
+          {(o.products || []).length > 1 ? `${o.products.length} 款搭配` : (o.note || "穿搭效果")}
+        </span>
+      </figcaption>
+    </figure>
+  );
+
+  const viewSlides: ReactNode[] = [
+    ...mainImages.map((im, i) => <div key={`v-main-${i}`}>{renderImageCard(im, { showSource: false })}</div>),
+    ...lineartImages.map((im, i) => <div key={`v-line-${i}`}>{renderImageCard(im, { showSource: false })}</div>),
+    ...renderImages.map((im, i) => <div key={`v-render-${i}`}>{renderImageCard(im, { showSource: true })}</div>),
+    ...outfitImages.map((o, i) => <div key={`v-outfit-${i}`}>{renderOutfitFigure(o)}</div>),
+  ];
+
   return (
     <div className="flex-1 min-h-0 flex flex-col h-[85vh]">
       {/* ── 主体:左图(更宽) / 右信息 双栏 ── */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[600px_1fr] gap-5 relative">
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[700px_1fr] gap-5 relative">
         {/* 上一个/下一个产品切换按钮(view 模式,固定在右侧 16px,垂直居中) */}
         {!editing && (onPrev || onNext) && (
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+          <div className="absolute -right-20 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
             <button type="button" title="上一个产品" disabled={!onPrev} onClick={onPrev}
-              className="w-9 h-9 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold">‹</button>
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold">
+                <svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 30L25 18L37 30" stroke="#4a4a4a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
             <button type="button" title="下一个产品" disabled={!onNext} onClick={onNext}
-              className="w-9 h-9 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 shadow-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold">›</button>
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold">
+               <svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 18L24 30L12 18" stroke="#4a4a4a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
           </div>
         )}
         {/* 左侧:图片面板(粘性顶栏 + 滚动内容) */}
@@ -356,7 +387,7 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
                 <iframe srcDoc={product.html!} sandbox="allow-scripts" title="插画 HTML 画布" className="w-full bg-white"
                   style={{ aspectRatio: "1 / 1", border: "none" }} />
               </div>
-            ) : displayImages.length === 0 ? (
+            ) : (displayImages.length === 0 && outfitImages.length === 0) ? (
               <div className="rounded-xl border border-dashed border-gray-300 bg-white h-40 flex flex-col items-center justify-center text-[12px] text-gray-400 gap-2">
                 <span>暂无图片</span>
                 {editing && (
@@ -371,7 +402,7 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
                   </label>
                 )}
               </div>
-            ) : (
+            ) : editing ? (
               <div className="space-y-3">
                 {mainImages.length > 0 && (
                   <div>
@@ -394,29 +425,18 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
                 {outfitImages.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">穿搭效果图 ({outfitImages.length})</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {outfitImages.map((o) => (
-                        <figure key={o.id} className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50 group">
-                          <div className="aspect-[3/4] bg-gray-100 overflow-hidden relative">
-                            {o.url ? <img src={o.url} alt="穿搭效果" className="w-full h-full object-contain" /> : null}
-                            {/* 模特角标 */}
-                            {o.model?.url && (
-                              <span className="absolute top-1 left-1 z-10 flex items-center gap-1 text-[8px] px-1 py-0.5 rounded-sm bg-primary-500/90 text-white font-medium max-w-[80%]">
-                                <img src={o.model.url} alt="" className="w-3 h-3 rounded-full object-cover shrink-0" />
-                                <span className="truncate">{o.model.name}</span>
-                              </span>
-                            )}
-                          </div>
-                          <figcaption className="px-2 py-1 flex items-center justify-between gap-1">
-                            <span className="text-[10px] text-gray-600 font-medium truncate" title={(o.products || []).map((p) => p.title).join(" + ") || o.note}>
-                              {(o.products || []).length > 1 ? `${o.products.length} 款搭配` : (o.note || "穿搭效果")}
-                            </span>
-                          </figcaption>
-                        </figure>
-                      ))}
-                    </div>
+                    <div className="grid grid-cols-2 gap-2">{outfitImages.map((o) => <div key={o.id}>{renderOutfitFigure(o)}</div>)}</div>
                   </div>
                 )}
+              </div>
+            ) : viewSlides.length > 0 ? (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">全部图片 ({viewSlides.length})</div>
+                <ImageSwiper slides={viewSlides} />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-white h-40 flex items-center justify-center text-[12px] text-gray-400">
+                <span>暂无图片</span>
               </div>
             )}
           </div>
@@ -598,6 +618,91 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── 非编辑态图片 swiper:打平后的所有图片左右切换(支持箭头/圆点/拖拽) ──
+function ImageSwiper({ slides }: { slides: ReactNode[] }) {
+  const total = slides.length;
+  const [active, setActive] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startX = useRef(0);
+  const offsetRef = useRef(0);
+
+  const go = (i: number) => setActive(((i % total) + total) % total);
+  const prev = () => go(active - 1);
+  const next = () => go(active + 1);
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    startX.current = e.clientX;
+    offsetRef.current = 0;
+    setDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX.current;
+    offsetRef.current = dx;
+    setOffset(dx);
+  };
+  const onPointerUp = () => {
+    if (!dragging) return;
+    const dx = offsetRef.current;
+    setDragging(false);
+    setOffset(0);
+    if (dx <= -50) next();
+    else if (dx >= 50) prev();
+  };
+
+  return (
+    <div>
+      <div
+        className="relative overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 select-none"
+        style={{ aspectRatio: "1 / 1", maxHeight: "78vh" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <div
+          className="flex h-full w-full"
+          style={{
+            transform: `translate3d(calc(${-active * 100}% + ${offset}px), 0, 0)`,
+            transition: dragging ? "none" : "transform 300ms ease",
+            touchAction: "pan-y",
+          }}
+        >
+          {slides.map((s, i) => (
+            <div key={i} className="h-full w-full shrink-0 flex items-center justify-center p-2">{s}</div>
+          ))}
+        </div>
+        {total > 1 && (
+          <>
+            <button type="button" aria-label="上一张" onClick={prev}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/85 hover:bg-white shadow ring-1 ring-black/5 flex items-center justify-center text-gray-700">
+              <svg width="16" height="16" viewBox="0 0 48 48" fill="none"><path d="M29 12L17 24L29 36" stroke="#4a4a4a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+            <button type="button" aria-label="下一张" onClick={next}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/85 hover:bg-white shadow ring-1 ring-black/5 flex items-center justify-center text-gray-700">
+              <svg width="16" height="16" viewBox="0 0 48 48" fill="none"><path d="M19 12L31 24L19 36" stroke="#4a4a4a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+            <span className="absolute bottom-2 right-2 text-[10px] px-2 py-0.5 rounded-full bg-black/55 text-white font-medium">{active + 1} / {total}</span>
+          </>
+        )}
+      </div>
+      {total > 1 && (
+        <div className="flex items-center justify-center gap-1.5 mt-2">
+          {slides.map((_, i) => (
+            <button key={i} type="button" aria-label={`第 ${i + 1} 张`} onClick={() => go(i)}
+              onPointerDown={(e) => e.stopPropagation()}
+              className={`h-1.5 rounded-full transition-all ${i === active ? "w-4 bg-primary-500" : "w-1.5 bg-gray-300 hover:bg-gray-400"}`} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
