@@ -37,6 +37,8 @@ import StyleMutatePage from '../LaisseAncie/pages/StyleMutate';
 /** 穿搭效果 —— Lookbook 选 1-5 款单品 + 模特图 → 模特穿搭效果图。 */
 import OutfitStylingPage from '../LaisseAncie/pages/OutfitStyling';
 
+/** 插画创作 —— 文生图 / 图生图 → 1 张 1:1 白底插画,可存入插画库。 */
+
 /** 数据 tab 懒加载(避免首屏过大)。 */
 const InspirationsPage = lazy(() => import('../LaisseAncie/pages/Inspirations'));
 const LookbookPage = lazy(() => import('../LaisseAncie/pages/Lookbook'));
@@ -46,6 +48,7 @@ const IllustrationsPage = lazy(() => import('../LaisseAncie/pages/Illustrations'
 const ModelsPage = lazy(() => import('../LaisseAncie/pages/Models'));
 const SkillsPage = lazy(() => import('../LaisseAncie/pages/Skills'));
 const AssetsPage = lazy(() => import('../LaisseAncie/pages/Assets'));
+const IllustrationCreatePage = lazy(() => import('../LaisseAncie/pages/IllustrationCreate'));
 
 const DATA_COMPONENTS: Record<string, React.LazyExoticComponent<ComponentType<any>>> = {
   inspirations: InspirationsPage,
@@ -171,6 +174,12 @@ export default function TeamWorkbench() {
                   models: resourceStore.models,
                   brand,
                 }}
+              />
+            ) : t.id === "illustration-create" ? (
+              <IllustrationCreatePage
+                brandLoading={brandLoading}
+                knowledgeLoading={knowledgeLoading}
+                knowledge={{ brand }}
               />
             ) : (
               <ComposerPage

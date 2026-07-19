@@ -12,7 +12,7 @@
  */
 
 /** 设计模式 */
-export type DesignMode = "single" | "illustration" | "material-combo" | "style-mutate" | "outfit-styling";
+export type DesignMode = "single" | "illustration" | "material-combo" | "style-mutate" | "outfit-styling" | "illustration-create";
 
 export interface NavSubTab {
   id: string;
@@ -41,6 +41,7 @@ export const DESIGN_TABS: { id: DesignMode; label: string; icon: string }[] = [
   { id: "material-combo", label: "材料组合", icon: "◫" },
   { id: "style-mutate", label: "款式裂变", icon: "◈" },
   { id: "outfit-styling", label: "穿搭效果", icon: "◩" },
+  { id: "illustration-create", label: "插画创作", icon: "❖" },
 ];
 
 /** 检测一个 tab id 是否为一级设计 tab */

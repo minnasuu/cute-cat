@@ -1569,6 +1569,63 @@ const OS_BATCH_TTL_MS = 15 * 60 * 1000;
 // 穿搭效果生图比例:3:4 竖版更适合全身穿搭展示
 const OUTFIT_STYLING_ASPECT = process.env.OUTFIT_STYLING_ASPECT || '3:4';
 
+// ─── illustration-create:系统预置风格 ─────────────────────────
+// 预置风格 prompt 中的图片由调用方以 referenceImages:[refUrl] 传入(即用户上传的参考图)。
+const ILLUSTRATION_PRESET_STYLES = {
+  'hand-drawn-color': {
+    label: '手绘彩色线条',
+    prompt: `Transform the uploaded photo into a visual memory translation poster.
+
+The output must contain TWO sections:
+- Top section: Display the original uploaded photograph
+- Bottom section: Display an ultra-minimal visual memory sketch extracted from the photo
+
+The final image should look like a comparison between reality and memory.
+
+Layout Rules:
+- Vertical composition.
+- Top 50%: Original photo
+- Bottom 50%: White background. Place the visual memory sketch in the center of the white area. Large margins, generous negative space.
+- No captions, no explanations, no arrows, no labels.
+
+Memory Sketch Rules:
+- Do NOT recreate the photo realistically. Identify only the most recognizable visual elements. Reduce the scene to its visual essence. Draw only what is necessary for recognition.
+
+Style: Extremely simplified, visual essence only, memory captured in 5 seconds, naive observational drawing, continuous line doodle, poetic abstraction.
+
+Reduction Principle: Human recognition. Recognition is more important than accuracy. Reduce every object to the minimum number of strokes required for human recognition.
+
+Important: Create a visual memory — what remained in my memory. "I saw this scene for one second, looked away, and this is what I remember."`,
+  },
+};
+
+// ── illustration-create 守卫常量 ──────────────────────────────
+const ILLUSTRATION_IMAGE_PROVIDER = process.env.ILLUSTRATION_IMAGE_PROVIDER || 'maizi-image-edit'; // 图生图(参考图)provider
+const ILLUSTRATION_TEXT_PROVIDER = process.env.ILLUSTRATION_TEXT_PROVIDER || 'maizi';            // 文生图 provider
+const IC_BATCH_TTL_MS = 15 * 60 * 1000;
+// 插画生成比例:1:1 正方形
+const ILLUSTRATION_ASPECT = process.env.ILLUSTRATION_ASPECT || '1:1';
+
+// multer 单图上传(field 'image',可选 —— 文生图不传)
+const icMulterStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    fs.mkdirSync(storage.TMP_DIR, { recursive: true });
+    cb(null, storage.TMP_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    cb(null, `ic-${Date.now().toString(36)}${crypto.randomUUID().slice(0, 6)}${ext}`);
+  },
+});
+const icUpload = multer({
+  storage: icMulterStorage,
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpe?g|png|webp|avif|gif)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('unsupported mime'));
+  },
+}).fields([{ name: 'image', maxCount: 1 }]);
+
 // ─── outfit-styling 批次 store (进程内,带 TTL 清理) ────────────
 /** @type {Map<string, {teamId:string,name:string,description:string,products:Array,model:Object,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
 const osBatches = new Map();
@@ -1811,6 +1868,294 @@ router.post('/outfit-styling/batch/:batchId/regenerate', async (req, res) => {
     }
   } catch (e) {
     console.error(`[design-generator] outfit-styling regenerate ${batch.batchId} error:`, e?.message || String(e));
+    cell.error = e?.message || '生成异常';
+    cell.status = 'error';
+  } finally {
+    batch.status = batch.items.some((it) => it.status === 'done') ? 'done'
+      : batch.items.every((it) => it.status === 'error') ? 'error' : 'done';
+    batch.updatedAt = Date.now();
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// illustration-create —— 插画创作(文生图 / 图生图) → 1 张 1:1 白底插画
+// ══════════════════════════════════════════════════════════════
+
+// ─── illustration-create 批次 store (进程内,带 TTL 清理) ─────────
+/** @type {Map<string, {batchId:string,teamId:string,mode:string,name:string,prompt?:string,styleId?:string,refUrl?:string,brandLogo?:string,brandSlogan?:string,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
+const icBatches = new Map();
+
+function icBatchPublicView(b) {
+  const item = (b.items && b.items[0]) || { status: 'pending' };
+  return {
+    batchId: b.batchId,
+    teamId: b.teamId,
+    status: b.status,
+    error: b.error,
+    name: b.name,
+    mode: b.mode,
+    styleId: b.styleId || null,
+    item: {
+      status: item.status,
+      url: item.url || null,
+      originalUrl: item.originalUrl ?? null,
+      error: item.error || null,
+      prompt: item.prompt || null,
+    },
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt,
+  };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, b] of icBatches) {
+    if (now - b.updatedAt > IC_BATCH_TTL_MS) {
+      for (const it of b.items) {
+        if (it.status === 'pending' || it.status === 'running') { it.status = 'error'; it.error = '生成超时,请重试'; }
+      }
+      b.status = 'done';
+      b.updatedAt = now;
+      icBatches.delete(id);
+    }
+  }
+}, 30000).unref();
+
+/**
+ * 文生图 prompt:品牌风格(brand block)+ 用户描述 + 1:1 白底插画指令。
+ * prompt 主体是用户的插画描述,让其真正驱动画面内容。
+ */
+function buildIllustrationTextPrompt({ name, userPrompt, brandBlock }) {
+  return `Create a clean 1:1 square illustration optimized for pure white background art. Subject: ${userPrompt}.
+
+Output a 1:1 square artwork on a solid pure white background. Crisp edges, professional illustration style, no text, no watermarks, no border.${brandBlock ? `\n\n${brandBlock}` : ''}`;
+}
+
+/**
+ * 图生图 prompt:取预置风格固定 prompt,末尾附用户补充描述(若填写)。
+ * 参考图(用户上传的原图)由调用方以 referenceImages:[refUrl] 传入。
+ */
+function buildIllustrationImagePrompt({ styleId, userPrompt }) {
+  const style = ILLUSTRATION_PRESET_STYLES[styleId];
+  if (!style) throw new Error(`unknown styleId=${styleId}`);
+  let prompt = style.prompt;
+  const extra = (userPrompt || '').trim();
+  if (extra) prompt += `\n\nAdditional context from the photographer: ${extra}`;
+  return prompt;
+}
+
+async function runIllustrationCreateBatch(batchId) {
+  const b = icBatches.get(batchId);
+  if (!b) return;
+  console.log(`[design-generator] runIllustrationCreateBatch START batchId=${batchId} mode=${b.mode} provider=${b.mode === 'image' ? ILLUSTRATION_IMAGE_PROVIDER : ILLUSTRATION_TEXT_PROVIDER}`);
+  try {
+    b.status = 'running';
+    b.updatedAt = Date.now();
+    const cell = b.items[0];
+    const brandBlock = buildBrandBlock(b.brandLogo, b.brandSlogan);
+    let prompt;
+    try {
+      prompt = b.mode === 'image'
+        ? buildIllustrationImagePrompt({ styleId: b.styleId, userPrompt: b.prompt })
+        : buildIllustrationTextPrompt({ name: b.name, userPrompt: b.prompt, brandBlock });
+    } catch (e) {
+      cell.status = 'error';
+      cell.error = e?.message || 'prompt 构建失败';
+      b.status = 'error';
+      b.updatedAt = Date.now();
+      return;
+    }
+    cell.prompt = prompt;
+    const provider = b.mode === 'image' ? ILLUSTRATION_IMAGE_PROVIDER : ILLUSTRATION_TEXT_PROVIDER;
+    const referenceImages = b.mode === 'image' && b.refUrl ? [b.refUrl] : undefined;
+    try {
+      const img = await generateImage(prompt, {
+        teamId: b.teamId,
+        aspectRatio: ILLUSTRATION_ASPECT,
+        safeName: 'illustration-create',
+        provider,
+        referenceImages,
+      });
+      if (img?.url) {
+        cell.url = img.url;
+        cell.originalUrl = img.originalUrl ?? null;
+        cell.status = 'done';
+        console.log(`[design-generator] runIllustrationCreateBatch DONE batchId=${batchId}`);
+      } else {
+        cell.error = img?.error || '生成失败';
+        cell.status = 'error';
+        console.warn(`[design-generator] runIllustrationCreateBatch ERROR batchId=${batchId} error=${cell.error}`);
+      }
+    } catch (cellErr) {
+      cell.error = cellErr?.message || '生成本图异常';
+      cell.status = 'error';
+      console.error(`[design-generator] runIllustrationCreateBatch THROW batchId=${batchId} error=${cellErr?.message}`);
+    }
+    b.updatedAt = Date.now();
+    b.status = b.items.every((it) => it.status === 'done') ? 'done'
+      : b.items.some((it) => it.status === 'done') ? 'done' : 'error';
+  } catch (e) {
+    console.error(`[design-generator] runIllustrationCreateBatch ${batchId} error:`, e?.message || String(e));
+    b.status = 'error';
+    b.error = e?.message || '批次生成异常';
+    b.updatedAt = Date.now();
+    for (const it of b.items) {
+      if (it.status === 'pending') { it.status = 'error'; it.error = b.error; }
+    }
+  }
+}
+
+/**
+ * POST /api/teams/:teamId/design/illustration-create
+ * body(mode=text): JSON { mode, name, prompt, brandLogo?, brandSlogan? }
+ * body(mode=image): multipart { mode, name, prompt?, styleId, brandLogo?, brandSlogan? } + field 'image'(file)
+ * 返回 202: { batchId, status:'running', item, ... }
+ */
+router.post('/illustration-create', (req, res) => {
+  icUpload(req, res, async (uploadErr) => {
+    try {
+      if (uploadErr) {
+        console.error('[design-generator] illustration-create upload error:', uploadErr.message);
+        return res.status(400).json({ error: `上传失败: ${uploadErr.message}` });
+      }
+      const body = req.body || {};
+      const mode = String(body.mode || 'text');
+      const name = (body.name || '').trim();
+      const prompt = (body.prompt || '').trim();
+      const styleId = body.styleId || undefined;
+      const brandLogo = body.brandLogo || undefined;
+      const brandSlogan = body.brandSlogan || undefined;
+      const refFile = req.files?.image?.[0];
+
+      if (!['text', 'image'].includes(mode)) {
+        return res.status(400).json({ error: "mode 必须为 'text' 或 'image'" });
+      }
+      if (!name) return res.status(400).json({ error: '请填写名称' });
+
+      if (mode === 'image') {
+        if (!refFile) return res.status(400).json({ error: '请上传参考图' });
+        if (!styleId || !ILLUSTRATION_PRESET_STYLES[styleId]) {
+          return res.status(400).json({ error: '请选择系统预置风格' });
+        }
+      } else {
+        if (!prompt) return res.status(400).json({ error: '请填写插画描述' });
+      }
+
+      // 插画创作按 1 张预扣喵币(余额不足 402)
+      try {
+        await chargeImages(req, 1, 'illustration_create', `illustration-create:${mode}`);
+      } catch (err) {
+        if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+        throw err;
+      }
+
+      // 持久化参考图(仅 image 模式)
+      let refUrl = null;
+      if (refFile) {
+        const savePath = storage.createSavePath(`design/illustration-create`, refFile.filename);
+        await storage.saveUpload(refFile.path, savePath, refFile.mimetype);
+        refUrl = storage.getPublicUrl(savePath);
+      }
+
+      // 建 batch(单条 item pending)
+      const batchId = `ic-${crypto.randomUUID()}`;
+      const now = Date.now();
+      const batch = {
+        batchId,
+        teamId: req.team.id,
+        mode,
+        name,
+        prompt: prompt || undefined,
+        styleId,
+        refUrl,
+        brandLogo,
+        brandSlogan,
+        items: [{ status: 'pending' }],
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      };
+      icBatches.set(batchId, batch);
+      console.log(`[design-generator] illustration-create ready ${batchId} mode=${mode} styleId=${styleId || '-'} → 202`);
+
+      res.status(202).json(icBatchPublicView(batch));
+      runIllustrationCreateBatch(batchId).catch((err) => {
+        console.error(`[design-generator] runIllustrationCreateBatch ${batchId} unhandled:`, err?.message || String(err));
+        const b = icBatches.get(batchId);
+        if (b) {
+          b.status = 'error';
+          b.error = err?.message || '批次异常';
+          for (const it of b.items) {
+            if (it.status === 'pending' || it.status === 'running') { it.status = 'error'; it.error = b.error; }
+          }
+          b.updatedAt = Date.now();
+        }
+      });
+    } catch (fatal) {
+      console.error('[design-generator] illustration-create fatal:', fatal?.stack || fatal?.message || String(fatal));
+      if (!res.headersSent) res.status(500).json({ error: fatal?.message || '插画创作内部异常' });
+    }
+  });
+});
+
+// GET /api/teams/:teamId/design/illustration-create/batch/:batchId —— 轮询进度
+router.get('/illustration-create/batch/:batchId', (req, res) => {
+  const batch = icBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+  res.json(icBatchPublicView(batch));
+});
+
+// POST /api/teams/:teamId/design/illustration-create/batch/:batchId/regenerate —— 重生成
+router.post('/illustration-create/batch/:batchId/regenerate', async (req, res) => {
+  const batch = icBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+
+  try {
+    await chargeImages(req, 1, 'image_regenerate', 'illustration-create:regenerate');
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') {
+      return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    }
+    throw err;
+  }
+
+  const cell = batch.items[0];
+  cell.status = 'pending';
+  cell.error = undefined;
+  cell.url = undefined;
+  cell.originalUrl = undefined;
+  batch.status = 'running';
+  batch.updatedAt = Date.now();
+
+  res.json({ status: cell.status, url: cell.url, error: cell.error, prompt: cell.prompt });
+
+  try {
+    const brandBlock = buildBrandBlock(batch.brandLogo, batch.brandSlogan);
+    const prompt = batch.mode === 'image'
+      ? buildIllustrationImagePrompt({ styleId: batch.styleId, userPrompt: batch.prompt })
+      : buildIllustrationTextPrompt({ name: batch.name, userPrompt: batch.prompt, brandBlock });
+    cell.prompt = prompt;
+    const provider = batch.mode === 'image' ? ILLUSTRATION_IMAGE_PROVIDER : ILLUSTRATION_TEXT_PROVIDER;
+    const referenceImages = batch.mode === 'image' && batch.refUrl ? [batch.refUrl] : undefined;
+    const img = await generateImage(prompt, {
+      teamId: batch.teamId,
+      aspectRatio: ILLUSTRATION_ASPECT,
+      safeName: 'illustration-create',
+      provider,
+      referenceImages,
+    });
+    if (img?.url) {
+      cell.url = img.url;
+      cell.originalUrl = img.originalUrl ?? null;
+      cell.status = 'done';
+    } else {
+      cell.error = img?.error || '生成失败';
+      cell.status = 'error';
+    }
+  } catch (e) {
+    console.error(`[design-generator] illustration-create regenerate ${batch.batchId} error:`, e?.message || String(e));
     cell.error = e?.message || '生成异常';
     cell.status = 'error';
   } finally {

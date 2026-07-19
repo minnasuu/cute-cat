@@ -242,6 +242,11 @@ export function teamApi(teamId: string) {
     styleMutateBatchUrl: (batchId: string) => pre(`/design/style-mutate/batch/${encodeURIComponent(batchId)}`),
     styleMutateRegenerateUrl: (batchId: string) => pre(`/design/style-mutate/batch/${encodeURIComponent(batchId)}/regenerate`),
 
+    // 插画创作(文生图 / 图生图 → 1 张 1:1 白底插画)
+    illustrationCreateUrl: pre('/design/illustration-create'),
+    illustrationCreateBatchUrl: (batchId: string) => pre(`/design/illustration-create/batch/${encodeURIComponent(batchId)}`),
+    illustrationCreateRegenerateUrl: (batchId: string) => pre(`/design/illustration-create/batch/${encodeURIComponent(batchId)}/regenerate`),
+
     // chat(SSE 流式主流程)
     chatUrl: pre('/chat'),
 
