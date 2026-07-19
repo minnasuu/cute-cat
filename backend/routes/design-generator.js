@@ -1572,8 +1572,38 @@ const OUTFIT_STYLING_ASPECT = process.env.OUTFIT_STYLING_ASPECT || '3:4';
 // ─── illustration-create:系统预置风格 ─────────────────────────
 // 预置风格 prompt 中的图片由调用方以 referenceImages:[refUrl] 传入(即用户上传的参考图)。
 const ILLUSTRATION_PRESET_STYLES = {
+  'cute-crayon-sticker': {
+    label: '可爱蜡笔贴纸',
+    // styleGuide:文生图使用——纯风格描述(无「分析原图」语义),作为文本生成插画时的风格指引。
+    styleGuide: `Cute Kawaii Sticker style: minimal flat design with rounded, plump geometric shapes; thick, soft colored outlines (NO black outlines); high-brightness macaron palette (pink, light purple, mint green, cream yellow, sky blue, orange, coral, light brown) with solid color fills only — no gradients, shadows, highlights, or realistic lighting. Minimalist kawaii facial features. Cute decorative accents (flowers, stars, clouds, hearts, sparkles, dots, butterflies) arranged around the subject. Pure white background, sticker-collection composition, relaxed/cute/warm/healing mood. Avoid: realistic or photographic style, 3D, CG, gradients, shadows, glass/metal texture, watercolor, oil painting, anime.`,
+    // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
+    prompt: `Analyze the user's uploaded photo and convert it into a Cute Kawaii Sticker Illustration style, fully preserving the subject's content, silhouette, posture, and key recognizable features — ONLY the painting style changes; the subject type must remain the same.
+
+Overall pure white background: clean and simple, no realistic scenes or complex backgrounds. The subject should appear as a set of independent sticker elements arranged in the frame.
+
+The subject uses a minimal flat design with rounded, plump geometric shapes. Details are greatly simplified while retaining the most recognizable features, making the overall look cute, healing, and childlike.
+
+All outlines use thick, soft, colored strokes — rounded, smooth, slightly hand-drawn feel. Do NOT use black outlines.
+
+Color palette: high-brightness, medium-low-saturation macaron colors — pink, light purple, mint green, cream yellow, sky blue, orange, coral, light brown, and other soft tones. Each element is filled with a small number of solid colors. Do NOT use gradients, shadows, highlights, realistic lighting, or complex textures.
+
+The subject's expression uses minimalist facial features — only simple eyes, nose, and mouth — giving a cute, kawaii, Japanese-kawaii-style look.
+
+Freely add a small number of cute decorative elements around the subject, such as: flowers, stars, clouds, hearts, four-leaf clovers, colorful sparkles, small leaves, colored dots, small butterflies, simple plants. The decorations share the unified art style with the subject — rich but harmonious colors, evenly distributed around the subject without occluding it.
+
+Relaxed, natural composition: the subject and decorations can be arranged as a sticker collection with appropriate spacing between elements. The overall look should evoke cultural/creative stickers, emoji packs, children's picture books, journal stickers, and IP merchandise illustration.
+
+Overall mood: relaxed, cute, warm, lively, healing — full of childlike fun and collectible appeal.
+
+STRICTLY AVOID: realistic style, photographic style, 3D, CG rendering, complex backgrounds, realistic shadows, highlights, gradients, glass texture, metallic texture, watercolor, oil painting, impasto, sketch, cyberpunk, heavy anime rendering, complex textures, realistic materials, logos, watermarks, frames, large blocks of text.
+
+The final output must be a set of high-quality, pure-white-background, cute sticker-style flat illustrations — resembling cultural/creative stickers, IP merchandise, or children's brand visuals. Soft unified colors, rounded shapes, extremely high approachability and recognizability.`,
+  },
   'modern-watercolor': {
     label: '现代水彩',
+    // styleGuide:文生图使用——纯风格描述(无「分析原图」语义),作为文本生成插画时的风格指引。
+    styleGuide: `Modern Editorial Illustration style: soft watercolor bleeding and translucent color blocks, natural edge diffusion with paper seepage effect, moderate grain and paper texture. Low-saturation premium natural tones (blue-grey, misty blue, sage green, cream white, light khaki, terracotta, coral orange, light grey, pale green). Minimal whitespace on pure white or warm-white background. Free-flowing hand-drawn lines, abstract brushwork, doodle line art, geometric color blocks, with subtle abstract decorative accents (curves, dots, botanical line art, watercolor washes). Gentle/natural/literary/healing mood. Avoid: photographic style, 3D, CG, realistic lighting, heavy shadows, metallic/glass texture, anime.`,
+    // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
     prompt: `Analyze the user's uploaded photo and convert it into a Modern Editorial Illustration style, fully preserving the subject's content, shape, posture, composition, and recognizable features — ONLY the visual representation style changes.
 
 Overall minimal whitespace design: plain white or warm-white background, no complex scenes, making the subject the visual center.
@@ -1598,6 +1628,9 @@ The final output must be a premium modern-art illustration combining watercolor 
   },
   'hand-drawn-color': {
     label: '手绘彩色线条',
+    // styleGuide:文生图使用——纯风格描述(无「分析原图」语义),作为文本生成插画时的风格指引。
+    styleGuide: `Simple healing hand-drawn children's illustration style: natural, slightly naive colored hand-drawn lines (crayon / colored pencil / marker feel, slightly irregular and childlike, NO black outlines). Low-saturation macaron palette (light purple, mint green, sakura pink, cream yellow, light blue) with simple solid color blocks — no gradients, shadows, highlights, or complex textures. Greatly simplified details keeping only the most representative visual features, picture-book and sticker-illustration feel. Small decorative accents (flowers, leaves, stars, dots, hearts, fruit) in the same hand-drawn style evenly around the subject. Pure white background, lots of whitespace. Avoid: realistic/photographic style, 3D, CG, gradients, shadows, glass/metal, watercolor, oil painting, anime.`,
+    // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
     prompt: `请分析用户上传的图片，并将其转换为极简治愈系儿童手绘插画风格，同时完整保留原图主体的外形、姿态、比例、构图和可识别特征，仅改变表现形式，不改变主体内容。
 整体采用纯白背景，不添加任何场景、天空、地面、建筑或环境元素，画面保持大量留白，使主体成为视觉中心。
 主体使用自然流畅、略带稚拙感的彩色手绘线条勾勒，线条应具有蜡笔、彩铅或马克笔手绘质感，略微不规则、富有童趣，不使用黑色描边。颜色采用低饱和马卡龙配色，仅使用少量柔和颜色（如浅紫、薄荷绿、樱花粉、奶油黄、浅蓝等），以纯色块进行简单填充，不使用渐变、阴影、高光、光照效果或复杂纹理。
@@ -1935,10 +1968,20 @@ setInterval(() => {
  * 文生图 prompt:品牌风格(brand block)+ 用户描述 + 1:1 白底插画指令。
  * prompt 主体是用户的插画描述,让其真正驱动画面内容。
  */
-function buildIllustrationTextPrompt({ name, userPrompt, brandBlock }) {
+/**
+ * 文生图 prompt:用户描述 + 系统预置风格指引(若有) + 品牌风格(brand block)。
+ * 选择系统风格时,将对应预置 styleGuide 注入 prompt,引导 AI 按该风格生成插画。
+ */
+function buildIllustrationTextPrompt({ name, userPrompt, styleId, brandBlock }) {
+  const style = styleId ? ILLUSTRATION_PRESET_STYLES[styleId] : null;
+  const styleLine = style
+    ? `Style: ${style.styleGuide}`
+    : 'Style: professional illustration style with crisp edges.';
   return `Create a clean 1:1 square illustration optimized for pure white background art. Subject: ${userPrompt}.
 
-Output a 1:1 square artwork on a solid pure white background. Crisp edges, professional illustration style, no text, no watermarks, no border.${brandBlock ? `\n\n${brandBlock}` : ''}`;
+${styleLine}
+
+Output a 1:1 square artwork on a solid pure white background. No text, no watermarks, no border.${brandBlock ? `\n\n${brandBlock}` : ''}`;
 }
 
 /**
@@ -1967,7 +2010,7 @@ async function runIllustrationCreateBatch(batchId) {
     try {
       prompt = b.mode === 'image'
         ? buildIllustrationImagePrompt({ styleId: b.styleId, userPrompt: b.prompt })
-        : buildIllustrationTextPrompt({ name: b.name, userPrompt: b.prompt, brandBlock });
+        : buildIllustrationTextPrompt({ name: b.name, userPrompt: b.prompt, styleId: b.styleId, brandBlock });
     } catch (e) {
       cell.status = 'error';
       cell.error = e?.message || 'prompt 构建失败';
@@ -2042,11 +2085,13 @@ router.post('/illustration-create', (req, res) => {
       }
       if (!name) return res.status(400).json({ error: '请填写名称' });
 
+      // 系统预置风格(文生图 / 图生图 共用):可选,但一旦传入必须合法
+      if (styleId && !ILLUSTRATION_PRESET_STYLES[styleId]) {
+        return res.status(400).json({ error: '请选择合法的系统预置风格' });
+      }
       if (mode === 'image') {
         if (!refFile) return res.status(400).json({ error: '请上传参考图' });
-        if (!styleId || !ILLUSTRATION_PRESET_STYLES[styleId]) {
-          return res.status(400).json({ error: '请选择系统预置风格' });
-        }
+        if (!styleId) return res.status(400).json({ error: '请选择系统预置风格' });
       } else {
         if (!prompt) return res.status(400).json({ error: '请填写插画描述' });
       }
@@ -2145,7 +2190,7 @@ router.post('/illustration-create/batch/:batchId/regenerate', async (req, res) =
     const brandBlock = buildBrandBlock(batch.brandLogo, batch.brandSlogan);
     const prompt = batch.mode === 'image'
       ? buildIllustrationImagePrompt({ styleId: batch.styleId, userPrompt: batch.prompt })
-      : buildIllustrationTextPrompt({ name: batch.name, userPrompt: batch.prompt, brandBlock });
+      : buildIllustrationTextPrompt({ name: batch.name, userPrompt: batch.prompt, styleId: batch.styleId, brandBlock });
     cell.prompt = prompt;
     const provider = batch.mode === 'image' ? ILLUSTRATION_IMAGE_PROVIDER : ILLUSTRATION_TEXT_PROVIDER;
     const referenceImages = batch.mode === 'image' && batch.refUrl ? [batch.refUrl] : undefined;

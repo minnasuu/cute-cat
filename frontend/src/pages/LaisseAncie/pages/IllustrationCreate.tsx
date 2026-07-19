@@ -36,6 +36,12 @@ interface PresetStyle {
 }
 const PRESET_STYLES: PresetStyle[] = [
   {
+    id: "cute-crayon-sticker",
+    label: "可爱蜡笔贴纸",
+    description: "圆润扁平马卡龙配色,粗柔和彩色描边,纯白背景贴纸集合,萌趣治愈。",
+    thumb: "✿ 贴纸 · 萌趣",
+  },
+  {
     id: "modern-watercolor",
     label: "现代水彩",
     description: "柔和水彩晕染与半透明色块,低饱和自然色系,极简留白,现代编辑插画质感。",
@@ -194,10 +200,11 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
       const fd = new FormData();
       fd.append("mode", mode);
       fd.append("name", name.trim());
+      // 系统预置风格(文生图 / 图生图 共用):后端按 mode 选择对应 prompt 字段
+      fd.append("styleId", selectedStyle);
       if (prompt.trim()) fd.append("prompt", prompt.trim());
-      if (mode === "image") {
-        fd.append("styleId", selectedStyle);
-        if (refFile) fd.append("image", refFile);
+      if (mode === "image" && refFile) {
+        fd.append("image", refFile);
       }
       if (brandLogo) fd.append("brandLogo", brandLogo);
       if (brandSlogan) fd.append("brandSlogan", brandSlogan);
@@ -249,7 +256,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
       await teamApi(teamId!).createIllustration({
         name: name.trim() || "未命名插画",
         image: batch.item.url,
-        tags: mode === "image" && batch.styleId ? [batch.styleId] : [],
+        tags: batch.styleId ? [batch.styleId] : [],
       });
       await refreshIllustrations();
       showToast("已保存到插画库", "success");
@@ -313,17 +320,41 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="如:山间记忆 · 手绘对照" className={inputCls} />
             </div>
 
+            {/* 系统预置风格(文生图 / 图生图 共用) */}
+            <div>
+              <label className={labelCls}>
+                系统预置风格 <span className="text-red-500">*</span>
+                <span className="text-gray-400 normal-case tracking-normal ml-1">控制生成效果</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {PRESET_STYLES.map((s) => {
+                  const active = selectedStyle === s.id;
+                  return (
+                    <button key={s.id} type="button" disabled={batchRunning}
+                      onClick={() => setSelectedStyle(s.id)}
+                      className={`w-full text-left rounded-xl border p-3 transition-all ${active ? "border-primary-500 ring-2 ring-primary-200 bg-primary-50/40" : "border-gray-200 hover:border-gray-300 bg-white"} ${batchRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[12px] font-medium text-gray-800">{s.label}</span>
+                        <span className="text-[10px] text-gray-400">{s.thumb}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-500 leading-relaxed">{s.description}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* 文生图:插画描述 */}
             {mode === "text" && (
               <div>
                 <label className={labelCls}>插画描述 <span className="text-red-500">*</span></label>
                 <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
                   placeholder="描述你想画的插画内容,如:一座被云雾环绕的远山,山脚下有一座小木屋,门前坐着一只猫" className={`${inputCls} resize-none`} />
-                <span className="text-[10px] text-gray-400">系统会自动结合品牌风格,生成 1:1 白底插画</span>
+                <span className="text-[10px] text-gray-400">所选风格将自动与品牌风格融合,生成 1:1 白底插画</span>
               </div>
             )}
 
-            {/* 图生图:参考图 + 预置风格 */}
+            {/* 图生图:参考图 + 补充描述 */}
             {mode === "image" && (
               <>
                 <div>
@@ -350,26 +381,6 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
                 </div>
 
                 <div>
-                  <label className={labelCls}>系统预置风格 <span className="text-red-500">*</span></label>
-                  <div className="grid grid-cols-1 gap-2">
-                    {PRESET_STYLES.map((s) => {
-                      const active = selectedStyle === s.id;
-                      return (
-                        <button key={s.id} type="button" disabled={batchRunning}
-                          onClick={() => setSelectedStyle(s.id)}
-                          className={`w-full text-left rounded-xl border p-3 transition-all ${active ? "border-primary-500 ring-2 ring-primary-200 bg-primary-50/40" : "border-gray-200 hover:border-gray-300 bg-white"} ${batchRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[12px] font-medium text-gray-800">{s.label}</span>
-                            <span className="text-[10px] text-gray-400">{s.thumb}</span>
-                          </div>
-                          <div className="text-[11px] text-gray-500 leading-relaxed">{s.description}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
                   <label className={labelCls}>补充描述(可选)</label>
                   <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2}
                     placeholder="可补充画面细节要求,如色调、元素取舍等" className={`${inputCls} resize-none`} />
@@ -380,7 +391,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
             {/* 预览(本次将生成) */}
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
               将生成 <span className="font-medium text-primary-600">1</span> 张 1:1 白底插画
-              {mode === "image" && selectedStyle && <span> · 风格: {PRESET_STYLES.find((s) => s.id === selectedStyle)?.label}</span>}
+              {selectedStyle && <span> · 风格: {PRESET_STYLES.find((s) => s.id === selectedStyle)?.label}</span>}
             </div>
 
             {error && (
