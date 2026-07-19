@@ -272,6 +272,26 @@ function pickNoun(planText) {
 }
 
 /**
+ * 构建品牌注入提示块:把品牌 Slogan 作为字母/印花元素、LOGO 作为布标参考注入 prompt。
+ * slogan → 要求作为印花/刺绣/标语文字呈现在单品上;
+ * logo   → 作为品牌布标(patch/label)的视觉参考,要求融入设计。
+ * 两者都没有时返回空串,不影响原 prompt。
+ */
+function buildBrandBlock(brandLogo, brandSlogan) {
+  const logo = (brandLogo || '').trim();
+  const slogan = (brandSlogan || '').trim();
+  if (!logo && !slogan) return '';
+  const parts = [];
+  if (slogan) {
+    parts.push(`Brand slogan "${slogan}" MUST appear on the product as a printed, embroidered, woven, or screen-printed text/lettering element.`);
+  }
+  if (logo) {
+    parts.push(`Brand logo reference: ${logo}. Incorporate a brand label/patch/woven tag INSPIRED BY this brand mark somewhere on the product (e.g. chest patch, neck label, sleeve tag).`);
+  }
+  return `\n\n[BRAND IDENTITY]\n${parts.join('\n')}`;
+}
+
+/**
  * 按类别推导需要生成的图片列表 —— 每个 mode 只生成 1 张整合图:
  *   illustration → 1:1 印花图案(可满铺或居中,能直接用于印花)
  *   single       → 1 张整合图(服装:正反面平铺 / 物品:三视图)
@@ -397,13 +417,14 @@ function buildReferenceVisionBlock(referenceImages) {
  * 返回: { mode, images: [{ slot, label, url, prompt, error? }] }
  */
 router.post('/lineart', async (req, res) => {
-  const { mode = 'single', plan, provider, referenceImages } = req.body || {};
+  const { mode = 'single', plan, provider, referenceImages, brandLogo, brandSlogan } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
   if (mode === 'illustration') {
     // 插画不进线稿流程,回退到标准图(防御性)
     return res.redirect(307, req.originalUrl.replace('/lineart', '/generate'));
   }
-  const slots = planLineart(mode, plan);
+  const brandBlock = buildBrandBlock(brandLogo, brandSlogan);
+  const slots = planLineart(mode, plan).map((s) => ({ ...s, prompt: `${s.prompt}${brandBlock}` }));
   try {
     await chargeImages(req, slots.length, 'image_lineart', `lineart:${mode}`);
   } catch (err) {
@@ -441,10 +462,11 @@ router.post('/lineart', async (req, res) => {
  * 返回: { images: [{ slot, label, url, prompt, error? }] }
  */
 router.post('/generate', async (req, res) => {
-  const { mode = 'single', plan, provider } = req.body || {};
+  const { mode = 'single', plan, provider, brandLogo, brandSlogan } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
 
-  const slots = planImages(mode, plan);
+  const brandBlock = buildBrandBlock(brandLogo, brandSlogan);
+  const slots = planImages(mode, plan).map((s) => ({ ...s, prompt: `${s.prompt}${brandBlock}` }));
   try {
     await chargeImages(req, slots.length, 'image_generate', `generate:${mode}`);
   } catch (err) {
@@ -481,8 +503,10 @@ router.post('/generate', async (req, res) => {
  * 返回: { slot, label, url, prompt, error? }
  */
 router.post('/regenerate', async (req, res) => {
-  const { slot = 'flat', label = '图', plan, instruction = '', provider, mode, material } = req.body || {};
+  const { slot = 'flat', label = '图', plan, instruction = '', provider, mode, material, brandLogo, brandSlogan } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
+
+  const brandBlock = buildBrandBlock(brandLogo, brandSlogan);
 
   try {
     await chargeImages(req, 1, 'image_regenerate', `regenerate:${slot}`);
@@ -496,7 +520,7 @@ router.post('/regenerate', async (req, res) => {
   const baseSlots = [
     ...planImages('single', plan), ...planImages('illustration', plan), ...planImages('collection', plan),
     ...planLineart('single', plan), ...planLineart('collection', plan),
-  ];
+  ].map((s) => ({ ...s, prompt: `${s.prompt}${brandBlock}` }));
   let base = baseSlots.find((s) => s.slot === slot);
   let aspectRatio = base?.aspectRatio || '1:1';
 
@@ -509,10 +533,10 @@ router.post('/regenerate', async (req, res) => {
       material.finish ? `Finish: ${material.finish}.` : '',
       (Array.isArray(material.colors) && material.colors.length) ? `Material colors: ${material.colors.join(', ')}.` : '',
     ].filter(Boolean).join('\n');
-    base = { prompt: `${mi.prompt}\n\n${desc}\nMatch the material qualities described above (texture, weight, drape, finish, color).`, aspectRatio: mi.aspectRatio };
+    base = { prompt: `${mi.prompt}${brandBlock}\n\n${desc}\nMatch the material qualities described above (texture, weight, drape, finish, color).`, aspectRatio: mi.aspectRatio };
     aspectRatio = mi.aspectRatio;
   }
-  if (!base) base = { aspectRatio: '1:1', prompt: plan };
+  if (!base) base = { aspectRatio: '1:1', prompt: `${plan}${brandBlock}` };
 
   const finalPrompt = instruction
     ? `${base.prompt} Modification: ${instruction}`
@@ -608,11 +632,12 @@ ${plan}
  * 返回: { mode, images: [{ slot, label, url, prompt, error? }] }
  */
 router.post('/generate-final', async (req, res) => {
-  const { mode = 'single', plan, material, provider } = req.body || {};
+  const { mode = 'single', plan, material, provider, brandLogo, brandSlogan } = req.body || {};
   if (!plan) return res.status(400).json({ error: 'plan required' });
   if (!material || !material.name) return res.status(400).json({ error: 'material required' });
 
-  const baseSlots = planImages(mode, plan);
+  const brandBlock = buildBrandBlock(brandLogo, brandSlogan);
+  const baseSlots = planImages(mode, plan).map((s) => ({ ...s, prompt: `${s.prompt}${brandBlock}` }));
   try {
     await chargeImages(req, baseSlots.length, 'image_generate', `generate-final:${mode}`);
   } catch (err) {

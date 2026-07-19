@@ -116,7 +116,7 @@ router.route('/brand')
     const data = pickDefined(req.body ?? {}, [
       'logo', 'name', 'slogan', 'cnFont', 'enFont',
       'voice', 'audienceAgeMin', 'audienceAgeMax', 'priceMin', 'priceMax',
-      'systemSnippet', 'statusConfig',
+      'systemSnippet', 'statusConfig', 'applyToGeneration',
     ]);
     // statusConfig 必须是数组,否则忽略(前端 JSON 可控但服务端兜底)
     if (data.statusConfig !== undefined && !Array.isArray(data.statusConfig)) {

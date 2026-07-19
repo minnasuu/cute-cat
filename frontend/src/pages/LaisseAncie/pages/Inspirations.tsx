@@ -674,7 +674,7 @@ function UploadButton({ onFiles }: { onFiles: (f: FileList | File[]) => void }) 
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button onClick={() => ref.current?.click()} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium">+ 上传</button>
+      <button onClick={() => ref.current?.click()} className="rounded-xl bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium">+ 上传 <span className="text-[11px] opacity-80">8 喵币/张</span></button>
       <input ref={ref} type="file" accept="image/*" multiple className="hidden"
         onChange={(e) => { if (e.target.files?.length) onFiles(e.target.files); e.target.value = ""; }} />
     </>

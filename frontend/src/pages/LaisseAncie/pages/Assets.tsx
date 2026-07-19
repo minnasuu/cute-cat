@@ -19,6 +19,7 @@ interface BrandForm {
   priceMin: string;
   priceMax: string;
   systemSnippet: string;
+  applyToGeneration: boolean;  // 应用到生成开关
 }
 
 type ColorRow = { bg: string; fg: string; usage: string };
@@ -35,6 +36,7 @@ function toForm(p: any): BrandForm {
     priceMin: p?.priceMin != null ? String(p.priceMin) : "",
     priceMax: p?.priceMax != null ? String(p.priceMax) : "",
     systemSnippet: p?.systemSnippet || "",
+    applyToGeneration: p?.applyToGeneration !== false,  // 默认开启
   };
 }
 
@@ -108,6 +110,7 @@ function BrandInfoAssets() {
         priceMin: form.priceMin ? Number(form.priceMin) : null,
         priceMax: form.priceMax ? Number(form.priceMax) : null,
         systemSnippet: form.systemSnippet.trim() || null,
+        applyToGeneration: !!form.applyToGeneration,
         colors: colors
           .map((c) => ({ bg: c.bg, fg: c.fg, usage: c.usage.trim() }))
           .filter((c) => /^#/.test(c.bg) && /^#/.test(c.fg)),
@@ -156,6 +159,18 @@ function BrandInfoAssets() {
               <div><div className={labelCls}>名称 <span className="text-red-500">*</span></div><input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="如:山海织物 / Montsea" className={inputCls} /></div>
               <div><div className={labelCls}>Slogan</div><input value={form.slogan} onChange={(e) => set("slogan", e.target.value)} placeholder="如:自然·自洽 / Be in tune." className={inputCls} /></div>
             </div>
+          </div>
+          {/* 应用到生成开关 */}
+          <div className="mt-3 flex items-center justify-between rounded-xl border border-primary-100 bg-primary-50/40 px-3 py-2.5">
+            <div className="pr-3">
+              <div className="text-[12px] font-semibold text-text-primary">应用到生成</div>
+              <div className="text-[11px] text-text-tertiary mt-0.5 leading-snug">开启后,工作台生成图片时会自动带入品牌 LOGO 与 Slogan,生成含品牌布标 / 印花的单品。</div>
+            </div>
+            <button type="button" role="switch" aria-checked={form.applyToGeneration}
+              onClick={() => setForm((f) => ({ ...f, applyToGeneration: !f.applyToGeneration }))}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${form.applyToGeneration ? "bg-primary-500" : "bg-gray-300"}`}>
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5 ${form.applyToGeneration ? "translate-x-5" : "translate-x-0.5"}`} />
+            </button>
           </div>
         </div>
       </section>

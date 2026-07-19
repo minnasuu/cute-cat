@@ -228,6 +228,8 @@ model LABrandProfile {
   systemSnippet   String?  @db.Text
   /** 自定义工序状态配置: [{ id, label, color }] —— 供 Lookbook/产品表格的「状态」列使用 */
   statusConfig    Json     @default("[]")
+  /** 应用到生成:工作台创作生成图片时自动带入品牌 LOGO/Slogan(布标/印花),默认开启 */
+  applyToGeneration Boolean @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

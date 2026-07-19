@@ -893,7 +893,7 @@ export default function ComposerPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ mode, plan: planText }),
+        body: JSON.stringify({ mode, plan: planText, ...brandPayload() }),
       });
       if (!res.ok) {
         const errText = await res.text();
@@ -994,6 +994,19 @@ export default function ComposerPage({
     }
   }
 
+  /** 品牌应用到生成的附加载荷:开关开启且品牌有 LOGO/Slogan 时携带,否则返回空 */
+  function brandPayload() {
+    const brand = knowledge?.brand;
+    if (brand?.applyToGeneration === false) return {};
+    const logo = brand?.logo?.trim();
+    const slogan = brand?.slogan?.trim();
+    if (!logo && !slogan) return {};
+    return {
+      ...(logo ? { brandLogo: logo } : {}),
+      ...(slogan ? { brandSlogan: slogan } : {}),
+    };
+  }
+
   /** 用户确认企划 → 进入生成:
    *  - text-only 模式(仅名称/描述):跳过图片,走 produceTextOnlyScheme 纯文字扩散;
    *  - 插画(illustration):按 illustOutputMode 分叉(图片/HTML),走原有路径;
@@ -1035,6 +1048,7 @@ export default function ComposerPage({
         body: JSON.stringify({
           mode,
           plan: planText,
+          ...brandPayload(),
           referenceImages: topRefs.map((r) => ({
             url: r.thumbUrl || r.url,
             category: r.category,
@@ -1122,7 +1136,7 @@ export default function ComposerPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ mode, plan: planText, material: recommendation }),
+        body: JSON.stringify({ mode, plan: planText, material: recommendation, ...brandPayload() }),
       });
       if (!res.ok) {
         const errText = await res.text();
@@ -1155,7 +1169,7 @@ export default function ComposerPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ slot, label, plan: planText, instruction, mode: isFinal ? mode : undefined, material: isFinal ? recommendation ?? undefined : undefined }),
+        body: JSON.stringify({ slot, label, plan: planText, instruction, mode: isFinal ? mode : undefined, material: isFinal ? recommendation ?? undefined : undefined, ...brandPayload() }),
       });
       if (!res.ok) {
         const errText = await res.text();

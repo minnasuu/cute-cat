@@ -55,10 +55,10 @@ export function GenerateButton({
   secondaryDisabled,
   secondaryOnClick,
 }: Props) {
-  // 花费文案
+  // 花费文案(按张计费,与灵感分析等按钮风格统一)
   const costText =
     estimatedCoins != null && estimatedCoins > 0
-      ? `(预计花费 ${estimatedCoins} 喵币)`
+      ? `(预计花费 ${estimatedCoins} 喵币/张)`
       : "";
 
   // 余额是否充足

@@ -27,6 +27,8 @@ export interface BrandProfile {
   enFont?: string;
   systemSnippet?: string;
   colors?: Array<{ bg: string; fg: string; usage?: string }>;
+  /** 应用到生成:工作台生成图片时自动带入品牌 LOGO/Slogan,默认开启 */
+  applyToGeneration?: boolean;
 }
 
 export interface KnowledgeDeps {
