@@ -1574,28 +1574,14 @@ const OUTFIT_STYLING_ASPECT = process.env.OUTFIT_STYLING_ASPECT || '3:4';
 const ILLUSTRATION_PRESET_STYLES = {
   'hand-drawn-color': {
     label: '手绘彩色线条',
-    prompt: `Transform the uploaded photo into a visual memory translation poster.
-
-The output must contain TWO sections:
-- Top section: Display the original uploaded photograph
-- Bottom section: Display an ultra-minimal visual memory sketch extracted from the photo
-
-The final image should look like a comparison between reality and memory.
-
-Layout Rules:
-- Vertical composition.
-- Top 50%: Original photo
-- Bottom 50%: White background. Place the visual memory sketch in the center of the white area. Large margins, generous negative space.
-- No captions, no explanations, no arrows, no labels.
-
-Memory Sketch Rules:
-- Do NOT recreate the photo realistically. Identify only the most recognizable visual elements. Reduce the scene to its visual essence. Draw only what is necessary for recognition.
-
-Style: Extremely simplified, visual essence only, memory captured in 5 seconds, naive observational drawing, continuous line doodle, poetic abstraction.
-
-Reduction Principle: Human recognition. Recognition is more important than accuracy. Reduce every object to the minimum number of strokes required for human recognition.
-
-Important: Create a visual memory — what remained in my memory. "I saw this scene for one second, looked away, and this is what I remember."`,
+    prompt: `请分析用户上传的图片，并将其转换为极简治愈系儿童手绘插画风格，同时完整保留原图主体的外形、姿态、比例、构图和可识别特征，仅改变表现形式，不改变主体内容。
+整体采用纯白背景，不添加任何场景、天空、地面、建筑或环境元素，画面保持大量留白，使主体成为视觉中心。
+主体使用自然流畅、略带稚拙感的彩色手绘线条勾勒，线条应具有蜡笔、彩铅或马克笔手绘质感，略微不规则、富有童趣，不使用黑色描边。颜色采用低饱和马卡龙配色，仅使用少量柔和颜色（如浅紫、薄荷绿、樱花粉、奶油黄、浅蓝等），以纯色块进行简单填充，不使用渐变、阴影、高光、光照效果或复杂纹理。
+适当概括和简化主体细节，仅保留最具代表性的视觉特征，使整体更具儿童绘本风格和贴纸插画风格，画面干净、轻盈、易于识别。
+围绕主体自然点缀少量装饰元素，如小花、树叶、小草、星星、小圆点、小爱心、果实等，装饰元素保持相同的手绘风格和配色，大小适中、数量适量，均匀分布于主体四周，不遮挡主体，不影响主体识别。
+整体画面应具有儿童绘本、治愈系插画、手绘涂鸦、贴纸插画的视觉效果，风格简洁、可爱、温暖、清新，富有呼吸感，仿佛儿童用彩铅轻松绘制完成。
+严格避免出现以下内容：写实风格、照片风格、3D、CG渲染、复杂背景、渐变、阴影、高光、真实光照、纹理、水彩、油画、厚涂、素描、炭笔、漫画、动漫、赛博朋克、金属质感、玻璃质感、文字、Logo、水印、边框、过度装饰、复杂图案、噪点以及任何影响画面简洁性的元素。
+最终输出应为一幅高质量、纯白背景、极简治愈、儿童绘本风格的手绘插画，在保持原图主体识别度的同时，呈现统一、柔和、富有童趣的视觉风格。`,
   },
 };
 
