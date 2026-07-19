@@ -177,12 +177,16 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
   /** 替换草稿中某条目的图片文件(服务端替换 slot,拿到新 url 后整体重建草稿以同步) */
   const replaceImageDraft = async (clientKey: string, file: File) => {
     if (!teamId) return;
-    const slot = draftImages.find((im) => im.clientKey === clientKey)?.slot || "render";
+    const target = draftImages.find((im) => im.clientKey === clientKey);
+    const slot = target?.slot || "render";
+    // 通过唯一 url(而非非唯一的 slot)定位要替换的图片,避免多张同 slot 图时总替换第一张
+    const url = target?.url ?? "";
     setBusyKey(clientKey);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("slot", slot);
+      fd.append("url", url);
       const updated: Product = await teamApi(teamId).uploadProductImage(product.id, fd);
       const persisted = collectImages(updated);
       setDraftImages((prev) => {

@@ -1358,11 +1358,19 @@ router.post('/products/:id/image', (req, res) => {
       const url = getPublicUrl(savePath);
 
       const slot = req.body?.slot?.toString().trim();
+      // 通过唯一 url 定位要替换的图片(而非非唯一的 slot),避免多张同 slot 图时总替换第一张
+      const matchUrl = req.body?.url?.toString().trim();
       let p;
       if (slot) {
-        // 替换 images[] 中对应 slot 的 url;找不到则追加一条
+        // 替换 images[] 中对应图片(url 优先,找不到则回退到 slot 首张);找不到则追加一条
         const imgs = Array.isArray(owned.images) ? owned.images.map((im) => ({ ...im })) : [];
-        const idx = imgs.findIndex((im) => im && im.slot === slot);
+        let idx = -1;
+        if (matchUrl) {
+          idx = imgs.findIndex((im) => im && im.url === matchUrl);
+        }
+        if (idx < 0) {
+          idx = imgs.findIndex((im) => im && im.slot === slot);
+        }
         if (idx >= 0) imgs[idx] = { ...imgs[idx], url };
         else imgs.push({ slot, label: slot, url });
         p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { images: imgs } });
