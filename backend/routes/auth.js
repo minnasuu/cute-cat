@@ -432,7 +432,13 @@ router.post('/register', async (req, res) => {
     await coins.ensureInviteCode(user.id);
 
     // 注册奖励(默认 100,可在后台调整)
-    await coins.addCoins(user.id, coins.getSignupBonus(), 'signup_bonus', { note: '新用户注册奖励' });
+    // 按邮箱去重:同一邮箱曾领取过(即使已注销)不再重复发放
+    const alreadyGiven = await prisma.signupBonus.findUnique({ where: { email } });
+    if (!alreadyGiven) {
+      await coins.addCoins(user.id, coins.getSignupBonus(), 'signup_bonus', { note: '新用户注册奖励' });
+      // 记录领取(独立于 User 表,注销后仍保留以防重复领取)
+      await prisma.signupBonus.create({ data: { email, userId: user.id } }).catch(() => {});
+    }
 
     // 邀请奖励(默认 +100/人,上限可在后台调整)
     if (inviter) {

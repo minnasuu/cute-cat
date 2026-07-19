@@ -59,6 +59,14 @@ model CoinTransaction {
   @@index([userId, type])
 }
 
+// ─── 注册奖励领取记录(独立于 User,注销后仍保留,防止重复领取) ───
+model SignupBonus {
+  id        String   @id @default(uuid())
+  email     String   @unique  // 已领取注册奖励的邮箱(小写归一化)
+  userId    String?  // 最近一次领取时的 userId(仅留痕,不建外键以免被级联删除)
+  createdAt DateTime @default(now())
+}
+
 // ─── 充值兑换码 ───
 model RedemptionCode {
   id          String    @id @default(uuid())
