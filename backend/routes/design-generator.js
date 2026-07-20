@@ -1569,93 +1569,9 @@ const OS_BATCH_TTL_MS = 15 * 60 * 1000;
 // 穿搭效果生图比例:3:4 竖版更适合全身穿搭展示
 const OUTFIT_STYLING_ASPECT = process.env.OUTFIT_STYLING_ASPECT || '3:4';
 
-// ─── illustration-create:系统预置风格 ─────────────────────────
-// 预置风格 prompt 中的图片由调用方以 referenceImages:[refUrl] 传入(即用户上传的参考图)。
-const ILLUSTRATION_PRESET_STYLES = {
-  'cute-crayon-sticker': {
-    label: '可爱蜡笔贴纸',
-    // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
-    prompt: `Analyze the user's uploaded photo and convert it into a Cute Kawaii Sticker Illustration style, fully preserving the subject's content, silhouette, posture, and key recognizable features — ONLY the painting style changes; the subject type must remain the same.
-
-Overall pure white background: clean and simple, no realistic scenes or complex backgrounds. The subject should appear as a set of independent sticker elements arranged in the frame.
-
-The subject uses a minimal flat design with rounded, plump geometric shapes. Details are greatly simplified while retaining the most recognizable features, making the overall look cute, healing, and childlike.
-
-All outlines use thick, soft, colored strokes — rounded, smooth, slightly hand-drawn feel. Do NOT use black outlines.
-
-Color palette: high-brightness, medium-low-saturation macaron colors — pink, light purple, mint green, cream yellow, sky blue, orange, coral, light brown, and other soft tones. Each element is filled with a small number of solid colors. Do NOT use gradients, shadows, highlights, realistic lighting, or complex textures.
-
-The subject's expression uses minimalist facial features — only simple eyes, nose, and mouth — giving a cute, kawaii, Japanese-kawaii-style look.
-
-Freely add a small number of cute decorative elements around the subject, such as: flowers, stars, clouds, hearts, four-leaf clovers, colorful sparkles, small leaves, colored dots, small butterflies, simple plants. The decorations share the unified art style with the subject — rich but harmonious colors, evenly distributed around the subject without occluding it.
-
-Relaxed, natural composition: the subject and decorations can be arranged as a sticker collection with appropriate spacing between elements. The overall look should evoke cultural/creative stickers, emoji packs, children's picture books, journal stickers, and IP merchandise illustration.
-
-Overall mood: relaxed, cute, warm, lively, healing — full of childlike fun and collectible appeal.
-
-STRICTLY AVOID: realistic style, photographic style, 3D, CG rendering, complex backgrounds, realistic shadows, highlights, gradients, glass texture, metallic texture, watercolor, oil painting, impasto, sketch, cyberpunk, heavy anime rendering, complex textures, realistic materials, logos, watermarks, frames, large blocks of text.
-
-The final output must be a set of high-quality, pure-white-background, cute sticker-style flat illustrations — resembling cultural/creative stickers, IP merchandise, or children's brand visuals. Soft unified colors, rounded shapes, extremely high approachability and recognizability.`,
-  },
-  'modern-watercolor': {
-    label: '现代水彩',
-    // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
-    prompt: `Analyze the user's uploaded photo and convert it into a Modern Editorial Illustration style, fully preserving the subject's content, shape, posture, composition, and recognizable features — ONLY the visual representation style changes.
-Overall minimal whitespace design: plain white or warm-white background, no complex scenes, making the subject the visual center.
-The subject is rendered with soft watercolor bleeding and translucent color blocks: natural edge diffusion with paper seepage effect, moderate grain and paper texture. Rich color layers but without over-realism; an overall hand-crafted artistic quality.
-The subject outline does NOT need to be fully closed — combine free-flowing hand-drawn lines, abstract brushwork, doodle line art, and geometric color blocks for artistic expression. Some lines may cross through the subject to create a visually rhythmic, design-forward feel.
-Color palette: low-saturation, premium natural tones — blue-grey, misty blue, sage green, cream white, light khaki, terracotta red, coral orange, light grey, pale green, etc. Soft transitions between colors; avoid high-saturation clashes.
-Add subtle abstract decorative elements around the subject: free curves, color blocks, dots, handwritten strokes, botanical line art, watercolor washes, small collage shapes — enhancing the modern artistic feel WITHOUT harming subject recognition.
-A small amount of handwritten English text, hand-drawn symbols, simple marks, or designer-note-style elements may be added as visual design elements. The text serves as graphic decoration and need not carry real meaning; it must not overpower the subject.
-Overall composition follows modern graphic design principles: emphasis on whitespace, visual balance, layered relationships, and a sense of breathing room. The result should match the visual quality of art posters, magazine illustrations, brand packaging illustrations, and lifestyle magazine spreads.
-Overall mood: gentle, natural, literary, healing, premium, design-forward — combining watercolor illustration, collage art, modern editorial illustration, and handcrafted art.
-STRICTLY AVOID: photographic style, realistic rendering, 3D, CG, complex backgrounds, realistic lighting, heavy shadows, specular highlights, metallic texture, glass texture, anime/manga style, game concept art, cyberpunk, AI-over-sharpening, complex textures, over-decoration, large blocks of text, logos, watermarks, frames.
-The final output must be a premium modern-art illustration combining watercolor texture, abstract brushwork, collage design, hand-drawn line art, and minimal whitespace — suitable as art posters, brand packaging, lifestyle magazine illustrations, or cultural/creative product visuals.`,
-  },
-  'hand-drawn-color': {
-    label: '手绘彩色线条',
-    // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
-    prompt: `请分析用户上传的图片，并将其转换为极简治愈系儿童手绘插画风格，同时完整保留原图主体的外形、姿态、比例、构图和可识别特征，仅改变表现形式，不改变主体内容。
-整体采用纯白背景，不添加任何场景、天空、地面、建筑或环境元素，画面保持大量留白，使主体成为视觉中心。
-主体使用自然流畅、略带稚拙感的彩色手绘线条勾勒，线条应具有蜡笔、彩铅或马克笔手绘质感，略微不规则、富有童趣，不使用黑色描边。颜色采用低饱和马卡龙配色，仅使用少量柔和颜色（如浅紫、薄荷绿、樱花粉、奶油黄、浅蓝等），以纯色块进行简单填充，不使用渐变、阴影、高光、光照效果或复杂纹理。
-适当概括和简化主体细节，仅保留最具代表性的视觉特征，使整体更具儿童绘本风格和贴纸插画风格，画面干净、轻盈、易于识别。
-围绕主体自然点缀少量装饰元素，如小花、树叶、小草、星星、小圆点、小爱心、果实等，装饰元素保持相同的手绘风格和配色，大小适中、数量适量，均匀分布于主体四周，不遮挡主体，不影响主体识别。
-整体画面应具有儿童绘本、治愈系插画、手绘涂鸦、贴纸插画的视觉效果，风格简洁、可爱、温暖、清新，富有呼吸感，仿佛儿童用彩铅轻松绘制完成。
-严格避免出现以下内容：写实风格、照片风格、3D、CG渲染、复杂背景、渐变、阴影、高光、真实光照、纹理、水彩、油画、厚涂、素描、炭笔、漫画、动漫、赛博朋克、金属质感、玻璃质感、文字、Logo、水印、边框、过度装饰、复杂图案、噪点以及任何影响画面简洁性的元素。
-最终输出应为一幅高质量、纯白背景、极简治愈、儿童绘本风格的手绘插画，在保持原图主体识别度的同时，呈现统一、柔和、富有童趣的视觉风格。`,
-  },
-  'healing-hand-drawn': {
-    label: '治愈手绘绘本',
-    prompt: `Minimalist hand-drawn storybook illustration, delicate pencil sketch with slightly uneven thin black lines, soft watercolor wash, creamy pastel palette, low saturation, airy composition, lots of white space, high-key white background.
-    Gentle and dreamy children's book aesthetic, Japanese healing illustration style, Scandinavian picture book influence, light and breathable visual feeling.
-    Simple rounded shapes, intentionally simplified forms, soft edges, subtle watercolor bleeding, paper texture, hand-painted appearance, poetic, cozy, innocent, whimsical.
-    No realism, no heavy rendering, no dramatic lighting, no complex details, no sharp contrast, no thick outlines, no cel shading.`,
-  },
-  "dreamcore-kawaii-Pencil": {
-    label: '梦核可爱卡通',
-    prompt: `Dreamy pastel kawaii illustration, ultra soft children's illustration, Japanese soft girl aesthetic, minimalist character design, delicate colored pencil line art, subtle watercolor shading, creamy pastel palette, baby blue, blush pink, warm ivory, pale yellow.
-
-Very low contrast, high-key lighting, airy atmosphere, gentle bloom glow, soft edges, slightly blurred outlines, hand-painted texture, fine paper grain, dreamy haze, ethereal mood, innocent, peaceful, whimsical.
-
-Simple rounded proportions, oversized head, tiny facial features, closed eyes, rosy cheeks, elegant negative space, floating decorative elements, centered composition, isolated on pure white background.
-
-Cute angelcore aesthetic, soft vintage pastel illustration, healing illustration, poetic minimalism, premium stationery illustration.`
-  },
-  "plush-watercolor": {
-    label: "毛绒晕染水彩",
-    prompt: `Soft plush watercolor illustration, fluffy teddy bear texture, ultra soft airbrush watercolor, fuzzy edges, hand-painted plush toy aesthetic, pastel nursery illustration, delicate cotton texture, dreamy and cozy atmosphere.
-
-Very soft muted pastel colors, creamy pink, warm beige, milk white, dusty brown, low saturation, high-key lighting, gentle bloom, subtle paper texture.
-
-Round and chubby proportions, simplified facial features, embroidered toy expression, fluffy fur rendered with soft watercolor strokes, velvety plush surface, delicate hand-painted texture.
-
-Minimal composition, isolated subject on pure white background, lots of negative space, premium stationery illustration, Japanese and Korean kawaii illustration aesthetic.`
-  }
-};
-
 // ── illustration-create 守卫常量 ──────────────────────────────
-const ILLUSTRATION_IMAGE_PROVIDER = process.env.ILLUSTRATION_IMAGE_PROVIDER || 'maizi-image-edit'; // 图生图(参考图)provider
-const ILLUSTRATION_TEXT_PROVIDER = process.env.ILLUSTRATION_TEXT_PROVIDER || 'maizi';            // 文生图 provider
+// 文生图 / 图生图 统一走 maizi-image-edit(参考图生图):风格由 styleRefUrl 决定
+const ILLUSTRATION_PROVIDER = process.env.ILLUSTRATION_PROVIDER || 'maizi-image-edit';
 const IC_BATCH_TTL_MS = 15 * 60 * 1000;
 // 插画生成比例:1:1 正方形
 const ILLUSTRATION_ASPECT = process.env.ILLUSTRATION_ASPECT || '1:1';
@@ -1936,7 +1852,7 @@ router.post('/outfit-styling/batch/:batchId/regenerate', async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 
 // ─── illustration-create 批次 store (进程内,带 TTL 清理) ─────────
-/** @type {Map<string, {batchId:string,teamId:string,mode:string,name:string,prompt?:string,styleId?:string,refUrl?:string,brandLogo?:string,brandSlogan?:string,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
+/** @type {Map<string, {batchId:string,teamId:string,mode:string,name:string,prompt?:string,styleRefUrl?:string,refUrl?:string,brandLogo?:string,brandSlogan?:string,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
 const icBatches = new Map();
 
 function icBatchPublicView(b) {
@@ -1948,7 +1864,7 @@ function icBatchPublicView(b) {
     error: b.error,
     name: b.name,
     mode: b.mode,
-    styleId: b.styleId || null,
+    styleRefUrl: b.styleRefUrl || null,
     item: {
       status: item.status,
       url: item.url || null,
@@ -1980,63 +1896,44 @@ setInterval(() => {
  * prompt 主体是用户的插画描述,让其真正驱动画面内容。
  */
 /**
- * 文生图 prompt:用户描述 + 系统预置风格指引(若有) + 品牌风格(brand block)。
+ * 统一插画 prompt:风格由参考图(styleRefUrl)决定,不再用文本描述风格。
+ *
+ * 文生图(text):referenceImages=[styleRefUrl]
+ *   → 图1=风格参考图,按用户描述生成同风格插画
+ * 图生图(image):referenceImages=[userImgUrl, styleRefUrl]
+ *   → 图1=用户照片,图2=风格参考图,将图1转绘为图2的风格
  */
-function buildIllustrationTextPrompt({ name, userPrompt, styleId, brandBlock }) {
-  const style = styleId ? ILLUSTRATION_PRESET_STYLES[styleId] : null;
-  const styleLine = style
-    ? `Style: ${style.prompt}`
-    : 'Style: professional illustration style with crisp edges.';
-  return `Create a clean 1:1 square illustration optimized for pure white background art. Subject: ${userPrompt}.
-
-${styleLine}
-
-Output a 1:1 square artwork on a solid pure white background. No text, no watermarks, no border.${brandBlock ? `\n\n${brandBlock}` : ''}`;
-}
-
-/**
- * 图生图 prompt:取预置风格固定 prompt,末尾附用户补充描述(若填写)。
- * 参考图(用户上传的原图)由调用方以 referenceImages:[refUrl] 传入。
- */
-function buildIllustrationImagePrompt({ styleId, userPrompt }) {
-  const style = ILLUSTRATION_PRESET_STYLES[styleId];
-  if (!style) throw new Error(`unknown styleId=${styleId}`);
-  let prompt = style.prompt;
-  const extra = (userPrompt || '').trim();
-  if (extra) prompt += `\n\nAdditional context from the photographer: ${extra}`;
-  return prompt;
+function buildIllustrationPrompt({ mode, userPrompt, brandBlock }) {
+  if (mode === 'image') {
+    // 图生图:图1=用户照片,图2=风格参考图
+    const extra = (userPrompt || '').trim();
+    return `Transform Image 1 into the artistic style shown in Image 2. Preserve the subject, composition, and recognizable features of Image 1, but completely restyle it to match the visual aesthetic, color palette, brushwork, texture, and mood of Image 2.${extra ? `\n\nAdditional context: ${extra}` : ''}${brandBlock ? `\n\n${brandBlock}` : ''}`;
+  }
+  // 文生图:图1=风格参考图,根据描述生成同风格插画
+  return `Create a 1:1 illustration in the exact artistic style shown in Image 1. Subject: ${userPrompt}.\n\nMatch the visual aesthetic, color palette, brushwork, texture, and mood of the reference style image. Output on pure white background. No text, no watermarks, no border.${brandBlock ? `\n\n${brandBlock}` : ''}`;
 }
 
 async function runIllustrationCreateBatch(batchId) {
   const b = icBatches.get(batchId);
   if (!b) return;
-  console.log(`[design-generator] runIllustrationCreateBatch START batchId=${batchId} mode=${b.mode} provider=${b.mode === 'image' ? ILLUSTRATION_IMAGE_PROVIDER : ILLUSTRATION_TEXT_PROVIDER}`);
+  console.log(`[design-generator] runIllustrationCreateBatch START batchId=${batchId} mode=${b.mode} provider=${ILLUSTRATION_PROVIDER}`);
   try {
     b.status = 'running';
     b.updatedAt = Date.now();
     const cell = b.items[0];
     const brandBlock = buildBrandBlock(b.brandLogo, b.brandSlogan);
-    let prompt;
-    try {
-      prompt = b.mode === 'image'
-        ? buildIllustrationImagePrompt({ styleId: b.styleId, userPrompt: b.prompt })
-        : buildIllustrationTextPrompt({ name: b.name, userPrompt: b.prompt, styleId: b.styleId, brandBlock });
-    } catch (e) {
-      cell.status = 'error';
-      cell.error = e?.message || 'prompt 构建失败';
-      b.status = 'error';
-      b.updatedAt = Date.now();
-      return;
-    }
+    const prompt = buildIllustrationPrompt({ mode: b.mode, userPrompt: b.prompt, brandBlock });
     cell.prompt = prompt;
-    const provider = b.mode === 'image' ? ILLUSTRATION_IMAGE_PROVIDER : ILLUSTRATION_TEXT_PROVIDER;
-    const referenceImages = b.mode === 'image' && b.refUrl ? [b.refUrl] : undefined;
+    // 参考图组装:文生图=[风格参考图],图生图=[用户照片, 风格参考图]
+    const referenceImages = b.mode === 'image'
+      ? [b.refUrl, b.styleRefUrl].filter(Boolean)
+      : [b.styleRefUrl].filter(Boolean);
     try {
       const img = await generateImage(prompt, {
         teamId: b.teamId,
         aspectRatio: ILLUSTRATION_ASPECT,
         safeName: 'illustration-create',
-        provider,
+        provider: ILLUSTRATION_PROVIDER,
         referenceImages,
       });
       if (img?.url) {
@@ -2070,8 +1967,10 @@ async function runIllustrationCreateBatch(batchId) {
 
 /**
  * POST /api/teams/:teamId/design/illustration-create
- * body(mode=text): JSON { mode, name, prompt, brandLogo?, brandSlogan? }
- * body(mode=image): multipart { mode, name, prompt?, styleId, brandLogo?, brandSlogan? } + field 'image'(file)
+ * body: multipart { mode: 'text'|'image', name, prompt?, styleRefUrl, brandLogo?, brandSlogan? } + field 'image'(file,仅图生图)
+ * 两种模式统一走参考图生图:
+ *   - 文生图(text):referenceImages=[styleRefUrl] → 按描述生成该风格插画
+ *   - 图生图(image):referenceImages=[userImgUrl, styleRefUrl] → 将用户照片转绘为该风格
  * 返回 202: { batchId, status:'running', item, ... }
  */
 router.post('/illustration-create', (req, res) => {
@@ -2085,7 +1984,7 @@ router.post('/illustration-create', (req, res) => {
       const mode = String(body.mode || 'text');
       const name = (body.name || '').trim();
       const prompt = (body.prompt || '').trim();
-      const styleId = body.styleId || undefined;
+      const styleRefUrl = body.styleRefUrl || undefined;
       const brandLogo = body.brandLogo || undefined;
       const brandSlogan = body.brandSlogan || undefined;
       const refFile = req.files?.image?.[0];
@@ -2094,14 +1993,10 @@ router.post('/illustration-create', (req, res) => {
         return res.status(400).json({ error: "mode 必须为 'text' 或 'image'" });
       }
       if (!name) return res.status(400).json({ error: '请填写名称' });
+      if (!styleRefUrl) return res.status(400).json({ error: '请选择风格' });
 
-      // 系统预置风格(文生图 / 图生图 共用):可选,但一旦传入必须合法
-      if (styleId && !ILLUSTRATION_PRESET_STYLES[styleId]) {
-        return res.status(400).json({ error: '请选择合法的系统预置风格' });
-      }
       if (mode === 'image') {
         if (!refFile) return res.status(400).json({ error: '请上传参考图' });
-        if (!styleId) return res.status(400).json({ error: '请选择系统预置风格' });
       } else {
         if (!prompt) return res.status(400).json({ error: '请填写插画描述' });
       }
@@ -2114,7 +2009,7 @@ router.post('/illustration-create', (req, res) => {
         throw err;
       }
 
-      // 持久化参考图(仅 image 模式)
+      // 持久化用户上传的参考图(仅 image 模式)
       let refUrl = null;
       if (refFile) {
         const savePath = storage.createSavePath(`design/illustration-create`, refFile.filename);
@@ -2131,7 +2026,7 @@ router.post('/illustration-create', (req, res) => {
         mode,
         name,
         prompt: prompt || undefined,
-        styleId,
+        styleRefUrl,
         refUrl,
         brandLogo,
         brandSlogan,
@@ -2141,7 +2036,7 @@ router.post('/illustration-create', (req, res) => {
         updatedAt: now,
       };
       icBatches.set(batchId, batch);
-      console.log(`[design-generator] illustration-create ready ${batchId} mode=${mode} styleId=${styleId || '-'} → 202`);
+      console.log(`[design-generator] illustration-create ready ${batchId} mode=${mode} styleRefUrl=${styleRefUrl ? 'yes' : '-'} → 202`);
 
       res.status(202).json(icBatchPublicView(batch));
       runIllustrationCreateBatch(batchId).catch((err) => {
@@ -2198,17 +2093,17 @@ router.post('/illustration-create/batch/:batchId/regenerate', async (req, res) =
 
   try {
     const brandBlock = buildBrandBlock(batch.brandLogo, batch.brandSlogan);
-    const prompt = batch.mode === 'image'
-      ? buildIllustrationImagePrompt({ styleId: batch.styleId, userPrompt: batch.prompt })
-      : buildIllustrationTextPrompt({ name: batch.name, userPrompt: batch.prompt, styleId: batch.styleId, brandBlock });
+    const prompt = buildIllustrationPrompt({ mode: batch.mode, userPrompt: batch.prompt, brandBlock });
     cell.prompt = prompt;
-    const provider = batch.mode === 'image' ? ILLUSTRATION_IMAGE_PROVIDER : ILLUSTRATION_TEXT_PROVIDER;
-    const referenceImages = batch.mode === 'image' && batch.refUrl ? [batch.refUrl] : undefined;
+    // 参考图组装:文生图=[风格参考图],图生图=[用户照片, 风格参考图]
+    const referenceImages = batch.mode === 'image'
+      ? [batch.refUrl, batch.styleRefUrl].filter(Boolean)
+      : [batch.styleRefUrl].filter(Boolean);
     const img = await generateImage(prompt, {
       teamId: batch.teamId,
       aspectRatio: ILLUSTRATION_ASPECT,
       safeName: 'illustration-create',
-      provider,
+      provider: ILLUSTRATION_PROVIDER,
       referenceImages,
     });
     if (img?.url) {

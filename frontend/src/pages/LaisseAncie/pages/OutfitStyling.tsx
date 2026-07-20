@@ -21,6 +21,7 @@ import { useImagePreview } from "../../../components/ImagePreviewModal";
 import { Modal } from "../components/ui";
 import { showToast } from "../../../components/Toast";
 import { pickProductCover } from "../lib/product-cover";
+import { compressForUpload } from "../lib/images";
 import type { KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import type { Product } from "../types/design";
 import type { ModelRow } from "../types/design";
@@ -61,6 +62,8 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
+  const localUploadRef = useRef<HTMLInputElement>(null);
+  const [localUploading, setLocalUploading] = useState(false);
 
   // ── 派生态 ──
   const batchRunningOrAnalyzing = !!batch && batch.status === "running";
@@ -112,6 +115,49 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
     stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProducts.length, selectedModel]);
+
+  // ── 本地图片上传 → 作为虚拟单品加入选区 ──
+  async function onLocalImagePick(list: FileList | null) {
+    if (!list?.length || !teamId) return;
+    if (selectedProducts.length >= MAX_PRODUCTS) return;
+    const raw = list[0];
+    setLocalUploading(true);
+    try {
+      const compressed = await compressForUpload(raw);
+      const fd = new FormData();
+      fd.append("image", compressed);
+      const res = await fetch("/api/uploads/image", { method: "POST", body: fd, credentials: "include" });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`上传失败 (HTTP ${res.status})${t ? `: ${t.slice(0, 80)}` : ""}`);
+      }
+      const { url } = await res.json();
+      if (!url) throw new Error("未返回图片 URL");
+      // 构造虚拟单品(本地上传,id 以 local- 前缀区分)
+      const now = new Date().toISOString();
+      const localProduct: Product = {
+        id: `local-${crypto.randomUUID()}`,
+        mode: "single",
+        title: raw.name.replace(/\.[^.]+$/, "").slice(0, 30) || "本地单品",
+        description: "",
+        seasons: [],
+        category: "",
+        colors: [],
+        status: "draft",
+        statusHistory: [],
+        createdAt: now,
+        updatedAt: now,
+        imageUrl: url,
+        images: [{ slot: "upload", label: "本地上传", url }],
+      };
+      setSelectedProducts((prev) => [...prev, localProduct]);
+    } catch (e: any) {
+      setError(e?.message || "图片上传失败,请重试");
+    } finally {
+      setLocalUploading(false);
+      if (localUploadRef.current) localUploadRef.current.value = "";
+    }
+  }
 
   // ── 提交 ──
   async function submit() {
@@ -216,7 +262,7 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
       <div className="flex flex-col bg-white min-h-0">
         <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0">
           <h1 className="text-[15px] font-medium text-gray-800 min-h-7 flex items-center gap-2">穿搭效果</h1>
-          <span className="text-[10px] text-gray-500">从 Lookbook 选 1-5 款单品 + 选 1 张模特图 → 生成模特穿搭效果图</span>
+          <span className="text-[10px] text-gray-500">选 1-5 款单品(Lookbook / 本地上传) + 选 1 张模特图 → 生成模特穿搭效果图</span>
         </header>
 
         <div className="flex-1 overflow-y-auto min-h-0">
@@ -230,7 +276,7 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
             {/* 单品选择 */}
             <div>
               <label className={labelCls}>
-                单品(Lookbook) <span className="text-gray-400 normal-case tracking-normal">({selectedProducts.length}/{MAX_PRODUCTS})</span> <span className="text-red-500">*</span>
+                单品 <span className="text-gray-400 normal-case tracking-normal">({selectedProducts.length}/{MAX_PRODUCTS})</span> <span className="text-red-500">*</span>
               </label>
               <div className="flex flex-wrap gap-2">
                 {selectedProducts.map((p) => (
@@ -244,18 +290,32 @@ export default function OutfitStylingPage({ knowledge, brandLoading, knowledgeLo
                       <button onClick={() => setSelectedProducts((prev) => prev.filter((x) => x.id !== p.id))}
                         className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                     )}
+                    {/* 本地上传标记 */}
+                    {p.id.startsWith("local-") && (
+                      <span className="absolute top-0.5 left-0.5 text-[7px] px-1 py-0.5 rounded bg-green-500/90 text-white leading-none">本地</span>
+                    )}
                     <div className="px-1 py-0.5 text-[8px] text-gray-400 truncate" title={p.title}>{p.title || "未命名"}</div>
                   </div>
                 ))}
                 {selectedProducts.length < MAX_PRODUCTS && !batchRunningOrAnalyzing && (
-                  <button onClick={() => setProductPickerOpen(true)}
-                    className="w-24 h-[7.5rem] rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0">
-                    <span className="text-lg text-gray-400">+</span>
-                    <span className="text-[10px] text-gray-400">添加单品</span>
-                  </button>
+                  <>
+                    {/* 从 Lookbook 选 */}
+                    <button onClick={() => setProductPickerOpen(true)}
+                      className="w-24 h-[7.5rem] rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0">
+                      <span className="text-lg text-gray-400">+</span>
+                      <span className="text-[10px] text-gray-400">从 Lookbook</span>
+                    </button>
+                    {/* 本地上传 */}
+                    <label className="w-24 h-[7.5rem] rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-green-400 transition-colors shrink-0">
+                      <span className="text-lg text-gray-400">{localUploading ? "…" : "↑"}</span>
+                      <span className="text-[10px] text-gray-400">本地上传</span>
+                      <input ref={localUploadRef} type="file" accept="image/*" className="hidden" disabled={localUploading}
+                        onChange={(e) => void onLocalImagePick(e.target.files)} />
+                    </label>
+                  </>
                 )}
               </div>
-              <span className="text-[10px] text-gray-400">从 Lookbook 已生成的效果图中选择,最多 {MAX_PRODUCTS} 款</span>
+              <span className="text-[10px] text-gray-400">从 Lookbook 选择或上传本地图片,最多 {MAX_PRODUCTS} 款</span>
             </div>
 
             {/* 模特选择 */}

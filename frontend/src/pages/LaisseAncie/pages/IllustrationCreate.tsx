@@ -2,8 +2,10 @@
  * IllustrationCreate ——「插画创作」工作台。
  *
  * 支持两种生成方式(页面顶部 header 右侧分段切换):
- *   - 文生图(text):纯文字 → 1:1 白底插画。prompt = 品牌风格(brand block) + 用户描述 + 白底插画指令。
- *   - 图生图(image):上传 1 张参考图 + 选择系统预置风格(当前仅「手绘彩色线条」)→ 指定风格的 1:1 白底插画。
+ *   - 文生图(text):用户描述 + 风格参考图 → 该风格的 1:1 白底插画。
+ *   - 图生图(image):用户上传照片 + 风格参考图 → 将照片转绘为该风格。
+ *
+ * 两种模式统一走参考图生图(maizi-image-edit),风格由参考图决定(不再用文本 prompt 描述风格)。
  *
  * 后端异步批次 + 前端轮询,交互对齐「穿搭效果」(outfit-styling):
  *   POST → 202 batchId → 轮询 batch → 失败可重试 → 成功后「保存到插画库」。
@@ -22,55 +24,63 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useResourceStore } from "../store/resource";
 import { showToast } from "../../../components/Toast";
 
+// 风格参考图静态资源(用户将提供真实图片后替换)
+import styleCuteCrayon from "../../../assets/illustration-styles/cute-crayon-sticker.png";
+import styleModernWatercolor from "../../../assets/illustration-styles/modern-watercolor.png";
+import styleHandDrawnColor from "../../../assets/illustration-styles/hand-drawn-color.png";
+import styleHealingHandDrawn from "../../../assets/illustration-styles/healing-hand-drawn.png";
+import styleDreamcoreKawaii from "../../../assets/illustration-styles/dreamcore-kawaii-Pencil.png";
+import stylePlushWatercolor from "../../../assets/illustration-styles/plush-watercolor.png";
+
 const POLL_MS = 3000;
 // 对齐后端 IC_BATCH_TTL_MS = 15min,略小于 TTL 避免与清理竞争
 const POLL_MAX_ATTEMPTS = 290;
 
-// ─── 系统预置风格(与后端 ILLUSTRATION_PRESET_STYLES 对齐,此处仅用于 UI 展示 + 传 styleId) ───
+// ─── 系统预置风格(每张卡片展示风格参考图,传 styleRefUrl 给后端) ───
 interface PresetStyle {
   id: string;
   label: string;
   description: string;
-  /** 卡片上的小预览字(仅装饰) */
-  thumb: string;
+  /** 风格参考图 URL(静态资源 import) */
+  refImage: string;
 }
 const PRESET_STYLES: PresetStyle[] = [
   {
     id: "cute-crayon-sticker",
     label: "可爱蜡笔贴纸",
     description: "圆润扁平马卡龙配色,粗柔和彩色描边,纯白背景贴纸集合,萌趣治愈。",
-    thumb: "✿ 贴纸 · 萌趣",
+    refImage: styleCuteCrayon,
   },
   {
     id: "modern-watercolor",
     label: "现代水彩",
     description: "柔和水彩晕染与半透明色块,低饱和自然色系,极简留白,现代编辑插画质感。",
-    thumb: "◌ 水彩 · 高级",
+    refImage: styleModernWatercolor,
   },
   {
     id: "hand-drawn-color",
     label: "手绘彩色线条",
     description: "圆润扁平马卡龙配色,粗柔和彩色描边,纯白背景贴纸集合,萌趣治愈。",
-    thumb: "✿ 贴纸 · 玛卡龙",
+    refImage: styleHandDrawnColor,
   },
   {
     id: "healing-hand-drawn",
     label: "治愈手绘绘本",
     description: "极简治愈系手绘绘本插画风格，细腻铅笔线稿，线条自然略带手绘抖动感，淡彩水彩晕染，奶油色低饱和配色。",
-    thumb: "治愈 · 线条 · 奶油",
+    refImage: styleHealingHandDrawn,
   },
   {
-    id: 'dreamcore-kawaii-Pencil',
-    label: '梦核× Kawaii × 日系软萌插画',
-    description: '柔焦梦幻、发光感和粉彩童话氛围',
-    thumb: '梦幻 · 发光 · 粉彩',
+    id: "dreamcore-kawaii-Pencil",
+    label: "梦核× Kawaii × 日系软萌插画",
+    description: "柔焦梦幻、发光感和粉彩童话氛围",
+    refImage: styleDreamcoreKawaii,
   },
   {
     id: "plush-watercolor",
     label: "毛绒晕染水彩",
     description: "毛绒晕染水彩风格，柔和水彩晕染与半透明色块，低饱和自然色系，极简留白，现代编辑插画质感。",
-    thumb: "◌ 水彩 · 晕染",
-  }
+    refImage: stylePlushWatercolor,
+  },
 ];
 
 /** 后端 icBatchPublicView 的视图形状(前端侧) */
@@ -81,7 +91,7 @@ interface IllustrationBatch {
   error?: string | null;
   name: string;
   mode: "text" | "image";
-  styleId: string | null;
+  styleRefUrl: string | null;
   item: {
     status: "pending" | "done" | "error";
     url?: string | null;
@@ -110,7 +120,8 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
   const [prompt, setPrompt] = useState("");
   const [refFile, setRefFile] = useState<File | null>(null);
   const [refPreview, setRefPreview] = useState<string>("");
-  const [selectedStyle, setSelectedStyle] = useState<string>(PRESET_STYLES[0].id);
+  const [selectedStyleId, setSelectedStyleId] = useState<string>(PRESET_STYLES[0].id);
+  const selectedStyleRefUrl = PRESET_STYLES.find((s) => s.id === selectedStyleId)?.refImage || PRESET_STYLES[0].refImage;
 
   // ── 批次状态 ──
   const [batch, setBatch] = useState<IllustrationBatch | null>(null);
@@ -132,7 +143,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
   const canSubmit =
     !!name.trim()
     && (mode === "image" ? !!refFile : !!prompt.trim())
-    && (mode === "image" ? !!selectedStyle : true)
+    && !!selectedStyleRefUrl
     && !batchRunning && !submitting
     && !brandLoading && !knowledgeLoading;
 
@@ -188,7 +199,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
     setBatch(null);
     stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, prompt, refFile, selectedStyle, mode]);
+  }, [name, prompt, refFile, selectedStyleId, mode]);
 
   // ── 参考图上传 ──
   async function onPickRef(list: FileList | null) {
@@ -218,8 +229,8 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
       const fd = new FormData();
       fd.append("mode", mode);
       fd.append("name", name.trim());
-      // 系统预置风格(文生图 / 图生图 共用):后端按 mode 选择对应 prompt 字段
-      fd.append("styleId", selectedStyle);
+      // 风格参考图 URL(两种模式共用):文生图作为唯一参考图,图生图作为第二张参考图(转绘目标风格)
+      fd.append("styleRefUrl", selectedStyleRefUrl);
       if (prompt.trim()) fd.append("prompt", prompt.trim());
       if (mode === "image" && refFile) {
         fd.append("image", refFile);
@@ -274,7 +285,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
       await teamApi(teamId!).createIllustration({
         name: name.trim() || "未命名插画",
         image: batch.item.url,
-        tags: batch.styleId ? [batch.styleId] : [],
+        tags: [selectedStyleId],
       });
       await refreshIllustrations();
       showToast("已保存到插画库", "success");
@@ -292,7 +303,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
     setPrompt("");
     setRefFile(null);
     setRefPreview("");
-    setSelectedStyle(PRESET_STYLES[0].id);
+    setSelectedStyleId(PRESET_STYLES[0].id);
     setBatch(null);
     setSubmitting(false);
     setError(null);
@@ -309,7 +320,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
         <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-200 px-5 py-3 shrink-0 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-[15px] font-medium text-gray-800 min-h-7 flex items-center gap-2">插画创作</h1>
-            <span className="text-[10px] text-gray-500">文字生图 / 参考图生图 → 生成 1:1 白底插画,可存入插画库</span>
+            <span className="text-[10px] text-gray-500">文字生图 / 参考图生图 → 按风格参考图生成 1:1 插画,可存入插画库</span>
           </div>
           {/* 模式切换分段控件 */}
           <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5 shrink-0">
@@ -338,28 +349,38 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="如:山间记忆 · 手绘对照" className={inputCls} />
             </div>
 
-            {/* 系统预置风格(文生图 / 图生图 共用) */}
+            {/* 风格库(文生图 / 图生图 共用):选择风格参考图决定生成效果 */}
             <div>
               <label className={labelCls}>
-                系统预置风格 <span className="text-red-500">*</span>
-                <span className="text-gray-400 normal-case tracking-normal ml-1">控制生成效果</span>
+                风格库 <span className="text-red-500">*</span>
+                <span className="text-gray-400 normal-case tracking-normal ml-1">选择风格参考图</span>
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {PRESET_STYLES.map((s) => {
-                  const active = selectedStyle === s.id;
+                  const active = selectedStyleId === s.id;
                   return (
                     <button key={s.id} type="button" disabled={batchRunning}
-                      onClick={() => setSelectedStyle(s.id)}
-                      className={`w-full text-left rounded-xl border p-3 transition-all ${active ? "border-primary-500 ring-2 ring-primary-200 bg-primary-50/40" : "border-gray-200 hover:border-gray-300 bg-white"} ${batchRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[12px] font-medium text-gray-800">{s.label}</span>
-                        <span className="text-[10px] text-gray-400">{s.thumb}</span>
+                      onClick={() => setSelectedStyleId(s.id)}
+                      className={`group relative rounded-xl border overflow-hidden transition-all ${active ? "border-primary-500 ring-2 ring-primary-200" : "border-gray-200 hover:border-gray-300"} ${batchRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                      {/* 风格参考图 */}
+                      <div className="aspect-square bg-gray-100 overflow-hidden">
+                        <img src={s.refImage} alt={s.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                       </div>
-                      <div className="text-[11px] text-gray-500 leading-relaxed">{s.description}</div>
+                      {/* 风格名(底部浮层) */}
+                      <div className={`absolute inset-x-0 bottom-0 px-2 py-1.5 ${active ? "bg-primary-500/90" : "bg-black/40"} backdrop-blur-sm`}>
+                        <span className="text-[11px] font-medium text-white">{s.label}</span>
+                      </div>
+                      {/* 选中标记 */}
+                      {active && (
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        </div>
+                      )}
                     </button>
                   );
                 })}
               </div>
+              <p className="text-[10px] text-gray-400 mt-1.5">所选风格参考图将作为风格基准,生成对应风格的插画</p>
             </div>
 
             {/* 文生图:插画描述 */}
@@ -408,8 +429,8 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
 
             {/* 预览(本次将生成) */}
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-              将生成 <span className="font-medium text-primary-600">1</span> 张 1:1 白底插画
-              {selectedStyle && <span> · 风格: {PRESET_STYLES.find((s) => s.id === selectedStyle)?.label}</span>}
+              将生成 <span className="font-medium text-primary-600">1</span> 张 1:1 插画
+              <span> · 风格: {PRESET_STYLES.find((s) => s.id === selectedStyleId)?.label}</span>
             </div>
 
             {error && (
@@ -441,7 +462,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
       <aside className="border-l border-gray-200 bg-gray-50 overflow-y-auto min-h-0 p-5 space-y-5">
         {!batch && !submitting && (
           <div className="rounded-xl border border-dashed border-gray-300 bg-white text-center text-[12px] text-gray-400 px-6 py-12">
-            {mode === "text" ? "填写名称与插画描述后" : "上传参考图并选择风格后"}<br />点击底部「立即生成」
+            {mode === "text" ? "填写名称与插画描述,选择风格后" : "上传参考图并选择风格后"}<br />点击底部「立即生成」
           </div>
         )}
         {submitting && (
