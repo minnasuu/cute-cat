@@ -25,9 +25,6 @@ import { useResourceStore } from "../store/resource";
 import { showToast } from "../../../components/Toast";
 
 // 风格参考图静态资源(用户将提供真实图片后替换)
-import styleCuteCrayon from "../../../assets/illustration-styles/cute-crayon-sticker.png";
-import styleModernWatercolor from "../../../assets/illustration-styles/modern-watercolor.png";
-import styleHandDrawnColor from "../../../assets/illustration-styles/hand-drawn-color.png";
 import styleHealingHandDrawn from "../../../assets/illustration-styles/healing-hand-drawn.png";
 import styleDreamcoreKawaii from "../../../assets/illustration-styles/dreamcore-kawaii-Pencil.png";
 import stylePlushWatercolor from "../../../assets/illustration-styles/plush-watercolor.png";
@@ -45,24 +42,6 @@ interface PresetStyle {
   refImage: string;
 }
 const PRESET_STYLES: PresetStyle[] = [
-  {
-    id: "cute-crayon-sticker",
-    label: "可爱蜡笔贴纸",
-    description: "圆润扁平马卡龙配色,粗柔和彩色描边,纯白背景贴纸集合,萌趣治愈。",
-    refImage: styleCuteCrayon,
-  },
-  {
-    id: "modern-watercolor",
-    label: "现代水彩",
-    description: "柔和水彩晕染与半透明色块,低饱和自然色系,极简留白,现代编辑插画质感。",
-    refImage: styleModernWatercolor,
-  },
-  {
-    id: "hand-drawn-color",
-    label: "手绘彩色线条",
-    description: "圆润扁平马卡龙配色,粗柔和彩色描边,纯白背景贴纸集合,萌趣治愈。",
-    refImage: styleHandDrawnColor,
-  },
   {
     id: "healing-hand-drawn",
     label: "治愈手绘绘本",
