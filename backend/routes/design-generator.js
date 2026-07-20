@@ -700,225 +700,225 @@ router.post('/material-combo', (req, res) => {
     // 服务端也不会打出任何日志 —— 曾经因此排查困难。这里把整个 async 用
     // try/catch 包住,确保任何异常都会返回一个响应,并留下服务端错误日志。
     try {
-    if (uploadErr) {
-      console.error('[design-generator] material-combo upload error:', uploadErr.message);
-      return res.status(400).json({ error: `上传失败: ${uploadErr.message}` });
-    }
-    const files = req.files || {};
-    const fabricFiles = files.fabrics ?? [];
-    const styleFiles = files.styles ?? [];
-    const illustrationFiles = files.illustrations ?? [];
-    const { name = '', description = '' } = req.body || {};
-
-    // 解析每种槽位的元数据(前端始终上传):按位置决定上传 or 库行
-    let fabricsMeta = [];
-    let stylesMeta = [];
-    let illustrationsMeta = [];
-    try { if (req.body?.fabricsMeta) fabricsMeta = JSON.parse(req.body.fabricsMeta); } catch { }
-    try { if (req.body?.stylesMeta) stylesMeta = JSON.parse(req.body.stylesMeta); } catch { }
-    try { if (req.body?.illustrationsMeta) illustrationsMeta = JSON.parse(req.body.illustrationsMeta); } catch { }
-    if (!Array.isArray(fabricsMeta) || !fabricsMeta.length) {
-      return res.status(400).json({ error: 'fabricsMeta 缺失或为空' });
-    }
-    if (!Array.isArray(stylesMeta) || !stylesMeta.length) {
-      return res.status(400).json({ error: 'stylesMeta 缺失或为空' });
-    }
-
-    // 生成模式:叉乘(cross,默认) | 拼色(color-mix, m 面料 + 1 款式 → 1 图)
-    const mode = req.body?.mode === 'color-mix' ? 'color-mix' : 'cross';
-
-    // 守卫(基于元数据数组长度 —— 即「槽位数」,而非文件数)
-    if (!name.trim()) return res.status(400).json({ error: '请填写名称' });
-    // 文件数必须等于「上传」槽位数(kind==='upload' 才消耗文件,kind==='text' / 'library-*' 不消耗)
-    const uploadFabricCount = fabricsMeta.filter((m) => m.kind === 'upload').length;
-    const uploadStyleCount = stylesMeta.filter((m) => m.kind === 'upload').length;
-    const uploadIllustrationCount = illustrationsMeta.filter((m) => m.kind === 'upload').length;
-    if (uploadFabricCount !== fabricFiles.length) {
-      return res.status(400).json({ error: `面料文件数不匹配,期望 ${uploadFabricCount},收到 ${fabricFiles.length}` });
-    }
-    if (uploadStyleCount !== styleFiles.length) {
-      return res.status(400).json({ error: `款式文件数不匹配,期望 ${uploadStyleCount},收到 ${styleFiles.length}` });
-    }
-    if (uploadIllustrationCount !== illustrationFiles.length) {
-      return res.status(400).json({ error: `插画文件数不匹配,期望 ${uploadIllustrationCount},收到 ${illustrationFiles.length}` });
-    }
-
-    // 需要提到 if/else 外层作用域:后面的 chargeImages 依赖它(不能用 else 内 const,
-    // 否则出 else 块就是 ReferenceError,直接导致 async 顶层 unhandledRejection、hang 60s → 504)
-    let totalCells = 1;
-    if (mode === 'color-mix') {
-      // 拼色:恰好 1 项款式 + 1~N 项面料(软上限 MAX_FABRIC_MIXED 仅提示)
-      if (stylesMeta.length !== 1) {
-        return res.status(400).json({ error: '拼色模式需要恰好一项款式' });
+      if (uploadErr) {
+        console.error('[design-generator] material-combo upload error:', uploadErr.message);
+        return res.status(400).json({ error: `上传失败: ${uploadErr.message}` });
       }
-      if (fabricsMeta.length > MAX_FABRIC_MIXED) {
-        return res.status(400).json({ error: `拼色面料建议 ${MAX_FABRIC_MIXED} 项以内,避免 prompt 过长` });
-      }
-      if (fabricsMeta.length < 2) {
-        // 仅 1 面料也可以用拼色(视为单料出图),放宽但给提示;仍允许执行
-      }
-      totalCells = 1;
-    } else {
-      // 叉乘
-      if (fabricsMeta.length > MAX_FABRIC) return res.status(400).json({ error: `面料最多 ${MAX_FABRIC} 项` });
-      if (stylesMeta.length > MAX_STYLE) return res.status(400).json({ error: `款式最多 ${MAX_STYLE} 项` });
-      totalCells = fabricsMeta.length * stylesMeta.length;
-      if (totalCells > MAX_CELLS) return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
-    }
+      const files = req.files || {};
+      const fabricFiles = files.fabrics ?? [];
+      const styleFiles = files.styles ?? [];
+      const illustrationFiles = files.illustrations ?? [];
+      const { name = '', description = '' } = req.body || {};
 
-    // material-combo 按总张数预扣喵币(余额不足 402)
-    try {
-      await chargeImages(req, totalCells, 'material_combo_per_image', `material-combo:${mode}`);
-    } catch (err) {
-      if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
-      throw err;
-    }
-
-    // 用于线上定位「material-combo 504」的时序日志:
-    // handler 内三个循环里的 persistTempFile(COS 上传) 和 findOwned(DB 查询) 都是 await,
-    // 任何一次卡 >网关超时(60~120s) 都会导致前端收到 504、大模型请求根本没发出去。
-    // 此处打点让运维一眼看出「卡在哪一步、每步多长」。
-    const t_handler0 = Date.now();
-    console.log(`[design-generator] material-combo start batch: fabrics=${fabricsMeta.length} styles=${stylesMeta.length} illustrations=${illustrationsMeta.length} mode=${mode}`);
-    try {
-      // 按 fabricsMeta 顺序构建面料行,上传文件逐条消耗(kind==='upload' 才取下一个)
-      let fIdx = 0;
-      const fabrics = [];
-      for (const meta of fabricsMeta) {
-        if (meta.kind === 'upload') {
-          const f = fabricFiles[fIdx++];
-          const url = await persistTempFile(f.path, f.filename, f.mimetype);
-          // 面料视觉细节直接以参考图(面料图)传给生图模型,此处不再 Ark 分析转文字。
-          fabrics.push({ name: meta.name || f.originalname || `面料${fabrics.length + 1}`, url, text: '', raw: '' });
-        } else if (meta.kind === 'text') {
-          // 文本描述面料:无图,用文字作为面料依据
-          fabrics.push({ name: meta.name || meta.description || '自定义面料', url: '', text: meta.description || '', raw: '' });
-        } else {
-          // library-fabric:从材料库取值(色卡图优先,回退 image)
-          const rec = await findOwned(prisma.lAMaterial, meta.matId, req.team.id);
-          if (!rec) {
-            console.warn(`[design-material-combo] 找不到面料 id=${meta.matId}`);
-            fabrics.push({ name: '(面料不存在)', url: '', text: '', raw: '' });
-            continue;
-          }
-          const cis = Array.isArray(rec.colorImages) ? rec.colorImages : [];
-          const ci = meta.colorIdx >= 0 ? cis[meta.colorIdx] : null;
-          const url = (ci && ci.url) || rec.image || '';
-          const colorName = ci?.name ? ` · ${ci.name}` : (meta.hex ? ` · ${meta.hex}` : '');
-          fabrics.push({
-            name: `${rec.name || '面料'}${colorName}`,
-            url,
-            text: '',
-            raw: '',
-          });
-        }
+      // 解析每种槽位的元数据(前端始终上传):按位置决定上传 or 库行
+      let fabricsMeta = [];
+      let stylesMeta = [];
+      let illustrationsMeta = [];
+      try { if (req.body?.fabricsMeta) fabricsMeta = JSON.parse(req.body.fabricsMeta); } catch { }
+      try { if (req.body?.stylesMeta) stylesMeta = JSON.parse(req.body.stylesMeta); } catch { }
+      try { if (req.body?.illustrationsMeta) illustrationsMeta = JSON.parse(req.body.illustrationsMeta); } catch { }
+      if (!Array.isArray(fabricsMeta) || !fabricsMeta.length) {
+        return res.status(400).json({ error: 'fabricsMeta 缺失或为空' });
+      }
+      if (!Array.isArray(stylesMeta) || !stylesMeta.length) {
+        return res.status(400).json({ error: 'stylesMeta 缺失或为空' });
       }
 
-      // 按 stylesMeta 顺序构建款式行
-      let sIdx = 0;
-      const styles = [];
-      for (const meta of stylesMeta) {
-        if (meta.kind === 'upload') {
-          const f = styleFiles[sIdx++];
-          const url = await persistTempFile(f.path, f.filename, f.mimetype);
-          // 款式视觉细节直接以参考图(款式图)传给生图模型,此处不再 Ark 分析转文字。
-          styles.push({ name: meta.name || f.originalname || `款式${styles.length + 1}`, url, text: '', raw: '' });
-        } else {
-          // library-style:从款式库取值(参考图即款式 image)
-          const rec = await findOwned(prisma.lAStyle, meta.styleId, req.team.id);
-          if (!rec) {
-            console.warn(`[design-material-combo] 找不到款式 id=${meta.styleId}`);
-            styles.push({ name: '(款式不存在)', url: '', text: '', raw: '' });
-            continue;
-          }
-          styles.push({
-            name: rec.name || '款式',
-            url: rec.image || '',
-            text: '',
-            raw: '',
-          });
-        }
+      // 生成模式:叉乘(cross,默认) | 拼色(color-mix, m 面料 + 1 款式 → 1 图)
+      const mode = req.body?.mode === 'color-mix' ? 'color-mix' : 'cross';
+
+      // 守卫(基于元数据数组长度 —— 即「槽位数」,而非文件数)
+      if (!name.trim()) return res.status(400).json({ error: '请填写名称' });
+      // 文件数必须等于「上传」槽位数(kind==='upload' 才消耗文件,kind==='text' / 'library-*' 不消耗)
+      const uploadFabricCount = fabricsMeta.filter((m) => m.kind === 'upload').length;
+      const uploadStyleCount = stylesMeta.filter((m) => m.kind === 'upload').length;
+      const uploadIllustrationCount = illustrationsMeta.filter((m) => m.kind === 'upload').length;
+      if (uploadFabricCount !== fabricFiles.length) {
+        return res.status(400).json({ error: `面料文件数不匹配,期望 ${uploadFabricCount},收到 ${fabricFiles.length}` });
+      }
+      if (uploadStyleCount !== styleFiles.length) {
+        return res.status(400).json({ error: `款式文件数不匹配,期望 ${uploadStyleCount},收到 ${styleFiles.length}` });
+      }
+      if (uploadIllustrationCount !== illustrationFiles.length) {
+        return res.status(400).json({ error: `插画文件数不匹配,期望 ${uploadIllustrationCount},收到 ${illustrationFiles.length}` });
       }
 
-      // 按 illustrationsMeta 顺序构建插画行(可印/刺绣到衣服上的图案)
-      let iIdx = 0;
-      const illustrations = [];
-      for (const meta of illustrationsMeta) {
-        if (meta.kind === 'upload') {
-          const f = illustrationFiles[iIdx++];
-          const url = await persistTempFile(f.path, f.filename, f.mimetype);
-          illustrations.push({ name: meta.name || f.originalname || `插画${illustrations.length + 1}`, url, text: '', raw: '' });
-        } else {
-          // library-illustration:从插画库取值(参考图即插画 image)
-          const rec = await findOwned(prisma.lAIllustrationAsset, meta.illustrationId, req.team.id);
-          if (!rec) {
-            console.warn(`[design-material-combo] 找不到插画 id=${meta.illustrationId}`);
-            illustrations.push({ name: '(插画不存在)', url: '', text: '', raw: '' });
-            continue;
-          }
-          illustrations.push({
-            name: rec.name || '插画',
-            url: rec.image || '',
-            text: '',
-            raw: '',
-          });
-        }
-      }
-
-      // 3) 构建 batch
-      //    叉乘(cross):m×n 格;拼色(color-mix):1 格(全部面料 × 单个款式)
-      const batchId = `mc-${crypto.randomUUID()}`;
-      const now = Date.now();
-      let items = [];
+      // 需要提到 if/else 外层作用域:后面的 chargeImages 依赖它(不能用 else 内 const,
+      // 否则出 else 块就是 ReferenceError,直接导致 async 顶层 unhandledRejection、hang 60s → 504)
+      let totalCells = 1;
       if (mode === 'color-mix') {
-        items = [{ fi: 0, si: 0, status: 'pending' }];
+        // 拼色:恰好 1 项款式 + 1~N 项面料(软上限 MAX_FABRIC_MIXED 仅提示)
+        if (stylesMeta.length !== 1) {
+          return res.status(400).json({ error: '拼色模式需要恰好一项款式' });
+        }
+        if (fabricsMeta.length > MAX_FABRIC_MIXED) {
+          return res.status(400).json({ error: `拼色面料建议 ${MAX_FABRIC_MIXED} 项以内,避免 prompt 过长` });
+        }
+        if (fabricsMeta.length < 2) {
+          // 仅 1 面料也可以用拼色(视为单料出图),放宽但给提示;仍允许执行
+        }
+        totalCells = 1;
       } else {
-        for (let fi = 0; fi < fabrics.length; fi++) {
-          for (let si = 0; si < styles.length; si++) {
-            items.push({ fi, si, status: 'pending' });
+        // 叉乘
+        if (fabricsMeta.length > MAX_FABRIC) return res.status(400).json({ error: `面料最多 ${MAX_FABRIC} 项` });
+        if (stylesMeta.length > MAX_STYLE) return res.status(400).json({ error: `款式最多 ${MAX_STYLE} 项` });
+        totalCells = fabricsMeta.length * stylesMeta.length;
+        if (totalCells > MAX_CELLS) return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
+      }
+
+      // material-combo 按总张数预扣喵币(余额不足 402)
+      try {
+        await chargeImages(req, totalCells, 'material_combo_per_image', `material-combo:${mode}`);
+      } catch (err) {
+        if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+        throw err;
+      }
+
+      // 用于线上定位「material-combo 504」的时序日志:
+      // handler 内三个循环里的 persistTempFile(COS 上传) 和 findOwned(DB 查询) 都是 await,
+      // 任何一次卡 >网关超时(60~120s) 都会导致前端收到 504、大模型请求根本没发出去。
+      // 此处打点让运维一眼看出「卡在哪一步、每步多长」。
+      const t_handler0 = Date.now();
+      console.log(`[design-generator] material-combo start batch: fabrics=${fabricsMeta.length} styles=${stylesMeta.length} illustrations=${illustrationsMeta.length} mode=${mode}`);
+      try {
+        // 按 fabricsMeta 顺序构建面料行,上传文件逐条消耗(kind==='upload' 才取下一个)
+        let fIdx = 0;
+        const fabrics = [];
+        for (const meta of fabricsMeta) {
+          if (meta.kind === 'upload') {
+            const f = fabricFiles[fIdx++];
+            const url = await persistTempFile(f.path, f.filename, f.mimetype);
+            // 面料视觉细节直接以参考图(面料图)传给生图模型,此处不再 Ark 分析转文字。
+            fabrics.push({ name: meta.name || f.originalname || `面料${fabrics.length + 1}`, url, text: '', raw: '' });
+          } else if (meta.kind === 'text') {
+            // 文本描述面料:无图,用文字作为面料依据
+            fabrics.push({ name: meta.name || meta.description || '自定义面料', url: '', text: meta.description || '', raw: '' });
+          } else {
+            // library-fabric:从材料库取值(色卡图优先,回退 image)
+            const rec = await findOwned(prisma.lAMaterial, meta.matId, req.team.id);
+            if (!rec) {
+              console.warn(`[design-material-combo] 找不到面料 id=${meta.matId}`);
+              fabrics.push({ name: '(面料不存在)', url: '', text: '', raw: '' });
+              continue;
+            }
+            const cis = Array.isArray(rec.colorImages) ? rec.colorImages : [];
+            const ci = meta.colorIdx >= 0 ? cis[meta.colorIdx] : null;
+            const url = (ci && ci.url) || rec.image || '';
+            const colorName = ci?.name ? ` · ${ci.name}` : (meta.hex ? ` · ${meta.hex}` : '');
+            fabrics.push({
+              name: `${rec.name || '面料'}${colorName}`,
+              url,
+              text: '',
+              raw: '',
+            });
           }
         }
-      }
-      const batch = {
-        batchId,
-        teamId: req.team.id,
-        mode,
-        name: name.trim(),
-        description: description.trim(),
-        fabrics,
-        styles,
-        illustrations,
-        items,
-        status: 'running',
-        createdAt: now,
-        updatedAt: now,
-      };
-      mcBatches.set(batchId, batch);
-      console.log(`[design-generator] material-combo ready ${batchId} in ${Date.now() - t_handler0}ms, ${items.length} cells → 202`);
 
-      // 4) 202 立即返回,fire-and-forget 后台生成
-      res.status(202).json(batchPublicView(batch));
-      // 兜底捕获:runBatch 内已 try/catch,但 fire-and-forget 需要给顶层 promise 一层
-      // 保护,避免任何遗漏路径变成 unhandledRejection、cells 永远 pending。
-      runBatch(batchId).catch((err) => {
-        console.error(`[design-generator] runBatch ${batchId} unhandled:`, err?.message || String(err));
-        const b = mcBatches.get(batchId);
-        if (b) {
-          b.status = 'error';
-          b.error = err?.message || '批次异常';
-          for (const it of b.items) {
-            if (it.status === 'pending' || it.status === 'running') {
-              it.status = 'error';
-              it.error = b.error;
+        // 按 stylesMeta 顺序构建款式行
+        let sIdx = 0;
+        const styles = [];
+        for (const meta of stylesMeta) {
+          if (meta.kind === 'upload') {
+            const f = styleFiles[sIdx++];
+            const url = await persistTempFile(f.path, f.filename, f.mimetype);
+            // 款式视觉细节直接以参考图(款式图)传给生图模型,此处不再 Ark 分析转文字。
+            styles.push({ name: meta.name || f.originalname || `款式${styles.length + 1}`, url, text: '', raw: '' });
+          } else {
+            // library-style:从款式库取值(参考图即款式 image)
+            const rec = await findOwned(prisma.lAStyle, meta.styleId, req.team.id);
+            if (!rec) {
+              console.warn(`[design-material-combo] 找不到款式 id=${meta.styleId}`);
+              styles.push({ name: '(款式不存在)', url: '', text: '', raw: '' });
+              continue;
+            }
+            styles.push({
+              name: rec.name || '款式',
+              url: rec.image || '',
+              text: '',
+              raw: '',
+            });
+          }
+        }
+
+        // 按 illustrationsMeta 顺序构建插画行(可印/刺绣到衣服上的图案)
+        let iIdx = 0;
+        const illustrations = [];
+        for (const meta of illustrationsMeta) {
+          if (meta.kind === 'upload') {
+            const f = illustrationFiles[iIdx++];
+            const url = await persistTempFile(f.path, f.filename, f.mimetype);
+            illustrations.push({ name: meta.name || f.originalname || `插画${illustrations.length + 1}`, url, text: '', raw: '' });
+          } else {
+            // library-illustration:从插画库取值(参考图即插画 image)
+            const rec = await findOwned(prisma.lAIllustrationAsset, meta.illustrationId, req.team.id);
+            if (!rec) {
+              console.warn(`[design-material-combo] 找不到插画 id=${meta.illustrationId}`);
+              illustrations.push({ name: '(插画不存在)', url: '', text: '', raw: '' });
+              continue;
+            }
+            illustrations.push({
+              name: rec.name || '插画',
+              url: rec.image || '',
+              text: '',
+              raw: '',
+            });
+          }
+        }
+
+        // 3) 构建 batch
+        //    叉乘(cross):m×n 格;拼色(color-mix):1 格(全部面料 × 单个款式)
+        const batchId = `mc-${crypto.randomUUID()}`;
+        const now = Date.now();
+        let items = [];
+        if (mode === 'color-mix') {
+          items = [{ fi: 0, si: 0, status: 'pending' }];
+        } else {
+          for (let fi = 0; fi < fabrics.length; fi++) {
+            for (let si = 0; si < styles.length; si++) {
+              items.push({ fi, si, status: 'pending' });
             }
           }
-          b.updatedAt = Date.now();
         }
-      });
-    } catch (e) {
-      console.error('[design-generator] material-combo error:', e?.message || String(e));
-      res.status(500).json({ error: e?.message || '生成失败' });
-    }
+        const batch = {
+          batchId,
+          teamId: req.team.id,
+          mode,
+          name: name.trim(),
+          description: description.trim(),
+          fabrics,
+          styles,
+          illustrations,
+          items,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        };
+        mcBatches.set(batchId, batch);
+        console.log(`[design-generator] material-combo ready ${batchId} in ${Date.now() - t_handler0}ms, ${items.length} cells → 202`);
+
+        // 4) 202 立即返回,fire-and-forget 后台生成
+        res.status(202).json(batchPublicView(batch));
+        // 兜底捕获:runBatch 内已 try/catch,但 fire-and-forget 需要给顶层 promise 一层
+        // 保护,避免任何遗漏路径变成 unhandledRejection、cells 永远 pending。
+        runBatch(batchId).catch((err) => {
+          console.error(`[design-generator] runBatch ${batchId} unhandled:`, err?.message || String(err));
+          const b = mcBatches.get(batchId);
+          if (b) {
+            b.status = 'error';
+            b.error = err?.message || '批次异常';
+            for (const it of b.items) {
+              if (it.status === 'pending' || it.status === 'running') {
+                it.status = 'error';
+                it.error = b.error;
+              }
+            }
+            b.updatedAt = Date.now();
+          }
+        });
+      } catch (e) {
+        console.error('[design-generator] material-combo error:', e?.message || String(e));
+        res.status(500).json({ error: e?.message || '生成失败' });
+      }
     } catch (fatal) {
       // 顶层兜底:即便前面所有 try/catch 都漏掉(例如 ReferenceError、语法性问题、
       // 未 await 就抛出的同步异常),也保证有响应返回,避免请求 hang 到网关超时。
@@ -1574,8 +1574,6 @@ const OUTFIT_STYLING_ASPECT = process.env.OUTFIT_STYLING_ASPECT || '3:4';
 const ILLUSTRATION_PRESET_STYLES = {
   'cute-crayon-sticker': {
     label: '可爱蜡笔贴纸',
-    // styleGuide:文生图使用——纯风格描述(无「分析原图」语义),作为文本生成插画时的风格指引。
-    styleGuide: `Cute Kawaii Sticker style: minimal flat design with rounded, plump geometric shapes; thick, soft colored outlines (NO black outlines); high-brightness macaron palette (pink, light purple, mint green, cream yellow, sky blue, orange, coral, light brown) with solid color fills only — no gradients, shadows, highlights, or realistic lighting. Minimalist kawaii facial features. Cute decorative accents (flowers, stars, clouds, hearts, sparkles, dots, butterflies) arranged around the subject. Pure white background, sticker-collection composition, relaxed/cute/warm/healing mood. Avoid: realistic or photographic style, 3D, CG, gradients, shadows, glass/metal texture, watercolor, oil painting, anime.`,
     // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
     prompt: `Analyze the user's uploaded photo and convert it into a Cute Kawaii Sticker Illustration style, fully preserving the subject's content, silhouette, posture, and key recognizable features — ONLY the painting style changes; the subject type must remain the same.
 
@@ -1601,35 +1599,21 @@ The final output must be a set of high-quality, pure-white-background, cute stic
   },
   'modern-watercolor': {
     label: '现代水彩',
-    // styleGuide:文生图使用——纯风格描述(无「分析原图」语义),作为文本生成插画时的风格指引。
-    styleGuide: `Modern Editorial Illustration style: soft watercolor bleeding and translucent color blocks, natural edge diffusion with paper seepage effect, moderate grain and paper texture. Low-saturation premium natural tones (blue-grey, misty blue, sage green, cream white, light khaki, terracotta, coral orange, light grey, pale green). Minimal whitespace on pure white or warm-white background. Free-flowing hand-drawn lines, abstract brushwork, doodle line art, geometric color blocks, with subtle abstract decorative accents (curves, dots, botanical line art, watercolor washes). Gentle/natural/literary/healing mood. Avoid: photographic style, 3D, CG, realistic lighting, heavy shadows, metallic/glass texture, anime.`,
     // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
     prompt: `Analyze the user's uploaded photo and convert it into a Modern Editorial Illustration style, fully preserving the subject's content, shape, posture, composition, and recognizable features — ONLY the visual representation style changes.
-
 Overall minimal whitespace design: plain white or warm-white background, no complex scenes, making the subject the visual center.
-
 The subject is rendered with soft watercolor bleeding and translucent color blocks: natural edge diffusion with paper seepage effect, moderate grain and paper texture. Rich color layers but without over-realism; an overall hand-crafted artistic quality.
-
 The subject outline does NOT need to be fully closed — combine free-flowing hand-drawn lines, abstract brushwork, doodle line art, and geometric color blocks for artistic expression. Some lines may cross through the subject to create a visually rhythmic, design-forward feel.
-
 Color palette: low-saturation, premium natural tones — blue-grey, misty blue, sage green, cream white, light khaki, terracotta red, coral orange, light grey, pale green, etc. Soft transitions between colors; avoid high-saturation clashes.
-
 Add subtle abstract decorative elements around the subject: free curves, color blocks, dots, handwritten strokes, botanical line art, watercolor washes, small collage shapes — enhancing the modern artistic feel WITHOUT harming subject recognition.
-
 A small amount of handwritten English text, hand-drawn symbols, simple marks, or designer-note-style elements may be added as visual design elements. The text serves as graphic decoration and need not carry real meaning; it must not overpower the subject.
-
 Overall composition follows modern graphic design principles: emphasis on whitespace, visual balance, layered relationships, and a sense of breathing room. The result should match the visual quality of art posters, magazine illustrations, brand packaging illustrations, and lifestyle magazine spreads.
-
 Overall mood: gentle, natural, literary, healing, premium, design-forward — combining watercolor illustration, collage art, modern editorial illustration, and handcrafted art.
-
 STRICTLY AVOID: photographic style, realistic rendering, 3D, CG, complex backgrounds, realistic lighting, heavy shadows, specular highlights, metallic texture, glass texture, anime/manga style, game concept art, cyberpunk, AI-over-sharpening, complex textures, over-decoration, large blocks of text, logos, watermarks, frames.
-
 The final output must be a premium modern-art illustration combining watercolor texture, abstract brushwork, collage design, hand-drawn line art, and minimal whitespace — suitable as art posters, brand packaging, lifestyle magazine illustrations, or cultural/creative product visuals.`,
   },
   'hand-drawn-color': {
     label: '手绘彩色线条',
-    // styleGuide:文生图使用——纯风格描述(无「分析原图」语义),作为文本生成插画时的风格指引。
-    styleGuide: `Simple healing hand-drawn children's illustration style: natural, slightly naive colored hand-drawn lines (crayon / colored pencil / marker feel, slightly irregular and childlike, NO black outlines). Low-saturation macaron palette (light purple, mint green, sakura pink, cream yellow, light blue) with simple solid color blocks — no gradients, shadows, highlights, or complex textures. Greatly simplified details keeping only the most representative visual features, picture-book and sticker-illustration feel. Small decorative accents (flowers, leaves, stars, dots, hearts, fruit) in the same hand-drawn style evenly around the subject. Pure white background, lots of whitespace. Avoid: realistic/photographic style, 3D, CG, gradients, shadows, glass/metal, watercolor, oil painting, anime.`,
     // prompt:图生图使用——含「分析用户上传图片」语义,基于参考图的完整转绘指令。
     prompt: `请分析用户上传的图片，并将其转换为极简治愈系儿童手绘插画风格，同时完整保留原图主体的外形、姿态、比例、构图和可识别特征，仅改变表现形式，不改变主体内容。
 整体采用纯白背景，不添加任何场景、天空、地面、建筑或环境元素，画面保持大量留白，使主体成为视觉中心。
@@ -1640,6 +1624,33 @@ The final output must be a premium modern-art illustration combining watercolor 
 严格避免出现以下内容：写实风格、照片风格、3D、CG渲染、复杂背景、渐变、阴影、高光、真实光照、纹理、水彩、油画、厚涂、素描、炭笔、漫画、动漫、赛博朋克、金属质感、玻璃质感、文字、Logo、水印、边框、过度装饰、复杂图案、噪点以及任何影响画面简洁性的元素。
 最终输出应为一幅高质量、纯白背景、极简治愈、儿童绘本风格的手绘插画，在保持原图主体识别度的同时，呈现统一、柔和、富有童趣的视觉风格。`,
   },
+  'healing-hand-drawn': {
+    label: '治愈手绘绘本',
+    prompt: `Minimalist hand-drawn storybook illustration, delicate pencil sketch with slightly uneven thin black lines, soft watercolor wash, creamy pastel palette, low saturation, airy composition, lots of white space, high-key white background.
+    Gentle and dreamy children's book aesthetic, Japanese healing illustration style, Scandinavian picture book influence, light and breathable visual feeling.
+    Simple rounded shapes, intentionally simplified forms, soft edges, subtle watercolor bleeding, paper texture, hand-painted appearance, poetic, cozy, innocent, whimsical.
+    No realism, no heavy rendering, no dramatic lighting, no complex details, no sharp contrast, no thick outlines, no cel shading.`,
+  },
+  "dreamcore-kawaii-Pencil": {
+    label: '梦核可爱卡通',
+    prompt: `Dreamy pastel kawaii illustration, ultra soft children's illustration, Japanese soft girl aesthetic, minimalist character design, delicate colored pencil line art, subtle watercolor shading, creamy pastel palette, baby blue, blush pink, warm ivory, pale yellow.
+
+Very low contrast, high-key lighting, airy atmosphere, gentle bloom glow, soft edges, slightly blurred outlines, hand-painted texture, fine paper grain, dreamy haze, ethereal mood, innocent, peaceful, whimsical.
+
+Simple rounded proportions, oversized head, tiny facial features, closed eyes, rosy cheeks, elegant negative space, floating decorative elements, centered composition, isolated on pure white background.
+
+Cute angelcore aesthetic, soft vintage pastel illustration, healing illustration, poetic minimalism, premium stationery illustration.`
+  },
+  "plush-watercolor": {
+    label: "毛绒晕染水彩",
+    prompt: `Soft plush watercolor illustration, fluffy teddy bear texture, ultra soft airbrush watercolor, fuzzy edges, hand-painted plush toy aesthetic, pastel nursery illustration, delicate cotton texture, dreamy and cozy atmosphere.
+
+Very soft muted pastel colors, creamy pink, warm beige, milk white, dusty brown, low saturation, high-key lighting, gentle bloom, subtle paper texture.
+
+Round and chubby proportions, simplified facial features, embroidered toy expression, fluffy fur rendered with soft watercolor strokes, velvety plush surface, delicate hand-painted texture.
+
+Minimal composition, isolated subject on pure white background, lots of negative space, premium stationery illustration, Japanese and Korean kawaii illustration aesthetic.`
+  }
 };
 
 // ── illustration-create 守卫常量 ──────────────────────────────
@@ -1970,12 +1981,11 @@ setInterval(() => {
  */
 /**
  * 文生图 prompt:用户描述 + 系统预置风格指引(若有) + 品牌风格(brand block)。
- * 选择系统风格时,将对应预置 styleGuide 注入 prompt,引导 AI 按该风格生成插画。
  */
 function buildIllustrationTextPrompt({ name, userPrompt, styleId, brandBlock }) {
   const style = styleId ? ILLUSTRATION_PRESET_STYLES[styleId] : null;
   const styleLine = style
-    ? `Style: ${style.styleGuide}`
+    ? `Style: ${style.prompt}`
     : 'Style: professional illustration style with crisp edges.';
   return `Create a clean 1:1 square illustration optimized for pure white background art. Subject: ${userPrompt}.
 

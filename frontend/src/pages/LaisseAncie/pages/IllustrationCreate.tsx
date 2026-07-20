@@ -50,9 +50,27 @@ const PRESET_STYLES: PresetStyle[] = [
   {
     id: "hand-drawn-color",
     label: "手绘彩色线条",
-    description: "将照片转成「现实 vs 记忆」对照海报:上方原图,下方极简手绘草图。",
-    thumb: "✦ 手绘 · 对照",
+    description: "圆润扁平马卡龙配色,粗柔和彩色描边,纯白背景贴纸集合,萌趣治愈。",
+    thumb: "✿ 贴纸 · 玛卡龙",
   },
+  {
+    id: "healing-hand-drawn",
+    label: "治愈手绘绘本",
+    description: "极简治愈系手绘绘本插画风格，细腻铅笔线稿，线条自然略带手绘抖动感，淡彩水彩晕染，奶油色低饱和配色。",
+    thumb: "治愈 · 线条 · 奶油",
+  },
+  {
+    id: 'dreamcore-kawaii-Pencil',
+    label: '梦核× Kawaii × 日系软萌插画',
+    description: '柔焦梦幻、发光感和粉彩童话氛围',
+    thumb: '梦幻 · 发光 · 粉彩',
+  },
+  {
+    id: "plush-watercolor",
+    label: "毛绒晕染水彩",
+    description: "毛绒晕染水彩风格，柔和水彩晕染与半透明色块，低饱和自然色系，极简留白，现代编辑插画质感。",
+    thumb: "◌ 水彩 · 晕染",
+  }
 ];
 
 /** 后端 icBatchPublicView 的视图形状(前端侧) */
