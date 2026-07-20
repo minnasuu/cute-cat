@@ -351,12 +351,12 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
   ];
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col h-[85vh]">
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* ── 主体:左图(更宽) / 右信息 双栏 ── */}
       <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[700px_1fr] gap-5 relative">
         {/* 上一个/下一个产品切换按钮(view 模式,固定在右侧 16px,垂直居中) */}
         {!editing && (onPrev || onNext) && (
-          <div className="absolute -right-20 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+          <div className="hidden md:flex absolute -right-20 top-1/2 -translate-y-1/2 z-20 flex-col gap-2">
             <button type="button" title="上一个产品" disabled={!onPrev} onClick={onPrev}
               className="w-9 h-9 rounded-full flex items-center justify-center bg-white/90 hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold">
                 <svg width="16" height="16" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 30L25 18L37 30" stroke="#4a4a4a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -599,8 +599,21 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
 
       {/* ── 底部固定操作栏(不随内容滚动) ── */}
       <div className="shrink-0 flex items-center justify-between gap-2 pt-3 border-t border-gray-100 bg-white">
-        <div className="text-[11px] text-gray-500 truncate min-w-0">
+        <div className="text-[11px] text-gray-500 truncate min-w-0 flex items-center gap-1">
           {mainImageUrl && editing ? "提示: 悬停图片可替换/调整主图/删除 · 可点击「+ 添加图片」追加" : ""}
+          {/* 移动端:上一个/下一个产品(桌面端已固定在右侧) */}
+          {!editing && (onPrev || onNext) && (
+            <span className="md:hidden inline-flex items-center gap-1 ml-1">
+              <button type="button" title="上一个产品" disabled={!onPrev} onClick={onPrev}
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-white hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold">
+                <svg width="14" height="14" viewBox="0 0 48 48" fill="none"><path d="M13 30L25 18L37 30" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              <button type="button" title="下一个产品" disabled={!onNext} onClick={onNext}
+                className="w-7 h-7 rounded-full flex items-center justify-center bg-white hover:bg-primary-500 text-gray-600 hover:text-white ring-1 ring-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold">
+                <svg width="14" height="14" viewBox="0 0 48 48" fill="none"><path d="M36 18L24 30L12 18" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {editing ? (
@@ -663,8 +676,7 @@ function ImageSwiper({ slides }: { slides: ReactNode[] }) {
   return (
     <div>
       <div
-        className="relative overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 select-none"
-        style={{  height: "570px" }}
+        className="relative overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 select-none aspect-[4/5] md:h-[570px]"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -789,7 +801,7 @@ function ProductForm({ initial, onCancel, onSave }: {
   const inputCls = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-primary-500";
 
   return (
-    <div className="flex-1 min-h-0 h-[60vh] overflow-auto pr-1 text-xs space-y-5">
+    <div className="flex-1 min-h-0 max-h-[60vh] overflow-auto pr-1 text-xs space-y-5">
       {/* 主图 */}
       <div>
         <SectionLabel>主图</SectionLabel>

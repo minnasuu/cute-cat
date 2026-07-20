@@ -99,7 +99,7 @@ const Navbar: React.FC<NavbarProps> = ({
   const defaultRight = user ? (
     <div className="flex items-center gap-2">
       <ThemeToggle />
-      <MeowCoinDisplay amount={user.coins} size={14} gradient />
+      <MeowCoinDisplay amount={user.coins} size={14} gradient className="hidden md:inline-flex" />
       <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((o) => !o)}
@@ -135,6 +135,9 @@ const Navbar: React.FC<NavbarProps> = ({
                   {user.email}
                 </div>
               )}
+            </div>
+            <div className="mt-2 md:hidden">
+              <MeowCoinDisplay amount={user.coins} size={14} gradient />
             </div>
             <button
               onClick={handleSwitchAccount}

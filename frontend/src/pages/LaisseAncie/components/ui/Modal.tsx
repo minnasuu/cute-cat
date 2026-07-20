@@ -21,13 +21,13 @@ export function Modal({ open, onClose, title, children, maxWidth = "max-w-3xl" }
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-in fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-in fade-in overflow-auto"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className={`flex flex-col w-full ${maxWidth} rounded-3xl border border-gray-200 bg-white p-7 shadow-xl max-h-[88vh]`}
+        className={`flex flex-col w-full ${maxWidth} rounded-3xl border border-gray-200 bg-white p-7 shadow-xl max-h-[88vh] m-4`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-gray-200 pb-5">
