@@ -13,6 +13,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { teamApi } from "../lib/api";
+import type { UserIllustrationStyle } from "../lib/api";
 import type { KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 // 插画创作页仅消费品牌风格(brand),故 knowledge 类型收窄为 Pick<...,'brand'> —— 诚实表达依赖、避免传大量空占位字段。
 type IllustrationCreateKnowledge = Pick<KnowledgeDeps, "brand">;
@@ -26,8 +27,6 @@ import { showToast } from "../../../components/Toast";
 
 // 风格参考图静态资源(用户将提供真实图片后替换)
 import styleHealingHandDrawn from "../../../assets/illustration-styles/healing-hand-drawn.png";
-import styleDreamcoreKawaii from "../../../assets/illustration-styles/dreamcore-kawaii-Pencil.png";
-import stylePlushWatercolor from "../../../assets/illustration-styles/plush-watercolor.png";
 
 const POLL_MS = 3000;
 // 对齐后端 IC_BATCH_TTL_MS = 15min,略小于 TTL 避免与清理竞争
@@ -41,24 +40,22 @@ interface PresetStyle {
   /** 风格参考图 URL(静态资源 import) */
   refImage: string;
 }
+// 统一风格卡片形状:预置(preset) + 用户上传(user) 共用同一选择器。
+// 用户风格 id 以 `us-` 开头,可据此区分来源(删除/编辑仅对用户风格开放)。
+type StyleCard = {
+  id: string;
+  label: string;
+  description: string;
+  refImage: string;
+  /** 用户风格元数据(预置风格为 undefined) */
+  user?: { createdAt: number };
+};
 const PRESET_STYLES: PresetStyle[] = [
   {
     id: "healing-hand-drawn",
     label: "治愈手绘绘本",
     description: "极简治愈系手绘绘本插画风格，细腻铅笔线稿，线条自然略带手绘抖动感，淡彩水彩晕染，奶油色低饱和配色。",
     refImage: styleHealingHandDrawn,
-  },
-  {
-    id: "dreamcore-kawaii-Pencil",
-    label: "梦核× Kawaii × 日系软萌插画",
-    description: "柔焦梦幻、发光感和粉彩童话氛围",
-    refImage: styleDreamcoreKawaii,
-  },
-  {
-    id: "plush-watercolor",
-    label: "毛绒晕染水彩",
-    description: "毛绒晕染水彩风格，柔和水彩晕染与半透明色块，低饱和自然色系，极简留白，现代编辑插画质感。",
-    refImage: stylePlushWatercolor,
   },
 ];
 
@@ -100,7 +97,27 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
   const [refFile, setRefFile] = useState<File | null>(null);
   const [refPreview, setRefPreview] = useState<string>("");
   const [selectedStyleId, setSelectedStyleId] = useState<string>(PRESET_STYLES[0].id);
-  const selectedStyleRefUrl = PRESET_STYLES.find((s) => s.id === selectedStyleId)?.refImage || PRESET_STYLES[0].refImage;
+  // 用户上传风格(文件持久化,≤10 条/团队)—— 加载后拼在预置风格后面。
+  const [userStyles, setUserStyles] = useState<UserIllustrationStyle[]>([]);
+  const [userStylesLoading, setUserStylesLoading] = useState(false);
+  // 展开的「我的风格」面板 + 上传草稿状态
+  const [myPanelOpen, setMyPanelOpen] = useState(false);
+  const [usLabel, setUsLabel] = useState("");
+  const [usDesc, setUsDesc] = useState("");
+  const [usFile, setUsFile] = useState<File | null>(null);
+  const [usPreview, setUsPreview] = useState("");
+  const [usUploading, setUsUploading] = useState(false);
+  const [usError, setUsError] = useState<string | null>(null);
+  const usInputRef = useRef<HTMLInputElement>(null);
+
+  // 统一风格列表 = 预置 + 用户,用户追加在后,共用同一选择器。
+  const allStyles: StyleCard[] = [
+    ...PRESET_STYLES.map((s) => ({ ...s })),
+    ...userStyles.map((u) => ({ id: u.id, label: u.label, description: u.description, refImage: u.refImage, user: { createdAt: u.createdAt } })),
+  ];
+  const selectedStyleRefUrl = allStyles.find((s) => s.id === selectedStyleId)?.refImage || PRESET_STYLES[0].refImage;
+  const selectedStyle = allStyles.find((s) => s.id === selectedStyleId) || null;
+  const canAddUserStyle = userStyles.length < 10;
 
   // ── 批次状态 ──
   const [batch, setBatch] = useState<IllustrationBatch | null>(null);
@@ -114,6 +131,23 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
 
   const brandLogo = knowledge?.brand?.logo || undefined;
   const brandSlogan = knowledge?.brand?.slogan || undefined;
+
+  // ── 加载用户风格(团队切换时重拉) ──
+  const loadUserStyles = useCallback(async () => {
+    if (!teamId) return;
+    setUserStylesLoading(true);
+    try {
+      const { items } = await teamApi(teamId).listIllustrationStyles();
+      setUserStyles(items);
+    } catch (e) {
+      // 风格库非核心能力,加载失败静默(保留预置风格可用)
+      console.warn('[illustration-create] load user styles failed:', e);
+    } finally {
+      setUserStylesLoading(false);
+    }
+  }, [teamId]);
+
+  useEffect(() => { void loadUserStyles(); }, [loadUserStyles]);
 
   // ── 派生态 ──
   const batchRunning = !!batch && batch.status === "running";
@@ -195,6 +229,71 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
     setRefFile(null);
     setRefPreview("");
     if (refInputRef.current) refInputRef.current.value = "";
+  }
+
+  // ── 用户风格上传 ──
+  async function onPickUsFile(list: FileList | null) {
+    if (!list?.length) return;
+    const raw = list[0];
+    try {
+      const compressed = await compressForUpload(raw);
+      setUsFile(compressed);
+      setUsPreview(URL.createObjectURL(compressed));
+      setUsError(null);
+    } catch {
+      setUsError("图片处理失败,请换一张重试");
+    }
+    if (usInputRef.current) usInputRef.current.value = "";
+  }
+
+  function clearUsDraft() {
+    if (usPreview) URL.revokeObjectURL(usPreview);
+    setUsFile(null);
+    setUsPreview("");
+    setUsLabel("");
+    setUsDesc("");
+    setUsError(null);
+    if (usInputRef.current) usInputRef.current.value = "";
+  }
+
+  async function submitUserStyle() {
+    if (!teamId || usUploading) return;
+    if (!usLabel.trim()) { setUsError("请填写风格名称"); return; }
+    if (!usFile) { setUsError("请选择风格参考图"); return; }
+    setUsUploading(true);
+    setUsError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", usFile);
+      fd.append("label", usLabel.trim());
+      if (usDesc.trim()) fd.append("description", usDesc.trim());
+      const { item } = await teamApi(teamId).uploadIllustrationStyle(fd);
+      setUserStyles((prev) => [...prev, item]);
+      // 刚上传的风格自动选中,给用户即时反馈
+      setSelectedStyleId(item.id);
+      clearUsDraft();
+      showToast("风格添加成功", "success");
+    } catch (e: any) {
+      const msg = e?.message || "添加失败";
+      // 后端 409 LIMIT_EXCEEDED → 给出明确上限提示
+      setUsError(String(msg).includes("最多保存") ? msg : `添加失败: ${msg}`);
+    } finally {
+      setUsUploading(false);
+    }
+  }
+
+  async function removeUserStyle(id: string) {
+    if (!teamId) return;
+    // 直接确认;影响范围仅限用户自己的风格(预置不可删,不可能命中此分支)
+    try {
+      await teamApi(teamId).deleteIllustrationStyle(id);
+      setUserStyles((prev) => prev.filter((s) => s.id !== id));
+      // 选中项被删除 → 回退到第一个预置
+      if (selectedStyleId === id) setSelectedStyleId(PRESET_STYLES[0].id);
+      showToast("已删除该风格", "success");
+    } catch (e: any) {
+      setError(`删除失败: ${e?.message || ""}`);
+    }
   }
 
   // ── 提交 ──
@@ -335,31 +434,101 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
                 <span className="text-gray-400 normal-case tracking-normal ml-1">选择风格参考图</span>
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {PRESET_STYLES.map((s) => {
+                {allStyles.map((s) => {
                   const active = selectedStyleId === s.id;
+                  const isUser = !!s.user;
                   return (
-                    <button key={s.id} type="button" disabled={batchRunning}
-                      onClick={() => setSelectedStyleId(s.id)}
-                      className={`group relative rounded-xl border overflow-hidden transition-all ${active ? "border-primary-500 ring-2 ring-primary-200" : "border-gray-200 hover:border-gray-300"} ${batchRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
-                      {/* 风格参考图 */}
-                      <div className="aspect-square bg-gray-100 overflow-hidden">
-                        <img src={s.refImage} alt={s.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                      </div>
-                      {/* 风格名(底部浮层) */}
-                      <div className={`absolute inset-x-0 bottom-0 px-2 py-1.5 ${active ? "bg-primary-500/90" : "bg-black/40"} backdrop-blur-sm`}>
-                        <span className="text-[11px] font-medium text-white">{s.label}</span>
-                      </div>
-                      {/* 选中标记 */}
-                      {active && (
-                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center">
-                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    <div key={s.id} className="relative">
+                      <button type="button" disabled={batchRunning}
+                        onClick={() => setSelectedStyleId(s.id)}
+                        title={s.description || s.label}
+                        className={`group relative w-full rounded-xl border overflow-hidden transition-all ${active ? "border-primary-500 ring-2 ring-primary-200" : "border-gray-200 hover:border-gray-300"} ${batchRunning ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                        {/* 风格参考图 */}
+                        <div className="aspect-square bg-gray-100 overflow-hidden">
+                          <img src={s.refImage} alt={s.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                         </div>
+                        {/* 风格名(底部浮层) */}
+                        <div className={`absolute inset-x-0 bottom-0 px-2 py-1.5 ${active ? "bg-primary-500/90" : "bg-black/40"} backdrop-blur-sm`}>
+                          <span className="text-[11px] font-medium text-white">{s.label}</span>
+                        </div>
+                        {/* 选中标记 */}
+                        {active && (
+                          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          </div>
+                        )}
+                        {/* 用户风格角标 */}
+                        {isUser && (
+                          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-amber-500/90 text-[9px] font-medium text-white leading-none">我的</div>
+                        )}
+                      </button>
+                      {/* 用户风格删除按钮(浮在右上角,仅生成空闲时可操作) */}
+                      {isUser && !batchRunning && (
+                        <button type="button" onClick={() => void removeUserStyle(s.id)}
+                          title="删除该风格"
+                          className="absolute -top-1.5 -right-1.5 z-10 w-5 h-5 rounded-full bg-red-500 text-white text-[11px] leading-none flex items-center justify-center shadow hover:bg-red-600">×</button>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
               <p className="text-[10px] text-gray-400 mt-1.5">所选风格参考图将作为风格基准,生成对应风格的插画</p>
+            </div>
+
+            {/* 我的风格:上传自定义风格(≤10 条,持久保存) */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50/60">
+              <button type="button" onClick={() => setMyPanelOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-[12px] text-gray-700">
+                <span className="flex items-center gap-1.5">
+                  <span className="font-medium">我的风格</span>
+                  <span className="text-[10px] text-gray-400">{userStyles.length}/10</span>
+                  {userStylesLoading && <span className="w-3 h-3 border border-gray-300 border-t-gray-500 rounded-full animate-spin" />}
+                </span>
+                <span className="text-gray-400">{myPanelOpen ? "▲" : "▼"}</span>
+              </button>
+              {myPanelOpen && (
+                <div className="px-3 pb-3 space-y-2.5 border-t border-gray-200 pt-2.5">
+                  {userStyles.length === 0 && (
+                    <p className="text-[11px] text-gray-400">还没有自定义风格,上传后会自动跟在预置风格后面。</p>
+                  )}
+                  {/* 上传草稿 */}
+                  <div className="rounded-lg border border-gray-200 bg-white p-2.5 space-y-2">
+                    <div className="text-[11px] font-medium text-gray-600">添加新风格</div>
+                    <div className="flex items-start gap-2">
+                      {/* 图预览 / 上传入口 */}
+                      {usPreview ? (
+                        <div className="relative w-16 h-16 rounded-lg border border-gray-200 overflow-hidden shrink-0">
+                          <img src={usPreview} alt="预览" className="w-full h-full object-cover" />
+                          {!usUploading && (
+                            <button type="button" onClick={clearUsDraft} className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/50 text-white text-[10px] leading-none">×</button>
+                          )}
+                        </div>
+                      ) : (
+                        <label className={`w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0 ${usUploading ? "opacity-50 cursor-not-allowed" : ""}`}>
+                          <span className="text-lg text-gray-400 leading-none">+</span>
+                          <span className="text-[9px] text-gray-400 mt-0.5">参考图</span>
+                          <input ref={usInputRef} type="file" accept="image/*" className="hidden" disabled={usUploading}
+                            onChange={(e) => void onPickUsFile(e.target.files)} />
+                        </label>
+                      )}
+                      <div className="flex-1 space-y-1.5 min-w-0">
+                        <input value={usLabel} onChange={(e) => setUsLabel(e.target.value)} placeholder="风格名称 *"
+                          className="w-full text-[11px] border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-primary-500" maxLength={40} />
+                        <input value={usDesc} onChange={(e) => setUsDesc(e.target.value)} placeholder="风格描述(可选)"
+                          className="w-full text-[11px] border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-primary-500" maxLength={120} />
+                      </div>
+                    </div>
+                    {usError && <div className="text-[10px] text-red-500">⚠ {usError}</div>}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-gray-400">{canAddUserStyle ? `还可添加 ${10 - userStyles.length} 个` : "已达上限 10 个"}</span>
+                      <button type="button" onClick={submitUserStyle} disabled={usUploading || !canAddUserStyle}
+                        className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                        {usUploading ? "添加中…" : "添加"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 文生图:插画描述 */}
@@ -409,7 +578,7 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
             {/* 预览(本次将生成) */}
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
               将生成 <span className="font-medium text-primary-600">1</span> 张 1:1 插画
-              <span> · 风格: {PRESET_STYLES.find((s) => s.id === selectedStyleId)?.label}</span>
+              <span> · 风格: {selectedStyle?.label ?? PRESET_STYLES[0].label}</span>
             </div>
 
             {error && (

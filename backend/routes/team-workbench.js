@@ -26,6 +26,7 @@ const coins = require('../lib/coins');
 const storage = require('../lib/storage');
 const { createSavePath, saveUpload, getPublicUrl, deleteImageByUrl, TMP_DIR } = storage;
 const designGeneratorRouter = require('./design-generator');
+const illustrationStyles = require('../lib/illustration-styles');
 const {
   defaultBrand, findOwned, pickDefined, tryParseJson, slugify,
 } = require('../lib/laisse-ancie-helpers');
@@ -933,6 +934,50 @@ router.post('/illustrations/:id/image', (req, res) => {
     }
   });
 });
+
+// ── 用户插画风格(文件持久化,teamId 作用域,≤10 条/团队) ──────────────────
+// GET /api/teams/:teamId/illustration-styles —— 列出某团队自定义风格
+// POST /api/teams/:teamId/illustration-styles —— 追加一条(上传图 + label/desc)
+//   multipart field "file"(图) + body { label, description? }
+// DELETE /api/teams/:teamId/illustration-styles/:id —— 删除一条(仅 us- 前缀)
+router.route('/illustration-styles')
+  .get(asyncHandler(async (req, res) => {
+    const items = await illustrationStyles.listStyles(req.team.id);
+    res.json({ items, max: illustrationStyles.MAX_PER_TEAM });
+  }))
+  .post((req, res) => {
+    upload.single('file')(req, res, async (err) => {
+      if (err) return multerError(res, err);
+      if (!req.file) return res.status(400).json({ error: '请上传风格参考图 file' });
+      const body = req.body || {};
+      const label = (body.label || '').trim();
+      if (!label) return res.status(400).json({ error: '请填写风格名称' });
+      try {
+        const savePath = createSavePath(`illustration-styles/${req.team.id}`, req.file.filename);
+        await saveUpload(req.file.path, savePath, req.file.mimetype);
+        const refImage = getPublicUrl(savePath);
+        const rec = await illustrationStyles.addStyle({
+          teamId: req.team.id,
+          label,
+          description: (body.description || '').trim(),
+          refImage,
+        });
+        res.status(201).json({ item: rec, max: illustrationStyles.MAX_PER_TEAM });
+      } catch (inner) {
+        if (inner?.code === 'LIMIT_EXCEEDED') {
+          return res.status(409).json({ error: inner.message, code: 'LIMIT_EXCEEDED', limit: inner.limit });
+        }
+        console.error('[team-workbench] add illustration-style failed:', inner);
+        res.status(500).json({ error: `保存失败: ${inner?.message || inner}` });
+      }
+    });
+  });
+
+router.delete('/illustration-styles/:id', asyncHandler(async (req, res) => {
+  const ok = await illustrationStyles.deleteStyle(req.team.id, req.params.id);
+  if (!ok) return res.status(404).json({ error: '风格不存在或不可删除' });
+  res.json({ ok: true });
+}));
 
 router.delete('/illustrations/:id', asyncHandler(async (req, res) => {
   let owned;

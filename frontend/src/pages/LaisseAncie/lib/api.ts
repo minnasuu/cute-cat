@@ -7,6 +7,16 @@ import { apiClient as _apiClient } from '../../../utils/apiClient';
 
 export const apiClient = _apiClient;
 
+// ---------- 用户插画风格(文件持久化) ----------
+export interface UserIllustrationStyle {
+  id: string;
+  label: string;
+  description: string;
+  /** 风格参考图 URL,与 PresetStyle.refImage 同构 */
+  refImage: string;
+  createdAt: number;
+}
+
 // ---------- 材料组合批次(Batch) ----------
 
 /** 材料组合 m×n 批次视图(后端 batchPublicView 形状) */
@@ -243,6 +253,22 @@ export function teamApi(teamId: string) {
     styleMutateRegenerateUrl: (batchId: string) => pre(`/design/style-mutate/batch/${encodeURIComponent(batchId)}/regenerate`),
 
     // 插画创作(文生图 / 图生图 → 1 张 1:1 白底插画)
+    // 用户插画风格(文件持久化,teamId 作用域,≤10 条/团队)
+    listIllustrationStyles: () =>
+      fetch(pre('/illustration-styles'), { credentials: 'include' }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json() as Promise<{ items: UserIllustrationStyle[]; max: number }>;
+      }),
+    uploadIllustrationStyle: (formData: FormData) =>
+      fetch(pre('/illustration-styles'), { method: 'POST', body: formData, credentials: 'include' }).then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json() as Promise<{ item: UserIllustrationStyle; max: number }>;
+      }),
+    deleteIllustrationStyle: (id: string) =>
+      fetch(pre(`/illustration-styles/${encodeURIComponent(id)}`), {
+        method: 'DELETE', credentials: 'include',
+      }).then((r) => { if (!r.ok) throw new Error(`API ${r.status}`); return r.json(); }),
+
     illustrationCreateUrl: pre('/design/illustration-create'),
     illustrationCreateBatchUrl: (batchId: string) => pre(`/design/illustration-create/batch/${encodeURIComponent(batchId)}`),
     illustrationCreateRegenerateUrl: (batchId: string) => pre(`/design/illustration-create/batch/${encodeURIComponent(batchId)}/regenerate`),
