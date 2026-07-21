@@ -297,23 +297,15 @@ function pickNoun(planText) {
 }
 
 /**
- * 构建品牌注入提示块:把品牌 Slogan 作为字母/印花元素、LOGO 作为布标参考注入 prompt。
- * slogan → 要求作为印花/刺绣/标语文字呈现在单品上;
- * logo   → 作为品牌布标(patch/label)的视觉参考,要求融入设计。
- * 两者都没有时返回空串,不影响原 prompt。
+ * 构建品牌注入提示块:把品牌 Slogan 作为字母/印花元素注入 prompt。
+ * slogan → 要求作为印花/刺绣/标语文字呈现在单品上。
+ * logo   → 不再注入(此前会把品牌 LOGO 作为布标参考注入,导致所有产品自带猫咪 logo 布标)。
+ * 没有 slogan 时返回空串,不影响原 prompt。
  */
 function buildBrandBlock(brandLogo, brandSlogan) {
-  const logo = (brandLogo || '').trim();
   const slogan = (brandSlogan || '').trim();
-  if (!logo && !slogan) return '';
-  const parts = [];
-  if (slogan) {
-    parts.push(`Brand slogan "${slogan}" MUST appear on the product as a printed, embroidered, woven, or screen-printed text/lettering element.`);
-  }
-  if (logo) {
-    parts.push(`Brand logo reference: ${logo}. Incorporate a brand label/patch/woven tag INSPIRED BY this brand mark somewhere on the product (e.g. chest patch, neck label, sleeve tag).`);
-  }
-  return `\n\n[BRAND IDENTITY]\n${parts.join('\n')}`;
+  if (!slogan) return '';
+  return `\n\n[BRAND IDENTITY]\nBrand slogan "${slogan}" MUST appear on the product as a printed, embroidered, woven, or screen-printed text/lettering element.`;
 }
 
 /**
