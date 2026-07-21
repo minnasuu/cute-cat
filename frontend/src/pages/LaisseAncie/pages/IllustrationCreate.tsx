@@ -241,8 +241,10 @@ export default function IllustrationCreatePage({ knowledge, brandLoading, knowle
     setUsUploading(true);
     setUsError(null);
     try {
+      // 压缩后再上传,避免原图超过服务端 1MB 限制触发 413
+      const compressed = await compressForUpload(usFile);
       const fd = new FormData();
-      fd.append("file", usFile);
+      fd.append("file", compressed);
       fd.append("label", usLabel.trim());
       if (usDesc.trim()) fd.append("description", usDesc.trim());
       const { item } = await teamApi(teamId).uploadIllustrationStyle(fd);

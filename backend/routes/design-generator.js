@@ -864,6 +864,17 @@ router.post('/material-combo', (req, res) => {
             const url = await persistTempFile(f.path, f.filename, f.mimetype);
             // 款式视觉细节直接以参考图(款式图)传给生图模型,此处不再 Ark 分析转文字。
             styles.push({ name: meta.name || f.originalname || `款式${styles.length + 1}`, url, text: '', raw: '' });
+          } else if (meta.kind === 'library-product') {
+            // library-product:从 Lookbook 单品库选款式参考,取产品封面图作为参考图
+            const rec = await findOwned(prisma.lAProduct, meta.productId, req.team.id);
+            if (!rec) {
+              console.warn(`[design-material-combo] 找不到款式单品 id=${meta.productId}`);
+              styles.push({ name: '(款式单品不存在)', url: '', text: '', raw: '' });
+              continue;
+            }
+            const url = pickProductCover(rec);
+            if (!url) { styles.push({ name: '(款式缺少参考图)', url: '', text: '', raw: '' }); continue; }
+            styles.push({ name: rec.title || '款式', url, text: '', raw: '' });
           } else {
             // library-style:从款式库取值(参考图即款式 image)
             const rec = await findOwned(prisma.lAStyle, meta.styleId, req.team.id);

@@ -19,6 +19,7 @@ import { teamApi } from "../lib/api";
 import type { MaterialComboBatch } from "../lib/api";
 import { useDesignStore } from "../store/design";
 import type { KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
+import type { Product } from "../types/design";
 import { compressForUpload } from "../lib/images";
 import { Modal } from "../components/ui";
 import {
@@ -30,6 +31,7 @@ import { useMaterialComboTour } from "../controller/useMaterialComboTour";
 import TourOverlay, { type TourStep } from "../components/TourOverlay";
 import { useImageRetry } from "../../../hooks/useImageRetry";
 import { useImagePreview } from "../../../components/ImagePreviewModal";
+import { pickProductCover } from "../lib/product-cover";
 
 // ─── 上限约束(与后端同步) ─────────────────────────────────────
 const MAX_FABRIC = 6;   // 面料上限
@@ -69,7 +71,8 @@ type FabricRow =
 
 type StyleRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string; analysisText?: string }
-  | { kind: "library-style"; id: string; styleId: string; name: string; url: string; analysisText?: string };
+  | { kind: "library-style"; id: string; styleId: string; name: string; url: string; analysisText?: string }
+  | { kind: "library-product"; id: string; productId: string; name: string; url: string };
 
 // 插画(可印/刺绣到衣服上的图案),最多 1 张(后端 illustrations maxCount=1)
 type IllustrationRow =
@@ -121,7 +124,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const [illustrations, setIllustrations] = useState<IllustrationRow[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [picker, setPicker] = useState<null | "fabric" | "style" | "illustration">(null);
+  const [picker, setPicker] = useState<null | "fabric" | "style" | "illustration" | "product">(null);
   const [mode, setMode] = useState<Mode>("cross");
 
   // 切换生成模式(叉乘 / 拼色):清空批次,保留槽位(名称/面料/款式/描述/文字)
@@ -320,6 +323,18 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     }]);
   }
 
+  // 从 Lookbook 单品库选款式参考(单选追加,去重 + 上限守卫)
+  function addLibraryProduct(p: Product) {
+    if (styleRows.length >= stylesLimit) { setError(`款式已达上限 ${stylesLimit} 项`); return; }
+    if (styleRows.some((r) => r.kind === "library-product" && r.productId === p.id)) {
+      setError("该单品已添加"); return;
+    }
+    setStyleRows((prev) => [...prev, {
+      kind: "library-product", id: uid(), productId: p.id,
+      name: p.title || "未命名单品", url: pickProductCover(p) || p.imageUrl || "",
+    }]);
+  }
+
   // 插画:最多 1 张(与后端 illustrations maxCount=1 同步)
   function addIllustrationUpload(list: FileList | null) {
     if (!list || !list.length) return;
@@ -380,6 +395,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       });
       const stylesMeta = styleRows.map((r) => {
         if (r.kind === "upload") return { kind: "upload", name: r.name };
+        if (r.kind === "library-product") return { kind: "library-product", productId: r.productId };
         return { kind: "library-style", styleId: r.styleId };
       });
       const illustrationsMeta = illustrations.map((r) => {
@@ -945,9 +961,14 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                           无图
                         </div>
                       )}
-                      {row.kind !== "upload" && (
+                      {row.kind === "library-style" && (
                         <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
                           库
+                        </span>
+                      )}
+                      {row.kind === "library-product" && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-amber-500 text-white px-1 rounded">
+                          LOOK
                         </span>
                       )}
                       {!batchRunningOrAnalyzing && (
@@ -983,7 +1004,16 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                       >
                         <span className="text-base text-primary-500">▦</span>
                         <span className="text-[10px] text-primary-600 mt-0.5">
-                          从库选择
+                          从款式库
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setPicker("product")}
+                        className="w-28 h-28 rounded-lg border border-dashed border-amber-200 bg-amber-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-colors shrink-0"
+                      >
+                        <span className="text-base text-amber-500">▤</span>
+                        <span className="text-[10px] text-amber-600 mt-0.5">
+                          从 Lookbook
                         </span>
                       </button>
                     </>
@@ -1265,15 +1295,26 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
             ))}
         </aside>
 
-        {/* 库选择器 */}
-        <LibraryPickerModal
-          mode={picker}
-          knowledge={knowledge}
-          onClose={() => setPicker(null)}
-          onFabric={addLibraryFabric}
-          onStyle={(p) => addLibraryStyle(p)}
-          onIllustration={addLibraryIllustration}
-        />
+        {/* 库选择器(款式 / 面料 / 插画)——product 模式由下方 Lookbook 弹窗承接,不传入 */}
+        {picker !== "product" && (
+          <LibraryPickerModal
+            mode={picker}
+            knowledge={knowledge}
+            onClose={() => setPicker(null)}
+            onFabric={addLibraryFabric}
+            onStyle={(p) => addLibraryStyle(p)}
+            onIllustration={addLibraryIllustration}
+          />
+        )}
+
+        {/* 从 Lookbook 单品库选款式参考(单选) */}
+        {picker === "product" && (
+          <LookbookProductPickerModal
+            products={store.products}
+            onClose={() => setPicker(null)}
+            onConfirm={(p) => { addLibraryProduct(p); setPicker(null); }}
+          />
+        )}
 
         {/* 全屏大图预览(页面级单点渲染) */}
         {preview.modal}
@@ -1686,6 +1727,50 @@ function LibraryPickerModal({
         >
           取消
         </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── 从 Lookbook 单品库选款式参考(单选) ────────────────────────
+function LookbookProductPickerModal({ products, onClose, onConfirm }: {
+  products: Product[];
+  onClose: () => void;
+  onConfirm: (p: Product) => void;
+}) {
+  const [q, setQ] = useState("");
+  // 仅展示有封面图的单品
+  const withImages = products.filter((p) => !!pickProductCover(p));
+  const visible = !q.trim() ? withImages : withImages.filter((p) =>
+    (p.title || "").toLowerCase().includes(q.trim().toLowerCase()));
+
+  return (
+    <Modal open onClose={onClose} title="选择单品(作为款式参考)" maxWidth="max-w-3xl">
+      <div className="flex flex-col max-h-[68vh]">
+        <div className="shrink-0 pb-3 border-b border-gray-100">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="按名称搜索…"
+            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500" />
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto py-3">
+          {visible.length === 0 ? (
+            <div className="py-10 text-center text-gray-500 text-sm">还没有带图片的单品,请先在 Lookbook 中生成</div>
+          ) : (
+            <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
+              {visible.map((p) => (
+                <button key={p.id} onClick={() => onConfirm(p)}
+                  className="rounded-xl border overflow-hidden text-left transition-all border-gray-200 hover:border-primary-500 hover:ring-2 hover:ring-primary-200">
+                  <div className="aspect-square bg-gray-50 overflow-hidden">
+                    {pickProductCover(p) ? <img src={pickProductCover(p)!} alt={p.title} className="w-full h-full object-cover" /> : null}
+                  </div>
+                  <div className="px-2 py-1.5 text-[11px] text-gray-700 truncate">{p.title || "未命名"}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="shrink-0 flex items-center justify-end gap-2 pt-3 mt-3 border-t border-gray-100">
+          <button onClick={onClose} className="text-[12px] text-gray-600 hover:underline px-3 py-1.5">取消</button>
+        </div>
       </div>
     </Modal>
   );

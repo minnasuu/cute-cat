@@ -23,6 +23,7 @@ import { teamApi } from "../lib/api";
 import { MODE_LABEL, STATUS_LABEL, STATUS_FLOW, type DesignMode, type Product, type ProductStatus, type ProductOutfitEntry } from "../types/design";
 import { MAIN_SLOT, LINEART_SLOT, RENDER_SLOT, slotRole } from "../lib/imageRole";
 import { Markdown } from "../lib/markdown";
+import { compressForUpload } from "../lib/images";
 
 const ALL_MODES: DesignMode[] = ["illustration", "single", "material-combo", "style-mutate", "occasion"];
 const SEASON_PRESETS = ["春", "夏", "秋", "冬", "春秋", "秋冬", "春夏", "四季"];
@@ -63,8 +64,10 @@ export function ProductFormModal({ state, onClose, onSaved, onRequestEdit, onPre
       id = created.id;
     }
     if (id && imageFile) {
+      // 压缩后再上传,避免原图超过服务端 1MB 限制触发 413
+      const compressed = await compressForUpload(imageFile);
       const fd = new FormData();
-      fd.append("file", imageFile);
+      fd.append("file", compressed);
       await api.uploadProductImage(id, fd);
     }
     await onSaved();
@@ -156,8 +159,10 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
     if (!teamId) return;
     setBusyKey("new");
     try {
+      // 压缩后再上传,避免原图超过服务端 1MB 限制触发 413
+      const compressed = await compressForUpload(file);
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", compressed);
       fd.append("slot", "render"); // 显式 slot → 追加一条,不触发主图互换
       const updated: Product = await teamApi(teamId).uploadProductImage(product.id, fd);
       // 以服务端已持久化的 images 重建草稿(拿到稳定 url + slot),保留本地已删除 key 的不回灌
@@ -183,8 +188,10 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
     const url = target?.url ?? "";
     setBusyKey(clientKey);
     try {
+      // 压缩后再上传,避免原图超过服务端 1MB 限制触发 413
+      const compressed = await compressForUpload(file);
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", compressed);
       fd.append("slot", slot);
       fd.append("url", url);
       const updated: Product = await teamApi(teamId).uploadProductImage(product.id, fd);
