@@ -771,9 +771,10 @@ router.post('/material-combo', (req, res) => {
         return res.status(400).json({ error: `插画文件数不匹配,期望 ${uploadIllustrationCount},收到 ${illustrationFiles.length}` });
       }
 
-      // 需要提到 if/else 外层作用域:后面的 chargeImages 依赖它(不能用 else 内 const,
-      // 否则出 else 块就是 ReferenceError,直接导致 async 顶层 unhandledRejection、hang 60s → 504)
+      // 需要提到 if/else 外层作用域:后面的 chargeImages 与 batch 构建都依赖它们
+      // (不能用 else 内 const,否则出 else 块就是 ReferenceError,导致 500 「plan is not defined」)
       let totalCells = 1;
+      let plan = null;
       if (mode === 'color-mix') {
         // 拼色:恰好 1 项款式 + 1~N 项面料(软上限 MAX_FABRIC_MIXED 仅提示)
         if (stylesMeta.length !== 1) {
@@ -793,7 +794,7 @@ router.post('/material-combo', (req, res) => {
         // 「面料(可选)+插画」二选一:当 fabrics 为空时若有插画,叉乘退化为「插画 × 款式」,cell 张数 = 1 份插画 × n 款式。
         // (chargeImages、batch.fabrics 仍按 fabrics(空)+illustrations 落库,runBatch 内 through [style.url, illustration.url] 出图。)
         // 若 fabrics 为空且也无插画,这里应就地拒绝(前端 canSubmit 已拦,但这层是真实契约)。
-        const plan = buildComboPlan({
+        plan = buildComboPlan({
           mode,
           fabricsLength: fabricsMeta.length,
           stylesLength: stylesMeta.length,
