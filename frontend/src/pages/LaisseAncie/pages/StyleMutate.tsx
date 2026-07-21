@@ -798,7 +798,10 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const labelCls = "text-[10px] uppercase tracking-wider text-gray-500 mb-1 block";
   const hasSuccess = visibleCompleted > 0;
   const motherPreview =
-    mother?.kind === "upload" ? mother.preview : mother?.kind === "library-style" ? mother.url : "";
+    mother?.kind === "upload" ? mother.preview
+    : mother?.kind === "library-style" ? mother.url
+    : mother?.kind === "library-product" ? mother.url
+    : "";
   const fabricPreview =
     fabric?.kind === "upload"
       ? fabric.preview
