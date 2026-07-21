@@ -10,7 +10,8 @@
  *   - 上传:file → 后端 Ark 分析 → {url,name,text}
  *   - 库面料:端合成文本 → {url,name,text}(from colorImages / image / colors)
  *   - 库款式:后端合成文本 → {url,name,text}
- * 提交时前端把 fabricsMeta/stylesMeta 随文件一起发,后端按位置混合。
+ *   - 插画(可选,≤1):上传或库选 → 印/刺绣到服装上
+ * 提交时前端把 fabricsMeta/stylesMeta/illustrationsMeta 随文件一起发,后端按位置混合。
  */
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
@@ -70,6 +71,11 @@ type StyleRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string; analysisText?: string }
   | { kind: "library-style"; id: string; styleId: string; name: string; url: string; analysisText?: string };
 
+// 插画(可印/刺绣到衣服上的图案),最多 1 张(后端 illustrations maxCount=1)
+type IllustrationRow =
+  | { kind: "upload"; id: string; file: File; preview: string; name: string; analysisText?: string }
+  | { kind: "library-illustration"; id: string; illustrationId: string; name: string; url: string; analysisText?: string };
+
 interface Props {
   knowledge?: KnowledgeDeps;
   brandLoading?: boolean;
@@ -90,14 +96,17 @@ interface FlatFabricCard {
 
 interface FabricPick { kind: "fabric"; matId: string; colorIdx: number; url: string; name: string; hex?: string }
 interface StylePick { kind: "style"; styleId: string; url: string; name: string }
-type Pick = FabricPick | StylePick;
+interface IllustrationPick { kind: "illustration"; illustrationId: string; url: string; name: string }
+type Pick = FabricPick | StylePick | IllustrationPick;
 
 // 轮询/提交返回中,服务端会把每张面料/款式的分析文本回填到 fabrics[i].text / styles[i].text
 // (见文件头注释:上传/库面料 → {url,name,text})。MaterialComboBatch 基础类型未含该字段,
 // 这里派生一个带 text? 的视图类型,供回写分析文本到槽位时安全访问。
-type BatchWithText = Omit<MaterialComboBatch, "fabrics" | "styles"> & {
+type BatchWithText = Omit<MaterialComboBatch, "fabrics" | "styles" | "illustrations"> & {
   fabrics: (MaterialComboBatch["fabrics"][number] & { text?: string })[];
   styles: (MaterialComboBatch["styles"][number] & { text?: string })[];
+  // 插画分析文本(后端 batchPublicView 按位置回填 illustrations[i].text)
+  illustrations: { url: string; name: string; text?: string }[];
 };
 
 export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLoading }: Props) {
@@ -109,9 +118,10 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const [fabricRows, setFabricRows] = useState<FabricRow[]>([]);
   const [fabricText, setFabricText] = useState("");
   const [styleRows, setStyleRows] = useState<StyleRow[]>([]);
+  const [illustrations, setIllustrations] = useState<IllustrationRow[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [picker, setPicker] = useState<null | "fabric" | "style">(null);
+  const [picker, setPicker] = useState<null | "fabric" | "style" | "illustration">(null);
   const [mode, setMode] = useState<Mode>("cross");
 
   // 切换生成模式(叉乘 / 拼色):清空批次,保留槽位(名称/面料/款式/描述/文字)
@@ -141,6 +151,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
 
   const fabricRef = useRef<HTMLInputElement>(null);
   const styleRef = useRef<HTMLInputElement>(null);
+  const illustrationRef = useRef<HTMLInputElement>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
 
@@ -210,6 +221,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         // 回写分析文本到对应槽位(按位置对齐,含库位)
         setFabricRows((prev) => prev.map((r, i) => data.fabrics[i]?.text != null ? { ...r, analysisText: data.fabrics[i].text } : r));
         setStyleRows((prev) => prev.map((r, i) => data.styles[i]?.text != null ? { ...r, analysisText: data.styles[i].text } : r));
+        setIllustrations((prev) => prev.map((r, i) => data.illustrations?.[i]?.text != null ? { ...r, analysisText: data.illustrations[i].text } : r));
         setBatch(data);
         // 轮询发现失败的格子 → 通过共享 hook 自动重试
         if (data.items) {
@@ -237,12 +249,12 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     }
   }, [tour.shouldRegister, tour.tourActive]);
 
-  // 槽位数量变化(用户增删面料/款式)→ 清空旧批次,让底部按钮回到「生成」而非「保存」
+  // 槽位数量变化(用户增删面料/款式/插画)→ 清空旧批次,让底部按钮回到「生成」而非「保存」
   useEffect(() => {
     setBatch(null);
     stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fabricRows.length, styleRows.length]);
+  }, [fabricRows.length, styleRows.length, illustrations.length]);
 
   // ── 唯一 id ──
   const uid = useCallback(() => `r-${Date.now().toString()}-${Math.random().toString(36).slice(2, 7)}`, []);
@@ -302,9 +314,32 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
     }]);
   }
 
-  function removeRow(which: "fabric" | "style", id: string) {
-    const setter = (which === "fabric" ? setFabricRows : setStyleRows) as unknown as
-      (updater: (prev: FabricRow[] | StyleRow[]) => (FabricRow | StyleRow)[]) => void;
+  // 插画:最多 1 张(与后端 illustrations maxCount=1 同步)
+  function addIllustrationUpload(list: FileList | null) {
+    if (!list || !list.length) return;
+    if (illustrations.length >= 1) { setError("插画至多 1 张"); return; }
+    const file = list[0];
+    setIllustrations([{
+      kind: "upload", id: uid(), file,
+      preview: URL.createObjectURL(file), name: file.name,
+    }]);
+  }
+
+  function addLibraryIllustration(pick: IllustrationPick) {
+    if (illustrations.length >= 1) { setError("插画至多 1 张"); return; }
+    setIllustrations([{
+      kind: "library-illustration", id: uid(),
+      illustrationId: pick.illustrationId, name: pick.name, url: pick.url,
+    }]);
+  }
+
+  function removeRow(which: "fabric" | "style" | "illustration", id: string) {
+    const setter = (
+      which === "fabric" ? setFabricRows :
+      which === "illustration" ? setIllustrations :
+      setStyleRows
+    ) as unknown as
+      (updater: (prev: FabricRow[] | StyleRow[] | IllustrationRow[]) => (FabricRow | StyleRow | IllustrationRow)[]) => void;
     setter((prev) => {
       const item = prev.find((r) => r.id === id);
       if (item?.kind === "upload") URL.revokeObjectURL(item.preview);
@@ -341,11 +376,16 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
         if (r.kind === "upload") return { kind: "upload", name: r.name };
         return { kind: "library-style", styleId: r.styleId };
       });
+      const illustrationsMeta = illustrations.map((r) => {
+        if (r.kind === "upload") return { kind: "upload", name: r.name };
+        return { kind: "library-illustration", illustrationId: r.illustrationId };
+      });
       const fd = new FormData();
       fd.append("name", name.trim());
       fd.append("description", description.trim());
       fd.append("fabricsMeta", JSON.stringify(fabricsMeta));
       fd.append("stylesMeta", JSON.stringify(stylesMeta));
+      fd.append("illustrationsMeta", JSON.stringify(illustrationsMeta));
       fd.append("mode", mode);
       for (const r of fabricRows)
         if (r.kind === "upload")
@@ -353,6 +393,9 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
       for (const r of styleRows)
         if (r.kind === "upload")
           fd.append("styles", await compressForUpload(r.file));
+      for (const r of illustrations)
+        if (r.kind === "upload")
+          fd.append("illustrations", await compressForUpload(r.file));
       const url = teamApi(teamId).materialComboUrl;
       const res = await fetch(url, {
         method: "POST",
@@ -381,6 +424,15 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           prev.map((r, i) =>
             data.styles[i]?.text != null
               ? { ...r, analysisText: data.styles[i].text }
+              : r,
+          ),
+        );
+      }
+      if (data.illustrations?.length) {
+        setIllustrations((prev) =>
+          prev.map((r, i) =>
+            data.illustrations?.[i]?.text != null
+              ? { ...r, analysisText: data.illustrations[i].text }
               : r,
           ),
         );
@@ -765,6 +817,94 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                 </span>
               </div>
 
+              {/* 插画槽位(上传 + 库,可选,至多 1 张)*/}
+              <div>
+                <label className={labelCls}>
+                  插画{" "}
+                  <span className="text-gray-400 normal-case tracking-normal">
+                    ({illustrations.length}/1)
+                  </span>
+                  <span className="text-gray-300 normal-case tracking-normal ml-1">可选</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {illustrations.map((row) => (
+                    <div
+                      key={row.id}
+                      className="w-24 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden relative group"
+                    >
+                      {row.kind === "upload" ? (
+                        <img
+                          src={row.preview}
+                          alt={row.name}
+                          className="w-24 h-20 object-cover"
+                        />
+                      ) : row.url ? (
+                        <img
+                          src={row.url}
+                          alt={row.name}
+                          className="w-24 h-20 object-cover"
+                        />
+                      ) : (
+                        <div className="w-24 h-20 border border-dashed border-gray-300 rounded flex items-center justify-center text-[10px] text-gray-300">
+                          无图
+                        </div>
+                      )}
+                      {row.kind !== "upload" && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">
+                          库
+                        </span>
+                      )}
+                      {!batchRunningOrAnalyzing && (
+                        <button
+                          onClick={() => removeRow("illustration", row.id)}
+                          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      )}
+                      <div
+                        className="px-1 py-0.5 text-[8px] text-gray-400 truncate"
+                        title={row.name}
+                      >
+                        {row.name}
+                      </div>
+                    </div>
+                  ))}
+                  {illustrations.length < 1 && !batchRunningOrAnalyzing && (
+                    <>
+                      <button
+                        onClick={() => illustrationRef.current?.click()}
+                        className="w-28 h-28 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-lg text-gray-400">+</span>
+                        <span className="text-[10px] text-gray-400">
+                          添加插画
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setPicker("illustration")}
+                        className="w-28 h-28 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
+                      >
+                        <span className="text-base text-primary-500">▦</span>
+                        <span className="text-[10px] text-primary-600 mt-0.5">
+                          从库选择
+                        </span>
+                      </button>
+                    </>
+                  )}
+                </div>
+                <input
+                  ref={illustrationRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => addIllustrationUpload(e.target.files)}
+                />
+                <span className="text-[10px] text-gray-400">
+                  上传或从插画库选一张插画,将印/绣在服装上(可选)
+                </span>
+              </div>
+
               {/* 款式槽位(上传 + 库)*/}
               <div data-tour="tour-style">
                 <label className={labelCls}>
@@ -1124,6 +1264,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           onClose={() => setPicker(null)}
           onFabric={addLibraryFabric}
           onStyle={(p) => addLibraryStyle(p)}
+          onIllustration={addLibraryIllustration}
         />
 
         {/* 全屏大图预览(页面级单点渲染) */}
@@ -1197,7 +1338,7 @@ function ColorMixResult({ batch, retryCell, preview }: { batch: MaterialComboBat
 
 // ─── 库选择弹窗 ────────────────────────────────────────────────
 interface PickerProps {
-  mode: null | "fabric" | "style";
+  mode: null | "fabric" | "style" | "illustration";
   knowledge?: KnowledgeDeps;
   onClose: () => void;
   onFabric: (p: FabricPick) => void;
@@ -1207,6 +1348,7 @@ interface PickerProps {
     url: string;
     name: string;
   }) => void;
+  onIllustration: (p: IllustrationPick) => void;
 }
 
 function LibraryPickerModal({
@@ -1215,6 +1357,7 @@ function LibraryPickerModal({
   onClose,
   onFabric,
   onStyle,
+  onIllustration,
 }: PickerProps) {
   const [q, setQ] = useState("");
 
@@ -1225,6 +1368,7 @@ function LibraryPickerModal({
 
   if (!mode) return null;
   const isFabric = mode === "fabric";
+  const isIllustration = mode === "illustration";
 
   // 面料:展平为单个颜色卡片(colorImages 优先,回退 image / colors)
   const materials = (knowledge?.materials || []) as any[];
@@ -1296,13 +1440,24 @@ function LibraryPickerModal({
     );
   });
 
+  // 插画(可印/刺绣到衣服上的图案)
+  const illustrationList = (knowledge?.illustrations || []) as any[];
+  const illustrationFilter = illustrationList.filter((i: any) => {
+    if (!q.trim()) return true;
+    const k = q.trim().toLowerCase();
+    return [i?.name || "", ...(i?.tags || [])].some((f) =>
+      String(f).toLowerCase().includes(k),
+    );
+  });
+
   function handlePick(pick: Pick) {
     if (pick.kind === "fabric") onFabric(pick);
+    else if (pick.kind === "illustration") onIllustration(pick);
     else onStyle(pick);
     onClose();
   }
 
-  const title = isFabric ? "选择面料色卡" : "选择款式";
+  const title = isFabric ? "选择面料色卡" : isIllustration ? "选择插画" : "选择款式";
 
   return (
     <Modal open onClose={onClose} title={title} maxWidth="max-w-5xl">
@@ -1313,14 +1468,16 @@ function LibraryPickerModal({
           placeholder={
             isFabric
               ? "搜索面料名 / 颜色 / 品类..."
-              : "搜索款式名 / 品类..."
+              : isIllustration
+                ? "搜索插画名..."
+                : "搜索款式名 / 品类..."
           }
           className="w-full text-[12px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-primary-500"
           autoFocus
         />
       </div>
 
-      {!isFabric && styleFilter.length === 0 && (
+      {!isFabric && !isIllustration && styleFilter.length === 0 && (
         <div className="text-center text-[12px] text-gray-400 py-16">
           款式库里暂无款式,请先在「款式」页添加。
         </div>
@@ -1332,7 +1489,59 @@ function LibraryPickerModal({
             : "没有匹配的面料色卡。"}
         </div>
       )}
-      {isFabric ? (
+      {isIllustration && illustrationFilter.length === 0 && (
+        <div className="text-center text-[12px] text-gray-400 py-16">
+          {illustrationList.length === 0
+            ? "插画库里暂无插画,请先在「插画」页添加。"
+            : "没有匹配的插画。"}
+        </div>
+      )}
+      {isIllustration ? (
+        // 插画网格(仿款式选择)
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 max-h-[60vh] overflow-y-auto pr-1">
+          {illustrationFilter.map((i: any) => (
+            <button
+              key={i.id}
+              onClick={() =>
+                handlePick({
+                  kind: "illustration",
+                  illustrationId: i.id,
+                  url: i.image || "",
+                  name: i.name || "未命名插画",
+                })
+              }
+              className="text-left rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm transition-all overflow-hidden"
+            >
+              <div className="aspect-square w-full relative">
+                {i.image ? (
+                  <img
+                    src={i.image}
+                    alt={i.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-300">
+                    无图
+                  </div>
+                )}
+              </div>
+              <div className="px-1.5 py-1">
+                <div
+                  className="text-[9px] text-gray-700 truncate"
+                  title={i.name}
+                >
+                  {i.name}
+                </div>
+                {i.tags && i.tags.length > 0 && (
+                  <span className="inline-block mt-0.5 text-[8px] bg-gray-100 text-gray-500 px-1 rounded">
+                    {i.tags[0]}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : isFabric ? (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-[60vh] overflow-y-auto pr-1">
           {cardFilter.map((c) => {
             const displayName = c.colorName || c.hex || c.matName;
