@@ -376,9 +376,9 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
         )}
         {/* 左侧:图片面板(粘性顶栏 + 滚动内容) */}
         <aside className="min-h-0 flex flex-col border-r border-gray-100 pr-3">
-          {/* <div className="flex items-center justify-between mb-2 shrink-0">
-            <SectionLabel>图片 ({displayImages.length})</SectionLabel>
-            {editing && !hasHtml && (
+          {editing && !hasHtml && (
+            <div className="flex items-center justify-between mb-2 shrink-0">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500">图片 ({displayImages.length})</span>
               <label className="text-[11px] text-primary-600 hover:underline cursor-pointer font-medium">
                 {busyKey === "new" ? "上传中…" : "+ 添加图片"}
                 <input type="file" accept="image/*" className="hidden" disabled={busyKey === "new"}
@@ -390,8 +390,8 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
                     e.target.value = "";
                   }} />
               </label>
-            )}
-          </div> */}
+            </div>
+          )}
           <div className="flex-1 min-h-0 overflow-auto pt-5">
             {hasHtml ? (
               <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
