@@ -763,10 +763,7 @@ router.post('/material-combo', (req, res) => {
         return res.status(400).json({ error: `插画文件数不匹配,期望 ${uploadIllustrationCount},收到 ${illustrationFiles.length}` });
       }
 
-      // 需要提到 if/else 外层作用域:后面的 chargeImages 与 batch 构建都依赖它们
-      // (不能用 else 内 const,否则出 else 块就是 ReferenceError,导致 500 「plan is not defined」)
-      let totalCells = 1;
-      let plan = null;
+      // 校验两大模式各自的约束(公共守卫在更上层 name/文件数阶段已完成)
       if (mode === 'color-mix') {
         // 拼色:恰好 1 项款式 + 1~N 项面料(软上限 MAX_FABRIC_MIXED 仅提示)
         if (stylesMeta.length !== 1) {
@@ -775,29 +772,27 @@ router.post('/material-combo', (req, res) => {
         if (fabricsMeta.length > MAX_FABRIC_MIXED) {
           return res.status(400).json({ error: `拼色面料建议 ${MAX_FABRIC_MIXED} 项以内,避免 prompt 过长` });
         }
-        if (fabricsMeta.length < 2) {
-          // 仅 1 面料也可以用拼色(视为单料出图),放宽但给提示;仍允许执行
-        }
-        totalCells = 1;
       } else {
         // 叉乘
         if (fabricsMeta.length > MAX_FABRIC) return res.status(400).json({ error: `面料最多 ${MAX_FABRIC} 项` });
         if (stylesMeta.length > MAX_STYLE) return res.status(400).json({ error: `款式最多 ${MAX_STYLE} 项` });
-        // 「面料(可选)+插画」二选一:当 fabrics 为空时若有插画,叉乘退化为「插画 × 款式」,cell 张数 = 1 份插画 × n 款式。
-        // (chargeImages、batch.fabrics 仍按 fabrics(空)+illustrations 落库,runBatch 内 through [style.url, illustration.url] 出图。)
-        // 若 fabrics 为空且也无插画,这里应就地拒绝(前端 canSubmit 已拦,但这层是真实契约)。
-        plan = buildComboPlan({
-          mode,
-          fabricsLength: fabricsMeta.length,
-          stylesLength: stylesMeta.length,
-          illustrationsLength: illustrationsMeta.length,
-        });
-        if (plan.total === 0) {
-          return res.status(400).json({ error: '面料或插画至少需要一项' });
-        }
-        if (plan.total > MAX_CELLS) return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
-        totalCells = plan.total;
       }
+
+      // 用 buildComboPlan 推导格子列表(cross 返回 m×n 或退化列表,color-mix 返回 1 格),
+      // 便于下游 chargeImages / batch 构建统一通过 plan.items 引用。
+      const plan = buildComboPlan({
+        mode,
+        fabricsLength: fabricsMeta.length,
+        stylesLength: stylesMeta.length,
+        illustrationsLength: illustrationsMeta.length,
+      });
+      if (plan.total === 0) {
+        return res.status(400).json({ error: '面料或插画至少需要一项' });
+      }
+      if (mode !== 'color-mix' && plan.total > MAX_CELLS) {
+        return res.status(400).json({ error: `面料×款式组合超过 ${MAX_CELLS} 张上限` });
+      }
+      const totalCells = plan.total;
 
       // material-combo 按总张数预扣喵币(余额不足 402)
       try {
