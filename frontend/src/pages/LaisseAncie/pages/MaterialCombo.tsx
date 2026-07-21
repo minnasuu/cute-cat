@@ -158,12 +158,18 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   // ── 派生态 ──
   const batchDone = !!batch && batch.status === "done";
   const batchRunningOrAnalyzing = !!batch && batch.status === "running";
-  // 叉乘模式:m×n;拼色模式:1
-  const cellCount = mode === "color-mix" ? (fabricRows.length > 0 && styleRows.length === 1 ? 1 : 0) : fabricRows.length * styleRows.length;
+  // 面料与插画至少选其一,方可生成
+  const hasFabricOrIllustration = fabricRows.length > 0 || illustrations.length > 0;
+  // 叉乘模式:m×n(有面料时) / 插画×n(无面料时,≤1 插画);拼色模式:1
+  const cellCount = mode === "color-mix"
+    ? (fabricRows.length > 0 && styleRows.length === 1 ? 1 : 0)
+    : hasFabricOrIllustration && styleRows.length > 0
+      ? (fabricRows.length > 0 ? fabricRows.length : 1) * styleRows.length
+      : 0;
   const fabricsLimit = mode === "color-mix" ? MAX_FABRIC_MIXED : MAX_FABRIC;
   const stylesLimit = mode === "color-mix" ? 1 : MAX_STYLE;
   const canSubmit = !!name.trim()
-    && fabricRows.length > 0
+    && hasFabricOrIllustration
     && (mode === "color-mix" ? styleRows.length === 1 : styleRows.length > 0)
     && cellCount > 0 && cellCount <= (mode === "color-mix" ? 1 : MAX_CELLS)
     && !batchRunningOrAnalyzing && !submitting
@@ -562,7 +568,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
   const tourSteps: TourStep[] = mode === 'cross'
     ? [
       { target: 'tour-name', title: '① 输入作品名称', description: '给你的材料组合取个名字,比如「春日雏菊连衣裙」。' },
-      { target: 'tour-fabric', title: '② 添加面料', description: '上传面料图或从面料库选择。可添加多张面料进行叉乘组合。' },
+      { target: 'tour-fabric', title: '② 添加面料', description: '上传面料图或从面料库选择(也可不选,仅用插画生成)。可添加多张面料进行叉乘组合。' },
       { target: 'tour-style', title: '③ 添加款式参考', description: '选择或上传款式参考图,系统会将每块面料与款式进行叉乘组合。' },
       { target: 'tour-generate', title: '④ 点击生成', description: '点击底部「立即生成」,系统将自动组合生成多张白底效果图。', actionLabel: '立即生成' },
       { target: 'tour-result', title: '⑤ 查看结果', description: '生成的效果图按款式×面料矩阵展示,可点击单张重试。' },
@@ -648,7 +654,9 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                   <span className="text-gray-400 normal-case tracking-normal">
                     ({fabricRows.length}/{fabricsLimit})
                   </span>
-                  <span className="text-red-500">*</span>
+                  {fabricRows.length === 0 && illustrations.length === 0 && (
+                    <span className="text-gray-300 normal-case tracking-normal ml-1">可选</span>
+                  )}
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {fabricRows.map((row) => (
@@ -812,7 +820,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
                 )}
                 <span className="text-[10px] text-gray-400">
                   {mode === "cross"
-                    ? "面料上限 6 项,支持上传 / 库选 / 文字描述三种方式"
+                    ? "面料与插画至少选其一;面料上限 6 项,支持上传 / 库选 / 文字描述三种方式"
                     : `拼色模式:按款式自由上传(建议≤${MAX_FABRIC_MIXED})`}
                 </span>
               </div>
