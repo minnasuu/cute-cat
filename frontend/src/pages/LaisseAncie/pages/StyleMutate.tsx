@@ -10,6 +10,8 @@ import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { teamApi } from "../lib/api";
 import type { StyleMutateBatch } from "../lib/api";
 import { useDesignStore } from "../store/design";
+import type { Product } from "../types/design";
+import { pickProductCover } from "../lib/product-cover";
 import type { KnowledgeDeps } from "../../DashboardPage/knowledge-injectors";
 import { compressForUpload } from "../lib/images";
 import { Modal } from "../components/ui";
@@ -284,7 +286,8 @@ const UNIVERSAL_AXIS_COVERED_BY: Record<string, Record<string, string>> = {
 
 type StyleRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string }
-  | { kind: "library-style"; id: string; styleId: string; name: string; url: string };
+  | { kind: "library-style"; id: string; styleId: string; name: string; url: string }
+  | { kind: "library-product"; id: string; productId: string; name: string; url: string };
 type FabricRow =
   | { kind: "upload"; id: string; file: File; preview: string; name: string }
   | { kind: "library-fabric"; id: string; matId: string; colorIdx: number; name: string; url: string; hex?: string }
@@ -317,7 +320,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
   const [selected, setSelected] = useState<Set<MutationKey>>(new Set());
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [picker, setPicker] = useState<null | "style" | "fabric">(null);
+  const [picker, setPicker] = useState<null | "style" | "fabric" | "product">(null);
+  /** 母款「添加」下拉菜单是否展开(本地上传 / 款式库 / Lookbook 三选一) */
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
 
   const [category, setCategory] = useState<GarmentCategoryId | "">("");
   const [batch, setBatch] = useState<StyleMutateBatch | null>(null);
@@ -339,6 +344,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
 
   const styleRef = useRef<HTMLInputElement>(null);
   const fabricRef = useRef<HTMLInputElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
 
@@ -605,7 +611,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
       const styleMeta =
         mother.kind === "upload"
           ? { kind: "upload", name: mother.name }
-          : { kind: "library-style", styleId: mother.styleId };
+          : mother.kind === "library-product"
+            ? { kind: "library-product", productId: mother.productId }
+            : { kind: "library-style", styleId: mother.styleId };
       const fabricMeta = !fabric
         ? null
         : fabric.kind === "upload"
@@ -910,6 +918,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                       {mother.kind === "library-style" && (
                         <span className="absolute top-0.5 left-0.5 text-[8px] bg-primary-500 text-white px-1 rounded">库</span>
                       )}
+                      {mother.kind === "library-product" && (
+                        <span className="absolute top-0.5 left-0.5 text-[8px] bg-amber-500 text-white px-1 rounded">LOOK</span>
+                      )}
                       {!batchRunning && (
                         <button
                           onClick={() => setMother(null)}
@@ -924,22 +935,44 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                     </div>
                   )}
                   {!mother && !batchRunning && (
-                    <>
+                    <div
+                      className="relative"
+                      ref={addMenuRef}
+                      onMouseEnter={() => setAddMenuOpen(true)}
+                      onMouseLeave={() => setAddMenuOpen(false)}
+                    >
                       <button
-                        onClick={() => styleRef.current?.click()}
+                        onClick={() => setAddMenuOpen((v) => !v)}
                         className="w-28 h-28 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
                       >
-                        <span className="text-lg text-gray-400">+</span>
-                        <span className="text-[10px] text-gray-400">上传母款</span>
+                        <span className="text-lg text-gray-400">↑</span>
+                        <span className="text-[10px] text-gray-400">添加母款</span>
                       </button>
-                      <button
-                        onClick={() => setPicker("style")}
-                        className="w-28 h-28 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 transition-colors shrink-0"
-                      >
-                        <span className="text-base text-primary-500">▦</span>
-                        <span className="text-[10px] text-primary-600 mt-0.5">从库选择</span>
-                      </button>
-                    </>
+                      {/* 三种母款来源的下拉菜单: hover 进入容器时常驻,离开容器或选中项后关闭 */}
+                      <div className={`absolute left-0 top-full mt-1 z-20 w-44 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden transition-all duration-150 ${addMenuOpen ? "opacity-100 visible translate-y-0" : "opacity-0 invisible -translate-y-1"}`}>
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gray-700 hover:bg-primary-50 hover:text-primary-700"
+                          onClick={() => { styleRef.current?.click(); setAddMenuOpen(false); }}
+                        >
+                          <span className="text-gray-400">↑</span>本地上传
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gray-700 hover:bg-primary-50 hover:text-primary-700 border-t border-gray-100"
+                          onClick={() => { setPicker("style"); setAddMenuOpen(false); }}
+                        >
+                          <span className="text-primary-500">▦</span>从款式库
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gray-700 hover:bg-primary-50 hover:text-primary-700 border-t border-gray-100"
+                          onClick={() => { setPicker("product"); setAddMenuOpen(false); }}
+                        >
+                          <span className="text-amber-500">▤</span>从 Lookbook
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
                 <input
@@ -1429,7 +1462,7 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
         </aside>
 
         <StyleLibraryPicker
-          mode={picker}
+          mode={picker === "product" ? null : picker}
           knowledge={knowledge}
           onClose={() => setPicker(null)}
           onStyle={(p) => {
@@ -1455,6 +1488,24 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
             setPicker(null);
           }}
         />
+
+        {/* 从 Lookbook 单品库选母款(单选) */}
+        {picker === "product" && (
+          <LookbookProductPickerModal
+            products={store.products}
+            onClose={() => setPicker(null)}
+            onConfirm={(p) => {
+              setMother({
+                kind: "library-product",
+                id: crypto.randomUUID(),
+                productId: p.id,
+                name: p.title || "未命名单品",
+                url: pickProductCover(p) || p.imageUrl || "",
+              });
+              setPicker(null);
+            }}
+          />
+        )}
 
         {/* 全屏大图预览(页面级单点渲染) */}
         {preview.modal}
@@ -1626,6 +1677,50 @@ function StyleLibraryPicker({
         <button onClick={onClose} className="text-[12px] text-gray-500 hover:text-gray-700 px-3 py-1.5">
           取消
         </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Lookbook 单品选择弹窗(单选,作为母款) ─────────────────────
+function LookbookProductPickerModal({ products, onClose, onConfirm }: {
+  products: Product[];
+  onClose: () => void;
+  onConfirm: (p: Product) => void;
+}) {
+  const [q, setQ] = useState("");
+  // 仅展示有图片的单品
+  const withImages = products.filter((p) => !!pickProductCover(p));
+  const visible = !q.trim() ? withImages : withImages.filter((p) =>
+    (p.title || "").toLowerCase().includes(q.trim().toLowerCase()));
+
+  return (
+    <Modal open onClose={onClose} title="选择单品(作为母款)" maxWidth="max-w-3xl">
+      <div className="flex flex-col max-h-[68vh]">
+        <div className="shrink-0 pb-3 border-b border-gray-100">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="按名称搜索…"
+            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:border-primary-500" />
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto py-3">
+          {visible.length === 0 ? (
+            <div className="py-10 text-center text-gray-500 text-sm">还没有带图片的单品,请先在 Lookbook 中生成</div>
+          ) : (
+            <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
+              {visible.map((p) => (
+                <button key={p.id} onClick={() => onConfirm(p)}
+                  className="rounded-xl border overflow-hidden text-left transition-all border-gray-200 hover:border-primary-500 hover:ring-2 hover:ring-primary-200">
+                  <div className="aspect-square bg-gray-50 overflow-hidden">
+                    {pickProductCover(p) ? <img src={pickProductCover(p)!} alt={p.title} className="w-full h-full object-cover" /> : null}
+                  </div>
+                  <div className="px-2 py-1.5 text-[11px] text-gray-700 truncate">{p.title || "未命名"}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="shrink-0 flex items-center justify-end gap-2 pt-3 mt-3 border-t border-gray-100">
+          <button onClick={onClose} className="text-[12px] text-gray-600 hover:underline px-3 py-1.5">取消</button>
+        </div>
       </div>
     </Modal>
   );

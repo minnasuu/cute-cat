@@ -37,6 +37,19 @@ const coins = require('../lib/coins');
 
 const router = express.Router();
 
+// ── 产品封面取值(对齐前端 pickProductCover):主图 > 第一张效果图 > imageUrl > null ──
+function pickProductCover(product) {
+  if (!product) return null;
+  const images = Array.isArray(product.images) ? product.images : [];
+  const main = images.find((im) => im && im.slot === 'main' && im.url);
+  if (main?.url) return main.url;
+  // 回退:第一张带 url 的效果图(跳过 lineart 线稿)
+  const render = images.find((im) => im && im.url && im.slot !== 'lineart' && im.slot !== 'main');
+  if (render?.url) return render.url;
+  // 最终回退:遗留单图字段
+  return product.imageUrl || null;
+}
+
 // ── 生图扣币:在调模型前按张数扣,余额不足返回 402 ──
 async function chargeImages(req, count, scenario, refId) {
   if (!req.userId || count <= 0) return;
@@ -1329,6 +1342,13 @@ router.post('/style-mutate', (req, res) => {
         const f = styleFiles[0];
         const url = await persistStyleMutateTemp(f.path, f.filename, f.mimetype);
         mother = { name: styleMeta.name || f.originalname || '母款', url };
+      } else if (styleMeta.kind === 'library-product') {
+        // 从 Lookbook 单品库选母款:取产品封面图(images 主图 > 第一张效果图 > imageUrl)作为参考图
+        const rec = await findOwned(prisma.lAProduct, styleMeta.productId, req.team.id);
+        if (!rec) return res.status(404).json({ error: '母款单品不存在' });
+        const url = pickProductCover(rec);
+        if (!url) return res.status(400).json({ error: '母款缺少参考图' });
+        mother = { name: rec.title || '母款', url };
       } else {
         const rec = await findOwned(prisma.lAStyle, styleMeta.styleId, req.team.id);
         if (!rec) return res.status(404).json({ error: '母款款式不存在' });
