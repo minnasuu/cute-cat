@@ -5,11 +5,11 @@ export async function compressForUpload(
   opts: { maxWidth?: number; quality?: number; maxSizeMB?: number } = {},
 ): Promise<File> {
   const out = await imageCompression(file, {
-    maxSizeMB: opts.maxSizeMB ?? 0.3,
-    maxWidthOrHeight: opts.maxWidth ?? 400,
+    maxSizeMB: opts.maxSizeMB ?? 0.9,
+    maxWidthOrHeight: opts.maxWidth ?? 800,
     useWebWorker: true,
     fileType: "image/jpeg",
-    initialQuality: opts.quality ?? 0.7,
+    initialQuality: opts.quality ?? 0.85,
   });
   return new File([out], replaceExt(file.name, ".jpg"), { type: "image/jpeg" });
 }
