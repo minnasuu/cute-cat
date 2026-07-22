@@ -1610,6 +1610,7 @@ setInterval(() => {
 /**
  * 穿搭效果 prompt:图1 = 模特,图2..图N = 单品。
  * 指示 AI 让模特穿上所有单品,保持模特身材/面容/姿态,自然垂坠。
+ * 关键:明确要求健康的肤色、自然的唇色、有活力的表情,避免苍白/面无血色。
  */
 function buildOutfitStylingPrompt({ name, description, products, model }) {
   const lines = [];
@@ -1629,10 +1630,13 @@ function buildOutfitStylingPrompt({ name, description, products, model }) {
   });
   lines.push(
     `Dress the model (Image 1) in ALL the clothing items (Images 2-${products.length + 1}) together as a complete, cohesive outfit. ` +
-    `Preserve the model's body proportions, posture, face, and skin tone. ` +
+    `Preserve the model's body proportions, posture, and face. ` +
     `Each garment should drape naturally and fit the figure. ` +
     `Keep each item's original color, material, and design faithful to its photo. ` +
-    `Professional fashion photography, clean studio background, soft even lighting, photorealistic.`
+    `The model must have a healthy, natural skin tone with warm undertones — never pale, washed-out, or anemic-looking. ` +
+    `Lips should have a subtle natural rose/healthy color, not white or colorless. ` +
+    `The expression should be lively, confident, and vibrant — conveying energy and vitality. ` +
+    `Professional fashion photography, clean studio background, warm flattering lighting that enhances skin tone, photorealistic.`
   );
   if (name) lines.push(`Outfit theme: ${name}.`);
   if (description) lines.push(`Style notes: ${description}.`);
