@@ -1404,8 +1404,9 @@ export default function StyleMutatePage({ knowledge, brandLoading, knowledgeLoad
                         type="button"
                         onClick={() => removeResult(cell.mi)}
                         aria-label={`删除 ${cell.label}`}
-                        title="删除此结果"
-                        className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-black/50 text-white text-[12px] leading-none flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-black/70"
+                        title={cell.status === "pending" ? "生成中,暂不支持删除" : "删除此结果"}
+                        disabled={cell.status === "pending"}
+                        className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-black/50 text-white text-[12px] leading-none flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed sm:disabled:opacity-0"
                       >
                         ×
                       </button>
