@@ -1132,8 +1132,7 @@ export default function MaterialComboPage({ knowledge, brandLoading, knowledgeLo
           )}
 
           {batch &&
-            batch.fabrics.length > 0 &&
-            batch.styles.length > 0 &&
+            (batch.fabrics.length > 0 || batch.styles.length > 0 || illustrations.length > 0) &&
             (mode === "color-mix" ? (
               // 拼色模式:单张大图 + 底部面料缩略条(不标「拼色」标签)
               <ColorMixResult

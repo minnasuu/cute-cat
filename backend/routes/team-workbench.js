@@ -1387,7 +1387,8 @@ router.post('/products/:id/advance', asyncHandler(async (req, res) => {
 // 可选 field "slot":
 //   无 slot → 上传主图(slot="main"):图片默认主图;若已有主图则旧主图降级为效果图(render),
 //     实现主图互换,imageUrl 同步为当前主图 url(派生兼容字段)。
-//   有 slot → 替换 images[] 中对应 slot 的 url(线稿/效果图单张替换);找不到则追加一条。
+//   有 slot + 无 append → 替换 images[] 中对应图片(url 优先,找不到则回退到 slot 首张);找不到则追加一条。
+//   有 slot + append=1 → 总是追加一条新图(无论是否已有同 slot 图),用于「添加图片」流程,避免误替换旧图。
 // 返回更新后的产品。
 const MAIN_SLOT = "main";
 const RENDER_SLOT = "render";
@@ -1405,19 +1406,26 @@ router.post('/products/:id/image', (req, res) => {
       const slot = req.body?.slot?.toString().trim();
       // 通过唯一 url 定位要替换的图片(而非非唯一的 slot),避免多张同 slot 图时总替换第一张
       const matchUrl = req.body?.url?.toString().trim();
+      // append=1 → 总是追加一条新图,不替换任何已有图(添加图片流程)
+      const append = req.body?.append === "1" || req.body?.append === "true";
       let p;
       if (slot) {
-        // 替换 images[] 中对应图片(url 优先,找不到则回退到 slot 首张);找不到则追加一条
         const imgs = Array.isArray(owned.images) ? owned.images.map((im) => ({ ...im })) : [];
-        let idx = -1;
-        if (matchUrl) {
-          idx = imgs.findIndex((im) => im && im.url === matchUrl);
+        if (append) {
+          // 追加:无视已有同 slot 图,直接新增一条(添加图片流程)
+          imgs.push({ slot, label: slot, url });
+        } else {
+          // 替换:通过 url 优先定位,找不到则回退到 slot 首张;找不到则追加一条
+          let idx = -1;
+          if (matchUrl) {
+            idx = imgs.findIndex((im) => im && im.url === matchUrl);
+          }
+          if (idx < 0) {
+            idx = imgs.findIndex((im) => im && im.slot === slot);
+          }
+          if (idx >= 0) imgs[idx] = { ...imgs[idx], url };
+          else imgs.push({ slot, label: slot, url });
         }
-        if (idx < 0) {
-          idx = imgs.findIndex((im) => im && im.slot === slot);
-        }
-        if (idx >= 0) imgs[idx] = { ...imgs[idx], url };
-        else imgs.push({ slot, label: slot, url });
         p = await prisma.lAProduct.update({ where: { id: owned.id }, data: { images: imgs } });
       } else {
         // 无 slot → 主图:已有主图则降级为 render,再追加新主图(原子互换);同步 imageUrl

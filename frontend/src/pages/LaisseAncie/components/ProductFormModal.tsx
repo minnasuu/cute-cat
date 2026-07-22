@@ -163,7 +163,10 @@ function ProductView({ product, onClose, onSaved, onPrev, onNext }: { product: P
       const compressed = await compressForUpload(file);
       const fd = new FormData();
       fd.append("file", compressed);
-      fd.append("slot", "render"); // 显式 slot → 追加一条,不触发主图互换
+      // append=1 → 服务端总是追加一条新图(无论是否已有同 slot 图);
+      // 若不传 append,同 slot 旧图会被替换(仅替换流程传 slot+url)。
+      fd.append("slot", "render");
+      fd.append("append", "1");
       const updated: Product = await teamApi(teamId).uploadProductImage(product.id, fd);
       // 以服务端已持久化的 images 重建草稿(拿到稳定 url + slot),保留本地已删除 key 的不回灌
       const persisted = collectImages(updated);
