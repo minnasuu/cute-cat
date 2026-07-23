@@ -303,6 +303,17 @@ const LandingPage: React.FC = () => {
             © 2026 CuCaTopia.
           </p>
         </div>
+        {/* ICP 备案号 */}
+        <div className="mx-auto px-6 mt-4 flex items-center justify-center gap-4 text-xs text-text-tertiary">
+          <a
+            href="https://beian.miit.gov.cn/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-text-primary transition-colors"
+          >
+            渝ICP备2025071950号
+          </a>
+        </div>
       </footer>
     </div>
   );
