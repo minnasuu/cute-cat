@@ -39,6 +39,9 @@ import OutfitStylingPage from '../LaisseAncie/pages/OutfitStyling';
 
 /** 插画创作 —— 文生图 / 图生图 → 1 张 1:1 白底插画,可存入插画库。 */
 
+/** 常规生图 —— 文生图 / 图生图 → 1–4 张白底产品图,可存入任意素材库。 */
+import RegularGeneratePage from '../LaisseAncie/pages/RegularGenerate';
+
 /** 数据 tab 懒加载(避免首屏过大)。 */
 const InspirationsPage = lazy(() => import('../LaisseAncie/pages/Inspirations'));
 const LookbookPage = lazy(() => import('../LaisseAncie/pages/Lookbook'));
@@ -177,6 +180,12 @@ export default function TeamWorkbench() {
               />
             ) : t.id === "illustration-create" ? (
               <IllustrationCreatePage
+                brandLoading={brandLoading}
+                knowledgeLoading={knowledgeLoading}
+                knowledge={{ brand }}
+              />
+            ) : t.id === "regular-generate" ? (
+              <RegularGeneratePage
                 brandLoading={brandLoading}
                 knowledgeLoading={knowledgeLoading}
                 knowledge={{ brand }}

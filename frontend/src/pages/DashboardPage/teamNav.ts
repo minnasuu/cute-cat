@@ -12,7 +12,7 @@
  */
 
 /** 设计模式 */
-export type DesignMode = "single" | "illustration" | "material-combo" | "style-mutate" | "outfit-styling" | "illustration-create";
+export type DesignMode = "single" | "illustration" | "material-combo" | "style-mutate" | "outfit-styling" | "illustration-create" | "regular-generate";
 
 export interface NavSubTab {
   id: string;
@@ -37,6 +37,7 @@ export interface NavSection {
  * 插画(illustration)模式暂时隐藏(仍可通过代码访问,不影响既有管线)。
  */
 export const DESIGN_TABS: { id: DesignMode; label: string; icon: string }[] = [
+  { id: "regular-generate", label: "常规生图", icon: "◔" },
   { id: "single", label: "灵感扩散", icon: "◧" },
   { id: "material-combo", label: "材料组合", icon: "◫" },
   { id: "style-mutate", label: "款式裂变", icon: "◈" },

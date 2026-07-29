@@ -85,6 +85,31 @@ export interface StyleMutateBatch {
   updatedAt: number;
 }
 
+/** 常规生图批次视图:文生图 / 图生图 → 1–4 张通用产品图 */
+export interface RegularGenerateBatch {
+  batchId: string;
+  teamId: string;
+  status: 'running' | 'done' | 'error';
+  error?: string;
+  name: string;
+  mode: 'text' | 'image';
+  count: number;
+  refUrl: string | null;
+  items: {
+    ci: number;
+    status: 'pending' | 'done' | 'error';
+    url: string | null;
+    originalUrl?: string | null;
+    error: string | null;
+    prompt: string | null;
+  }[];
+  total: number;
+  completed: number;
+  failed: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ---------- 通用团队作用域 ----------
 
 /**
@@ -272,6 +297,11 @@ export function teamApi(teamId: string) {
     illustrationCreateUrl: pre('/design/illustration-create'),
     illustrationCreateBatchUrl: (batchId: string) => pre(`/design/illustration-create/batch/${encodeURIComponent(batchId)}`),
     illustrationCreateRegenerateUrl: (batchId: string) => pre(`/design/illustration-create/batch/${encodeURIComponent(batchId)}/regenerate`),
+
+    // 常规生图(文生图 / 图生图 → 1–4 张通用产品图)
+    regularGenerateUrl: pre('/design/regular-generate'),
+    regularGenerateBatchUrl: (batchId: string) => pre(`/design/regular-generate/batch/${encodeURIComponent(batchId)}`),
+    regularGenerateRegenerateUrl: (batchId: string) => pre(`/design/regular-generate/batch/${encodeURIComponent(batchId)}/regenerate`),
 
     // chat(SSE 流式主流程)
     chatUrl: pre('/chat'),

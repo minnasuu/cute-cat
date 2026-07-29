@@ -4,6 +4,7 @@ import { Card } from "../components/ui";
 
 const ICONS: Record<DesignMode, string> = {
   illustration: "✎", single: "✦", "material-combo": "◫", "style-mutate": "◈", "outfit-styling": "✧", occasion: "✺",
+  "regular-generate": "✧",
 };
 
 const SUMMARIES: Record<DesignMode, string> = {
@@ -13,6 +14,7 @@ const SUMMARIES: Record<DesignMode, string> = {
   "style-mutate": "钉死母款，沿廓形 / 领型 / 袖长 / 长短 / 细节裂变多张同系列子款。",
   "outfit-styling": "从 Lookbook 选 1-5 款单品 + 模特图，生成模特穿搭效果图，直观呈现搭配效果。",
   occasion: "重要节日（春节、情人节、圣诞…）驱动的主题系列 — 节日、主题、色系、走秀节奏对齐。",
+  "regular-generate": "最轻量的通用生图入口：文生图 / 参考图生图 → 1–4 张白底产品图，可存入任意素材库。",
 };
 
 const CTAS: Record<DesignMode, string> = {
@@ -22,6 +24,7 @@ const CTAS: Record<DesignMode, string> = {
   "style-mutate": "开始款式裂变",
   "outfit-styling": "开始穿搭效果",
   occasion: "开始专题系列",
+  "regular-generate": "开始常规生图",
 };
 
 export default function DesignLandingPage() {

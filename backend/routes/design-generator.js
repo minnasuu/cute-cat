@@ -2104,4 +2104,313 @@ router.post('/illustration-create/batch/:batchId/regenerate', async (req, res) =
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// regular-generate —— 常规生图(文生图 / 图生图 → 1–4 张通用产品图)
+// ══════════════════════════════════════════════════════════════
+
+// ── regular-generate 守卫常量 ────────────────────────────────
+const MAX_REGULAR_IMAGES = 4;
+const RG_BATCH_CAP = Number.parseInt(process.env.RG_BATCH_CAP || '', 10) || 4;
+const RG_BATCH_TTL_MS = 15 * 60 * 1000;
+// 常规生图 provider:MaiziTech 图像编辑(多图参考,图生图时把参考图作为图1)
+const REGULAR_GENERATE_PROVIDER = process.env.REGULAR_GENERATE_PROVIDER || 'maizi-image-edit';
+// 常规生图比例:1:1 正方形
+const REGULAR_GENERATE_ASPECT = process.env.REGULAR_GENERATE_ASPECT || '1:1';
+
+// multer 单图上传(field 'image',可选 —— 文生图不传)
+const rgMulterStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    fs.mkdirSync(storage.TMP_DIR, { recursive: true });
+    cb(null, storage.TMP_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    cb(null, `rg-${Date.now().toString(36)}${crypto.randomUUID().slice(0, 6)}${ext}`);
+  },
+});
+const rgUpload = multer({
+  storage: rgMulterStorage,
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpe?g|png|webp|avif|gif)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('unsupported mime'));
+  },
+}).fields([{ name: 'image', maxCount: 1 }]);
+
+// ─── regular-generate 批次 store (进程内,带 TTL 清理) ──────────
+/** @type {Map<string, {batchId:string,teamId:string,mode:string,name:string,count:number,prompt:string,refUrl?:string,brandLogo?:string,brandSlogan?:string,items:Array,status:string,createdAt:number,updatedAt:number,error?:string}>} */
+const rgBatches = new Map();
+
+function rgBatchPublicView(b) {
+  const completed = b.items.filter((it) => it.status === 'done').length;
+  const failed = b.items.filter((it) => it.status === 'error').length;
+  return {
+    batchId: b.batchId,
+    teamId: b.teamId,
+    status: b.status,
+    error: b.error,
+    name: b.name,
+    mode: b.mode,
+    count: b.count,
+    refUrl: b.refUrl || null,
+    items: b.items.map((it) => ({
+      ci: it.ci,
+      status: it.status,
+      url: it.url || null,
+      originalUrl: it.originalUrl ?? null,
+      error: it.error || null,
+      prompt: it.prompt || null,
+    })),
+    total: b.items.length,
+    completed,
+    failed,
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt,
+  };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, b] of rgBatches) {
+    if (now - b.updatedAt > RG_BATCH_TTL_MS) {
+      for (const it of b.items) {
+        if (it.status === 'pending' || it.status === 'running') { it.status = 'error'; it.error = '生成超时,请重试'; }
+      }
+      b.status = 'done';
+      b.updatedAt = now;
+      rgBatches.delete(id);
+    }
+  }
+}, 30000).unref();
+
+/**
+ * 常规生图 prompt:文生图 = 纯文本产品图指令;图生图 = 把参考图转绘为产品图。
+ * 风格由 prompt 驱动(无风格参考图),参考图仅作为图生图的主体内容参考。
+ */
+function buildRegularPrompt({ mode, userPrompt, brandBlock }) {
+  if (mode === 'image') {
+    const extra = (userPrompt || '').trim();
+    return `Transform Image 1 into a polished product photograph on pure white background. Preserve the subject and composition of Image 1, but render it as a clean e-commerce product shot with studio lighting against a pure white backdrop.${extra ? `\n\nAdditional context: ${extra}` : ''}${brandBlock ? `\n\n${brandBlock}` : ''}`;
+  }
+  // 文生图:纯文本产品图指令
+  return `Create a product photograph on pure white background. Subject: ${userPrompt}. Clean studio lighting, sharp detail, e-commerce catalog style. No model, no mannequin, no background clutter, pure white backdrop.${brandBlock ? `\n\n${brandBlock}` : ''}`;
+}
+
+async function runRegularGenerateBatch(batchId) {
+  const b = rgBatches.get(batchId);
+  if (!b) return;
+  console.log(`[design-generator] runRegularGenerateBatch START batchId=${batchId} mode=${b.mode} count=${b.count} provider=${REGULAR_GENERATE_PROVIDER}`);
+  try {
+    b.status = 'running';
+    b.updatedAt = Date.now();
+    const brandBlock = buildBrandBlock(b.brandLogo, b.brandSlogan);
+    const prompt = buildRegularPrompt({ mode: b.mode, userPrompt: b.prompt, brandBlock });
+
+    const tasks = b.items.map((cell) => async () => {
+      console.log(`[design-generator] regular-generate cell START batchId=${batchId} ci=${cell.ci}`);
+      cell.prompt = prompt;
+      // 参考图组装:文生图=[],图生图=[refUrl]
+      const referenceImages = b.mode === 'image' && b.refUrl ? [b.refUrl] : [];
+      try {
+        const img = await generateImage(prompt, {
+          teamId: b.teamId,
+          aspectRatio: REGULAR_GENERATE_ASPECT,
+          safeName: `regular-generate-${cell.ci}`,
+          provider: REGULAR_GENERATE_PROVIDER,
+          referenceImages,
+        });
+        if (img?.url) {
+          cell.url = img.url;
+          cell.originalUrl = img.originalUrl ?? null;
+          cell.status = 'done';
+          console.log(`[design-generator] regular-generate cell DONE batchId=${batchId} ci=${cell.ci}`);
+        } else {
+          cell.error = img?.error || '生成失败';
+          cell.status = 'error';
+          console.warn(`[design-generator] regular-generate cell ERROR batchId=${batchId} ci=${cell.ci} error=${cell.error}`);
+        }
+      } catch (cellErr) {
+        cell.error = cellErr?.message || '生成本格异常';
+        cell.status = 'error';
+        console.error(`[design-generator] regular-generate cell THROW batchId=${batchId} ci=${cell.ci} error=${cellErr?.message}`);
+      }
+      return cell;
+    });
+
+    await mapConcurrent(tasks, RG_BATCH_CAP);
+
+    b.updatedAt = Date.now();
+    b.status = b.items.every((it) => it.status === 'done') ? 'done'
+      : b.items.some((it) => it.status === 'done') ? 'done' : 'error';
+  } catch (e) {
+    console.error(`[design-generator] runRegularGenerateBatch ${batchId} error:`, e?.message || String(e));
+    b.status = 'error';
+    b.error = e?.message || '批次生成异常';
+    b.updatedAt = Date.now();
+    for (const it of b.items) {
+      if (it.status === 'pending') { it.status = 'error'; it.error = b.error; }
+    }
+  }
+}
+
+/**
+ * POST /api/teams/:teamId/design/regular-generate
+ * body: multipart { mode: 'text'|'image', name, prompt, count: 1-4, refUrl?, brandLogo?, brandSlogan? } + field 'image'(file,仅图生图)
+ * 文生图:text → 纯文本产品图;图生图:image → 参考图转绘为产品图
+ * 返回 202: { batchId, status:'running', items, ... }
+ */
+router.post('/regular-generate', (req, res) => {
+  rgUpload(req, res, async (uploadErr) => {
+    try {
+      if (uploadErr) {
+        console.error('[design-generator] regular-generate upload error:', uploadErr.message);
+        return res.status(400).json({ error: `上传失败: ${uploadErr.message}` });
+      }
+      const body = req.body || {};
+      const mode = String(body.mode || 'text');
+      const name = (body.name || '').trim();
+      const prompt = (body.prompt || '').trim();
+      const count = Math.min(Math.max(Number.parseInt(body.count, 10) || 1, 1), MAX_REGULAR_IMAGES);
+      const brandLogo = body.brandLogo || undefined;
+      const brandSlogan = body.brandSlogan || undefined;
+      const refFile = req.files?.image?.[0];
+
+      if (!['text', 'image'].includes(mode)) {
+        return res.status(400).json({ error: "mode 必须为 'text' 或 'image'" });
+      }
+      if (!name) return res.status(400).json({ error: '请填写名称' });
+      if (mode === 'image') {
+        if (!refFile) return res.status(400).json({ error: '请上传参考图' });
+      } else {
+        if (!prompt) return res.status(400).json({ error: '请填写描述' });
+      }
+
+      // 常规生图按 N 张预扣喵币(余额不足 402)
+      try {
+        await chargeImages(req, count, 'image_generate', `regular-generate:${mode}`);
+      } catch (err) {
+        if (err.code === 'INSUFFICIENT_COINS') return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+        throw err;
+      }
+
+      // 持久化用户上传的参考图(仅 image 模式)
+      let refUrl = null;
+      if (refFile) {
+        const savePath = storage.createSavePath('design/regular-generate', refFile.filename);
+        await storage.saveUpload(refFile.path, savePath, refFile.mimetype);
+        refUrl = storage.getPublicUrl(savePath);
+      }
+
+      // 建 batch(count 个 pending cell)
+      const batchId = `rg-${crypto.randomUUID()}`;
+      const now = Date.now();
+      const items = Array.from({ length: count }, (_, ci) => ({ ci, status: 'pending' }));
+      const batch = {
+        batchId,
+        teamId: req.team.id,
+        mode,
+        name,
+        count,
+        prompt,
+        refUrl,
+        brandLogo,
+        brandSlogan,
+        items,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      };
+      rgBatches.set(batchId, batch);
+      console.log(`[design-generator] regular-generate ready ${batchId} mode=${mode} count=${count} refUrl=${refUrl ? 'yes' : '-'} → 202`);
+
+      res.status(202).json(rgBatchPublicView(batch));
+      runRegularGenerateBatch(batchId).catch((err) => {
+        console.error(`[design-generator] runRegularGenerateBatch ${batchId} unhandled:`, err?.message || String(err));
+        const b = rgBatches.get(batchId);
+        if (b) {
+          b.status = 'error';
+          b.error = err?.message || '批次异常';
+          for (const it of b.items) {
+            if (it.status === 'pending' || it.status === 'running') { it.status = 'error'; it.error = b.error; }
+          }
+          b.updatedAt = Date.now();
+        }
+      });
+    } catch (fatal) {
+      console.error('[design-generator] regular-generate fatal:', fatal?.stack || fatal?.message || String(fatal));
+      if (!res.headersSent) res.status(500).json({ error: fatal?.message || '常规生图内部异常' });
+    }
+  });
+});
+
+// GET /api/teams/:teamId/design/regular-generate/batch/:batchId —— 轮询进度
+router.get('/regular-generate/batch/:batchId', (req, res) => {
+  const batch = rgBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+  res.json(rgBatchPublicView(batch));
+});
+
+// POST /api/teams/:teamId/design/regular-generate/batch/:batchId/regenerate —— 单格重生成
+router.post('/regular-generate/batch/:batchId/regenerate', async (req, res) => {
+  const batch = rgBatches.get(req.params.batchId);
+  if (!batch) return res.status(404).json({ error: '批次不存在或已过期,请重新生成' });
+  if (batch.teamId !== req.team.id) return res.status(403).json({ error: '无权访问该批次' });
+
+  const ci = Number.parseInt(req.body?.ci, 10);
+  if (!Number.isInteger(ci)) return res.status(400).json({ error: 'ci 必须为整数' });
+
+  const cell = batch.items.find((it) => it.ci === ci);
+  if (!cell) return res.status(400).json({ error: '无效的 ci' });
+
+  // 单格重生成扣 1 张
+  try {
+    await chargeImages(req, 1, 'image_regenerate', `regular-generate:regenerate:${ci}`);
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_COINS') {
+      return res.status(402).json({ error: err.message, code: 'INSUFFICIENT_COINS', coins: err.coins, cost: err.cost });
+    }
+    throw err;
+  }
+
+  cell.status = 'pending';
+  cell.error = undefined;
+  cell.url = undefined;
+  cell.originalUrl = undefined;
+  batch.status = 'running';
+  batch.updatedAt = Date.now();
+
+  res.json({ ci, status: cell.status, url: cell.url, error: cell.error, prompt: cell.prompt });
+
+  try {
+    const brandBlock = buildBrandBlock(batch.brandLogo, batch.brandSlogan);
+    const prompt = buildRegularPrompt({ mode: batch.mode, userPrompt: batch.prompt, brandBlock });
+    cell.prompt = prompt;
+    const referenceImages = batch.mode === 'image' && batch.refUrl ? [batch.refUrl] : [];
+    const img = await generateImage(prompt, {
+      teamId: batch.teamId,
+      aspectRatio: REGULAR_GENERATE_ASPECT,
+      safeName: `regular-generate-${ci}`,
+      provider: REGULAR_GENERATE_PROVIDER,
+      referenceImages,
+    });
+    if (img?.url) {
+      cell.url = img.url;
+      cell.originalUrl = img.originalUrl ?? null;
+      cell.status = 'done';
+    } else {
+      cell.error = img?.error || '生成失败';
+      cell.status = 'error';
+    }
+  } catch (e) {
+    console.error(`[design-generator] regular-generate regenerate ${batch.batchId} (${ci}) error:`, e?.message || String(e));
+    cell.error = e?.message || '生成异常';
+    cell.status = 'error';
+  } finally {
+    const stillPending = batch.items.some((it) => it.status === 'pending');
+    batch.status = stillPending ? 'running' : 'done';
+    batch.updatedAt = Date.now();
+  }
+});
+
 module.exports = router;

@@ -1,4 +1,4 @@
-export type DesignMode = "illustration" | "single" | "material-combo" | "style-mutate" | "outfit-styling" | "occasion";
+export type DesignMode = "illustration" | "single" | "material-combo" | "style-mutate" | "outfit-styling" | "occasion" | "regular-generate";
 
 export const MODE_LABEL: Record<DesignMode, string> = {
   illustration:  "插画作品",
@@ -7,6 +7,7 @@ export const MODE_LABEL: Record<DesignMode, string> = {
   "style-mutate": "款式裂变",
   "outfit-styling": "穿搭效果",
   occasion:      "节日系列",
+  "regular-generate": "常规生图",
 };
 export const MODE_HINT: Record<DesignMode, string> = {
   illustration:  "为 Lookbook / 印花 / 主视觉 / 包装等输出的原创图形作品。可同步存入视觉资产库。",
@@ -15,6 +16,7 @@ export const MODE_HINT: Record<DesignMode, string> = {
   "style-mutate": "钉死一张母款,沿廓形 / 领型 / 袖长 / 长短 / 细节轴裂变多张子款白底图。",
   "outfit-styling": "从 Lookbook 选 1-5 款单品 + 品牌/系统模特库选 1 张模特图,生成模特穿搭效果图。",
   occasion:      "围绕特定节日（春节、情人节、圣诞）按主题对齐的产品系列。",
+  "regular-generate": "最轻量的通用生图入口:文生图 / 参考图生图 → 1–4 张白底产品图,可存入任意素材库。",
 };
 
 export type ProductStatus =
