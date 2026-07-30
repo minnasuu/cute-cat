@@ -4,7 +4,7 @@
  * 表格列:图片叠放缩略图 / 产品名称 / 价格 / 状态 / 最近更新 / 备注信息 / 操作。
  * 状态列:自定义彩色药丸选择器,每种状态可独立配置颜色与标签。
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDesignStore } from "../store/design";
 import { useCurrentTeam } from "../../../contexts/CurrentTeamContext";
 import { useEditingProduct } from "../contexts/editing-product";
@@ -119,7 +119,7 @@ export default function LookbookPage() {
   const store = useDesignStore();
   const [tab, setTab] = useState<TabKey>("all");
   const [view, setView] = useState<ViewMode>("card");
-  const [statusFilter, setStatusFilter] = useState<ProductStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<Set<ProductStatus>>(new Set());
   // 产品详情/编辑/新增三态弹窗:create | view.p | edit.p
   const [editor, setEditor] = useState<null | { mode: "create" } | { mode: "view" | "edit"; product: Product }>(null);
   const { confirming, setConfirming, pending, doDelete } = useRowDelete();
@@ -130,7 +130,7 @@ export default function LookbookPage() {
   const items = useMemo(() => {
     let r = store.products;
     if (tab !== "all") r = r.filter((p) => p.mode === tab);
-    if (statusFilter !== "all") r = r.filter((p) => p.status === statusFilter);
+    if (statusFilter.size > 0) r = r.filter((p) => statusFilter.has(p.status));
     return r;
   }, [store.products, tab, statusFilter]);
 
@@ -222,11 +222,11 @@ export default function LookbookPage() {
           {store.products.length === 0 ? (
             <>要去往 <span className="text-primary-600">Design</span> 开始创作，或点击「录入产品」，产品才会进入 Lookbook</>
           ) : (
-            <>没有符合「{tab === "all" ? "" : MODE_LABEL[tab] + " / "}{statusFilter === "all" ? "" : statusConfig.find((s) => s.id === statusFilter)?.label || STATUS_LABEL[statusFilter]}」的产品</>
+            <>没有符合「{tab === "all" ? "" : MODE_LABEL[tab] + " / "}{statusFilter.size === 0 ? "" : [...statusFilter].map((id) => statusConfig.find((s) => s.id === id)?.label || STATUS_LABEL[id]).join(" / ")}」的产品</>
           )}
-          {(tab !== "all" || statusFilter !== "all") && (
+          {(tab !== "all" || statusFilter.size > 0) && (
             <div>
-              <button onClick={() => { setTab("all"); setStatusFilter("all"); }}
+              <button onClick={() => { setTab("all"); setStatusFilter(new Set()); }}
                 className="text-primary-600 hover:underline text-[13px]">清除筛选</button>
             </div>
           )}
@@ -336,21 +336,81 @@ export default function LookbookPage() {
 
 // ── 子组件 ───────────────────────────────────────────────────
 
-/** 状态列筛选下拉(借用 StatusPicker 的配置入口思路,简化为文字下拉) */
+/** 工序状态多选筛选下拉:带 checkbox + 彩色圆点 + 标签,点击外部关闭(参照 StatusPicker) */
 function StatusFilter({
   value, onChange, statuses,
 }: {
-  value: ProductStatus | "all";
-  onChange: (v: ProductStatus | "all") => void;
+  value: Set<ProductStatus>;
+  onChange: (v: Set<ProductStatus>) => void;
   statuses: StatusDef[];
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const toggle = (id: ProductStatus) => {
+    const next = new Set(value);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    onChange(next);
+  };
+
+  // 按钮文案:未选→「全部状态」/ 单选→该状态标签 / 多选→「已选 N 项」
+  let label: string;
+  if (value.size === 0) {
+    label = "全部状态";
+  } else if (value.size === 1) {
+    const id = [...value][0];
+    label = statuses.find((s) => s.id === id)?.label ?? STATUS_LABEL[id];
+  } else {
+    label = `已选 ${value.size} 项`;
+  }
+
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value as ProductStatus | "all")}
-      className="text-[12px] border border-gray-200 rounded-xl pl-3 pr-8 py-1.5 bg-white text-gray-600 focus:outline-none focus:border-primary-500"
-      title="按工序状态筛选">
-      <option value="all">全部状态</option>
-      {statuses.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-    </select>
+    <div className="relative" ref={ref}>
+      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="text-[12px] border border-gray-200 rounded-xl pl-3 pr-8 py-1.5 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:border-primary-500 inline-flex items-center gap-1.5"
+        title="按工序状态筛选">
+        {label}
+        {value.size > 0 && (
+          <span className="ml-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-[10px] font-medium leading-none">{value.size}</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1 w-56 rounded-xl border border-gray-200 bg-white shadow-lg py-1 max-h-72 overflow-y-auto">
+          {/* 全选/清除 */}
+          <button type="button"
+            onClick={(e) => { e.stopPropagation(); onChange(new Set()); }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-gray-50 transition-colors">
+            <input type="checkbox" checked={value.size === 0} readOnly
+              className="w-3.5 h-3.5 rounded border-gray-300 text-primary-500 focus:ring-primary-500 accent-primary-500" />
+            <span className={value.size === 0 ? "font-medium text-gray-900" : "text-gray-500"}>全部状态</span>
+          </button>
+          <div className="my-1 border-t border-gray-100" />
+          {statuses.map((s) => {
+            const checked = value.has(s.id as ProductStatus);
+            return (
+              <button key={s.id} type="button"
+                onClick={(e) => { e.stopPropagation(); toggle(s.id as ProductStatus); }}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-gray-50 transition-colors ${checked ? "bg-gray-50" : ""}`}>
+                <input type="checkbox" checked={checked} readOnly
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-primary-500 focus:ring-primary-500 accent-primary-500" />
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="truncate">{s.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
